@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "fractalterrain",
+  "version": "${version}",
+  "name": "FractalTerrain",
+  "description": "",
+  "authors": [],
+  "contact": {},
+  "license": "unlicense",
+  "icon": "assets/fractalterrain/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "fabric-datagen": [
+      "me.batata_1.fractalterrain.client.FractalterrainDataGenerator"
+    ],
+    "client": [
+      "me.batata_1.fractalterrain.client.FractalterrainClient"
+    ],
+    "main": [
+      "me.batata_1.fractalterrain.Fractalterrain"
+    ]
+  },
+  "mixins": [
+    "fractalterrain.mixins.json",
+    {
+      "config": "fractalterrain.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}
