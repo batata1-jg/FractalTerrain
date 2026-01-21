@@ -41,6 +41,10 @@ dependencies {
     mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
     modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
 
+    implementation "com.microsoft.onnxruntime:onnxruntime:1.23.2"
+//    include "com.microsoft.onnxruntime:onnxruntime_gpu:1.23.2"
+    include "com.microsoft.onnxruntime:onnxruntime:1.23.2"
+
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 }
 
