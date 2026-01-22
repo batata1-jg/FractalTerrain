@@ -5,6 +5,9 @@ import com.mojang.datafixers.util.Pair;
 import me.batata_1.fractalterrain.storage.Tile;
 import me.batata_1.fractalterrain.storage.TileStorage;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+
 import static me.batata_1.fractalterrain.util.CoordTranslator.*;
 import static me.batata_1.fractalterrain.util.FractalTerrainUtil.*;
 
@@ -16,13 +19,13 @@ public class HeightProvider {
     }
 
     //biLinear
-    private static Tile getOrCreateTile(Pair<Integer,Integer> xz) {
+    private static CompletableFuture<Tile> getOrCreateTile(Pair<Integer,Integer> xz) {
         var curTile = toCurTile(xz);
         if(TileStorage.existsTile(curTile)) return TileStorage.getTile(curTile);
         return TileStorage.genTile(curTile);
     }
 
-    private static int getFromInterpolation(int x,int z) {
+    private static int getFromInterpolation(int x,int z) throws ExecutionException, InterruptedException {
         var curEntry = toCurEntry(toTileCoords(Pair.of(x,z)));
         var interpolationNode1 = backToNormalCoords(
                 curEntry,
@@ -34,10 +37,10 @@ public class HeightProvider {
         var interpolationNode2 = Pair.of( interpolationNode1.getFirst()                             , interpolationNode1.getSecond() + (int) INTERPOLATION_SCALE);
         var interpolationNode3 = Pair.of( interpolationNode1.getFirst() + (int) INTERPOLATION_SCALE , interpolationNode1.getSecond());
         var interpolationNode4 = Pair.of( interpolationNode1.getFirst() + (int) INTERPOLATION_SCALE , interpolationNode1.getSecond() + (int) INTERPOLATION_SCALE);
-        int valNode1 = getOrCreateTile(interpolationNode1).entry(toCurEntry(toTileCoords(interpolationNode1)));
-        int valNode2 = getOrCreateTile(interpolationNode2).entry(toCurEntry(toTileCoords(interpolationNode2)));
-        int valNode3 = getOrCreateTile(interpolationNode3).entry(toCurEntry(toTileCoords(interpolationNode3)));
-        int valNode4 = getOrCreateTile(interpolationNode4).entry(toCurEntry(toTileCoords(interpolationNode4)));
+        int valNode1 = getOrCreateTile(interpolationNode1).get().entry(toCurEntry(toTileCoords(interpolationNode1)));
+        int valNode2 = getOrCreateTile(interpolationNode2).get().entry(toCurEntry(toTileCoords(interpolationNode2)));
+        int valNode3 = getOrCreateTile(interpolationNode3).get().entry(toCurEntry(toTileCoords(interpolationNode3)));
+        int valNode4 = getOrCreateTile(interpolationNode4).get().entry(toCurEntry(toTileCoords(interpolationNode4)));
 
 
         float mixed12 = interpolate(valNode1,valNode2,distFromNode1z);
@@ -47,7 +50,11 @@ public class HeightProvider {
     }
 
     public static int getElevation(int x , int z) {
-        return getFromInterpolation(x,z);
+        try {
+            return getFromInterpolation(x,z);
+        } catch (ExecutionException | InterruptedException e) {
+            throw new RuntimeException(e);
+        }
     }
 
 }
