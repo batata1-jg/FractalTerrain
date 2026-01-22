@@ -22,7 +22,7 @@ public class FractalTerrainInstance {
 
     public MinecraftServer getServer() { return curServer;}
 
-    public Path getTilesDir() { return Path.of(pathMundo + "/terrenomod"); }
+    public Path getTilesDir() { return Path.of(pathMundo + "/fractal_terrain"); }
 
 
 }

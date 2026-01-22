@@ -11,12 +11,12 @@ import java.util.Objects;
 
 public class Reference {
 
-    public static String ModID = "fractalterrain";
+    public static String ModID = "fractal-terrain";
     public static final Logger LOGGER = LoggerFactory.getLogger(ModID);
 
     @NotNull
     public static Identifier identifier(@NotNull String path ) {
-        return Identifier.of(ModID, path);
+        return Objects.requireNonNull(Identifier.of(ModID, path));
     }
 
     public static MutableText translate( String key , Object ... param ) {

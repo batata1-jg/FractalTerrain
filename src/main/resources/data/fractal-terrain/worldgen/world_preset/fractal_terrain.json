@@ -1,13 +1,13 @@
 {
   "dimensions": {
     "minecraft:overworld": {
-      "type": "terrain-diffusion-mc:terrain_diffusion",
+      "type": "fractal-terrain:fractal_terrain",
       "generator": {
         "type": "minecraft:noise",
-        "settings": "terrain-diffusion-mc:terrain_diffusion",
+        "settings": "fractal-terrain:fractal_terrain",
         "biome_source": {
-          "type": "terrain-diffusion-mc:terrain_diffusion",
-          "api_url": "http://localhost:8000"
+          "type": "minecraft:multi_noise",
+          "preset": "minecraft:overworld"
         }
       }
     },

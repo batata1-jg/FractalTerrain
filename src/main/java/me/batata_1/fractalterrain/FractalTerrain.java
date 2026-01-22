@@ -2,6 +2,7 @@ package me.batata_1.fractalterrain;
 
 import ai.onnxruntime.OrtEnvironment;
 import me.batata_1.fractalterrain.references.Reference;
+import me.batata_1.fractalterrain.storage.Tile;
 import me.batata_1.fractalterrain.storage.TileStorage;
 import me.batata_1.fractalterrain.world.gen.FractalTerrainDensityFunction;
 import net.fabricmc.api.ModInitializer;
@@ -26,7 +27,7 @@ public class FractalTerrain implements ModInitializer {
 
         Registry.register(Registries.DENSITY_FUNCTION_TYPE, Reference.identifier("fractal_terrain") ,
                 FractalTerrainDensityFunction.CODEC);
-
+        LOGGER.info("registered density");
 
 
         try {
@@ -39,6 +40,7 @@ public class FractalTerrain implements ModInitializer {
             try {
                 LOGGER.info("activating fractal terrain");
                 TileStorage.setInstance( new FractalTerrainInstance(server) );
+                TileStorage.bootstrap();
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }

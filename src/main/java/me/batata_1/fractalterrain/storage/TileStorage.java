@@ -36,7 +36,7 @@ public class TileStorage {
     private static final Set<Pair<Integer,Integer>> GENERATED_TILES =
             java.util.Collections.synchronizedSet(new LinkedHashSet<>(16,0.75f) );
 
-    public static synchronized void updateToInstance() {
+    public static synchronized void bootstrap() {
         File file = new File(String.valueOf(INSTANCE.getTilesDir()));
         if(!file.exists()) if(file.mkdirs())
             LOGGER.info("created tile dir in: {}", INSTANCE.getTilesDir());
