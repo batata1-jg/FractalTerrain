@@ -16,7 +16,7 @@ public class Reference {
 
     @NotNull
     public static Identifier identifier(@NotNull String path ) {
-        return Objects.requireNonNull(Identifier.of(ModID, path));
+        return Identifier.of(ModID, path);
     }
 
     public static MutableText translate( String key , Object ... param ) {

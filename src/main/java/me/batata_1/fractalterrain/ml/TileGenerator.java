@@ -36,7 +36,6 @@ public class TileGenerator {
     private static float[][] RunInference(MinecraftServer server , int hashCode ) throws IOException, OrtException {
 
         try {
-
             Optional<Resource> resource = server.getResourceManager().getResource(Identifier.of(ModID, "model/teste.onnx"));
             InputStream stream = resource.orElseThrow().getInputStream();
             byte[] modelArr = stream.readAllBytes();

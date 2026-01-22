@@ -3,7 +3,7 @@ package me.batata_1.fractalterrain.util;
 import ai.onnxruntime.OrtEnvironment;
 import com.mojang.datafixers.util.Pair;
 
-import static me.joaopalmeiras.terrenomod.references.Reference.LOGGER;
+import static me.batata_1.fractalterrain.references.Reference.LOGGER;
 
 public record FractalTerrainUtil() {
 
