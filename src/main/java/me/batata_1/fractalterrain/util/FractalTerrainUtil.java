@@ -2,6 +2,7 @@ package me.batata_1.fractalterrain.util;
 
 import ai.onnxruntime.OrtEnvironment;
 import com.mojang.datafixers.util.Pair;
+import me.batata_1.fractalterrain.world.HeightProvider;
 
 import static me.batata_1.fractalterrain.references.Reference.LOGGER;
 
@@ -9,10 +10,9 @@ public record FractalTerrainUtil() {
 
 
     public static OrtEnvironment ENV = null;
-    public static final int TILE_LENGTH = 128;
     public static final float MAX_ML_HEIGHT = 1765.0F;
-    public static final float INTERPOLATION_SCALE = 20.0F;
-    public static final int REGION_LENTGH = (int) INTERPOLATION_SCALE*TILE_LENGTH;
+    public static final float INTERPOLATION_SCALE = 5.0F;
+    public static final int REGION_LENGTH = (int) INTERPOLATION_SCALE* HeightProvider.finalTiles.getEntryLength();
 
     private static String NorP(int x) {
         if(x<0) return "N";

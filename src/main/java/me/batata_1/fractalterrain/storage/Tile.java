@@ -7,25 +7,28 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 import java.util.List;
 
-import static me.batata_1.fractalterrain.util.FractalTerrainUtil.TILE_LENGTH;
-
-
 public class Tile {
 
-    public static final MapCodec<Tile> CODEC = RecordCodecBuilder.mapCodec( instance ->
+    private static final MapCodec<Tile> CODEC = RecordCodecBuilder.mapCodec(instance ->
             instance.group(
-                    Codec.SHORT.listOf().listOf().fieldOf("HEIGHTS").forGetter((Tile o) -> o.HEIGHTS)
+                    Codec.FLOAT.listOf().listOf().fieldOf("entries").forGetter((Tile o) -> o.ENTRIES)
             ).apply(instance, Tile::new )
     );
 
-    private final List<List<Short>> HEIGHTS;
+    private final int TILE_SIZE;
+    protected final List<List<Float>> ENTRIES;
 
-    public Tile( List<List<Short>> h ) {
-        HEIGHTS = h;
+    public static MapCodec<Tile> getCodec() {
+        return CODEC;
     }
 
-    public int entry(Pair<Integer,Integer> xz) {
-        return HEIGHTS.get(TILE_LENGTH -xz.getFirst() -1).get(xz.getSecond());
+    public Tile( List<List<Float>> h ) {
+        ENTRIES = h;
+        TILE_SIZE = h.size();
+    }
+
+    public Float entry(Pair<Integer,Integer> xz) {
+        return ENTRIES.get(TILE_SIZE -xz.getFirst() -1).get(xz.getSecond());
     }
 
 }

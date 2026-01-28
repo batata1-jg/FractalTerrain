@@ -2,59 +2,98 @@ package me.batata_1.fractalterrain.world;
 
 import com.mojang.datafixers.util.Pair;
 
+import me.batata_1.fractalterrain.storage.EntryStorage;
 import me.batata_1.fractalterrain.storage.Tile;
-import me.batata_1.fractalterrain.storage.TileStorage;
+import me.batata_1.fractalterrain.storage.TileRegion;
 
+import java.util.ArrayList;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
 import static me.batata_1.fractalterrain.util.CoordTranslator.*;
 import static me.batata_1.fractalterrain.util.FractalTerrainUtil.*;
 
-
 public class HeightProvider {
 
+    public static final EntryStorage<Tile> finalTiles = new EntryStorage<>("final_tiles", 512,Tile.getCodec());
+    private static final ArrayList<EntryStorage<TileRegion>> coarseTiles = new ArrayList<>();
+    private static final ArrayList<EntryStorage<TileRegion>> latentTiles = new ArrayList<>();
+    private static final ArrayList<EntryStorage<TileRegion>> decoderTiles = new ArrayList<>();
+
+    public static void bootstrapTileStorages() {
+        finalTiles.bootstrap();
+        for( int i=0 ; i<7 ; i++) {
+            coarseTiles.add( new EntryStorage<>("coarse/" + i, 32, TileRegion.getRegionCodec()));
+            coarseTiles.get(i).bootstrap();
+        }
+        for( int i=0 ; i<6 ; i++) {
+            latentTiles.add( new EntryStorage<>("latent/" + i, 32, TileRegion.getRegionCodec()));
+            latentTiles.get(i).bootstrap();
+        }
+        for( int i=0 ; i<2 ; i++) {
+            decoderTiles.add( new EntryStorage<>("decoder/" + i, 256, TileRegion.getRegionCodec()));
+            decoderTiles.get(i).bootstrap();
+        }
+    }
+
     private static float interpolate(float val0 , float val1 , float distToVal0) {
+//        return MathHelper.lerp(distToVal0,val0,val1);
         return (val0*(INTERPOLATION_SCALE - distToVal0) + val1*distToVal0 ) / INTERPOLATION_SCALE;
     }
 
-    //biLinear
-    private static CompletableFuture<Tile> getOrCreateTile(Pair<Integer,Integer> xz) {
-        var curTile = toCurTile(xz);
-        if(TileStorage.existsTile(curTile)) return TileStorage.getTile(curTile);
-        return TileStorage.genTile(curTile);
+    private static CompletableFuture<Tile> getFinalTile(Pair<Integer,Integer> xz) {
+        return finalTiles.getEntry(toCurTile(xz));
     }
 
-    private static int getFromInterpolation(int x,int z) throws ExecutionException, InterruptedException {
-        var curEntry = toCurEntry(toTileCoords(Pair.of(x,z)));
+    private static ArrayList<Pair<Integer,Integer>> getInterpolationNodes(Pair<Integer,Integer> xz) {
+        ArrayList<Pair<Integer,Integer>> r = new ArrayList<>();
+        var curEntry = toCurEntry(toTileCoords(xz));
         var interpolationNode1 = backToNormalCoords(
                 curEntry,
-                toCurTile(Pair.of(x,z))
+                toCurTile(xz)
         );
-        int distFromNode1x = Math.abs(interpolationNode1.getFirst() - x);
-        int distFromNode1z = Math.abs(interpolationNode1.getSecond() - z);
+        r.add(interpolationNode1);
+        r.add(Pair.of( interpolationNode1.getFirst()                             , interpolationNode1.getSecond() + (int) INTERPOLATION_SCALE));
+        r.add(Pair.of( interpolationNode1.getFirst() + (int) INTERPOLATION_SCALE , interpolationNode1.getSecond()));
+        r.add(Pair.of( interpolationNode1.getFirst() + (int) INTERPOLATION_SCALE , interpolationNode1.getSecond() + (int) INTERPOLATION_SCALE));
+        return r;
+    }
 
-        var interpolationNode2 = Pair.of( interpolationNode1.getFirst()                             , interpolationNode1.getSecond() + (int) INTERPOLATION_SCALE);
-        var interpolationNode3 = Pair.of( interpolationNode1.getFirst() + (int) INTERPOLATION_SCALE , interpolationNode1.getSecond());
-        var interpolationNode4 = Pair.of( interpolationNode1.getFirst() + (int) INTERPOLATION_SCALE , interpolationNode1.getSecond() + (int) INTERPOLATION_SCALE);
-        int valNode1 = getOrCreateTile(interpolationNode1).get().entry(toCurEntry(toTileCoords(interpolationNode1)));
-        int valNode2 = getOrCreateTile(interpolationNode2).get().entry(toCurEntry(toTileCoords(interpolationNode2)));
-        int valNode3 = getOrCreateTile(interpolationNode3).get().entry(toCurEntry(toTileCoords(interpolationNode3)));
-        int valNode4 = getOrCreateTile(interpolationNode4).get().entry(toCurEntry(toTileCoords(interpolationNode4)));
+    private static int bilinearlyInterpolate(Float[] valNode, int distX ,int distZ ) {
+
+        float mixed12 = interpolate(valNode[0],valNode[1],distZ);
+        float mixed34 = interpolate(valNode[2],valNode[3],distZ);
+
+        return Math.round(interpolate(mixed12,mixed34,distX));
+    }
+
+    //xz real coords
+    private static int getInitialElev(int x,int z) {
+        var interpNodes = getInterpolationNodes(Pair.of(x,z));
 
 
-        float mixed12 = interpolate(valNode1,valNode2,distFromNode1z);
-        float mixed34 = interpolate(valNode3,valNode4,distFromNode1z);
 
-        return Math.round(interpolate(mixed12,mixed34,distFromNode1x));
+
+
+        int distX = Math.abs(interpNodes.get(0).getFirst() - x);
+        int distZ = Math.abs(interpNodes.get(0).getSecond() - z);
+        Float[] nodeVals = new Float[4];
+        for(int i=0 ; i<4 ; i++) {
+            try {
+                nodeVals[i] = getFinalTile(interpNodes.get(i)).get().entry(toCurEntry(toTileCoords(interpNodes.get(i))));
+            } catch (InterruptedException | ExecutionException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return bilinearlyInterpolate(nodeVals,distX,distZ);
     }
 
     public static int getElevation(int x , int z) {
-        try {
-            return getFromInterpolation(x,z);
-        } catch (ExecutionException | InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+
+
+        int init = getInitialElev(x,z);
+
+        return init;
     }
 
 }

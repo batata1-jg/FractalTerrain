@@ -8,11 +8,11 @@ import static me.batata_1.fractalterrain.util.FractalTerrainUtil.*;
 public record CoordTranslator() {
 
     public static Pair<Integer,Integer> toTileCoords(Pair<Integer,Integer> xz) {
-        return toGeneralCoords(xz,REGION_LENTGH);
+        return toGeneralCoords(xz, REGION_LENGTH);
     }
 
     public static Pair<Integer,Integer> toCurTile(Pair<Integer,Integer> xz) {
-        return toCurGeneral(xz,REGION_LENTGH);
+        return toCurGeneral(xz, REGION_LENGTH);
     }
 
     public static Pair<Integer,Integer> toCurEntry(Pair<Integer,Integer> xz ) {
@@ -25,8 +25,8 @@ public record CoordTranslator() {
         x *= (int) INTERPOLATION_SCALE;
         z *= (int) INTERPOLATION_SCALE;
         return Pair.of(
-                XZ.getFirst()*REGION_LENTGH + x,
-                XZ.getSecond()*REGION_LENTGH + z
+                XZ.getFirst()* REGION_LENGTH + x,
+                XZ.getSecond()* REGION_LENGTH + z
         );
     }
 

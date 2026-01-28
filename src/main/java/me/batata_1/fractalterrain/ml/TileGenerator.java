@@ -87,20 +87,19 @@ public class TileGenerator {
         return null;
     }
 
-    private static Short UnNormalizeAndRound(float f) {
-        f = ((f+1)*MAX_ML_HEIGHT)/2;
-        return (short) Math.round(f);
+    private static Float UnNormalize(float f) {
+        return ((f+1)*MAX_ML_HEIGHT)/2;
     }
 
-    public static Tile createTile(Pair<Integer,Integer> xz , MinecraftServer server )  {
-        List<List<Short>> h = new ArrayList<>();
+    public static Tile createTile(Pair<Integer,Integer> xz , MinecraftServer server ,  )  {
+        List<List<Float>> h = new ArrayList<>();
         try {
             float[][] fromInference = RunInference(server , xz.hashCode() );
             for(int i=0 ; i<TILE_LENGTH ; i++) {
                 h.add(new ArrayList<>());
                 for(int j=0 ; j<TILE_LENGTH ; j++) {
                     assert fromInference != null;
-                    h.get(i).add(UnNormalizeAndRound(fromInference[i][j]));
+                    h.get(i).add(UnNormalize(fromInference[i][j]));
                 }
             }
         } catch (IOException | OrtException e) {
