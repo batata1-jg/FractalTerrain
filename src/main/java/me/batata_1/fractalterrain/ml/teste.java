@@ -1,4 +1,4 @@
-package me.batata_1.fractalterrain.ml;//package me.joaopalmeiras.terrenomod.ml;
+//package me.batata_1.fractalterrain.ml;//package me.joaopalmeiras.terrenomod.ml;
 //import static me.joaopalmeiras.terrenomod.references.Reference.LOGGER;
 //
 //

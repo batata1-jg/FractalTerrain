@@ -3,11 +3,9 @@ package me.batata_1.fractalterrain.storage;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import com.mojang.datafixers.util.Pair;
-import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.JsonOps;
 import com.mojang.serialization.MapCodec;
-import com.mojang.serialization.codecs.RecordCodecBuilder;
 import me.batata_1.fractalterrain.FractalTerrainInstance;
 import org.spongepowered.include.com.google.gson.Gson;
 import org.spongepowered.include.com.google.gson.GsonBuilder;
@@ -79,7 +77,7 @@ public class EntryStorage<T extends Tile> {
     }
 
     //xz entry coords
-    public synchronized void addEntry(CompletableFuture<T> t ,Pair<Integer,Integer> xz) {
+    public synchronized void addOrOverwriteEntry(CompletableFuture<T> t , Pair<Integer,Integer> xz) {
         CompletableFuture<T> ct = t.thenApply(entry -> {
             LOGGER.info("adding tile");
             DataResult<JsonElement> result = CODEC.codec().encodeStart(JsonOps.INSTANCE,entry);
@@ -98,7 +96,7 @@ public class EntryStorage<T extends Tile> {
     }
 
     //xz entry coords
-    public boolean existsTile(Pair<Integer,Integer> xz) { return CACHE.containsKey(xz);}
+    public boolean existsEntry(Pair<Integer,Integer> xz) { return CACHE.containsKey(xz);}
 
     //xz entry coords
     private synchronized CompletableFuture<T> fetchEntry(Pair<Integer,Integer> xz) {

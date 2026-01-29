@@ -1,6 +1,8 @@
 package me.batata_1.fractalterrain;
 
 import ai.onnxruntime.OrtEnvironment;
+import ai.onnxruntime.OrtException;
+import me.batata_1.fractalterrain.ml.diffusion.GaussianNoisePatchProvider;
 import me.batata_1.fractalterrain.references.Reference;
 import me.batata_1.fractalterrain.storage.EntryStorage;
 import me.batata_1.fractalterrain.world.HeightProvider;
@@ -25,12 +27,13 @@ public class FractalTerrain implements ModInitializer {
                 FractalTerrainDensityFunction.CODEC);
         LOGGER.info("registered density");
 
-
         try {
             ENV = OrtEnvironment.getEnvironment();
         } catch ( NoClassDefFoundError | RuntimeException e ) {
             LOGGER.error(e.getMessage());
         }
+
+
 
         ServerLifecycleEvents.SERVER_STARTING.register((MinecraftServer server) -> {
             try {

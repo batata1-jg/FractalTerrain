@@ -2,6 +2,9 @@ package me.batata_1.fractalterrain.world;
 
 import com.mojang.datafixers.util.Pair;
 
+import me.batata_1.fractalterrain.ml.diffusion.CoarseStage;
+import me.batata_1.fractalterrain.ml.diffusion.DecoderStage;
+import me.batata_1.fractalterrain.ml.diffusion.LatentStage;
 import me.batata_1.fractalterrain.storage.EntryStorage;
 import me.batata_1.fractalterrain.storage.Tile;
 import me.batata_1.fractalterrain.storage.TileRegion;
@@ -16,24 +19,12 @@ import static me.batata_1.fractalterrain.util.FractalTerrainUtil.*;
 public class HeightProvider {
 
     public static final EntryStorage<Tile> finalTiles = new EntryStorage<>("final_tiles", 512,Tile.getCodec());
-    private static final ArrayList<EntryStorage<TileRegion>> coarseTiles = new ArrayList<>();
-    private static final ArrayList<EntryStorage<TileRegion>> latentTiles = new ArrayList<>();
-    private static final ArrayList<EntryStorage<TileRegion>> decoderTiles = new ArrayList<>();
 
     public static void bootstrapTileStorages() {
         finalTiles.bootstrap();
-        for( int i=0 ; i<7 ; i++) {
-            coarseTiles.add( new EntryStorage<>("coarse/" + i, 32, TileRegion.getRegionCodec()));
-            coarseTiles.get(i).bootstrap();
-        }
-        for( int i=0 ; i<6 ; i++) {
-            latentTiles.add( new EntryStorage<>("latent/" + i, 32, TileRegion.getRegionCodec()));
-            latentTiles.get(i).bootstrap();
-        }
-        for( int i=0 ; i<2 ; i++) {
-            decoderTiles.add( new EntryStorage<>("decoder/" + i, 256, TileRegion.getRegionCodec()));
-            decoderTiles.get(i).bootstrap();
-        }
+        CoarseStage.bootstrap();
+        LatentStage.bootstrap();
+        DecoderStage.bootstrap();
     }
 
     private static float interpolate(float val0 , float val1 , float distToVal0) {
@@ -70,9 +61,6 @@ public class HeightProvider {
     //xz real coords
     private static int getInitialElev(int x,int z) {
         var interpNodes = getInterpolationNodes(Pair.of(x,z));
-
-
-
 
 
         int distX = Math.abs(interpNodes.get(0).getFirst() - x);

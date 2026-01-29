@@ -15,7 +15,7 @@ public class Tile {
             ).apply(instance, Tile::new )
     );
 
-    private final int TILE_SIZE;
+    protected final int TILE_SIZE;
     protected final List<List<Float>> ENTRIES;
 
     public static MapCodec<Tile> getCodec() {
