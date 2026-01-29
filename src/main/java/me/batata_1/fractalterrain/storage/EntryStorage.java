@@ -1,42 +1,30 @@
 package me.batata_1.fractalterrain.storage;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonParser;
+
 import com.mojang.datafixers.util.Pair;
-import com.mojang.serialization.DataResult;
-import com.mojang.serialization.JsonOps;
-import com.mojang.serialization.MapCodec;
+
 import me.batata_1.fractalterrain.FractalTerrainInstance;
-import org.spongepowered.include.com.google.gson.Gson;
-import org.spongepowered.include.com.google.gson.GsonBuilder;
+
 
 import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
+
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 
-import static me.batata_1.fractalterrain.util.FractalTerrainUtil.giveNameToTile;
+
 import static me.batata_1.fractalterrain.references.Reference.LOGGER;
-import static me.batata_1.fractalterrain.util.FractalTerrainUtil.interpretTileName;
+import static me.batata_1.fractalterrain.util.FractalTerrainUtil.*;
 
 public class EntryStorage<T extends Tile> {
 
     private static FractalTerrainInstance INSTANCE;
 
-    private static final Executor EXECUTOR = Executors.newFixedThreadPool(10);
-
     private final String PATH;
-    private final int TILE_SIZE;
 
-
-    public EntryStorage(String path, int size) {
+    public EntryStorage(String path) {
         PATH = path;
-        TILE_SIZE = size;
     }
 
     private final ConcurrentHashMap<Pair<Integer,Integer>,CompletableFuture<T>> CACHE = new ConcurrentHashMap<>();
@@ -130,8 +118,5 @@ public class EntryStorage<T extends Tile> {
         LOGGER.info("Tile Map: {}" , CACHE);
     }
 
-    public int getEntryLength() {
-        return TILE_SIZE;
-    }
 
 }

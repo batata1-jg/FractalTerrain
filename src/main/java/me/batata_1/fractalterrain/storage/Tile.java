@@ -12,7 +12,7 @@ import static me.batata_1.fractalterrain.references.Reference.LOGGER;
 
 public class Tile {
 
-    protected final float[] entries;
+    protected float[] entries;
     protected final long[] shape;
     protected final long[] cProd;
 

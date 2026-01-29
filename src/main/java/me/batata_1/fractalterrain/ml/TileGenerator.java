@@ -56,7 +56,7 @@
 //            bufferedNoise.clear();
 //
 //            var inputs = Map.of("x", noise, "alpha", alpha);
-//            try (var out = session.run(inputs)) {
+//            try (var out = session.runInference(inputs)) {
 //                OnnxTensor output = (OnnxTensor) out.get(0);
 //
 //                long[] shape = output.getInfo().getShape(); // [1, 2, 128, 128]

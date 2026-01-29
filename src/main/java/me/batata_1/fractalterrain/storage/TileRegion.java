@@ -1,13 +1,12 @@
 package me.batata_1.fractalterrain.storage;
 
 import ai.onnxruntime.OnnxTensor;
-import com.mojang.datafixers.util.Pair;
-import com.mojang.serialization.Codec;
-import com.mojang.serialization.MapCodec;
-import com.mojang.serialization.codecs.RecordCodecBuilder;
+
 
 import java.io.*;
-import java.util.List;
+import java.util.Arrays;
+
+import static me.batata_1.fractalterrain.references.Reference.LOGGER;
 
 public class TileRegion extends Tile{
 
@@ -38,7 +37,7 @@ public class TileRegion extends Tile{
         return (T) new TileRegion(entries,shape,(int) arr[arr.length-1] );
     }
 
-    private final int regionState;
+    private int regionState;
 
     public TileRegion(float[] en, long[] sh,int state ) {
         super(en, sh);
@@ -60,7 +59,13 @@ public class TileRegion extends Tile{
     }
 
     public void addToCur(TileRegion t) {
-
+        if(!Arrays.equals(this.shape,t.shape)) {
+            LOGGER.error("shapes do not match when trying to add");
+            throw new RuntimeException();
+        }
+        this.regionState += t.regionState;
+        for(int i=0 ; i<this.entries.length ; i++)
+            this.entries[i] += t.entries[i];
     }
 
 }

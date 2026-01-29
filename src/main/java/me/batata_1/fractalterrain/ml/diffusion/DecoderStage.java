@@ -1,5 +1,6 @@
 package me.batata_1.fractalterrain.ml.diffusion;
 
+import ai.onnxruntime.OnnxTensor;
 import com.mojang.datafixers.util.Pair;
 import me.batata_1.fractalterrain.storage.EntryStorage;
 import me.batata_1.fractalterrain.storage.TileRegion;
@@ -8,18 +9,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-public class DecoderStage {
+public class DecoderStage extends StorageInterface {
 
-    private static final ArrayList<EntryStorage<TileRegion>> decoderTiles = new ArrayList<>();
-
-    public static void bootstrap() {
-        for( int i=0 ; i<2 ; i++) {
-            decoderTiles.add( new EntryStorage<>("decoder/" + i, 256, TileRegion.getRegionCodec()));
-            decoderTiles.get(i).bootstrap();
-        }
+    protected DecoderStage() {
+        super( new EntryStorage<>("decoder"),256*256*2, new long[]{2,256,256});
     }
 
-    public static TileRegion[][] run(
+    public static OnnxTensor[] run(
             Pair<Integer,Integer> xz,
             TileRegion[][] latents,
             int seed
@@ -37,5 +33,10 @@ public class DecoderStage {
         var v = new TileRegion[4][2];
         Arrays.fill(v,o);
         return v;
+    }
+
+    @Override
+    OnnxTensor[] runInference(int x, int z) {
+        return new OnnxTensor[0];
     }
 }

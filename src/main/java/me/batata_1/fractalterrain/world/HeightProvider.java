@@ -21,9 +21,6 @@ public class HeightProvider {
 
     public static void bootstrapTileStorages() {
         finalTiles.bootstrap();
-        CoarseStage.bootstrap();
-        LatentStage.bootstrap();
-        DecoderStage.bootstrap();
     }
 
     private static float interpolate(float val0 , float val1 , float distToVal0) {

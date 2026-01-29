@@ -4,11 +4,14 @@ import ai.onnxruntime.OrtEnvironment;
 import com.mojang.datafixers.util.Pair;
 import me.batata_1.fractalterrain.world.HeightProvider;
 
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+
 import static me.batata_1.fractalterrain.references.Reference.LOGGER;
 
 public record FractalTerrainUtil() {
 
-
+    public static final Executor EXECUTOR = Executors.newFixedThreadPool(10);
     public static OrtEnvironment ENV = null;
     public static final float MAX_ML_HEIGHT = 1765.0F;
     public static final float INTERPOLATION_SCALE = 5.0F;
