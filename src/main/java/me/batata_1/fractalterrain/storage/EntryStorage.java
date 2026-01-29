@@ -32,12 +32,11 @@ public class EntryStorage<T extends Tile> {
 
     private final String PATH;
     private final int TILE_SIZE;
-    private final MapCodec<T> CODEC;
 
-    public EntryStorage(String path, int size, MapCodec<T> codec ) {
+
+    public EntryStorage(String path, int size) {
         PATH = path;
         TILE_SIZE = size;
-        CODEC = codec;
     }
 
     private final ConcurrentHashMap<Pair<Integer,Integer>,CompletableFuture<T>> CACHE = new ConcurrentHashMap<>();
@@ -45,7 +44,7 @@ public class EntryStorage<T extends Tile> {
             Collections.synchronizedSet(new LinkedHashSet<>(16,0.75f) );
 
     public String getEntryDir() {
-        return INSTANCE.getTilesDir() + PATH;
+        return INSTANCE.getTilesDir() + "/"+ PATH;
     }
 
     public synchronized void bootstrap() {
@@ -70,35 +69,32 @@ public class EntryStorage<T extends Tile> {
 
     public static FractalTerrainInstance getInstance() {return INSTANCE;}
 
-    //xz entry coords
+    //xz entryAt coords
     public CompletableFuture<T> getEntry(Pair<Integer,Integer> xz) {
         if(CACHE.containsKey(xz)) return CACHE.get(xz);
         return fetchEntry(xz);
     }
 
-    //xz entry coords
+    //xz entryAt coords
     public synchronized void addOrOverwriteEntry(CompletableFuture<T> t , Pair<Integer,Integer> xz) {
         CompletableFuture<T> ct = t.thenApply(entry -> {
-            LOGGER.info("adding tile");
-            DataResult<JsonElement> result = CODEC.codec().encodeStart(JsonOps.INSTANCE,entry);
-            File file = new File(getEntryDir() + "/" + giveNameToTile(xz) );
 
-            try( FileWriter writer = new FileWriter(file) ) {
-                Gson gson = new GsonBuilder().setPrettyPrinting().create();
-                gson.toJson(result.resultOrPartial(e -> LOGGER.error("n consequiu escrever")).orElseThrow(),writer);
+            try {
+                T.serialize(getEntryDir() + "/" + giveNameToTile(xz),entry);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
+
             return entry;
         });
         GENERATED_ENTRIES.add(xz);
         CACHE.put(xz,ct);
     }
 
-    //xz entry coords
+    //xz entryAt coords
     public boolean existsEntry(Pair<Integer,Integer> xz) { return CACHE.containsKey(xz);}
 
-    //xz entry coords
+    //xz entryAt coords
     private synchronized CompletableFuture<T> fetchEntry(Pair<Integer,Integer> xz) {
 
         if(CACHE.containsKey(xz)) return CACHE.get(xz);
@@ -111,12 +107,9 @@ public class EntryStorage<T extends Tile> {
                     LOGGER.error("file {}-{}.json does not exist",xz.getFirst(),xz.getSecond());
                     throw new RuntimeException();
                 }
-                try( FileReader reader = new FileReader(file)) {
-                    JsonElement element = JsonParser.parseReader(reader);
-                    if( element == null) throw new RuntimeException("element is null");
-                    DataResult<T> result = CODEC.codec().parse(JsonOps.INSTANCE,element);
-                    return result.resultOrPartial(e -> LOGGER.error("n consequiu ler")).orElseThrow();
-                } catch (IOException e) {
+                try {
+                    return T.deserialize(getEntryDir() + "/" + giveNameToTile(xz));
+                } catch (IOException | ClassNotFoundException e) {
                     throw new RuntimeException(e);
                 }
             } , EXECUTOR);
@@ -125,7 +118,7 @@ public class EntryStorage<T extends Tile> {
         }
 
         LOGGER.error("tile not in storage");
-        return null;
+        throw new RuntimeException();
 
     }
 

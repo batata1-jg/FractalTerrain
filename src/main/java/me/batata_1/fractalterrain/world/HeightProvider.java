@@ -7,7 +7,6 @@ import me.batata_1.fractalterrain.ml.diffusion.DecoderStage;
 import me.batata_1.fractalterrain.ml.diffusion.LatentStage;
 import me.batata_1.fractalterrain.storage.EntryStorage;
 import me.batata_1.fractalterrain.storage.Tile;
-import me.batata_1.fractalterrain.storage.TileRegion;
 
 import java.util.ArrayList;
 import java.util.concurrent.CompletableFuture;
@@ -18,7 +17,7 @@ import static me.batata_1.fractalterrain.util.FractalTerrainUtil.*;
 
 public class HeightProvider {
 
-    public static final EntryStorage<Tile> finalTiles = new EntryStorage<>("final_tiles", 512,Tile.getCodec());
+    public static final EntryStorage<Tile> finalTiles = new EntryStorage<>("final_tiles", 512);
 
     public static void bootstrapTileStorages() {
         finalTiles.bootstrap();
@@ -68,7 +67,7 @@ public class HeightProvider {
         Float[] nodeVals = new Float[4];
         for(int i=0 ; i<4 ; i++) {
             try {
-                nodeVals[i] = getFinalTile(interpNodes.get(i)).get().entry(toCurEntry(toTileCoords(interpNodes.get(i))));
+                nodeVals[i] = getFinalTile(interpNodes.get(i)).get().entryAt(toCurEntry(toTileCoords(interpNodes.get(i))));
             } catch (InterruptedException | ExecutionException e) {
                 throw new RuntimeException(e);
             }

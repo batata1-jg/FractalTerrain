@@ -14,6 +14,11 @@ public record FractalTerrainUtil() {
     public static final float INTERPOLATION_SCALE = 5.0F;
     public static final int REGION_LENGTH = (int) INTERPOLATION_SCALE* HeightProvider.finalTiles.getEntryLength();
 
+    public static final int[] dx = {0,0,-1,-1};
+    public static final int[] dz = {0,1,0,1};
+    public static final int[] interX = {1,1,0,0};
+    public static final int[] interZ = {-1,0,-1,0};
+
     private static String NorP(int x) {
         if(x<0) return "N";
         return "P";
@@ -58,4 +63,7 @@ public record FractalTerrainUtil() {
                 Math.floorDiv(xz.getSecond(),translateFactor)
         );
     }
+
+
+
 }

@@ -1,34 +1,93 @@
 package me.batata_1.fractalterrain.storage;
 
+import ai.onnxruntime.OnnxTensor;
+import ai.onnxruntime.OrtException;
 import com.mojang.datafixers.util.Pair;
-import com.mojang.serialization.Codec;
-import com.mojang.serialization.MapCodec;
-import com.mojang.serialization.codecs.RecordCodecBuilder;
 
-import java.util.List;
+import java.io.*;
+import java.nio.FloatBuffer;
+
+import static me.batata_1.fractalterrain.util.FractalTerrainUtil.ENV;
+import static me.batata_1.fractalterrain.references.Reference.LOGGER;
 
 public class Tile {
 
-    private static final MapCodec<Tile> CODEC = RecordCodecBuilder.mapCodec(instance ->
-            instance.group(
-                    Codec.FLOAT.listOf().listOf().fieldOf("entries").forGetter((Tile o) -> o.ENTRIES)
-            ).apply(instance, Tile::new )
-    );
+    protected final float[] entries;
+    protected final long[] shape;
+    protected final long[] cProd;
 
-    protected final int TILE_SIZE;
-    protected final List<List<Float>> ENTRIES;
-
-    public static MapCodec<Tile> getCodec() {
-        return CODEC;
+    public static void serialize(String path, Tile t) throws IOException {
+        int el = t.entries.length;
+        int sl = t.shape.length;
+        float[] arr = new float[el+sl+1];
+        System.arraycopy(t.entries, 0, arr, 0, el);
+        for( int i=el ; i<(el+sl) ; i++)
+            arr[i] = (float) t.shape[i-el];
+        arr[el+sl] = (float) el;
+        ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(path + ".ser"));
+        out.writeObject(arr);
     }
 
-    public Tile( List<List<Float>> h ) {
-        ENTRIES = h;
-        TILE_SIZE = h.size();
+    public static <T extends Tile> T deserialize(String path) throws IOException, ClassNotFoundException {
+        ObjectInputStream in = new ObjectInputStream( new FileInputStream(path + ".ser"));
+        float[] arr = (float[]) in.readObject();
+        int slAddEl = arr.length -1;
+        int el = (int) arr[slAddEl];
+        int sl = slAddEl - el;
+        float[] entries = new float[el];
+        System.arraycopy(arr, 0, entries, 0, el);
+        long[] shape = new long[sl];
+        for(int i=el ; i<el+sl ; i++) shape[i-el] = (long) arr[i];
+        return (T) new Tile(entries,shape);
     }
 
-    public Float entry(Pair<Integer,Integer> xz) {
-        return ENTRIES.get(TILE_SIZE -xz.getFirst() -1).get(xz.getSecond());
+    public long[] calcProd() {
+        int len = shape.length;
+        long[] c = new long[len];
+        c[len-1] = 1;
+        for(int id=0 ; id<len-1 ; id++) {
+            c[len-2 - id] = shape[id]*c[len-1 -id];
+        }
+        return c;
+    }
+
+    public Tile( OnnxTensor h ) {
+        entries = h.getFloatBuffer().array();
+        shape = h.getInfo().getShape();
+        cProd = calcProd();
+    }
+
+    public Tile(float[] en , long[] sh) {
+        entries = en;
+        shape = sh;
+        cProd = calcProd();
+    }
+
+    public float entryAt(Pair<Integer,Integer> xz) {
+        if( shape.length != 2 ) {
+            LOGGER.error("cannot use pair because tensor is not 2D");
+            throw new RuntimeException();
+        }
+        return entryAt(new int[]{xz.getFirst(), xz.getSecond()});
+    }
+
+    public float entryAt(int[] pos) {
+        if( shape.length != pos.length ) {
+            LOGGER.error("shape and pos dont match");
+            throw new RuntimeException();
+        }
+        int idx=0;
+        for(int i=0 ; i<shape.length ; i++)
+            idx += (int) (cProd[i]*pos[i]);
+        return entries[idx];
+    }
+
+    public OnnxTensor get() {
+        try {
+            return OnnxTensor.createTensor(ENV, FloatBuffer.wrap(entries),shape);
+        } catch (OrtException e) {
+            throw new RuntimeException(e);
+        }
     }
 
 }

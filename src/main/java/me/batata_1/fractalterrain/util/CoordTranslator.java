@@ -30,7 +30,7 @@ public record CoordTranslator() {
         );
     }
 
-    // i,j,k entry coords
+    // i,j,k entryAt coords
     public static int flattenedCoords(int i , int j , int k , long[] shape) {
         return (int) (shape[0]*shape[1]*i + shape[0]*j + k);
     }
