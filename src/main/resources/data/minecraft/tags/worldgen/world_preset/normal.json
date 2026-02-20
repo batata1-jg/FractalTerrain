@@ -1,0 +1,12 @@
+{
+  "replace": true,
+  "values": [
+    "minecraft:normal",
+    "fractal_terrain:fractal_terrain_normal",
+    "fractal_terrain:fractal_terrain_large",
+    "minecraft:flat",
+    "minecraft:large_biomes",
+    "minecraft:amplified",
+    "minecraft:single_biome_surface"
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "sea_level": 63,
+  "disable_mob_generation": false,
+  "aquifers_enabled": false,
+  "ore_veins_enabled": false,
+  "legacy_random_source": false,
+  "default_block": {
+    "Name": "minecraft:stone"
+  },
+  "default_fluid": {
+    "Name": "minecraft:water",
+    "Properties": {
+      "level": "0"
+    }
+  },
+  "noise": {
+    "min_y": -64,
+    "height": 2000,
+    "size_horizontal": 1,
+    "size_vertical": 2
+  },
+  "noise_router": {
+    "barrier": 1,
+    "fluid_level_floodedness": 0,
+    "fluid_level_spread": 1,
+    "lava": 1,
+    "temperature": {
+      "type": "fractal_terrain:temperature",
+      "scale": 0.2
+    },
+    "vegetation": {
+      "type": "fractal_terrain:humidity",
+      "scale": 0.05
+    },
+    "continents": {
+      "type": "fractal_terrain:continents",
+      "scale": 1,
+      "norm_factor": 100.0
+    },
+    "depth": {
+      "type": "fractal_terrain:depth",
+      "scale": 1
+    },
+    "erosion": {
+      "type": "fractal_terrain:erosion_refined_blurred_grad",
+      "scale": 1,
+      "norm_factor": 100.0
+    },
+    "ridges": {
+      "type": "minecraft:y_clamped_gradient",
+      "from_y": 62,
+      "to_y": 2000,
+      "from_value": 0.0,
+      "to_value": 1.0
+    },
+    "initial_density_without_jaggedness": {
+      "type": "fractal_terrain:preliminary_surface",
+      "scale": 1
+    },
+    "preliminary_surface_level": {
+      "type": "fractal_terrain:preliminary_surface",
+      "scale": 1
+    },
+    "final_density": {
+      "type": "fractal_terrain:refined_elevation",
+      "scale": 1,
+      "minVal": -64,
+      "maxVal": 400,
+      "alpha": 3.0,
+      "beta": 1.0
+    },
+    "vein_toggle": 1,
+    "vein_ridged": 1,
+    "vein_gap": 1
+  },
+  "spawn_target": [],
+  "surface_rule": {
+    "type": "fractal_terrain:fractal_terrain_large"
+  }
+}
