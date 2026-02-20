@@ -1,4 +1,4 @@
-FractalTerrain – Custom License (MIT/Apache-Inspired)
+FractalTerrain – Custom License
 Copyright (c) 2026 João Perin
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to use, copy, and modify the Software, subject to the conditions below.
