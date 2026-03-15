@@ -119,10 +119,10 @@ public class Stages {
         protected CoarseStage() throws OrtException, IOException {
             super(new EntryStorage<>("coarse", TileRegion::new,32), 32*32*7, new long[]{7,32,32});
 
-            prep = Models.getOrCreateModel("models/prepare_coarse");
+            prep = Models.getOrCreateDirectModel("models/prepare_coarse");
             first_order = Models.getOrCreateModel("models/run_first_order_coarse");
             second_order = Models.getOrCreateModel("models/run_second_order_coarse");
-            output = Models.getOrCreateModel("models/out_coarse");
+            output = Models.getOrCreateDirectModel("models/out_coarse");
             sigmas = new float[]{8.0000e+01F, 5.9658e+01F, 4.3920e+01F, 3.1884e+01F, 2.2794e+01F,
                     1.6022e+01F, 1.1054e+01F, 7.4689e+00F, 4.9307e+00F, 3.1708e+00F,
                     1.9794e+00F, 1.1943e+00F, 6.9282e-01F, 3.8386e-01F, 2.0140e-01F,

@@ -95,13 +95,14 @@ public final class FractalTerrainDensityFunctionTypes {
                         Codec.FLOAT.optionalFieldOf("beta",0.5F).forGetter(null),
                         Codec.FLOAT.optionalFieldOf("gamma",5F).forGetter(null),
                         Codec.FLOAT.optionalFieldOf("grad_blur",0.1F).forGetter(null),
+                        Codec.FLOAT.optionalFieldOf("tau",2.0F).forGetter(null),
                         Codec.FLOAT.optionalFieldOf("scale",0.2F).forGetter(null),
                         Codec.INT.fieldOf("minVal").forGetter(g -> g.MIN_VAL),
                         Codec.INT.fieldOf("maxVal").forGetter(g -> g.MAX_VAL)
                 ).apply(instance, RefinedElevation::new)
         );
 
-        public record Settings(float alpha, float beta, float gamma, float grad_blur) {
+        public record Settings(float alpha, float beta, float gamma, float grad_blur,float tau) {
 
         }
 
@@ -109,10 +110,10 @@ public final class FractalTerrainDensityFunctionTypes {
 
         public static final CodecHolder<RefinedElevation> CODEC_HOLDER = CodecHolder.of(CODEC);
 
-        public RefinedElevation(float alpha, float beta, float gamma, float gradBlur, float scale, int minVal, int maxVal) {
+        public RefinedElevation(float alpha, float beta, float gamma, float gradBlur,float tau, float scale, int minVal, int maxVal) {
             super(new Interpolation(scale));
             this.scale = scale;
-            setting = new Settings(alpha,beta,gamma,gradBlur);
+            setting = new Settings(alpha,beta,gamma,gradBlur,tau);
             MAX_VAL = maxVal;
             MIN_VAL = minVal;
         }

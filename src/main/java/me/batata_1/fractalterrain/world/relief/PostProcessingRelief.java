@@ -128,8 +128,7 @@ public class PostProcessingRelief {
 
     public static class DecodeAndFinish extends StorageInterface {
 
-        private final OrtSession finisher;
-        private final OrtSession to_height;
+        private final OrtSession fuzed_finisher;
         private final OrtSession decoder;
         private final Stages.LatentStage latent;
         private final FractalTerrainDensityFunctionTypes.RefinedElevation.Settings settings;
@@ -140,9 +139,8 @@ public class PostProcessingRelief {
 
             Stages.LatentStage.initModels();
             latent = new Stages.LatentStage();
-            decoder = Models.getOrCreateModel("models/run_decoder");
-            to_height = Models.getOrCreateModel("ml_util/to_elevation");
-            finisher = Models.getOrCreateModel("ml_util/finisher");
+            decoder = Models.getOrCreateDirectModel("models/run_decoder");
+            fuzed_finisher = Models.getOrCreateModel("ml_util/fuzed");
 
         }
 
@@ -158,21 +156,15 @@ public class PostProcessingRelief {
 
             inputs = Map.of(
                     "residual_init",(OnnxTensor) decoder.run(inputs).get(0),
-                    "latents_init",latent.getTilesAsTensor(x,z)
-            );
-
-            var out_to_h = (OnnxTensor) to_height.run(inputs).get(0);
-            LOGGER.info("out shappeee {}",out_to_h.getInfo().getShape());
-            LOGGER.info("printf settins: {}",settings);
-            inputs = Map.of(
-                    "x",out_to_h,
+                    "latents_init",latent.getTilesAsTensor(x,z),
                     "alpha",OnnxTensor.createTensor(ENV,settings.alpha()),
                     "beta",OnnxTensor.createTensor(ENV,settings.beta()),
                     "gamma",OnnxTensor.createTensor(ENV,settings.gamma()),
-                    "grad_blur",OnnxTensor.createTensor(ENV,settings.grad_blur())
+                    "grad_blur",OnnxTensor.createTensor(ENV,settings.grad_blur()),
+                    "tau",OnnxTensor.createTensor(ENV,settings.tau())
             );
 
-            var out = (OnnxTensor) finisher.run(inputs).get(0);
+            var out = (OnnxTensor) fuzed_finisher.run(inputs).get(0);
             isNan(out);
             return slice(out);
         }

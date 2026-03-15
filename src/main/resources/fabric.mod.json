@@ -6,7 +6,7 @@
   "description": "",
   "authors": [],
   "contact": {},
-  "license": "unlicense",
+  "license": "custom",
   "icon": "assets/fractalterrain/icon.png",
   "environment": "*",
   "entrypoints": {

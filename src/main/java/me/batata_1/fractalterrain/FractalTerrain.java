@@ -4,14 +4,13 @@ import me.batata_1.fractalterrain.references.Reference;
 import me.batata_1.fractalterrain.world.biome.source.FractalTerrainBiomeSource;
 import me.batata_1.fractalterrain.world.gen.densityfunction.FractalTerrainDensityFunctionTypes;
 import me.batata_1.fractalterrain.world.gen.surfacebuilder.FractalTerrainMaterialRules;
-import me.batata_1.fractalterrain.world.gen.surfacebuilder.FractalTerrainSurfaceRules;
+
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 
 import net.minecraft.registry.Registries;
 
 import net.minecraft.registry.Registry;
-import net.minecraft.server.MinecraftServer;
 
 
 public class FractalTerrain implements ModInitializer {
