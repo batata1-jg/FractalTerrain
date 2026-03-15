@@ -1,69 +1,71 @@
-//package me.batata_1.fractalterrain.world.gen;
+// package me.batata_1.fractalterrain.world.gen;
 //
-//import com.google.common.annotations.VisibleForTesting;
-//import com.google.common.base.Suppliers;
-//import com.google.common.collect.Sets;
-//import com.mojang.serialization.Codec;
-//import com.mojang.serialization.codecs.RecordCodecBuilder;
-//import net.minecraft.SharedConstants;
-//import net.minecraft.block.BlockState;
-//import net.minecraft.block.Blocks;
-//import net.minecraft.registry.Registry;
-//import net.minecraft.registry.RegistryKey;
-//import net.minecraft.registry.RegistryKeys;
-//import net.minecraft.registry.entry.RegistryEntry;
-//import net.minecraft.util.Util;
-//import net.minecraft.util.math.BlockPos;
-//import net.minecraft.util.math.ChunkPos;
-//import net.minecraft.util.math.MathHelper;
-//import net.minecraft.util.math.random.CheckedRandom;
-//import net.minecraft.util.math.random.ChunkRandom;
-//import net.minecraft.util.math.random.RandomSeed;
-//import net.minecraft.world.ChunkRegion;
-//import net.minecraft.world.HeightLimitView;
-//import net.minecraft.world.Heightmap;
-//import net.minecraft.world.SpawnHelper;
-//import net.minecraft.world.biome.Biome;
-//import net.minecraft.world.biome.GenerationSettings;
-//import net.minecraft.world.biome.source.BiomeAccess;
-//import net.minecraft.world.biome.source.BiomeCoords;
-//import net.minecraft.world.biome.source.BiomeSource;
-//import net.minecraft.world.biome.source.BiomeSupplier;
-//import net.minecraft.world.chunk.BelowZeroRetrogen;
-//import net.minecraft.world.chunk.Chunk;
-//import net.minecraft.world.chunk.ChunkSection;
-//import net.minecraft.world.chunk.ProtoChunk;
-//import net.minecraft.world.dimension.DimensionType;
-//import net.minecraft.world.gen.GenerationStep;
-//import net.minecraft.world.gen.HeightContext;
-//import net.minecraft.world.gen.StructureAccessor;
-//import net.minecraft.world.gen.StructureWeightSampler;
-//import net.minecraft.world.gen.carver.CarverContext;
-//import net.minecraft.world.gen.carver.CarvingMask;
-//import net.minecraft.world.gen.carver.ConfiguredCarver;
-//import net.minecraft.world.gen.chunk.*;
-//import net.minecraft.world.gen.densityfunction.DensityFunction;
-//import net.minecraft.world.gen.densityfunction.DensityFunctionTypes;
-//import net.minecraft.world.gen.densityfunction.DensityFunctions;
-//import net.minecraft.world.gen.noise.NoiseConfig;
-//import net.minecraft.world.gen.noise.NoiseRouter;
-//import org.apache.commons.lang3.mutable.MutableObject;
-//import org.jetbrains.annotations.Nullable;
+// import com.google.common.annotations.VisibleForTesting;
+// import com.google.common.base.Suppliers;
+// import com.google.common.collect.Sets;
+// import com.mojang.serialization.Codec;
+// import com.mojang.serialization.codecs.RecordCodecBuilder;
+// import net.minecraft.SharedConstants;
+// import net.minecraft.block.BlockState;
+// import net.minecraft.block.Blocks;
+// import net.minecraft.registry.Registry;
+// import net.minecraft.registry.RegistryKey;
+// import net.minecraft.registry.RegistryKeys;
+// import net.minecraft.registry.entry.RegistryEntry;
+// import net.minecraft.util.Util;
+// import net.minecraft.util.math.BlockPos;
+// import net.minecraft.util.math.ChunkPos;
+// import net.minecraft.util.math.MathHelper;
+// import net.minecraft.util.math.random.CheckedRandom;
+// import net.minecraft.util.math.random.ChunkRandom;
+// import net.minecraft.util.math.random.RandomSeed;
+// import net.minecraft.world.ChunkRegion;
+// import net.minecraft.world.HeightLimitView;
+// import net.minecraft.world.Heightmap;
+// import net.minecraft.world.SpawnHelper;
+// import net.minecraft.world.biome.Biome;
+// import net.minecraft.world.biome.GenerationSettings;
+// import net.minecraft.world.biome.source.BiomeAccess;
+// import net.minecraft.world.biome.source.BiomeCoords;
+// import net.minecraft.world.biome.source.BiomeSource;
+// import net.minecraft.world.biome.source.BiomeSupplier;
+// import net.minecraft.world.chunk.BelowZeroRetrogen;
+// import net.minecraft.world.chunk.Chunk;
+// import net.minecraft.world.chunk.ChunkSection;
+// import net.minecraft.world.chunk.ProtoChunk;
+// import net.minecraft.world.dimension.DimensionType;
+// import net.minecraft.world.gen.GenerationStep;
+// import net.minecraft.world.gen.HeightContext;
+// import net.minecraft.world.gen.StructureAccessor;
+// import net.minecraft.world.gen.StructureWeightSampler;
+// import net.minecraft.world.gen.carver.CarverContext;
+// import net.minecraft.world.gen.carver.CarvingMask;
+// import net.minecraft.world.gen.carver.ConfiguredCarver;
+// import net.minecraft.world.gen.chunk.*;
+// import net.minecraft.world.gen.densityfunction.DensityFunction;
+// import net.minecraft.world.gen.densityfunction.DensityFunctionTypes;
+// import net.minecraft.world.gen.densityfunction.DensityFunctions;
+// import net.minecraft.world.gen.noise.NoiseConfig;
+// import net.minecraft.world.gen.noise.NoiseRouter;
+// import org.apache.commons.lang3.mutable.MutableObject;
+// import org.jetbrains.annotations.Nullable;
 //
-//import java.text.DecimalFormat;
-//import java.util.List;
-//import java.util.OptionalInt;
-//import java.util.Set;
-//import java.util.concurrent.CompletableFuture;
-//import java.util.concurrent.Executor;
-//import java.util.function.Predicate;
-//import java.util.function.Supplier;
+// import java.text.DecimalFormat;
+// import java.util.List;
+// import java.util.OptionalInt;
+// import java.util.Set;
+// import java.util.concurrent.CompletableFuture;
+// import java.util.concurrent.Executor;
+// import java.util.function.Predicate;
+// import java.util.function.Supplier;
 //
-//public class FractalTerrainChunkGenerator extends ChunkGenerator {
+// public class FractalTerrainChunkGenerator extends ChunkGenerator {
 //    public static final Codec<FractalTerrainChunkGenerator> CODEC = RecordCodecBuilder.create(
 //            instance -> instance.group(
-//                            BiomeSource.CODEC.fieldOf("biome_source").forGetter(gen -> gen.biomeSource),
-//                            ChunkGeneratorSettings.REGISTRY_CODEC.fieldOf("settings").forGetter(gen -> gen.settings)
+//                            BiomeSource.CODEC.fieldOf("biome_source").forGetter(gen ->
+// gen.biomeSource),
+//
+// ChunkGeneratorSettings.REGISTRY_CODEC.fieldOf("settings").forGetter(gen -> gen.settings)
 //                    )
 //                    .apply(instance, instance.stable(FractalTerrainChunkGenerator::new))
 //    );
@@ -71,34 +73,43 @@
 //    private final RegistryEntry<ChunkGeneratorSettings> settings;
 //    private final Supplier<AquiferSampler.FluidLevelSampler> fluidLevelSampler;
 //
-//    public FractalTerrainChunkGenerator(BiomeSource biomeSource, RegistryEntry<ChunkGeneratorSettings> settings) {
+//    public FractalTerrainChunkGenerator(BiomeSource biomeSource,
+// RegistryEntry<ChunkGeneratorSettings> settings) {
 //        super(biomeSource);
 //
 //        this.settings = settings;
-//        this.fluidLevelSampler = Suppliers.memoize(() -> createFluidLevelSampler(settings.value()));
+//        this.fluidLevelSampler = Suppliers.memoize(() ->
+// createFluidLevelSampler(settings.value()));
 //    }
 //
-//    private static AquiferSampler.FluidLevelSampler createFluidLevelSampler(ChunkGeneratorSettings settings) {
-//        AquiferSampler.FluidLevel fluidLevel = new AquiferSampler.FluidLevel(-54, Blocks.LAVA.getDefaultState());
+//    private static AquiferSampler.FluidLevelSampler createFluidLevelSampler(ChunkGeneratorSettings
+// settings) {
+//        AquiferSampler.FluidLevel fluidLevel = new AquiferSampler.FluidLevel(-54,
+// Blocks.LAVA.getDefaultState());
 //        int i = settings.seaLevel();
-//        AquiferSampler.FluidLevel fluidLevel2 = new AquiferSampler.FluidLevel(i, settings.defaultFluid());
-//        AquiferSampler.FluidLevel fluidLevel3 = new AquiferSampler.FluidLevel(DimensionType.MIN_HEIGHT * 2, Blocks.AIR.getDefaultState());
+//        AquiferSampler.FluidLevel fluidLevel2 = new AquiferSampler.FluidLevel(i,
+// settings.defaultFluid());
+//        AquiferSampler.FluidLevel fluidLevel3 = new
+// AquiferSampler.FluidLevel(DimensionType.MIN_HEIGHT * 2, Blocks.AIR.getDefaultState());
 //        return (x, y, z) -> y < Math.min(-54, i) ? fluidLevel : fluidLevel2;
 //    }
 //
 //    @Override
-//    public CompletableFuture<Chunk> populateBiomes(Executor executor, NoiseConfig noiseConfig, Blender blender, StructureAccessor structureAccessor, Chunk chunk) {
+//    public CompletableFuture<Chunk> populateBiomes(Executor executor, NoiseConfig noiseConfig,
+// Blender blender, StructureAccessor structureAccessor, Chunk chunk) {
 //        return CompletableFuture.supplyAsync(Util.debugSupplier("init_biomes", () -> {
 //            this.populateBiomes(blender, noiseConfig, structureAccessor, chunk);
 //            return chunk;
 //        }), Util.getMainWorkerExecutor());
 //    }
 //
-//    private void populateBiomes(Blender blender, NoiseConfig noiseConfig, StructureAccessor structureAccessor, Chunk chunk) {
+//    private void populateBiomes(Blender blender, NoiseConfig noiseConfig, StructureAccessor
+// structureAccessor, Chunk chunk) {
 //
 //    }
 //
-//    private ChunkNoiseSampler createChunkNoiseSampler(Chunk chunk, StructureAccessor world, Blender blender, NoiseConfig noiseConfig) {
+//    private ChunkNoiseSampler createChunkNoiseSampler(Chunk chunk, StructureAccessor world,
+// Blender blender, NoiseConfig noiseConfig) {
 //        return ChunkNoiseSampler.create(
 //                chunk,
 //                noiseConfig,
@@ -123,12 +134,15 @@
 //    }
 //
 //    @Override
-//    public int getHeight(int x, int z, Heightmap.Type heightmap, HeightLimitView world, NoiseConfig noiseConfig) {
-//        return this.sampleHeightmap(world, noiseConfig, x, z, null, heightmap.getBlockPredicate()).orElse(world.getBottomY());
+//    public int getHeight(int x, int z, Heightmap.Type heightmap, HeightLimitView world,
+// NoiseConfig noiseConfig) {
+//        return this.sampleHeightmap(world, noiseConfig, x, z, null,
+// heightmap.getBlockPredicate()).orElse(world.getBottomY());
 //    }
 //
 //    @Override
-//    public VerticalBlockSample getColumnSample(int x, int z, HeightLimitView world, NoiseConfig noiseConfig) {
+//    public VerticalBlockSample getColumnSample(int x, int z, HeightLimitView world, NoiseConfig
+// noiseConfig) {
 //        MutableObject<VerticalBlockSample> mutableObject = new MutableObject<>();
 //        this.sampleHeightmap(world, noiseConfig, x, z, mutableObject, null);
 //        return mutableObject.getValue();
@@ -138,11 +152,13 @@
 //    public void getDebugHudText(List<String> text, NoiseConfig noiseConfig, BlockPos pos) {
 //        DecimalFormat decimalFormat = new DecimalFormat("0.000");
 //        NoiseRouter noiseRouter = noiseConfig.getNoiseRouter();
-//        DensityFunction.UnblendedNoisePos unblendedNoisePos = new DensityFunction.UnblendedNoisePos(pos.getX(), pos.getY(), pos.getZ());
+//        DensityFunction.UnblendedNoisePos unblendedNoisePos = new
+// DensityFunction.UnblendedNoisePos(pos.getX(), pos.getY(), pos.getZ());
 //        double d = noiseRouter.ridges().sample(unblendedNoisePos);
 //        text.add(
 //                "NoiseRouter T: "
-//                        + decimalFormat.format(noiseRouter.temperature().sample(unblendedNoisePos))
+//                        +
+// decimalFormat.format(noiseRouter.temperature().sample(unblendedNoisePos))
 //                        + " V: "
 //                        + decimalFormat.format(noiseRouter.vegetation().sample(unblendedNoisePos))
 //                        + " C: "
@@ -156,9 +172,11 @@
 //                        + " PV: "
 //                        + decimalFormat.format(DensityFunctions.getPeaksValleysNoise((float)d))
 //                        + " AS: "
-//                        + decimalFormat.format(noiseRouter.initialDensityWithoutJaggedness().sample(unblendedNoisePos))
+//                        +
+// decimalFormat.format(noiseRouter.initialDensityWithoutJaggedness().sample(unblendedNoisePos))
 //                        + " N: "
-//                        + decimalFormat.format(noiseRouter.finalDensity().sample(unblendedNoisePos))
+//                        +
+// decimalFormat.format(noiseRouter.finalDensity().sample(unblendedNoisePos))
 //        );
 //    }
 //
@@ -170,7 +188,8 @@
 //            @Nullable MutableObject<VerticalBlockSample> columnSample,
 //            @Nullable Predicate<BlockState> stopPredicate
 //    ) {
-//        GenerationShapeConfig generationShapeConfig = this.settings.value().generationShapeConfig().trimHeight(world);
+//        GenerationShapeConfig generationShapeConfig =
+// this.settings.value().generationShapeConfig().trimHeight(world);
 //        int i = generationShapeConfig.verticalCellBlockCount();
 //        int j = generationShapeConfig.minimumY();
 //        int k = MathHelper.floorDiv(j, i);
@@ -219,7 +238,8 @@
 //                    chunkNoiseSampler.interpolateX(x, d);
 //                    chunkNoiseSampler.interpolateZ(z, e);
 //                    BlockState blockState = chunkNoiseSampler.sampleBlockState();
-//                    BlockState blockState2 = blockState == null ? this.settings.value().defaultBlock() : blockState;
+//                    BlockState blockState2 = blockState == null ?
+// this.settings.value().defaultBlock() : blockState;
 //                    if (blockStates != null) {
 //                        int w = t * i + u;
 //                        blockStates[w] = blockState2;
@@ -238,11 +258,13 @@
 //    }
 //
 //    @Override
-//    public void buildSurface(ChunkRegion region, StructureAccessor structures, NoiseConfig noiseConfig, Chunk chunk) {
+//    public void buildSurface(ChunkRegion region, StructureAccessor structures, NoiseConfig
+// noiseConfig, Chunk chunk) {
 //        if (!SharedConstants.isOutsideGenerationArea(chunk.getPos())) {
 //            HeightContext heightContext = new HeightContext(this, region);
 //            this.buildSurface(
-//                    chunk, heightContext, noiseConfig, structures, region.getBiomeAccess(), region.getRegistryManager().get(RegistryKeys.BIOME), Blender.getBlender(region)
+//                    chunk, heightContext, noiseConfig, structures, region.getBiomeAccess(),
+// region.getRegistryManager().get(RegistryKeys.BIOME), Blender.getBlender(region)
 //            );
 //        }
 //    }
@@ -258,7 +280,8 @@
 //            Blender blender
 //    ) {
 //        ChunkNoiseSampler chunkNoiseSampler = chunk.getOrCreateChunkNoiseSampler(
-//                chunkx -> this.createChunkNoiseSampler(chunkx, structureAccessor, blender, noiseConfig)
+//                chunkx -> this.createChunkNoiseSampler(chunkx, structureAccessor, blender,
+// noiseConfig)
 //        );
 //        ChunkGeneratorSettings chunkGeneratorSettings = this.settings.value();
 //        noiseConfig.getSurfaceBuilder()
@@ -285,17 +308,20 @@
 //            GenerationStep.Carver carverStep
 //    ) {
 //        BiomeAccess biomeAccess2 = biomeAccess.withSource(
-//                (biomeX, biomeY, biomeZ) -> this.biomeSource.getBiome(biomeX, biomeY, biomeZ, noiseConfig.getMultiNoiseSampler())
+//                (biomeX, biomeY, biomeZ) -> this.biomeSource.getBiome(biomeX, biomeY, biomeZ,
+// noiseConfig.getMultiNoiseSampler())
 //        );
 //        ChunkRandom chunkRandom = new ChunkRandom(new CheckedRandom(RandomSeed.getSeed()));
 //        int i = 8;
 //        ChunkPos chunkPos = chunk.getPos();
 //        ChunkNoiseSampler chunkNoiseSampler = chunk.getOrCreateChunkNoiseSampler(
-//                chunkx -> this.createChunkNoiseSampler(chunkx, structureAccessor, Blender.getBlender(chunkRegion), noiseConfig)
+//                chunkx -> this.createChunkNoiseSampler(chunkx, structureAccessor,
+// Blender.getBlender(chunkRegion), noiseConfig)
 //        );
 //        AquiferSampler aquiferSampler = chunkNoiseSampler.getAquiferSampler();
 //        CarverContext carverContext = new CarverContext(
-//                this, chunkRegion.getRegistryManager(), chunk.getHeightLimitView(), chunkNoiseSampler, noiseConfig, this.settings.value().surfaceRule()
+//                this, chunkRegion.getRegistryManager(), chunk.getHeightLimitView(),
+// chunkNoiseSampler, noiseConfig, this.settings.value().surfaceRule()
 //        );
 //        CarvingMask carvingMask = ((ProtoChunk)chunk).getOrCreateCarvingMask(carverStep);
 //
@@ -306,17 +332,20 @@
 //                GenerationSettings generationSettings = chunk2.getOrCreateGenerationSettings(
 //                        () -> this.getGenerationSettings(
 //                                this.biomeSource
-//                                        .getBiome(BiomeCoords.fromBlock(chunkPos2.getStartX()), 0, BiomeCoords.fromBlock(chunkPos2.getStartZ()), noiseConfig.getMultiNoiseSampler())
+//                                        .getBiome(BiomeCoords.fromBlock(chunkPos2.getStartX()), 0,
+// BiomeCoords.fromBlock(chunkPos2.getStartZ()), noiseConfig.getMultiNoiseSampler())
 //                        )
 //                );
-//                Iterable<RegistryEntry<ConfiguredCarver<?>>> iterable = generationSettings.getCarversForStep(carverStep);
+//                Iterable<RegistryEntry<ConfiguredCarver<?>>> iterable =
+// generationSettings.getCarversForStep(carverStep);
 //                int l = 0;
 //
 //                for (RegistryEntry<ConfiguredCarver<?>> registryEntry : iterable) {
 //                    ConfiguredCarver<?> configuredCarver = registryEntry.value();
 //                    chunkRandom.setCarverSeed(seed + l, chunkPos2.x, chunkPos2.z);
 //                    if (configuredCarver.shouldCarve(chunkRandom)) {
-//                        configuredCarver.carve(carverContext, chunk, biomeAccess2::getBiome, chunkRandom, aquiferSampler, chunkPos2, carvingMask);
+//                        configuredCarver.carve(carverContext, chunk, biomeAccess2::getBiome,
+// chunkRandom, aquiferSampler, chunkPos2, carvingMask);
 //                    }
 //
 //                    l++;
@@ -326,15 +355,19 @@
 //    }
 //
 //    @Override
-//    public CompletableFuture<Chunk> populateNoise(Executor executor, Blender blender, NoiseConfig noiseConfig, StructureAccessor structureAccessor, Chunk chunk) {
-//        GenerationShapeConfig generationShapeConfig = this.settings.value().generationShapeConfig().trimHeight(chunk.getHeightLimitView());
+//    public CompletableFuture<Chunk> populateNoise(Executor executor, Blender blender, NoiseConfig
+// noiseConfig, StructureAccessor structureAccessor, Chunk chunk) {
+//        GenerationShapeConfig generationShapeConfig =
+// this.settings.value().generationShapeConfig().trimHeight(chunk.getHeightLimitView());
 //        int i = generationShapeConfig.minimumY();
 //        int j = MathHelper.floorDiv(i, generationShapeConfig.verticalCellBlockCount());
-//        int k = MathHelper.floorDiv(generationShapeConfig.height(), generationShapeConfig.verticalCellBlockCount());
+//        int k = MathHelper.floorDiv(generationShapeConfig.height(),
+// generationShapeConfig.verticalCellBlockCount());
 //        if (k <= 0) {
 //            return CompletableFuture.completedFuture(chunk);
 //        } else {
-//            int l = chunk.getSectionIndex(k * generationShapeConfig.verticalCellBlockCount() - 1 + i);
+//            int l = chunk.getSectionIndex(k * generationShapeConfig.verticalCellBlockCount() - 1 +
+// i);
 //            int m = chunk.getSectionIndex(i);
 //            Set<ChunkSection> set = Sets.<ChunkSection>newHashSet();
 //
@@ -345,7 +378,9 @@
 //            }
 //
 //            return CompletableFuture.supplyAsync(
-//                            Util.debugSupplier("wgen_fill_noise", () -> this.populateNoise(blender, structureAccessor, noiseConfig, chunk, j, k)), Util.getMainWorkerExecutor()
+//                            Util.debugSupplier("wgen_fill_noise", () ->
+// this.populateNoise(blender, structureAccessor, noiseConfig, chunk, j, k)),
+// Util.getMainWorkerExecutor()
 //                    )
 //                    .whenCompleteAsync((chunkx, throwable) -> {
 //                        for (ChunkSection chunkSectionx : set) {
@@ -355,9 +390,11 @@
 //        }
 //    }
 //
-//    private Chunk populateNoise(Blender blender, StructureAccessor structureAccessor, NoiseConfig noiseConfig, Chunk chunk, int minimumCellY, int cellHeight) {
+//    private Chunk populateNoise(Blender blender, StructureAccessor structureAccessor, NoiseConfig
+// noiseConfig, Chunk chunk, int minimumCellY, int cellHeight) {
 //        ChunkNoiseSampler chunkNoiseSampler = chunk.getOrCreateChunkNoiseSampler(
-//                chunkx -> this.createChunkNoiseSampler(chunkx, structureAccessor, blender, noiseConfig)
+//                chunkx -> this.createChunkNoiseSampler(chunkx, structureAccessor, blender,
+// noiseConfig)
 //        );
 //        Heightmap heightmap = chunk.getHeightmap(Heightmap.Type.OCEAN_FLOOR_WG);
 //        Heightmap heightmap2 = chunk.getHeightmap(Heightmap.Type.WORLD_SURFACE_WG);
@@ -410,12 +447,15 @@
 //                                    blockState = this.settings.value().defaultBlock();
 //                                }
 //
-//                                blockState = this.getBlockState(chunkNoiseSampler, x, t, aa, blockState);
-//                                if (blockState != AIR && !SharedConstants.isOutsideGenerationArea(chunk.getPos())) {
+//                                blockState = this.getBlockState(chunkNoiseSampler, x, t, aa,
+// blockState);
+//                                if (blockState != AIR &&
+// !SharedConstants.isOutsideGenerationArea(chunk.getPos())) {
 //                                    chunkSection.setBlockState(y, u, ab, blockState, false);
 //                                    heightmap.trackUpdate(y, t, ab, blockState);
 //                                    heightmap2.trackUpdate(y, t, ab, blockState);
-//                                    if (aquiferSampler.needsFluidTick() && !blockState.getFluidState().isEmpty()) {
+//                                    if (aquiferSampler.needsFluidTick() &&
+// !blockState.getFluidState().isEmpty()) {
 //                                        mutable.set(x, t, aa);
 //                                        chunk.markBlockForPostProcessing(mutable);
 //                                    }
@@ -433,7 +473,8 @@
 //        return chunk;
 //    }
 //
-//    private BlockState getBlockState(ChunkNoiseSampler chunkNoiseSampler, int x, int y, int z, BlockState state) {
+//    private BlockState getBlockState(ChunkNoiseSampler chunkNoiseSampler, int x, int y, int z,
+// BlockState state) {
 //        return state;
 //    }
 //
@@ -456,10 +497,12 @@
 //    public void populateEntities(ChunkRegion region) {
 //        if (!this.settings.value().mobGenerationDisabled()) {
 //            ChunkPos chunkPos = region.getCenterPos();
-//            RegistryEntry<Biome> registryEntry = region.getBiome(chunkPos.getStartPos().withY(region.getTopY() - 1));
+//            RegistryEntry<Biome> registryEntry =
+// region.getBiome(chunkPos.getStartPos().withY(region.getTopY() - 1));
 //            ChunkRandom chunkRandom = new ChunkRandom(new CheckedRandom(RandomSeed.getSeed()));
-//            chunkRandom.setPopulationSeed(region.getSeed(), chunkPos.getStartX(), chunkPos.getStartZ());
+//            chunkRandom.setPopulationSeed(region.getSeed(), chunkPos.getStartX(),
+// chunkPos.getStartZ());
 //            SpawnHelper.populateEntities(region, registryEntry, chunkPos, chunkRandom);
 //        }
 //    }
-//}
+// }

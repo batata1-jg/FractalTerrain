@@ -7,7 +7,7 @@
   "authors": [],
   "contact": {},
   "license": "custom",
-  "icon": "assets/fractalterrain/icon.png",
+  "icon": "assets/fractal_terrain/icon.png",
   "environment": "*",
   "entrypoints": {
     "fabric-datagen": [

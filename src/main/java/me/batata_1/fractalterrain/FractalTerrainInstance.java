@@ -13,7 +13,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.concurrent.ExecutionException;
 
-import static me.batata_1.fractalterrain.ml.teste.inference;
+
 import static me.batata_1.fractalterrain.references.Reference.LOGGER;
 import static me.batata_1.fractalterrain.util.MlUtil.initUtil;
 
