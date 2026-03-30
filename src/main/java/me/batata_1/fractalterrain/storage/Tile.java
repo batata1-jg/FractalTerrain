@@ -16,10 +16,8 @@ public class Tile {
     protected long[] shape;
     protected long[] cProd;
 
-    // TODO not serializing to correct function
-
     public void serialize(String path) throws IOException {
-        //        LOGGER.info("serializando?");
+
         int el = this.entries.length;
         int sl = this.shape.length;
         float[] arr = new float[el + sl + 1];
