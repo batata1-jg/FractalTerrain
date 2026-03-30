@@ -1,7 +1,6 @@
 package me.batata_1.fractalterrain;
 
 import static me.batata_1.fractalterrain.references.Reference.LOGGER;
-import static me.batata_1.fractalterrain.util.DebugTensors.debug;
 import static me.batata_1.fractalterrain.util.MlUtil.initUtil;
 
 import ai.onnxruntime.OrtEnvironment;
@@ -10,7 +9,7 @@ import java.nio.file.Path;
 import me.batata_1.fractalterrain.ml.tensorProviders.GaussianNoisePatchProvider;
 import me.batata_1.fractalterrain.world.ContinentalScaleMapProvider;
 import me.batata_1.fractalterrain.world.gen.densityfunction.FractalTerrainDensityFunctionTypes;
-import me.batata_1.fractalterrain.world.relief.PostProcessingRelief;
+import me.batata_1.fractalterrain.world.gen.relief.PostProcessingRelief;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.WorldSavePath;
 
@@ -45,7 +44,6 @@ public class FractalTerrainInstance {
                     .getSeed();
             GaussianNoisePatchProvider.setSeed(seed);
             ContinentalScaleMapProvider.initSamplers(seed);
-            debug();
         }
     }
 

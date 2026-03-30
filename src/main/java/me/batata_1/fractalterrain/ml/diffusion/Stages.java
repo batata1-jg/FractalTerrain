@@ -65,8 +65,8 @@ public class Stages {
 
             FloatBuffer fl = FloatBuffer.allocate(4 * 4 * 7);
 
-            int xi = x << 1;
-            int zi = z << 1;
+            int xi = x;
+            int zi = z;
             for (int i = 0; i < 7; i++)
                 for (int j = xi; j < xi + 4; j++)
                     for (int k = zi; k < zi + 4; k++) fl.put(coarseModel.getValue(Pair.of(j, k), i));

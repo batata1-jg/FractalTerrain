@@ -78,6 +78,7 @@ public class Tile {
     }
 
     public float entryAt(long[] pos) {
+
         checkRank(pos.length);
         int idx = 0;
         for (int i = 0; i < shape.length; i++) idx += (int) (cProd[i] * pos[i]);
@@ -129,20 +130,5 @@ public class Tile {
 
     public void multScalar(float s) {
         for (int i = 0; i < this.entries.length; i++) this.entries[i] *= s;
-    }
-
-    public float[] getBand(int i, int j) {
-        float[] res = new float[(int) (shape[shape.length-1]*shape[shape.length-2])];
-        long[] coords = new long[shape.length];
-        Arrays.fill(coords,0);
-        coords[i] = j;
-        for(int u=0 ; u<shape[shape.length-2] ; u++) {
-            for(int y=0 ; y<shape[shape.length-1] ; y++) {
-                coords[coords.length-1] = y;
-                coords[coords.length-2] = u;
-                res[(int) (u * shape[shape.length - 1] + y)] = entryAt(coords);
-            }
-        }
-        return res;
     }
 }

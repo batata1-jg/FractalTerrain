@@ -1,9 +1,8 @@
-package me.batata_1.fractalterrain.world.relief;
+package me.batata_1.fractalterrain.world.gen.relief;
 
 import static me.batata_1.fractalterrain.FractalTerrainInstance.ENV;
 import static me.batata_1.fractalterrain.ml.tensorProviders.GaussianNoisePatchProvider.sampleNoise;
 import static me.batata_1.fractalterrain.util.DebugTensors.isNan;
-import static me.batata_1.fractalterrain.util.DebugTensors.seeTensor;
 import static me.batata_1.fractalterrain.util.MlUtil.*;
 
 import ai.onnxruntime.OnnxTensor;
@@ -48,26 +47,17 @@ public class PostProcessingRelief {
             }
         });
         final_tiles = new EntryStorage<>("final", Tile::new, 512, (xz) -> {
-            int x = xz.getFirst()<<1;
-            int z = xz.getSecond()<<1;
+            int x = xz.getFirst() << 1;
+            int z = xz.getSecond() << 1;
             try {
                 OnnxTensor t = (OnnxTensor) average.run(Map.of("x", decodeAndFinish.getTilesAsTensor(x, z)))
                         .get(0);
-                seeTensor(t,"final" + (x>>1) +" " +(z>>1),false,1);
-                seeTensor(t,"final_diff" + (x>>1) +" " +(z>>1),false,4);
+                // seeTensor(t,"final" + (x>>1) +" " +(z>>1),false,1);
                 return new Tile(t);
             } catch (ExecutionException | IOException | InterruptedException | OrtException e) {
                 throw new RuntimeException(e);
             }
         });
-    }
-
-    public OnnxTensor getTilesAsTensor(int x , int z ) {
-        try {
-            return final_tiles.getEntry(Pair.of(x,z)).get().get();
-        } catch (InterruptedException | ExecutionException e) {
-            throw new RuntimeException(e);
-        }
     }
 
     public float getElev(Pair<Integer, Integer> xz) {
