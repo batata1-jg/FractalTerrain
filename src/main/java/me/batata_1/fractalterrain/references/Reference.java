@@ -10,15 +10,15 @@ import org.slf4j.LoggerFactory;
 
 public class Reference {
 
-  public static String ModID = "fractal_terrain";
-  public static final Logger LOGGER = LoggerFactory.getLogger(ModID);
+    public static String ModID = "fractal_terrain";
+    public static final Logger LOGGER = LoggerFactory.getLogger(ModID);
 
-  @NotNull
-  public static Identifier identifier(@NotNull String path) {
-    return Objects.requireNonNull(Identifier.of(ModID, path));
-  }
+    @NotNull
+    public static Identifier identifier(@NotNull String path) {
+        return Objects.requireNonNull(Identifier.of(ModID, path));
+    }
 
-  public static MutableText translate(String key, Object... param) {
-    return Text.translatable(ModID + "." + key, param);
-  }
+    public static MutableText translate(String key, Object... param) {
+        return Text.translatable(ModID + "." + key, param);
+    }
 }
