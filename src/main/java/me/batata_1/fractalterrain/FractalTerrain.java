@@ -14,6 +14,7 @@ public class FractalTerrain implements ModInitializer {
     @Override
     public void onInitialize() {
 
+
         Registry.register(
                 Registries.BIOME_SOURCE, Reference.identifier("biome_source"), FractalTerrainBiomeSource.CODEC);
         FractalTerrainMaterialRules.FractalTerrainMaterialRule.register(Registries.MATERIAL_RULE);

@@ -63,11 +63,13 @@
     },
     "final_density": {
       "type": "fractal_terrain:refined_elevation",
+      "post_config": {
+        "alpha": 3.0,
+        "beta": 1.0
+      },
       "scale": 1,
       "minVal": -604,
-      "maxVal": 2000,
-      "alpha": 3.0,
-      "beta": 1.0
+      "maxVal": 2000
     },
     "vein_toggle": 1,
     "vein_ridged": 1,

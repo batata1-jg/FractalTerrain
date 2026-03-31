@@ -1,12 +1,20 @@
 package me.batata_1.fractalterrain.world.gen.chunk;
 
+import com.mojang.datafixers.kinds.Applicative;
 import com.mojang.serialization.Codec;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
+import me.batata_1.fractalterrain.math.Interpolation;
+import me.batata_1.fractalterrain.registry.FractalTerrainRegistryKeys;
+import me.batata_1.fractalterrain.world.gen.relief.PostProcessingRelief;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
+import net.minecraft.registry.entry.RegistryElementCodec;
+import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.ChunkRegion;
@@ -24,10 +32,47 @@ import net.minecraft.world.gen.noise.NoiseConfig;
 
 public class FractalTerrainChunkGenerator extends ChunkGenerator {
 
+    public record Settings(
+            PostProcessingRelief.Settings postConfig,
+            float scale
+    ) {
+
+        public static final Codec<Settings> CODEC = RecordCodecBuilder.create(
+                instance -> instance.group(
+                        PostProcessingRelief.Settings.CODEC.fieldOf("post_config").forGetter(Settings::postConfig),
+                        Codec.FLOAT.optionalFieldOf("scale",1F).forGetter(Settings::scale)
+                ).apply(instance, Settings::new)
+        );
+
+        public static final Codec<RegistryEntry<Settings>> REGISTRY_CODEC = RegistryElementCodec.of(FractalTerrainRegistryKeys.FRACTAL_TERRAIN_CHUNK_GENERATOR_SETTINGS,CODEC);
+
+    }
+
     private static final BlockState DEFAUT = Blocks.STONE.getDefaultState();
 
-    public FractalTerrainChunkGenerator(BiomeSource biomeSource) {
+    private final RegistryEntry<Settings> settings;
+    private final PostProcessingRelief post;
+    private final Interpolation interp;
+
+
+//    instance -> instance.group(
+//            ((MapCodec)BiomeSource.CODEC.fieldOf("biome_source")).forGetter(generator -> generator.biomeSource),
+//            ((MapCodec)ChunkGeneratorSettings.REGISTRY_CODEC.fieldOf("settings")).forGetter(generator -> generator.settings)
+//            ).apply((Applicative<NoiseChunkGenerator, ?>)instance,
+//    instance.stable(NoiseChunkGenerator::new))
+
+
+    public static final Codec<FractalTerrainChunkGenerator> CODEC = RecordCodecBuilder.create(instance ->instance.group(
+            BiomeSource.CODEC.fieldOf("biome_source").forGetter(g -> g.biomeSource),
+            Settings.REGISTRY_CODEC.fieldOf("settings").forGetter((FractalTerrainChunkGenerator g) -> g.settings)
+    ).apply(instance,FractalTerrainChunkGenerator::new));
+
+    public FractalTerrainChunkGenerator(BiomeSource biomeSource, RegistryEntry<Settings> settings) {
         super(biomeSource);
+        this.settings = settings;
+        this.post = new PostProcessingRelief(settings.value().postConfig());
+        this.interp = new Interpolation(settings.value().scale());
+
     }
 
     @Override
@@ -72,9 +117,9 @@ public class FractalTerrainChunkGenerator extends ChunkGenerator {
         int startingZ = chunkPos.getStartZ();
         for(int dx=0 ; dx<16 ; dx++) {
             for(int dz=0 ; dz<16 ; dz++) {
-                int h = HeightProvider.getElevation(startingX+dx,startingZ+dz);
+                int h = 0;
                 for(int y=-64 ; y<=h ;y++) {
-                    chunk.setBlockState();
+                    chunk.setBlockState(new BlockPos(startingX+dx,y,startingZ+dz),DEFAUT,false);
                 }
             }
         }
@@ -104,4 +149,5 @@ public class FractalTerrainChunkGenerator extends ChunkGenerator {
 
     @Override
     public void getDebugHudText(List<String> text, NoiseConfig noiseConfig, BlockPos pos) {}
+
 }

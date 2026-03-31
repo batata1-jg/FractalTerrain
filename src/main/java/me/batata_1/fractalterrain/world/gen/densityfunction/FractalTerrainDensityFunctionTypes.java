@@ -8,6 +8,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import me.batata_1.fractalterrain.FractalTerrainInstance;
 import me.batata_1.fractalterrain.math.Interpolation;
 import me.batata_1.fractalterrain.references.Reference;
+import me.batata_1.fractalterrain.world.gen.relief.PostProcessingRelief;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
 import net.minecraft.util.dynamic.CodecHolder;
@@ -90,27 +91,21 @@ public final class FractalTerrainDensityFunctionTypes {
         private final float scale;
 
         public static final Codec<RefinedElevation> CODEC = RecordCodecBuilder.create(instance -> instance.group(
-                        Codec.FLOAT.optionalFieldOf("alpha", 0F).forGetter(null),
-                        Codec.FLOAT.optionalFieldOf("beta", 0.5F).forGetter(null),
-                        Codec.FLOAT.optionalFieldOf("gamma", 5F).forGetter(null),
-                        Codec.FLOAT.optionalFieldOf("grad_blur", 0.1F).forGetter(null),
-                        Codec.FLOAT.optionalFieldOf("tau", 2.0F).forGetter(null),
-                        Codec.FLOAT.optionalFieldOf("scale", 0.2F).forGetter(null),
+                        PostProcessingRelief.Settings.CODEC.fieldOf("post_config").forGetter(null),
+                        Codec.FLOAT.optionalFieldOf("scale", 0.2F).forGetter(g -> g.scale),
                         Codec.INT.fieldOf("minVal").forGetter(g -> g.MIN_VAL),
                         Codec.INT.fieldOf("maxVal").forGetter(g -> g.MAX_VAL))
                 .apply(instance, RefinedElevation::new));
 
-        public record Settings(float alpha, float beta, float gamma, float grad_blur, float tau) {}
-
-        public static Settings setting;
-
         public static final CodecHolder<RefinedElevation> CODEC_HOLDER = CodecHolder.of(CODEC);
 
+        public static PostProcessingRelief.Settings setting;
+
         public RefinedElevation(
-                float alpha, float beta, float gamma, float gradBlur, float tau, float scale, int minVal, int maxVal) {
+                PostProcessingRelief.Settings setting, float scale, int minVal, int maxVal) {
             super(new Interpolation(scale));
             this.scale = scale;
-            setting = new Settings(alpha, beta, gamma, gradBlur, tau);
+            RefinedElevation.setting = setting;
             MAX_VAL = maxVal;
             MIN_VAL = minVal;
         }

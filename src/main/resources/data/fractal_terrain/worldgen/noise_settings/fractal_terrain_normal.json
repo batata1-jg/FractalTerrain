@@ -63,9 +63,11 @@
       "type": "fractal_terrain:refined_elevation",
       "minVal": -64,
       "maxVal": 400,
-      "alpha": 1.0,
-      "beta": 0.7,
-      "tau": 1.0
+      "post_config": {
+        "alpha": 1.0,
+        "beta": 0.7,
+        "tau": 1.0
+      }
     },
     "vein_toggle": 0,
     "vein_ridged": 0,

@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import javax.imageio.ImageIO;
 import me.batata_1.fractalterrain.FractalTerrainInstance;
 import me.batata_1.fractalterrain.ml.Models;
+import me.batata_1.fractalterrain.ml.tensorProviders.MapProvider;
 import me.batata_1.fractalterrain.storage.Tile;
 import net.minecraft.util.WorldSavePath;
 
@@ -112,7 +113,15 @@ public class DebugTensors {
         System.out.println("end");
     }
 
-    // this class is by chat gpt
+    public static void seeFinal(OnnxTensor t, int x, int z) {
+        try {
+            seeTensor(t,"final" + (x>>1) +" " +(z>>1),false,1);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    // this class is by ChatGPT (sorry for being lazy \_._._/ , didn't want to write this )
     public static class FloatTiffWriter {
 
         public static byte[] createFloatTiff(float[] pixels) throws IOException {
@@ -255,7 +264,11 @@ public class DebugTensors {
     }
 
     public static synchronized void debug() {
-        seeTensor()
+        try {
+            seeTensor(MapProvider.sampleMap(Pair.of(-32,-32),new long[]{5,64,64}),"feedElev",false,0);
+        } catch (OrtException | IOException e) {
+            throw new RuntimeException(e);
+        }
         toTiffChannel(FractalTerrainInstance.post.getTilesAsTensor(0,0),0,"tensor");
 //        for(int i=-4 ; i<4 ; i++) {
 //            for(int j=-4 ; j<4 ; j++) {

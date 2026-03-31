@@ -23,13 +23,17 @@ public class ContinentalScaleMapProvider {
         double maxNorm = s.max() / s.amplitude();
         double minNorm = s.min() / s.amplitude();
         double offsetNorm = s.offset() / s.amplitude();
-        return Math.min(maxNorm, Math.max(minNorm, s.sampler().sample(x, z) + offsetNorm));
+        return Math.clamp(s.sampler().sample(x,z) + offsetNorm,minNorm,maxNorm);
     }
 
     public static final Settings elevSettings =
             new Settings(-64, 120, 90, 30, new OctaveSimplexNoiseSampler(1, 8, 1.0, 60.0, 0.7, 0.6, null, Math::sin));
 
     public static double sampleElev(int x, int z) {
+
+
+
+
         return sample(x, z, elevSettings);
     }
 

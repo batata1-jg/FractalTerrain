@@ -12,14 +12,17 @@ import com.mojang.datafixers.util.Pair;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
+
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import me.batata_1.fractalterrain.ml.Models;
 import me.batata_1.fractalterrain.ml.diffusion.Stages;
 import me.batata_1.fractalterrain.storage.EntryStorage;
 import me.batata_1.fractalterrain.storage.StorageInterface;
 import me.batata_1.fractalterrain.storage.Tile;
 import me.batata_1.fractalterrain.storage.TileRegion;
+import me.batata_1.fractalterrain.util.DebugTensors;
 import me.batata_1.fractalterrain.world.ContinentalScaleMapProvider;
-import me.batata_1.fractalterrain.world.gen.densityfunction.FractalTerrainDensityFunctionTypes;
 
 public class PostProcessingRelief {
 
@@ -30,7 +33,19 @@ public class PostProcessingRelief {
     private final EntryStorage<Tile> final_tiles;
     private final EntryStorage<Tile> final_raw_tiles;
 
-    public PostProcessingRelief(FractalTerrainDensityFunctionTypes.RefinedElevation.Settings settings) {
+    public record Settings(float alpha, float beta, float gamma, float grad_blur, float tau) {
+
+        public static final Codec<Settings> CODEC = RecordCodecBuilder.create(i -> i.group(
+                Codec.FLOAT.optionalFieldOf("alpha", 0F).forGetter(Settings::alpha),
+                Codec.FLOAT.optionalFieldOf("beta", 0.5F).forGetter(Settings::beta),
+                Codec.FLOAT.optionalFieldOf("gamma", 5F).forGetter(Settings::gamma),
+                Codec.FLOAT.optionalFieldOf("grad_blur", 0.1F).forGetter(Settings::grad_blur),
+                Codec.FLOAT.optionalFieldOf("tau", 2.0F).forGetter(Settings::tau)
+        ).apply(i,Settings::new));
+
+    }
+
+    public PostProcessingRelief(Settings settings) {
         this.decodeAndFinish = new DecodeAndFinish(settings);
         take_coarse_grad = Models.getOrCreateModel("ml_util/take_coarse_grad");
         average = Models.getOrCreateModel("ml_util/average");
@@ -52,7 +67,8 @@ public class PostProcessingRelief {
             try {
                 OnnxTensor t = (OnnxTensor) average.run(Map.of("x", decodeAndFinish.getTilesAsTensor(x, z)))
                         .get(0);
-                // seeTensor(t,"final" + (x>>1) +" " +(z>>1),false,1);
+
+                DebugTensors.seeFinal(t,x,z);
                 return new Tile(t);
             } catch (ExecutionException | IOException | InterruptedException | OrtException e) {
                 throw new RuntimeException(e);
@@ -125,14 +141,22 @@ public class PostProcessingRelief {
         return getCoarseValue(xz, 5);
     }
 
+    public OnnxTensor getTilesAsTensor(int i, int j) {
+        try {
+            return final_tiles.getEntry(Pair.of(i,j)).get().get();
+        } catch (InterruptedException | ExecutionException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public static class DecodeAndFinish extends StorageInterface {
 
         private final OrtSession fuzed_finisher;
         private final OrtSession decoder;
         private final Stages.LatentStage latent;
-        private final FractalTerrainDensityFunctionTypes.RefinedElevation.Settings settings;
+        private final Settings settings;
 
-        public DecodeAndFinish(FractalTerrainDensityFunctionTypes.RefinedElevation.Settings settings) {
+        public DecodeAndFinish(Settings settings) {
             super(new EntryStorage<>("decoder", TileRegion::new, 256), 256 * 256 * 2, new long[] {2, 256, 256});
             this.settings = settings;
 
