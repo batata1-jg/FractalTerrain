@@ -16,4 +16,5 @@ public class FractalTerrainRegistryKeys extends RegistryKeys {
     private static <T> RegistryKey<Registry<T>> of(String id) {
         return RegistryKey.ofRegistry(Reference.identifier(id));
     }
+
 }

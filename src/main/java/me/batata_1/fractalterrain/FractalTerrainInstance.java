@@ -6,6 +6,8 @@ import static me.batata_1.fractalterrain.util.MlUtil.initUtil;
 import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtException;
 import java.nio.file.Path;
+
+import me.batata_1.fractalterrain.ml.Models;
 import me.batata_1.fractalterrain.ml.tensorProviders.GaussianNoisePatchProvider;
 import me.batata_1.fractalterrain.world.ContinentalScaleMapProvider;
 import me.batata_1.fractalterrain.world.gen.densityfunction.FractalTerrainDensityFunctionTypes;
@@ -44,6 +46,7 @@ public class FractalTerrainInstance {
                     .getSeed();
             GaussianNoisePatchProvider.setSeed(seed);
             ContinentalScaleMapProvider.initSamplers(seed);
+            Models.initialize();
         }
     }
 

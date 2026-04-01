@@ -3,8 +3,14 @@
     "minecraft:overworld": {
       "type": "fractal_terrain:fractal_terrain_large",
       "generator": {
-        "type": "minecraft:noise",
-        "settings": "fractal_terrain:fractal_terrain_large",
+        "type": "fractal_terrain:chunk_generator",
+        "settings": {
+
+          "post_config": {
+            "alpha": 3.0,
+            "beta": 1.0
+          }
+        },
         "biome_source": {
           "type": "fractal_terrain:biome_source",
           "preset": "minecraft:overworld"

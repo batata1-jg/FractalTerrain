@@ -11,12 +11,14 @@ import ai.onnxruntime.OrtSession;
 import com.mojang.datafixers.util.Pair;
 import java.io.IOException;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import me.batata_1.fractalterrain.ml.Models;
 import me.batata_1.fractalterrain.ml.diffusion.Stages;
+import me.batata_1.fractalterrain.registry.SettingsRegistry;
 import me.batata_1.fractalterrain.storage.EntryStorage;
 import me.batata_1.fractalterrain.storage.StorageInterface;
 import me.batata_1.fractalterrain.storage.Tile;
@@ -27,13 +29,13 @@ import me.batata_1.fractalterrain.world.ContinentalScaleMapProvider;
 public class PostProcessingRelief {
 
     private final DecodeAndFinish decodeAndFinish;
-    private final OrtSession average;
-    private final OrtSession take_coarse_grad;
+    private final CompletableFuture<OrtSession> average;
+    private final CompletableFuture<OrtSession> take_coarse_grad;
 
     private final EntryStorage<Tile> final_tiles;
     private final EntryStorage<Tile> final_raw_tiles;
 
-    public record Settings(float alpha, float beta, float gamma, float grad_blur, float tau) {
+    public record Settings(float alpha, float beta, float gamma, float grad_blur, float tau) implements SettingsRegistry.Settings {
 
         public static final Codec<Settings> CODEC = RecordCodecBuilder.create(i -> i.group(
                 Codec.FLOAT.optionalFieldOf("alpha", 0F).forGetter(Settings::alpha),
@@ -51,8 +53,10 @@ public class PostProcessingRelief {
         average = Models.getOrCreateModel("ml_util/average");
         final_raw_tiles = new EntryStorage<>("final_raw", Tile::new, 64, (xz) -> {
             try {
+                assert average != null;
+                assert take_coarse_grad != null;
                 OnnxTensor t = (OnnxTensor) take_coarse_grad
-                        .run(Map.of("x", (OnnxTensor) average.run(Map.of(
+                        .get().run(Map.of("x", (OnnxTensor) average.get().run(Map.of(
                                         "x", decodeAndFinish.getCoarseTilesAsTensor(xz.getFirst(), xz.getSecond())))
                                 .get(0)))
                         .get(0);
@@ -65,7 +69,8 @@ public class PostProcessingRelief {
             int x = xz.getFirst() << 1;
             int z = xz.getSecond() << 1;
             try {
-                OnnxTensor t = (OnnxTensor) average.run(Map.of("x", decodeAndFinish.getTilesAsTensor(x, z)))
+                assert average != null;
+                OnnxTensor t = (OnnxTensor) average.get().run(Map.of("x", decodeAndFinish.getTilesAsTensor(x, z)))
                         .get(0);
 
                 DebugTensors.seeFinal(t,x,z);
@@ -151,8 +156,8 @@ public class PostProcessingRelief {
 
     public static class DecodeAndFinish extends StorageInterface {
 
-        private final OrtSession fuzed_finisher;
-        private final OrtSession decoder;
+        private final CompletableFuture<OrtSession> fuzed_finisher;
+        private final CompletableFuture<OrtSession> decoder;
         private final Stages.LatentStage latent;
         private final Settings settings;
 
@@ -179,7 +184,7 @@ public class PostProcessingRelief {
             // seeTensor(latent.getTilesAsTensor(x,z),"latentTensor" + x + " " + z,true,  4);
             // seeTensor((OnnxTensor) decoder.run(inputs).get(0),"decoderTensor" + x + " " + z,false,  0);
             inputs = Map.of(
-                    "residual_init", (OnnxTensor) decoder.run(inputs).get(0),
+                    "residual_init", (OnnxTensor) decoder.get().run(inputs).get(0),
                     "latents_init", latent.getTilesAsTensor(x, z),
                     "alpha", OnnxTensor.createTensor(ENV, settings.alpha()),
                     "beta", OnnxTensor.createTensor(ENV, settings.beta()),
@@ -187,7 +192,7 @@ public class PostProcessingRelief {
                     "grad_blur", OnnxTensor.createTensor(ENV, settings.grad_blur()),
                     "tau", OnnxTensor.createTensor(ENV, settings.tau()));
 
-            var out = (OnnxTensor) fuzed_finisher.run(inputs).get(0);
+            var out = (OnnxTensor) fuzed_finisher.get().run(inputs).get(0);
             isNan(out);
             return slice(out);
         }

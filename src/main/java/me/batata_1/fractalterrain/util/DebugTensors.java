@@ -10,6 +10,7 @@ import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
 import java.io.*;
 import java.nio.file.Path;
+import java.util.concurrent.CompletableFuture;
 import javax.imageio.ImageIO;
 import me.batata_1.fractalterrain.FractalTerrainInstance;
 import me.batata_1.fractalterrain.ml.Models;
@@ -19,7 +20,7 @@ import net.minecraft.util.WorldSavePath;
 
 public class DebugTensors {
 
-    public static OrtSession test_in;
+    public static CompletableFuture<OrtSession> test_in;
 
     public static void readDebug() throws IOException, OrtException {
         test_in = Models.getOrCreateModel("models/latent_coisado");
@@ -119,6 +120,10 @@ public class DebugTensors {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public static void debugModels() {
+        assert false;
     }
 
     // this class is by ChatGPT (sorry for being lazy \_._._/ , didn't want to write this )

@@ -15,6 +15,7 @@ import com.mojang.datafixers.util.Pair;
 import java.io.IOException;
 import java.nio.FloatBuffer;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import me.batata_1.fractalterrain.ml.Models;
 import me.batata_1.fractalterrain.storage.EntryStorage;
@@ -27,7 +28,7 @@ public class Stages {
 
         private static int startInstanceNum = 1;
         private static final float[] tSteps = new float[] {1.5645F, 0.6107F};
-        private static volatile OrtSession model;
+        private static volatile CompletableFuture<OrtSession> model;
         private static volatile CoarseStage coarseModel;
 
         public static synchronized void initModels() {
@@ -95,7 +96,7 @@ public class Stages {
                     "cond_img", coarse_tensor,
                     "t_tensor", OnnxTensor.createTensor(ENV, tSteps[latentStageInstanceNumber]));
 
-            var out = (OnnxTensor) model.run(inputs).get(0);
+            var out = (OnnxTensor) model.get().run(inputs).get(0);
 
             isNan(out);
             return slice(out);
@@ -104,10 +105,10 @@ public class Stages {
 
     public static class CoarseStage extends StorageInterface {
 
-        private final OrtSession prep;
-        private final OrtSession first_order;
-        private final OrtSession second_order;
-        private final OrtSession output;
+        private final CompletableFuture<OrtSession> prep;
+        private final CompletableFuture<OrtSession> first_order;
+        private final CompletableFuture<OrtSession> second_order;
+        private final CompletableFuture<OrtSession> output;
         private final float[] sigmas;
 
         protected CoarseStage() throws OrtException, IOException {
@@ -143,14 +144,15 @@ public class Stages {
         }
 
         @Override
-        public OnnxTensor[] runInference(int x, int z) throws OrtException {
+        public OnnxTensor[] runInference(int x, int z) throws OrtException, ExecutionException, InterruptedException {
             var xz = Pair.of(x, z);
 
             var inputs = Map.of(
                     "synthetic_map", sampleMap(xz, new long[] {5, 64, 64}),
                     "cond_noise", sampleNoise(xz, new long[] {5, 64, 64}, 1),
                     "sample_noise", sampleNoise(xz, new long[] {6, 64, 64}, 2));
-            var out = prep.run(inputs);
+
+            var out = prep.get().run(inputs);
 
             OnnxTensor img = (OnnxTensor) out.get(1);
 
@@ -162,7 +164,7 @@ public class Stages {
                             "sigma_id", OnnxTensor.createTensor(ENV, sigmas[i]),
                             "sigma_post", OnnxTensor.createTensor(ENV, sigmas[i + 1]),
                             "cond_img", img);
-                    out = first_order.run(inputs);
+                    out = first_order.get().run(inputs);
                     continue;
                 }
                 inputs = Map.of(
@@ -178,11 +180,11 @@ public class Stages {
                         OnnxTensor.createTensor(ENV, sigmas[i + 1]),
                         "cond_img",
                         img);
-                out = second_order.run(inputs);
+                out = second_order.get().run(inputs);
             }
             inputs = Map.of("sample", (OnnxTensor) out.get(0));
 
-            var finalOut = (OnnxTensor) output.run(inputs).get(0);
+            var finalOut = (OnnxTensor) output.get().run(inputs).get(0);
             isNan(finalOut);
 
             return slice(finalOut);

@@ -11,23 +11,37 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Optional;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+
 import me.batata_1.fractalterrain.FractalTerrainInstance;
+import me.batata_1.fractalterrain.util.DebugTensors;
 import net.minecraft.resource.Resource;
 import net.minecraft.util.Identifier;
 
 public class Models {
 
-    private static final HashMap<String, OrtSession> m = new HashMap<>();
+    private static final ConcurrentHashMap<String,CompletableFuture<OrtSession>> MODEL_CACHE =new ConcurrentHashMap<>();
 
-    public static synchronized OrtSession getOrCreateModel(String path) {
-        return m.computeIfAbsent(path, path1 -> fetchModel(path1, false));
+    public static synchronized void initialize() {
+        for( var e : MODEL_CACHE.entrySet()) {
+            e.getValue().complete(fetchModel(e.getKey()));
+        }
     }
 
-    public static synchronized OrtSession getOrCreateDirectModel(String path) {
-        return m.computeIfAbsent(path, path1 -> fetchModel(path1, true));
+
+    public static synchronized CompletableFuture<OrtSession> getOrCreateModel(String path) {
+        return MODEL_CACHE.computeIfAbsent(path + "&cpu", key -> new CompletableFuture<>());
     }
 
-    private static synchronized OrtSession fetchModel(String path, boolean useDirect) {
+    public static synchronized CompletableFuture<OrtSession> getOrCreateDirectModel(String path) {
+        return MODEL_CACHE.computeIfAbsent(path + "&dml", key -> new CompletableFuture<>());
+    }
+
+    private static synchronized OrtSession fetchModel(String key) {
+        String path = key.substring(0,key.indexOf("&"));
         Identifier modelId = Identifier.of(ModID, path + ".onnx");
         assert modelId != null;
         LOGGER.info(modelId.toString());
@@ -37,7 +51,7 @@ public class Models {
         try (var opt = new OrtSession.SessionOptions()) {
 
             opt.setSessionLogLevel(OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL);
-            if (useDirect) opt.addDirectML(0);
+            if (key.contains("&dml")) opt.addDirectML(0);
             opt.setMemoryPatternOptimization(true);
             opt.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
 
