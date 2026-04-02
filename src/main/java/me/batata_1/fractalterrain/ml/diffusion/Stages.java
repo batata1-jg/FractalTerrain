@@ -21,6 +21,7 @@ import me.batata_1.fractalterrain.ml.Models;
 import me.batata_1.fractalterrain.storage.EntryStorage;
 import me.batata_1.fractalterrain.storage.StorageInterface;
 import me.batata_1.fractalterrain.storage.TileRegion;
+import me.batata_1.fractalterrain.util.DebugTensors;
 
 public class Stages {
 
@@ -47,6 +48,7 @@ public class Stages {
             super(new EntryStorage<>("latent/" + startInstanceNum, TileRegion::new, 32), 32 * 32 * 6, new long[] {
                 6, 32, 32
             });
+            DebugTensors.debugLatentStageConstructor();
             latentStageInstanceNumber = startInstanceNum;
             if (startInstanceNum == 0) {
                 prev_state = null;

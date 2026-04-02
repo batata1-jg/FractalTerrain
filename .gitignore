@@ -119,3 +119,4 @@ runs/
 !gradle-wrapper.jar
 /libs/
 /src/main/resources/data/fractal_terrain/models/
+/src/main/resources/data/fractal_terrain/worldgen/gen_settings/

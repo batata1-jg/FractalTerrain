@@ -6,6 +6,10 @@ import net.minecraft.util.math.MathHelper;
 
 public class Interpolation {
 
+    private static final Function<Double,Double> stepBilinear = x -> x;
+    private static final Function<Double,Double> stepSmoothstep = x -> 3 * (x*x) - 2 * (x*x*x);
+
+
     private static float smoothStep(double delta) {
         return (float) (3 * (delta * delta) - 2 * (delta * delta * delta));
     }
@@ -21,8 +25,16 @@ public class Interpolation {
         this.f = f;
     }
 
+    public double interpolateSmoothStep(float x , float z) {
+        return interpolate(x,z,stepSmoothstep);
+    }
+
+    public double interpolateBilinear(float x, float z) {
+        return interpolate(x,z,stepBilinear);
+    }
+
     // xz real coords
-    public double interpolate(float x, float z) {
+    private double interpolate(float x, float z, Function<Double, Double> step) {
 
         x /= interpolation_scale * 5;
         z /= interpolation_scale * 5;
@@ -41,6 +53,6 @@ public class Interpolation {
         double deltaX = x - Math.floor(x);
         double deltaZ = z - Math.floor(z);
 
-        return MathHelper.lerp2(deltaX, deltaZ, nodes[0], nodes[1], nodes[2], nodes[3]);
+        return MathHelper.lerp2(step.apply(deltaX), step.apply(deltaZ), nodes[0], nodes[1], nodes[2], nodes[3]);
     }
 }

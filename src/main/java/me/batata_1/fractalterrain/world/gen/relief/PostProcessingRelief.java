@@ -18,6 +18,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import me.batata_1.fractalterrain.ml.Models;
 import me.batata_1.fractalterrain.ml.diffusion.Stages;
+import me.batata_1.fractalterrain.registry.FractalTerrainRegistryKeys;
 import me.batata_1.fractalterrain.registry.SettingsRegistry;
 import me.batata_1.fractalterrain.storage.EntryStorage;
 import me.batata_1.fractalterrain.storage.StorageInterface;
@@ -25,6 +26,8 @@ import me.batata_1.fractalterrain.storage.Tile;
 import me.batata_1.fractalterrain.storage.TileRegion;
 import me.batata_1.fractalterrain.util.DebugTensors;
 import me.batata_1.fractalterrain.world.ContinentalScaleMapProvider;
+import net.minecraft.registry.entry.RegistryElementCodec;
+import net.minecraft.registry.entry.RegistryEntry;
 
 public class PostProcessingRelief {
 
@@ -44,6 +47,8 @@ public class PostProcessingRelief {
                 Codec.FLOAT.optionalFieldOf("grad_blur", 0.1F).forGetter(Settings::grad_blur),
                 Codec.FLOAT.optionalFieldOf("tau", 2.0F).forGetter(Settings::tau)
         ).apply(i,Settings::new));
+
+        public static final Codec<RegistryEntry<Settings>> REGISTRY_CODEC = RegistryElementCodec.of(FractalTerrainRegistryKeys.POST_PROCESSING_SETTINGS,CODEC);
 
     }
 

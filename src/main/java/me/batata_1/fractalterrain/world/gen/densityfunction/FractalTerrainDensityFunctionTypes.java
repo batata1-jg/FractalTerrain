@@ -4,7 +4,9 @@ import static me.batata_1.fractalterrain.references.Reference.LOGGER;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-import java.util.concurrent.atomic.AtomicBoolean;
+
+import java.util.concurrent.ExecutionException;
+
 import me.batata_1.fractalterrain.FractalTerrainInstance;
 import me.batata_1.fractalterrain.math.Interpolation;
 import me.batata_1.fractalterrain.references.Reference;
@@ -38,25 +40,9 @@ public final class FractalTerrainDensityFunctionTypes {
     public abstract static class InterpolatedFromMap implements DensityFunction {
 
         protected final Interpolation interp;
-        protected static AtomicBoolean active = new AtomicBoolean(false);
-        protected static AtomicBoolean seedActive = new AtomicBoolean(false);
-        protected static long seed;
-
-        public static synchronized boolean isActive() {
-            return active.get();
-        }
-
-        protected synchronized void setSeed() {
-            seed = FractalTerrainInstance.getServer()
-                    .getSaveProperties()
-                    .getGeneratorOptions()
-                    .getSeed();
-            seedActive.set(true);
-        }
 
         public InterpolatedFromMap(Interpolation i) {
             interp = i;
-            active.set(true);
         }
 
         @Override
@@ -71,7 +57,7 @@ public final class FractalTerrainDensityFunctionTypes {
 
         @Override
         public double sample(NoisePos pos) {
-            return interp.interpolate(pos.blockX(), pos.blockZ());
+            return interp.interpolateBilinear(pos.blockX(), pos.blockZ());
         }
 
         @Override
@@ -79,9 +65,6 @@ public final class FractalTerrainDensityFunctionTypes {
             applier.fill(densities, this);
         }
 
-        public void applySeed() {
-            if (!seedActive.get()) setSeed();
-        }
     }
 
     public static class RefinedElevation extends InterpolatedFromMap {
@@ -99,25 +82,31 @@ public final class FractalTerrainDensityFunctionTypes {
 
         public static final CodecHolder<RefinedElevation> CODEC_HOLDER = CodecHolder.of(CODEC);
 
-        public static PostProcessingRelief.Settings setting;
+        public static PostProcessingRelief.Settings post_config;
 
         public RefinedElevation(
                 PostProcessingRelief.Settings setting, float scale, int minVal, int maxVal) {
             super(new Interpolation(scale));
             this.scale = scale;
-            RefinedElevation.setting = setting;
+            RefinedElevation.post_config = setting;
             MAX_VAL = maxVal;
             MIN_VAL = minVal;
         }
 
         @Override
         public double sample(NoisePos pos) {
-            return interp.interpolate(pos.blockX(), pos.blockZ()) * scale - pos.blockY() + 62;
+            return interp.interpolateBilinear(pos.blockX(), pos.blockZ()) * scale - pos.blockY() + 62;
         }
 
         @Override
         public DensityFunction apply(DensityFunctionVisitor visitor) {
-            interp.setF(xz -> FractalTerrainInstance.post.getElev(xz));
+            interp.setF(xz -> {
+                try {
+                    return FractalTerrainInstance.reliefSource.get().getElev(xz);
+                } catch (InterruptedException | ExecutionException e) {
+                    throw new RuntimeException(e);
+                }
+            });
             return visitor.apply(this);
         }
 
@@ -153,12 +142,18 @@ public final class FractalTerrainDensityFunctionTypes {
         }
 
         public double sample(NoisePos pos) {
-            return interp.interpolate(pos.blockX(), pos.blockZ()) - pos.blockY() + 53;
+            return interp.interpolateBilinear(pos.blockX(), pos.blockZ()) - pos.blockY() + 53;
         }
 
         @Override
         public DensityFunction apply(DensityFunctionVisitor visitor) {
-            interp.setF(xz -> FractalTerrainInstance.post.getElev(xz) * scale);
+            interp.setF(xz -> {
+                try {
+                    return FractalTerrainInstance.reliefSource.get().getElev(xz) * scale;
+                } catch (InterruptedException | ExecutionException e) {
+                    throw new RuntimeException(e);
+                }
+            });
             return visitor.apply(this);
         }
 
@@ -184,12 +179,18 @@ public final class FractalTerrainDensityFunctionTypes {
         }
 
         public double sample(NoisePos pos) {
-            return (interp.interpolate(pos.blockX(), pos.blockZ()) - pos.blockY() + 62) / (128.0);
+            return (interp.interpolateBilinear(pos.blockX(), pos.blockZ()) - pos.blockY() + 62) / (128.0);
         }
 
         @Override
         public DensityFunction apply(DensityFunctionVisitor visitor) {
-            interp.setF(xz -> FractalTerrainInstance.post.getElev(xz) * scale);
+            interp.setF(xz -> {
+                try {
+                    return FractalTerrainInstance.reliefSource.get().getElev(xz) * scale;
+                } catch (InterruptedException | ExecutionException e) {
+                    throw new RuntimeException(e);
+                }
+            });
             return visitor.apply(this);
         }
 
@@ -217,9 +218,14 @@ public final class FractalTerrainDensityFunctionTypes {
 
         @Override
         public DensityFunction apply(DensityFunctionVisitor visitor) {
-            super.applySeed();
             interp.setF(
-                    xz -> (float) (Math.tanh(FractalTerrainInstance.post.getContinentalElev(xz) / normFactor) * 1.5F));
+                    xz -> {
+                        try {
+                            return (float) (Math.tanh(FractalTerrainInstance.reliefSource.get().getContinentalElev(xz) / normFactor) * 1.5F);
+                        } catch (InterruptedException | ExecutionException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
             return visitor.apply(this);
         }
 
@@ -247,8 +253,13 @@ public final class FractalTerrainDensityFunctionTypes {
 
         @Override
         public DensityFunction apply(DensityFunctionVisitor visitor) {
-            super.applySeed();
-            interp.setF(xz -> (float) (Math.tanh(FractalTerrainInstance.post.getRawTemp(xz) / normFactor) * 2.31));
+            interp.setF(xz -> {
+                try {
+                    return (float) (Math.tanh(FractalTerrainInstance.reliefSource.get().getRawTemp(xz) / normFactor) * 2.31);
+                } catch (InterruptedException | ExecutionException e) {
+                    throw new RuntimeException(e);
+                }
+            });
             return visitor.apply(this);
         }
 
@@ -273,8 +284,13 @@ public final class FractalTerrainDensityFunctionTypes {
 
         @Override
         public DensityFunction apply(DensityFunctionVisitor visitor) {
-            super.applySeed();
-            interp.setF(xz -> FractalTerrainInstance.post.getRawTempSTD(xz) * normFactor);
+            interp.setF(xz -> {
+                try {
+                    return FractalTerrainInstance.reliefSource.get().getRawTempSTD(xz) * normFactor;
+                } catch (InterruptedException | ExecutionException e) {
+                    throw new RuntimeException(e);
+                }
+            });
             return visitor.apply(this);
         }
 
@@ -302,8 +318,13 @@ public final class FractalTerrainDensityFunctionTypes {
 
         @Override
         public DensityFunction apply(DensityFunctionVisitor visitor) {
-            super.applySeed();
-            interp.setF(xz -> (float) (Math.tanh(FractalTerrainInstance.post.getRawPrecip(xz) / normFactor) * 1.76));
+            interp.setF(xz -> {
+                try {
+                    return (float) (Math.tanh(FractalTerrainInstance.reliefSource.get().getRawPrecip(xz) / normFactor) * 1.76);
+                } catch (InterruptedException | ExecutionException e) {
+                    throw new RuntimeException(e);
+                }
+            });
             return visitor.apply(this);
         }
 
@@ -328,8 +349,13 @@ public final class FractalTerrainDensityFunctionTypes {
 
         @Override
         public DensityFunction apply(DensityFunctionVisitor visitor) {
-            super.applySeed();
-            interp.setF(xz -> FractalTerrainInstance.post.getRawPrecipSTD(xz) * normFactor);
+            interp.setF(xz -> {
+                try {
+                    return FractalTerrainInstance.reliefSource.get().getRawPrecipSTD(xz) * normFactor;
+                } catch (InterruptedException | ExecutionException e) {
+                    throw new RuntimeException(e);
+                }
+            });
             return visitor.apply(this);
         }
 
@@ -357,7 +383,11 @@ public final class FractalTerrainDensityFunctionTypes {
         public DensityFunction apply(DensityFunctionVisitor visitor) {
 
             interp.setF(xz -> {
-                return (float) (Math.tanh(1 - FractalTerrainInstance.post.getRawGrad(xz)) * normFactor);
+                try {
+                    return (float) (Math.tanh(1 - FractalTerrainInstance.reliefSource.get().getRawGrad(xz)) * normFactor);
+                } catch (InterruptedException | ExecutionException e) {
+                    throw new RuntimeException(e);
+                }
             });
             return visitor.apply(this);
         }
@@ -391,7 +421,13 @@ public final class FractalTerrainDensityFunctionTypes {
         @Override
         public DensityFunction apply(DensityFunctionVisitor visitor) {
             interp.setF(
-                    xz -> (float) (Math.tanh(1 - FractalTerrainInstance.post.getBlurredGrad(xz) / normFactor) * 2.52));
+                    xz -> {
+                        try {
+                            return (float) (Math.tanh(1 - FractalTerrainInstance.reliefSource.get().getBlurredGrad(xz) / normFactor) * 2.52);
+                        } catch (InterruptedException | ExecutionException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
             return visitor.apply(this);
         }
 
@@ -419,7 +455,11 @@ public final class FractalTerrainDensityFunctionTypes {
         @Override
         public DensityFunction apply(DensityFunctionVisitor visitor) {
             interp.setF(xz -> {
-                return (float) (Math.tanh(1 - FractalTerrainInstance.post.getRefinedGrad(xz) / 10.0) * normFactor);
+                try {
+                    return (float) (Math.tanh(1 - FractalTerrainInstance.reliefSource.get().getRefinedGrad(xz) / 10.0) * normFactor);
+                } catch (InterruptedException | ExecutionException e) {
+                    throw new RuntimeException(e);
+                }
             });
             return visitor.apply(this);
         }

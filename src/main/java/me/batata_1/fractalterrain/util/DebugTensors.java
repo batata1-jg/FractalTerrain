@@ -11,6 +11,7 @@ import java.awt.image.WritableRaster;
 import java.io.*;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import javax.imageio.ImageIO;
 import me.batata_1.fractalterrain.FractalTerrainInstance;
 import me.batata_1.fractalterrain.ml.Models;
@@ -124,6 +125,10 @@ public class DebugTensors {
 
     public static void debugModels() {
         assert false;
+    }
+
+    public static void debugLatentStageConstructor() {
+        LOGGER.info("creating latent stage");
     }
 
     // this class is by ChatGPT (sorry for being lazy \_._._/ , didn't want to write this )
@@ -268,18 +273,18 @@ public class DebugTensors {
 
     }
 
-    public static synchronized void debug() {
+    public static synchronized void debug() throws ExecutionException, InterruptedException {
         try {
             seeTensor(MapProvider.sampleMap(Pair.of(-32,-32),new long[]{5,64,64}),"feedElev",false,0);
         } catch (OrtException | IOException e) {
             throw new RuntimeException(e);
         }
-        toTiffChannel(FractalTerrainInstance.post.getTilesAsTensor(0,0),0,"tensor");
+        toTiffChannel(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0,0),0,"tensor");
 //        for(int i=-4 ; i<4 ; i++) {
 //            for(int j=-4 ; j<4 ; j++) {
-//                toTiffChannel(FractalTerrainInstance.post.getTilesAsTensor(i,j),0,
+//                toTiffChannel(FractalTerrainInstance.reliefSource.getTilesAsTensor(i,j),0,
 //                        i+ "-" + j +"tensor" );
-//                toTiffChannel(FractalTerrainInstance.post.getTilesAsTensor(i,j),4,
+//                toTiffChannel(FractalTerrainInstance.reliefSource.getTilesAsTensor(i,j),4,
 //                        i+ "-" + j +"tensor" );
 //            }
 //        }

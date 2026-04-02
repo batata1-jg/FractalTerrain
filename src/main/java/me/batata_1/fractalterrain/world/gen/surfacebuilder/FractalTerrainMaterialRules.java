@@ -11,6 +11,8 @@ import net.minecraft.util.Identifier;
 import net.minecraft.util.dynamic.CodecHolder;
 import net.minecraft.world.gen.surfacebuilder.MaterialRules;
 
+import java.util.concurrent.ExecutionException;
+
 public class FractalTerrainMaterialRules extends MaterialRules {
 
     static <A> void register(
@@ -94,7 +96,13 @@ public class FractalTerrainMaterialRules extends MaterialRules {
         @Override
         public BooleanSupplier apply(MaterialRuleContext materialRuleContext) {
             final Interpolation i = new Interpolation(scale);
-            i.setF(xz -> FractalTerrainInstance.post.getRefinedGrad(xz));
+            i.setF(xz -> {
+                try {
+                    return FractalTerrainInstance.reliefSource.get().getRefinedGrad(xz);
+                } catch (InterruptedException | ExecutionException e) {
+                    throw new RuntimeException(e);
+                }
+            });
 
             class aboveSlopePredicate extends MaterialRules.FullLazyAbstractPredicate {
 
@@ -104,7 +112,7 @@ public class FractalTerrainMaterialRules extends MaterialRules {
 
                 @Override
                 protected boolean test() {
-                    return i.interpolate(this.context.blockX, this.context.blockZ)
+                    return i.interpolateBilinear(this.context.blockX, this.context.blockZ)
                             >= SteepSlope.this.minConsideredSteep;
                 }
             }
