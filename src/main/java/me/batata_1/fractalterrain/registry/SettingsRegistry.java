@@ -1,5 +1,6 @@
 package me.batata_1.fractalterrain.registry;
 
+import com.mojang.serialization.Codec;
 import net.fabricmc.fabric.api.event.registry.DynamicRegistries;
 import net.minecraft.registry.Registry;
 import net.minecraft.registry.RegistryKey;

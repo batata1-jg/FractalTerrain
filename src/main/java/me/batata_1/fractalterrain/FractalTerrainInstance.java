@@ -14,6 +14,7 @@ import me.batata_1.fractalterrain.world.ContinentalScaleMapProvider;
 import me.batata_1.fractalterrain.world.gen.chunk.FractalTerrainChunkGenerator;
 import me.batata_1.fractalterrain.world.gen.densityfunction.FractalTerrainDensityFunctionTypes;
 import me.batata_1.fractalterrain.world.gen.relief.PostProcessingRelief;
+import me.batata_1.fractalterrain.world.noise.OctaveSimplexNoiseSampler;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.WorldSavePath;
@@ -63,7 +64,9 @@ public class FractalTerrainInstance {
                 .getSeed();
         GaussianNoisePatchProvider.setSeed(seed);
         ContinentalScaleMapProvider.initSamplers(seed);
+        OctaveSimplexNoiseSampler.init(seed);
         Models.initialize();
+        LOGGER.info("init set size: {}" , OctaveSimplexNoiseSampler.getInitSetSize());
     }
 
     public static synchronized void freeServer(MinecraftServer server) {

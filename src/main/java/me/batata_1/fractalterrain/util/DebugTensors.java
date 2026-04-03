@@ -118,6 +118,7 @@ public class DebugTensors {
     public static void seeFinal(OnnxTensor t, int x, int z) {
         try {
             seeTensor(t,"final" + (x>>1) +" " +(z>>1),false,1);
+            seeTensor(t,"final_res"+(x>>1) +" " +(z>>1),false,4 );
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

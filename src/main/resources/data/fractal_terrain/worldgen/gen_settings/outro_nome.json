@@ -1,0 +1,14 @@
+{
+  "sdfergseth": "bin_lafefefe",
+  "post_config": {
+    "alpha": 0.0,
+    "beta": 5.0,
+    "gamma": 100.0,
+    "grad_blur": 1.0,
+    "tau": 1.5
+  },
+  "scale": 1.0,
+  "sea_level": 63,
+  "bottom_y": -64,
+  "top_y": 1600
+}
