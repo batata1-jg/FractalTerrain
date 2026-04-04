@@ -4,7 +4,6 @@ import ai.onnxruntime.*;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-
 import me.batata_1.fractalterrain.ml.Models;
 
 public class MlUtil {

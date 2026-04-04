@@ -7,7 +7,6 @@ import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtException;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
-
 import me.batata_1.fractalterrain.ml.Models;
 import me.batata_1.fractalterrain.ml.tensorProviders.GaussianNoisePatchProvider;
 import me.batata_1.fractalterrain.world.ContinentalScaleMapProvider;
@@ -28,12 +27,16 @@ public class FractalTerrainInstance {
     private static volatile Path pathMundo = null;
     public static volatile CompletableFuture<PostProcessingRelief> reliefSource = new CompletableFuture<>();
 
-    public static synchronized void setServer(MinecraftServer server,ServerWorld serverWorld) {
-        final ChunkGenerator chunkGenerator = server.getOverworld().getChunkManager().getChunkGenerator();
-        if(chunkGenerator instanceof NoiseChunkGenerator) {
-            LOGGER.info(((NoiseChunkGenerator) chunkGenerator).getSettings().getClass().toString());
+    public static synchronized void setServer(MinecraftServer server, ServerWorld serverWorld) {
+        final ChunkGenerator chunkGenerator =
+                server.getOverworld().getChunkManager().getChunkGenerator();
+        if (chunkGenerator instanceof NoiseChunkGenerator) {
+            LOGGER.info(((NoiseChunkGenerator) chunkGenerator)
+                    .getSettings()
+                    .getClass()
+                    .toString());
         }
-        if(!(chunkGenerator instanceof FractalTerrainChunkGenerator)) return;
+        if (!(chunkGenerator instanceof FractalTerrainChunkGenerator)) return;
         LOGGER.info("fractalTerrain initializing");
         if (curServer != null || pathMundo != null || ENV != null || reliefSource.isDone()) {
             LOGGER.warn("Already initialized");
@@ -53,7 +56,13 @@ public class FractalTerrainInstance {
         LOGGER.info("session providers {}", OrtEnvironment.getAvailableProviders());
         initUtil();
 
-        final PostProcessingRelief.Settings post_config = ( chunkGenerator instanceof FractalTerrainChunkGenerator) ? ((FractalTerrainChunkGenerator) chunkGenerator).getSettings().value().postConfig().value() : FractalTerrainDensityFunctionTypes.RefinedElevation.post_config;
+        final PostProcessingRelief.Settings post_config = (chunkGenerator instanceof FractalTerrainChunkGenerator)
+                ? ((FractalTerrainChunkGenerator) chunkGenerator)
+                        .getSettings()
+                        .value()
+                        .postConfig()
+                        .value()
+                : FractalTerrainDensityFunctionTypes.RefinedElevation.post_config;
 
         reliefSource.complete(new PostProcessingRelief(post_config));
         LOGGER.info("completed reliefSource");
@@ -65,7 +74,7 @@ public class FractalTerrainInstance {
         ContinentalScaleMapProvider.initSamplers(seed);
         OctaveSimplexNoiseSampler.init(seed);
         Models.initialize();
-        LOGGER.info("init set size: {}" , OctaveSimplexNoiseSampler.getInitSetSize());
+        LOGGER.info("init set size: {}", OctaveSimplexNoiseSampler.getInitSetSize());
     }
 
     public static synchronized void freeServer(MinecraftServer server) {
@@ -82,5 +91,4 @@ public class FractalTerrainInstance {
     public static Path getDir() {
         return Path.of(pathMundo + "/fractal_terrain");
     }
-
 }

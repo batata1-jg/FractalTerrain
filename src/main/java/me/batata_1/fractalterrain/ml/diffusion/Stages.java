@@ -82,12 +82,12 @@ public class Stages {
             final OnnxTensor noise = sampleNoise(xz, new long[] {1, 5, 64, 64}, 3);
             //        seeTensor(noise,"noise latent_t" + latentStageInstanceNumber + "__" + xz.getFirst()
             // + " " + xz.getSecond(), false);
-           final var inputs = Map.of(
+            final var inputs = Map.of(
                     "sample", sample,
                     "noise", noise,
                     "cond_img", coarse_tensor,
                     "t_tensor", OnnxTensor.createTensor(ENV, tSteps[latentStageInstanceNumber]));
-           final var out = (OnnxTensor) model.get().run(inputs).get(0);
+            final var out = (OnnxTensor) model.get().run(inputs).get(0);
             isNan(out);
             return slice(out);
         }
@@ -133,7 +133,8 @@ public class Stages {
         }
 
         @Override
-        public OnnxTensor[] runInference(final int x, final int z) throws OrtException, ExecutionException, InterruptedException {
+        public OnnxTensor[] runInference(final int x, final int z)
+                throws OrtException, ExecutionException, InterruptedException {
             final var xz = Pair.of(x, z);
             var inputs = Map.of(
                     "synthetic_map", sampleMap(xz, new long[] {5, 64, 64}),

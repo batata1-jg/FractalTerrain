@@ -3,6 +3,7 @@ package me.batata_1.fractalterrain.world.gen.surfacebuilder;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import java.util.concurrent.ExecutionException;
 import me.batata_1.fractalterrain.FractalTerrainInstance;
 import me.batata_1.fractalterrain.math.Interpolation;
 import me.batata_1.fractalterrain.references.Reference;
@@ -10,8 +11,6 @@ import net.minecraft.registry.*;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.dynamic.CodecHolder;
 import net.minecraft.world.gen.surfacebuilder.MaterialRules;
-
-import java.util.concurrent.ExecutionException;
 
 public class FractalTerrainMaterialRules extends MaterialRules {
 

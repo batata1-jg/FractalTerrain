@@ -4,9 +4,7 @@ import static me.batata_1.fractalterrain.references.Reference.LOGGER;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-
 import java.util.concurrent.ExecutionException;
-
 import me.batata_1.fractalterrain.FractalTerrainInstance;
 import me.batata_1.fractalterrain.math.Interpolation;
 import me.batata_1.fractalterrain.references.Reference;
@@ -64,7 +62,6 @@ public final class FractalTerrainDensityFunctionTypes {
         public void fill(double[] densities, DensityFunction.EachApplier applier) {
             applier.fill(densities, this);
         }
-
     }
 
     public static class RefinedElevation extends InterpolatedFromMap {
@@ -74,7 +71,9 @@ public final class FractalTerrainDensityFunctionTypes {
         private final float scale;
 
         public static final Codec<RefinedElevation> CODEC = RecordCodecBuilder.create(instance -> instance.group(
-                        PostProcessingRelief.Settings.CODEC.fieldOf("post_config").forGetter(null),
+                        PostProcessingRelief.Settings.CODEC
+                                .fieldOf("post_config")
+                                .forGetter(null),
                         Codec.FLOAT.optionalFieldOf("scale", 0.2F).forGetter(g -> g.scale),
                         Codec.INT.fieldOf("minVal").forGetter(g -> g.MIN_VAL),
                         Codec.INT.fieldOf("maxVal").forGetter(g -> g.MAX_VAL))
@@ -84,8 +83,7 @@ public final class FractalTerrainDensityFunctionTypes {
 
         public static PostProcessingRelief.Settings post_config;
 
-        public RefinedElevation(
-                PostProcessingRelief.Settings setting, float scale, int minVal, int maxVal) {
+        public RefinedElevation(PostProcessingRelief.Settings setting, float scale, int minVal, int maxVal) {
             super(new Interpolation(scale));
             this.scale = scale;
             RefinedElevation.post_config = setting;
@@ -218,14 +216,15 @@ public final class FractalTerrainDensityFunctionTypes {
 
         @Override
         public DensityFunction apply(DensityFunctionVisitor visitor) {
-            interp.setF(
-                    xz -> {
-                        try {
-                            return (float) (Math.tanh(FractalTerrainInstance.reliefSource.get().getContinentalElev(xz) / normFactor) * 1.5F);
-                        } catch (InterruptedException | ExecutionException e) {
-                            throw new RuntimeException(e);
-                        }
-                    });
+            interp.setF(xz -> {
+                try {
+                    return (float)
+                            (Math.tanh(FractalTerrainInstance.reliefSource.get().getContinentalElev(xz) / normFactor)
+                                    * 1.5F);
+                } catch (InterruptedException | ExecutionException e) {
+                    throw new RuntimeException(e);
+                }
+            });
             return visitor.apply(this);
         }
 
@@ -255,7 +254,8 @@ public final class FractalTerrainDensityFunctionTypes {
         public DensityFunction apply(DensityFunctionVisitor visitor) {
             interp.setF(xz -> {
                 try {
-                    return (float) (Math.tanh(FractalTerrainInstance.reliefSource.get().getRawTemp(xz) / normFactor) * 2.31);
+                    return (float)
+                            (Math.tanh(FractalTerrainInstance.reliefSource.get().getRawTemp(xz) / normFactor) * 2.31);
                 } catch (InterruptedException | ExecutionException e) {
                     throw new RuntimeException(e);
                 }
@@ -320,7 +320,8 @@ public final class FractalTerrainDensityFunctionTypes {
         public DensityFunction apply(DensityFunctionVisitor visitor) {
             interp.setF(xz -> {
                 try {
-                    return (float) (Math.tanh(FractalTerrainInstance.reliefSource.get().getRawPrecip(xz) / normFactor) * 1.76);
+                    return (float)
+                            (Math.tanh(FractalTerrainInstance.reliefSource.get().getRawPrecip(xz) / normFactor) * 1.76);
                 } catch (InterruptedException | ExecutionException e) {
                     throw new RuntimeException(e);
                 }
@@ -384,7 +385,9 @@ public final class FractalTerrainDensityFunctionTypes {
 
             interp.setF(xz -> {
                 try {
-                    return (float) (Math.tanh(1 - FractalTerrainInstance.reliefSource.get().getRawGrad(xz)) * normFactor);
+                    return (float) (Math.tanh(1
+                                    - FractalTerrainInstance.reliefSource.get().getRawGrad(xz))
+                            * normFactor);
                 } catch (InterruptedException | ExecutionException e) {
                     throw new RuntimeException(e);
                 }
@@ -420,14 +423,15 @@ public final class FractalTerrainDensityFunctionTypes {
 
         @Override
         public DensityFunction apply(DensityFunctionVisitor visitor) {
-            interp.setF(
-                    xz -> {
-                        try {
-                            return (float) (Math.tanh(1 - FractalTerrainInstance.reliefSource.get().getBlurredGrad(xz) / normFactor) * 2.52);
-                        } catch (InterruptedException | ExecutionException e) {
-                            throw new RuntimeException(e);
-                        }
-                    });
+            interp.setF(xz -> {
+                try {
+                    return (float) (Math.tanh(1
+                                    - FractalTerrainInstance.reliefSource.get().getBlurredGrad(xz) / normFactor)
+                            * 2.52);
+                } catch (InterruptedException | ExecutionException e) {
+                    throw new RuntimeException(e);
+                }
+            });
             return visitor.apply(this);
         }
 
@@ -456,7 +460,9 @@ public final class FractalTerrainDensityFunctionTypes {
         public DensityFunction apply(DensityFunctionVisitor visitor) {
             interp.setF(xz -> {
                 try {
-                    return (float) (Math.tanh(1 - FractalTerrainInstance.reliefSource.get().getRefinedGrad(xz) / 10.0) * normFactor);
+                    return (float) (Math.tanh(1
+                                    - FractalTerrainInstance.reliefSource.get().getRefinedGrad(xz) / 10.0)
+                            * normFactor);
                 } catch (InterruptedException | ExecutionException e) {
                     throw new RuntimeException(e);
                 }

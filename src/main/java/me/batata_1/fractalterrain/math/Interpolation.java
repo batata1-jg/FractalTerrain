@@ -6,8 +6,8 @@ import net.minecraft.util.math.MathHelper;
 
 public class Interpolation {
 
-    private static final Function<Double,Double> stepBilinear = x -> x;
-    private static final Function<Double,Double> stepSmoothstep = x -> 3 * (x*x) - 2 * (x*x*x);
+    private static final Function<Double, Double> stepBilinear = x -> x;
+    private static final Function<Double, Double> stepSmoothstep = x -> 3 * (x * x) - 2 * (x * x * x);
 
     private final float interpolation_scale;
     private Function<Pair<Integer, Integer>, Float> f;
@@ -20,12 +20,12 @@ public class Interpolation {
         this.f = f;
     }
 
-    public double interpolateSmoothStep(float x , float z) {
-        return interpolate(x,z,stepSmoothstep);
+    public double interpolateSmoothStep(float x, float z) {
+        return interpolate(x, z, stepSmoothstep);
     }
 
-    public double interpolateBilinear( float x, float z) {
-        return interpolate(x,z,stepBilinear);
+    public double interpolateBilinear(float x, float z) {
+        return interpolate(x, z, stepBilinear);
     }
 
     // xz real coords

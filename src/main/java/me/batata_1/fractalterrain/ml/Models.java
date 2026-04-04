@@ -9,28 +9,23 @@ import ai.onnxruntime.OrtLoggingLevel;
 import ai.onnxruntime.OrtSession;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.HashMap;
 import java.util.Optional;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-
 import me.batata_1.fractalterrain.FractalTerrainInstance;
-import me.batata_1.fractalterrain.util.DebugTensors;
 import net.minecraft.resource.Resource;
 import net.minecraft.util.Identifier;
 
 public class Models {
 
-    private static final ConcurrentHashMap<String,CompletableFuture<OrtSession>> MODEL_CACHE =new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, CompletableFuture<OrtSession>> MODEL_CACHE =
+            new ConcurrentHashMap<>();
 
     public static synchronized void initialize() {
-        for( var e : MODEL_CACHE.entrySet()) {
+        for (var e : MODEL_CACHE.entrySet()) {
             e.getValue().complete(fetchModel(e.getKey()));
         }
     }
-
 
     public static synchronized CompletableFuture<OrtSession> getOrCreateModel(String path) {
         return MODEL_CACHE.computeIfAbsent(path + "&cpu", key -> new CompletableFuture<>());
@@ -41,7 +36,7 @@ public class Models {
     }
 
     private static synchronized OrtSession fetchModel(String key) {
-        String path = key.substring(0,key.indexOf("&"));
+        String path = key.substring(0, key.indexOf("&"));
         Identifier modelId = Identifier.of(ModID, path + ".onnx");
         assert modelId != null;
         LOGGER.info(modelId.toString());

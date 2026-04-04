@@ -9,13 +9,12 @@ import ai.onnxruntime.OnnxTensor;
 import ai.onnxruntime.OrtException;
 import ai.onnxruntime.OrtSession;
 import com.mojang.datafixers.util.Pair;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-
-import com.mojang.serialization.Codec;
-import com.mojang.serialization.codecs.RecordCodecBuilder;
 import me.batata_1.fractalterrain.ml.Models;
 import me.batata_1.fractalterrain.ml.diffusion.Stages;
 import me.batata_1.fractalterrain.registry.FractalTerrainRegistryKeys;
@@ -38,18 +37,19 @@ public class PostProcessingRelief {
     private final EntryStorage<Tile> final_tiles;
     private final EntryStorage<Tile> final_raw_tiles;
 
-    public record Settings(float alpha, float beta, float gamma, float grad_blur, float tau) implements SettingsRegistry.Settings {
+    public record Settings(float alpha, float beta, float gamma, float grad_blur, float tau)
+            implements SettingsRegistry.Settings {
 
         public static final Codec<Settings> CODEC = RecordCodecBuilder.create(i -> i.group(
-                Codec.FLOAT.optionalFieldOf("alpha", 0F).forGetter(Settings::alpha),
-                Codec.FLOAT.optionalFieldOf("beta", 0.5F).forGetter(Settings::beta),
-                Codec.FLOAT.optionalFieldOf("gamma", 5F).forGetter(Settings::gamma),
-                Codec.FLOAT.optionalFieldOf("grad_blur", 0.1F).forGetter(Settings::grad_blur),
-                Codec.FLOAT.optionalFieldOf("tau", 2.0F).forGetter(Settings::tau)
-        ).apply(i,Settings::new));
+                        Codec.FLOAT.optionalFieldOf("alpha", 0F).forGetter(Settings::alpha),
+                        Codec.FLOAT.optionalFieldOf("beta", 0.5F).forGetter(Settings::beta),
+                        Codec.FLOAT.optionalFieldOf("gamma", 5F).forGetter(Settings::gamma),
+                        Codec.FLOAT.optionalFieldOf("grad_blur", 0.1F).forGetter(Settings::grad_blur),
+                        Codec.FLOAT.optionalFieldOf("tau", 2.0F).forGetter(Settings::tau))
+                .apply(i, Settings::new));
 
-        public static final Codec<RegistryEntry<Settings>> REGISTRY_CODEC = RegistryElementCodec.of(FractalTerrainRegistryKeys.POST_PROCESSING_SETTINGS,CODEC);
-
+        public static final Codec<RegistryEntry<Settings>> REGISTRY_CODEC =
+                RegistryElementCodec.of(FractalTerrainRegistryKeys.POST_PROCESSING_SETTINGS, CODEC);
     }
 
     public PostProcessingRelief(Settings settings) {
@@ -61,8 +61,9 @@ public class PostProcessingRelief {
                 assert average != null;
                 assert take_coarse_grad != null;
                 final OnnxTensor t = (OnnxTensor) take_coarse_grad
-                        .get().run(Map.of("x", (OnnxTensor) average.get().run(Map.of(
-                                        "x", decodeAndFinish.getCoarseTilesAsTensor(xz.getFirst(), xz.getSecond())))
+                        .get()
+                        .run(Map.of("x", (OnnxTensor) average.get()
+                                .run(Map.of("x", decodeAndFinish.getCoarseTilesAsTensor(xz.getFirst(), xz.getSecond())))
                                 .get(0)))
                         .get(0);
                 return new Tile(t);
@@ -75,10 +76,11 @@ public class PostProcessingRelief {
             final int z = xz.getSecond() << 1;
             try {
                 assert average != null;
-                final OnnxTensor t = (OnnxTensor) average.get().run(Map.of("x", decodeAndFinish.getTilesAsTensor(x, z)))
+                final OnnxTensor t = (OnnxTensor) average.get()
+                        .run(Map.of("x", decodeAndFinish.getTilesAsTensor(x, z)))
                         .get(0);
 
-                DebugTensors.seeFinal(t,x,z);
+                DebugTensors.seeFinal(t, x, z);
                 return new Tile(t);
             } catch (ExecutionException | IOException | InterruptedException | OrtException e) {
                 throw new RuntimeException(e);
@@ -98,8 +100,8 @@ public class PostProcessingRelief {
         return getValue(xz, 3);
     }
 
-    public float getRes(Pair<Integer,Integer> xz ) {
-        return getValue(xz,4);
+    public float getRes(Pair<Integer, Integer> xz) {
+        return getValue(xz, 4);
     }
 
     private float getValue(Pair<Integer, Integer> xz, int ch) {
@@ -152,7 +154,7 @@ public class PostProcessingRelief {
 
     public OnnxTensor getTilesAsTensor(int i, int j) {
         try {
-            return final_tiles.getEntry(Pair.of(i,j)).get().get();
+            return final_tiles.getEntry(Pair.of(i, j)).get().get();
         } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException(e);
         }

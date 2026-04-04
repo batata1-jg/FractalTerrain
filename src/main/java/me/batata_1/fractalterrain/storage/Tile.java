@@ -126,14 +126,14 @@ public class Tile {
 
     public float[] getBand(int i, int ch) {
         final long[] coords = new long[shape.length];
-        Arrays.fill(coords,0);
+        Arrays.fill(coords, 0);
         coords[i] = ch;
-        final float[] resp = new float[(int)(shape[shape.length-1]*shape[shape.length-2])];
-        for( int k=0 ; k<shape[shape.length-1] ; k++) {
-            for(int l=0 ; k<shape[shape.length - 2] ; l++) {
-                coords[shape.length-1] = k;
-                coords[shape.length-2] = l;
-                resp[(int)(shape[shape.length-2]*k + l)] = entryAt(coords);
+        final float[] resp = new float[(int) (shape[shape.length - 1] * shape[shape.length - 2])];
+        for (int k = 0; k < shape[shape.length - 1]; k++) {
+            for (int l = 0; k < shape[shape.length - 2]; l++) {
+                coords[shape.length - 1] = k;
+                coords[shape.length - 2] = l;
+                resp[(int) (shape[shape.length - 2] * k + l)] = entryAt(coords);
             }
         }
         return resp;

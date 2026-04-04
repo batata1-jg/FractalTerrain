@@ -24,13 +24,15 @@ public abstract class StorageInterface {
         this.shape = shape;
     }
 
-    protected abstract OnnxTensor[] runInference(int x, int z) throws OrtException, ExecutionException, InterruptedException, IOException;
+    protected abstract OnnxTensor[] runInference(int x, int z)
+            throws OrtException, ExecutionException, InterruptedException, IOException;
 
     protected EntryStorage<TileRegion> getStorage() {
         return storage;
     }
 
-    public OnnxTensor getTilesAsTensor(int x, int z) throws ExecutionException, OrtException, InterruptedException, IOException {
+    public OnnxTensor getTilesAsTensor(int x, int z)
+            throws ExecutionException, OrtException, InterruptedException, IOException {
 
         final OnnxTensor[] t = new OnnxTensor[4];
         for (int i = 0; i < 4; i++) {

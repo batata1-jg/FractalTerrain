@@ -1,9 +1,6 @@
 package me.batata_1.fractalterrain.world.noise;
 
 import java.util.*;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.SynchronousQueue;
 import java.util.function.Function;
 import net.minecraft.util.math.noise.SimplexNoiseSampler;
 import net.minecraft.util.math.random.Random;
@@ -50,12 +47,14 @@ public class OctaveSimplexNoiseSampler {
 
     public static synchronized void init(long seed) {
         OctaveSimplexNoiseSampler[] toInit = INIT_SET.toArray(new OctaveSimplexNoiseSampler[0]);
-        for(var s : toInit) {
+        for (var s : toInit) {
             s.initSampler(seed);
         }
     }
 
-    public static synchronized int getInitSetSize() { return INIT_SET.size(); }
+    public static synchronized int getInitSetSize() {
+        return INIT_SET.size();
+    }
 
     public synchronized void initSampler(long seed) {
         sampler = new SimplexNoiseSampler(Random.create(seed + seedOffset));
@@ -66,7 +65,9 @@ public class OctaveSimplexNoiseSampler {
     public <T> float sample(T x, T z) {
         double resp = 0;
         for (int i = 0; i < numOctaves; i++) {
-            resp += sampler.sample(((Number) x).doubleValue() / periods[i] + i, ((Number) z).doubleValue() / periods[i] + i) * amplitudes[i];
+            resp += sampler.sample(
+                            ((Number) x).doubleValue() / periods[i] + i, ((Number) z).doubleValue() / periods[i] + i)
+                    * amplitudes[i];
         }
         return (float) (resp / norm);
     }

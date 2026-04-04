@@ -117,8 +117,8 @@ public class DebugTensors {
 
     public static void seeFinal(OnnxTensor t, int x, int z) {
         try {
-            seeTensor(t,"final" + (x>>1) +" " +(z>>1),false,1);
-            seeTensor(t,"final_res"+(x>>1) +" " +(z>>1),false,4 );
+            seeTensor(t, "final" + (x >> 1) + " " + (z >> 1), false, 1);
+            seeTensor(t, "final_res" + (x >> 1) + " " + (z >> 1), false, 4);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -253,9 +253,9 @@ public class DebugTensors {
 
     public static void toTiff(OnnxTensor op, String name) {
         Tile tl = new Tile(op);
-        for(int i=0 ; i<tl.getShape()[0] ; i++) {
-            try(FileOutputStream fos = new FileOutputStream(name + "-" + i + ".tiff")) {
-                float[] fl = tl.getBand(0,i);
+        for (int i = 0; i < tl.getShape()[0]; i++) {
+            try (FileOutputStream fos = new FileOutputStream(name + "-" + i + ".tiff")) {
+                float[] fl = tl.getBand(0, i);
                 fos.write(FloatTiffWriter.createFloatTiff(fl));
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -263,31 +263,30 @@ public class DebugTensors {
         }
     }
 
-    public static void toTiffChannel(OnnxTensor op,int ch, String name) {
+    public static void toTiffChannel(OnnxTensor op, int ch, String name) {
         Tile tl = new Tile(op);
-        try(FileOutputStream fos = new FileOutputStream(name + "-" + ch + ".tiff")) {
-            float[] fl = tl.getBand(0,ch);
+        try (FileOutputStream fos = new FileOutputStream(name + "-" + ch + ".tiff")) {
+            float[] fl = tl.getBand(0, ch);
             fos.write(FloatTiffWriter.createFloatTiff(fl));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-
     }
 
     public static synchronized void debug() throws ExecutionException, InterruptedException {
         try {
-            seeTensor(MapProvider.sampleMap(Pair.of(-32,-32),new long[]{5,64,64}),"feedElev",false,0);
+            seeTensor(MapProvider.sampleMap(Pair.of(-32, -32), new long[] {5, 64, 64}), "feedElev", false, 0);
         } catch (OrtException | IOException e) {
             throw new RuntimeException(e);
         }
-        toTiffChannel(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0,0),0,"tensor");
-//        for(int i=-4 ; i<4 ; i++) {
-//            for(int j=-4 ; j<4 ; j++) {
-//                toTiffChannel(FractalTerrainInstance.reliefSource.getTilesAsTensor(i,j),0,
-//                        i+ "-" + j +"tensor" );
-//                toTiffChannel(FractalTerrainInstance.reliefSource.getTilesAsTensor(i,j),4,
-//                        i+ "-" + j +"tensor" );
-//            }
-//        }
+        toTiffChannel(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0, 0), 0, "tensor");
+        //        for(int i=-4 ; i<4 ; i++) {
+        //            for(int j=-4 ; j<4 ; j++) {
+        //                toTiffChannel(FractalTerrainInstance.reliefSource.getTilesAsTensor(i,j),0,
+        //                        i+ "-" + j +"tensor" );
+        //                toTiffChannel(FractalTerrainInstance.reliefSource.getTilesAsTensor(i,j),4,
+        //                        i+ "-" + j +"tensor" );
+        //            }
+        //        }
     }
 }
