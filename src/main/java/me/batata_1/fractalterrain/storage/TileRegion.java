@@ -9,7 +9,6 @@ public class TileRegion extends Tile {
     private int regionState;
 
     public void serialize(String path) throws IOException {
-        final Random rand = new Random();
         final int el = this.entries.length;
         final int sl = this.shape.length;
         final float[] arr = new float[el + sl + 2];
