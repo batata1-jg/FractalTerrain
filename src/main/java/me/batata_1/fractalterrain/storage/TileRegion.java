@@ -2,7 +2,6 @@ package me.batata_1.fractalterrain.storage;
 
 import ai.onnxruntime.OnnxTensor;
 import java.io.*;
-import java.util.Random;
 
 public class TileRegion extends Tile {
 
