@@ -24,17 +24,15 @@ public abstract class StorageInterface {
         this.shape = shape;
     }
 
-    protected abstract OnnxTensor[] runInference(int x, int z)
-            throws OrtException, ExecutionException, InterruptedException, IOException;
+    protected abstract OnnxTensor[] runInference(int x, int z) throws OrtException, ExecutionException, InterruptedException, IOException;
 
-    protected EntryStorage<TileRegion> getStorage(int i) {
+    protected EntryStorage<TileRegion> getStorage() {
         return storage;
     }
 
-    public OnnxTensor getTilesAsTensor(int x, int z)
-            throws ExecutionException, OrtException, InterruptedException, IOException {
+    public OnnxTensor getTilesAsTensor(int x, int z) throws ExecutionException, OrtException, InterruptedException, IOException {
 
-        OnnxTensor[] t = new OnnxTensor[4];
+        final OnnxTensor[] t = new OnnxTensor[4];
         for (int i = 0; i < 4; i++) {
             t[i] = getTileAsTensor(Pair.of(x + dx[i], z + dz[i]));
         }
@@ -49,23 +47,23 @@ public abstract class StorageInterface {
     // xz global
     public float getValue(Pair<Integer, Integer> xz)
             throws IOException, ExecutionException, OrtException, InterruptedException {
-        TileRegion t = getTile(toInter(xz, (int) shape[shape.length - 1]));
-        var intra = toIntra(xz, (int) shape[shape.length - 1]);
+        final TileRegion t = getTile(toInter(xz, (int) shape[shape.length - 1]));
+        final var intra = toIntra(xz, (int) shape[shape.length - 1]);
         return t.entryAt(new long[] {intra.getFirst(), intra.getSecond()});
     }
 
     public float getValue(Pair<Integer, Integer> xz, int ch)
             throws IOException, ExecutionException, OrtException, InterruptedException {
-        TileRegion t = getTile(toInter(xz, (int) shape[shape.length - 1]));
-        var intra = toIntra(xz, (int) shape[shape.length - 1]);
+        final TileRegion t = getTile(toInter(xz, (int) shape[shape.length - 1]));
+        final var intra = toIntra(xz, (int) shape[shape.length - 1]);
         return t.entryAt(new long[] {ch, intra.getFirst(), intra.getSecond()});
     }
 
     public TileRegion getTile(Pair<Integer, Integer> xz)
             throws ExecutionException, InterruptedException, OrtException, IOException {
-        var s = getStorage(0);
+        final var s = getStorage();
         if (s.existsEntry(xz)) {
-            TileRegion t = s.getEntry(xz).get();
+            final TileRegion t = s.getEntry(xz).get();
             if (t.isComplete()) return t;
         }
         return completeTiles(xz.getFirst(), xz.getSecond(), s);
@@ -77,7 +75,7 @@ public abstract class StorageInterface {
     public synchronized TileRegion completeTiles(int x, int z, EntryStorage<TileRegion> s)
             throws ExecutionException, InterruptedException, OrtException, IOException {
 
-        TileRegion t;
+        final TileRegion t;
         if (s.existsEntry(Pair.of(x, z))) {
             t = s.getEntry(Pair.of(x, z)).get();
             if (t.isComplete()) return t;
@@ -89,7 +87,7 @@ public abstract class StorageInterface {
             if ((t.getState() & (1 << i)) == 0) {
                 //  LOGGER.info("       it {} adicionando tile {} {} to
                 // {}",i,x+dxCerto[i],z+dzCerto[i],s.getPath());
-                var batch = runInference(x + dxCerto[i], z + dzCerto[i]);
+                final var batch = runInference(x + dxCerto[i], z + dzCerto[i]);
                 addToStorage(x + dxCerto[i], z + dzCerto[i], batch, s);
             }
         }
@@ -100,8 +98,8 @@ public abstract class StorageInterface {
     synchronized void addToStorage(int x, int z, OnnxTensor[] batch, EntryStorage<TileRegion> s) {
 
         for (int i = 0; i < 4; i++) {
-            var coords = Pair.of(x - dxCerto[i], z - dzCerto[i]);
-            TileRegion tile = new TileRegion(batch[i], (1 << i));
+            final var coords = Pair.of(x - dxCerto[i], z - dzCerto[i]);
+            final TileRegion tile = new TileRegion(batch[i], (1 << i));
             if (s.existsEntry(coords)) {
                 try {
                     tile.add(s.getEntry(coords).get());

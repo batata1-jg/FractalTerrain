@@ -29,8 +29,7 @@ public class FractalTerrainInstance {
     public static volatile CompletableFuture<PostProcessingRelief> reliefSource = new CompletableFuture<>();
 
     public static synchronized void setServer(MinecraftServer server,ServerWorld serverWorld) {
-
-        ChunkGenerator chunkGenerator = server.getOverworld().getChunkManager().getChunkGenerator();
+        final ChunkGenerator chunkGenerator = server.getOverworld().getChunkManager().getChunkGenerator();
         if(chunkGenerator instanceof NoiseChunkGenerator) {
             LOGGER.info(((NoiseChunkGenerator) chunkGenerator).getSettings().getClass().toString());
         }
@@ -42,7 +41,7 @@ public class FractalTerrainInstance {
         }
         curServer = server;
         pathMundo = server.getSavePath(WorldSavePath.ROOT).normalize();
-        try (OrtEnvironment.ThreadingOptions opts = new OrtEnvironment.ThreadingOptions()) {
+        try (final OrtEnvironment.ThreadingOptions opts = new OrtEnvironment.ThreadingOptions()) {
             opts.setGlobalInterOpNumThreads(
                     (Runtime.getRuntime().availableProcessors() >> 2) == 0
                             ? 1
@@ -54,11 +53,11 @@ public class FractalTerrainInstance {
         LOGGER.info("session providers {}", OrtEnvironment.getAvailableProviders());
         initUtil();
 
-        PostProcessingRelief.Settings post_config = ( chunkGenerator instanceof FractalTerrainChunkGenerator) ? ((FractalTerrainChunkGenerator) chunkGenerator).getSettings().value().postConfig().value() : FractalTerrainDensityFunctionTypes.RefinedElevation.post_config;
+        final PostProcessingRelief.Settings post_config = ( chunkGenerator instanceof FractalTerrainChunkGenerator) ? ((FractalTerrainChunkGenerator) chunkGenerator).getSettings().value().postConfig().value() : FractalTerrainDensityFunctionTypes.RefinedElevation.post_config;
 
         reliefSource.complete(new PostProcessingRelief(post_config));
         LOGGER.info("completed reliefSource");
-        long seed = FractalTerrainInstance.getServer()
+        final long seed = FractalTerrainInstance.getServer()
                 .getSaveProperties()
                 .getGeneratorOptions()
                 .getSeed();

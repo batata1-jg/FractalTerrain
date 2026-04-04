@@ -9,11 +9,6 @@ public class Interpolation {
     private static final Function<Double,Double> stepBilinear = x -> x;
     private static final Function<Double,Double> stepSmoothstep = x -> 3 * (x*x) - 2 * (x*x*x);
 
-
-    private static float smoothStep(double delta) {
-        return (float) (3 * (delta * delta) - 2 * (delta * delta * delta));
-    }
-
     private final float interpolation_scale;
     private Function<Pair<Integer, Integer>, Float> f;
 
@@ -29,7 +24,7 @@ public class Interpolation {
         return interpolate(x,z,stepSmoothstep);
     }
 
-    public double interpolateBilinear(float x, float z) {
+    public double interpolateBilinear( float x, float z) {
         return interpolate(x,z,stepBilinear);
     }
 
@@ -39,10 +34,10 @@ public class Interpolation {
         x /= interpolation_scale * 5;
         z /= interpolation_scale * 5;
 
-        int[] xs = {(int) Math.floor(x), (int) Math.ceil(x)};
-        int[] zs = {(int) Math.floor(z), (int) Math.ceil(z)};
+        final int[] xs = {(int) Math.floor(x), (int) Math.ceil(x)};
+        final int[] zs = {(int) Math.floor(z), (int) Math.ceil(z)};
 
-        float[] nodes = new float[4];
+        final float[] nodes = new float[4];
 
         for (int i = 0; i < 2; i++) {
             for (int j = 0; j < 2; j++) {
@@ -50,8 +45,8 @@ public class Interpolation {
             }
         }
 
-        double deltaX = x - Math.floor(x);
-        double deltaZ = z - Math.floor(z);
+        final double deltaX = x - Math.floor(x);
+        final double deltaZ = z - Math.floor(z);
 
         return MathHelper.lerp2(step.apply(deltaX), step.apply(deltaZ), nodes[0], nodes[1], nodes[2], nodes[3]);
     }

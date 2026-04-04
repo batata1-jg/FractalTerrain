@@ -20,9 +20,9 @@ public class ContinentalScaleMapProvider {
     // sampler returns [-1,1]
 
     private static double sample(int x, int z, Settings s) {
-        double maxNorm = s.max() / s.amplitude();
-        double minNorm = s.min() / s.amplitude();
-        double offsetNorm = s.offset() / s.amplitude();
+        final double maxNorm = s.max() / s.amplitude();
+        final double minNorm = s.min() / s.amplitude();
+        final double offsetNorm = s.offset() / s.amplitude();
         return Math.clamp(s.sampler().sample(x,z) + offsetNorm,minNorm,maxNorm);
     }
 

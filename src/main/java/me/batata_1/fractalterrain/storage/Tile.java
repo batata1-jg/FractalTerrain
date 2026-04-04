@@ -17,26 +17,25 @@ public class Tile {
     protected long[] cProd;
 
     public void serialize(String path) throws IOException {
-
-        int el = this.entries.length;
-        int sl = this.shape.length;
-        float[] arr = new float[el + sl + 1];
+        final int el = this.entries.length;
+        final int sl = this.shape.length;
+        final float[] arr = new float[el + sl + 1];
         System.arraycopy(this.entries, 0, arr, 0, el);
         for (int i = el; i < (el + sl); i++) arr[i] = (float) this.shape[i - el];
         arr[el + sl] = (float) el;
-        ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(path + ".ser"));
+        final ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(path + ".ser"));
         out.writeObject(arr);
     }
 
     public void deserialize(String path) throws IOException, ClassNotFoundException {
-        ObjectInputStream in = new ObjectInputStream(new FileInputStream(path + ".ser"));
-        float[] arr = (float[]) in.readObject();
-        int slAddEl = arr.length - 1;
-        int el = (int) arr[slAddEl];
-        int sl = slAddEl - el;
-        float[] entries = new float[el];
+        final ObjectInputStream in = new ObjectInputStream(new FileInputStream(path + ".ser"));
+        final float[] arr = (float[]) in.readObject();
+        final int slAddEl = arr.length - 1;
+        final int el = (int) arr[slAddEl];
+        final int sl = slAddEl - el;
+        final float[] entries = new float[el];
         System.arraycopy(arr, 0, entries, 0, el);
-        long[] shape = new long[sl];
+        final long[] shape = new long[sl];
         for (int i = el; i < el + sl; i++) shape[i - el] = (long) arr[i];
         this.entries = entries;
         this.shape = shape;
@@ -44,8 +43,8 @@ public class Tile {
     }
 
     public long[] calcProd() {
-        int len = shape.length;
-        long[] c = new long[len];
+        final int len = shape.length;
+        final long[] c = new long[len];
         c[len - 1] = 1;
         for (int id = len - 2; id >= 0; id--) {
             c[id] = shape[id + 1] * c[id + 1];
@@ -76,7 +75,6 @@ public class Tile {
     }
 
     public float entryAt(long[] pos) {
-
         checkRank(pos.length);
         int idx = 0;
         for (int i = 0; i < shape.length; i++) idx += (int) (cProd[i] * pos[i]);
@@ -106,18 +104,14 @@ public class Tile {
     private void checkRank(int len) {
         if (this.shape.length != len) {
             LOGGER.error("ranks do not match {} {}", this.shape.length, len);
-            var e = new RuntimeException();
-            e.printStackTrace();
-            throw e;
+            throw new RuntimeException();
         }
     }
 
     private void checkShapes(long[] arr) {
         if (!Arrays.equals(this.shape, arr)) {
             LOGGER.error("shapes do not match {} {}", this.shape, arr);
-            var e = new RuntimeException();
-            e.printStackTrace();
-            throw e;
+            throw new RuntimeException();
         }
     }
 
@@ -131,10 +125,10 @@ public class Tile {
     }
 
     public float[] getBand(int i, int ch) {
-        long[] coords = new long[shape.length];
+        final long[] coords = new long[shape.length];
         Arrays.fill(coords,0);
         coords[i] = ch;
-        float[] resp = new float[(int)(shape[shape.length-1]*shape[shape.length-2])];
+        final float[] resp = new float[(int)(shape[shape.length-1]*shape[shape.length-2])];
         for( int k=0 ; k<shape[shape.length-1] ; k++) {
             for(int l=0 ; k<shape[shape.length - 2] ; l++) {
                 coords[shape.length-1] = k;

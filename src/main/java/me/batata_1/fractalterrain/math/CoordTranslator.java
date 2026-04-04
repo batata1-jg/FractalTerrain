@@ -28,7 +28,7 @@ public class CoordTranslator {
 
     // intra e inter
     public static Pair<Integer, Integer> toEntry(Pair<Integer, Integer> jk, Pair<Integer, Integer> xz, int entry_size) {
-        int x, z;
+        final int x, z;
         x = xz.getFirst() * entry_size + jk.getFirst();
         z = xz.getSecond() * entry_size + jk.getSecond();
         return Pair.of(x, z);

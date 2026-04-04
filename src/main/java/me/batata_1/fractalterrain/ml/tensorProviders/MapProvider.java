@@ -12,27 +12,19 @@ import java.nio.FloatBuffer;
 public class MapProvider {
 
     public static OnnxTensor sampleMap(Pair<Integer, Integer> xz, long[] shape) throws OrtException {
-        //        instance.getServer();
-        // expects 5 channels
-        if (shape[0] != 5) {
-            RuntimeException e = new RuntimeException("shapes do not match");
-            e.printStackTrace();
-            throw e;
-        }
-
+        if (shape[0] != 5) throw new RuntimeException("shapes do not match");
         int size = 1;
         for (long l : shape) size *= (int) l;
-        FloatBuffer noise = FloatBuffer.allocate(size);
+        final FloatBuffer noise = FloatBuffer.allocate(size);
         int of = -1;
         if (2 < shape.length) of += shape.length - 2;
-
         for (int i = 0; i < 5; i++) {
             for (int j = 0; j < shape[of + 1]; j++) {
                 for (int k = 0; k < shape[of + 2]; k++) {
-                    var coord = toEntry(Pair.of(j, k), xz, (int) (shape[1] / 2));
-                    int x = coord.getFirst();
-                    int z = coord.getSecond();
-                    double val =
+                    final var coord = toEntry(Pair.of(j, k), xz, (int) (shape[1] / 2));
+                    final int x = coord.getFirst();
+                    final int z = coord.getSecond();
+                    final double val =
                             switch (i) {
                                 case 0 -> sampleElev(x, z) * elevSettings.amplitude();
                                 case 1 ->
@@ -45,13 +37,11 @@ public class MapProvider {
                                             * samplePrecipitation(x, z);
                                 default -> throw new IllegalStateException("Unexpected value in creating map: " + i);
                             };
-
                     noise.put((float) val);
                 }
             }
         }
         noise.flip();
-
         return OnnxTensor.createTensor(ENV, noise, shape);
     }
 }

@@ -48,15 +48,13 @@ public class Models {
         Optional<Resource> resource =
                 FractalTerrainInstance.getServer().getResourceManager().getResource(modelId);
         if (resource.isEmpty()) throw new RuntimeException("could not find model weights location");
-        try (var opt = new OrtSession.SessionOptions()) {
-
+        try (final var opt = new OrtSession.SessionOptions()) {
             opt.setSessionLogLevel(OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL);
             if (key.contains("&dml")) opt.addDirectML(0);
             opt.setMemoryPatternOptimization(true);
             opt.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
-
             InputStream inputStream = resource.get().getInputStream();
-            byte[] modelArr = inputStream.readAllBytes();
+            final byte[] modelArr = inputStream.readAllBytes();
             return ENV.createSession(modelArr, opt);
         } catch (IOException | OrtException e) {
             throw new RuntimeException(e);

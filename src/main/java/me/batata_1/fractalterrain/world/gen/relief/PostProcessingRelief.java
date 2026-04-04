@@ -60,7 +60,7 @@ public class PostProcessingRelief {
             try {
                 assert average != null;
                 assert take_coarse_grad != null;
-                OnnxTensor t = (OnnxTensor) take_coarse_grad
+                final OnnxTensor t = (OnnxTensor) take_coarse_grad
                         .get().run(Map.of("x", (OnnxTensor) average.get().run(Map.of(
                                         "x", decodeAndFinish.getCoarseTilesAsTensor(xz.getFirst(), xz.getSecond())))
                                 .get(0)))
@@ -71,11 +71,11 @@ public class PostProcessingRelief {
             }
         });
         final_tiles = new EntryStorage<>("final", Tile::new, 512, (xz) -> {
-            int x = xz.getFirst() << 1;
-            int z = xz.getSecond() << 1;
+            final int x = xz.getFirst() << 1;
+            final int z = xz.getSecond() << 1;
             try {
                 assert average != null;
-                OnnxTensor t = (OnnxTensor) average.get().run(Map.of("x", decodeAndFinish.getTilesAsTensor(x, z)))
+                final OnnxTensor t = (OnnxTensor) average.get().run(Map.of("x", decodeAndFinish.getTilesAsTensor(x, z)))
                         .get(0);
 
                 DebugTensors.seeFinal(t,x,z);
@@ -96,6 +96,10 @@ public class PostProcessingRelief {
 
     public float getBlurredGrad(Pair<Integer, Integer> xz) {
         return getValue(xz, 3);
+    }
+
+    public float getRes(Pair<Integer,Integer> xz ) {
+        return getValue(xz,4);
     }
 
     private float getValue(Pair<Integer, Integer> xz, int ch) {
@@ -124,16 +128,11 @@ public class PostProcessingRelief {
     }
 
     public float getRawGrad(Pair<Integer, Integer> xz) {
-        //        if(final_raw_tiles.inBorder(convertCoarse(xz))) return
-        // Gradients.entryGradMagnitude(convertCoarse(xz).getFirst(),
-        // convertCoarse(xz).getSecond(),0,final_raw_tiles);
-        //        return getCoarseValue(xz,1);
         return (float) Math.tanh(getBlurredGrad(xz) / 1000.0);
     }
 
     public float getRawTemp(Pair<Integer, Integer> xz) {
-
-        double val = ContinentalScaleMapProvider.sampleTemperature(
+        final double val = ContinentalScaleMapProvider.sampleTemperature(
                 convertCoarse(xz).getFirst(), convertCoarse(xz).getSecond());
         return (float) val;
     }
@@ -180,7 +179,7 @@ public class PostProcessingRelief {
         public OnnxTensor[] runInference(int x, int z)
                 throws ExecutionException, OrtException, InterruptedException, IOException {
 
-            var xz = Pair.of(x, z);
+            final var xz = Pair.of(x, z);
 
             var inputs = Map.of(
                     "latents", latent.getTilesAsTensor(x, z),
@@ -197,7 +196,7 @@ public class PostProcessingRelief {
                     "grad_blur", OnnxTensor.createTensor(ENV, settings.grad_blur()),
                     "tau", OnnxTensor.createTensor(ENV, settings.tau()));
 
-            var out = (OnnxTensor) fuzed_finisher.get().run(inputs).get(0);
+            final var out = (OnnxTensor) fuzed_finisher.get().run(inputs).get(0);
             isNan(out);
             return slice(out);
         }

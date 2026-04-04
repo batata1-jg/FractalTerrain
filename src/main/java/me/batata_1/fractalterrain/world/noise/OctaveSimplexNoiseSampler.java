@@ -66,7 +66,7 @@ public class OctaveSimplexNoiseSampler {
     public <T> float sample(T x, T z) {
         double resp = 0;
         for (int i = 0; i < numOctaves; i++) {
-            resp += sampler.sample((double)x / periods[i] + i, (double)z / periods[i] + i) * amplitudes[i];
+            resp += sampler.sample(((Number) x).doubleValue() / periods[i] + i, ((Number) z).doubleValue() / periods[i] + i) * amplitudes[i];
         }
         return (float) (resp / norm);
     }

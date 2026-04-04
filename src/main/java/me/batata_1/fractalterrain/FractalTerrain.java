@@ -36,10 +36,8 @@ public class FractalTerrain implements ModInitializer {
 
     @Override
     public void onInitialize() {
-
         DynamicRegistries.register(FractalTerrainRegistryKeys.FRACTAL_TERRAIN_CHUNK_GENERATOR_SETTINGS,FractalTerrainChunkGenerator.Settings.CODEC);
         DynamicRegistries.register(FractalTerrainRegistryKeys.POST_PROCESSING_SETTINGS, PostProcessingRelief.Settings.CODEC);
-
         Registry.register(Registries.CHUNK_GENERATOR , Reference.identifier("chunk_generator"), FractalTerrainChunkGenerator.CODEC);
         Registry.register(
                 Registries.BIOME_SOURCE, Reference.identifier("biome_source"), FractalTerrainBiomeSource.CODEC);

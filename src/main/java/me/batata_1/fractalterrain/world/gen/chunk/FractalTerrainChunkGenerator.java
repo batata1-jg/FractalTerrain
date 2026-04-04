@@ -82,7 +82,8 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         reliefInterpolation = new Interpolation(settings.value().scale());
         reliefGradInterpolation = new Interpolation(settings.value().scale());
         reliefResInterpolation = new Interpolation(settings.value().scale());
-        reliefLowFreqInterpolation = new Interpolation(settings.value().scale() << 6);
+        // TODO: implementar isso direito ou ser mais inteligente e descobri qual dos caras la eu tenho q usar
+        reliefLowFreqInterpolation = new Interpolation(settings.value().scale() * (1 << 6));
         initReliefRelatedInterpolation();
         strataInterpolation = new Interpolation(settings.value().scale());
         strata = RockStrata.AngledPlaneStrata.create(9,8);
@@ -104,6 +105,13 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
                 throw new RuntimeException(e);
             }
         });
+        reliefResInterpolation.setF( xz -> {
+            try {
+                return reliefSource.get().getRes(xz);
+            } catch (InterruptedException | ExecutionException e) {
+                throw new RuntimeException(e);
+            }
+        });
     }
 
     @Override
@@ -114,9 +122,9 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
     public RegistryEntry<Settings> getSettings() { return settings; }
 
     private int getBaseHeight(int x , int z) {
-        double interpolatedRelief = reliefInterpolation.interpolateSmoothStep(x,z);
+        final double interpolatedRelief = reliefInterpolation.interpolateSmoothStep(x,z);
 
-        return (int) computeBaseStrata(x,z,interpolatedRelief);
+        return (int) interpolatedRelief;
     }
 
     //TODO add more control to strata
@@ -124,9 +132,9 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
     private void initStrataInterpolation() {
         strataInterpolation.setF( xz -> {
             try {
-                double h = reliefSource.get().getElev(xz);
-                double hStrat = strata.transformY(xz.getFirst(), xz.getSecond(), h);
-                double mask = Math.min(1.0, Math.exp(-reliefSource.get().getRefinedGrad(xz) / 1000.0));
+                final double h = reliefSource.get().getElev(xz);
+                final double hStrat = strata.transformY(xz.getFirst(), xz.getSecond(), h);
+                final double mask = Math.min(1.0, Math.exp(-reliefSource.get().getRefinedGrad(xz) / 1000.0));
                 return (float) MaskedOps.DOUBLE.Add(h, hStrat, mask);
             } catch (InterruptedException | ExecutionException e) {
                 throw new RuntimeException(e);
@@ -135,8 +143,8 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
     }
 
     private double computeBaseStrata(int x , int z, double h) {
-        double hStrat = strata.transformY(x,z,h);
-        double mask = Math.min(1.0,Math.exp( -reliefGradInterpolation.interpolateSmoothStep(x,z) / 1000.0));
+        final double hStrat = strata.transformY(x,z,h);
+        final double mask = Math.min(1.0,Math.exp( -reliefGradInterpolation.interpolateSmoothStep(x,z) / 1000.0));
         return MaskedOps.DOUBLE.Add(h,hStrat,mask) * 0.5 + strataInterpolation.interpolateBilinear(x,z) * 0.5;
     }
 
@@ -177,12 +185,13 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
 
     private Chunk populateNoise(Chunk chunk) {
         ChunkPos chunkPos = chunk.getPos();
-        int startingX = chunkPos.getStartX();
-        int startingZ = chunkPos.getStartZ();
+        final int startingX = chunkPos.getStartX();
+        final int startingZ = chunkPos.getStartZ();
+        final int bottom = settings.value().bottomY();
         for(int dx=0 ; dx<16 ; dx++) {
             for(int dz=0 ; dz<16 ; dz++) {
-                int h = getBaseHeight(startingX+dx,startingZ+dz)  + settings.value().seaLevel()-1;
-                for(int y = settings.value().bottomY(); y<=h ; y++) {
+                final int h = getBaseHeight(startingX+dx,startingZ+dz)  + settings.value().seaLevel()-1;
+                for(int y = bottom; y<=h ; y++) {
                     chunk.setBlockState(new BlockPos(startingX+dx,y,startingZ+dz),DEFAUT,false);
                 }
             }

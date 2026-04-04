@@ -52,7 +52,7 @@ public class EntryStorage<T extends Tile> {
         String[] createdTiles = file.list();
         if (createdTiles != null)
             for (String tile : createdTiles) {
-                var xz = interpretTileName(tile);
+                final var xz = interpretTileName(tile);
                 if (xz == null) {
                     LOGGER.error("invalid file, skipping");
                     continue;
@@ -65,7 +65,7 @@ public class EntryStorage<T extends Tile> {
     // xz global coords
 
     public boolean inBorder(Pair<Integer, Integer> xz) {
-        var intra = toIntra(xz, entry_len);
+        final var intra = toIntra(xz, entry_len);
         return intra.getFirst() == entry_len - 1
                 || intra.getFirst() == 0
                 || intra.getSecond() == entry_len - 1
@@ -73,20 +73,20 @@ public class EntryStorage<T extends Tile> {
     }
 
     public float getReverseValue(int x, int z) throws ExecutionException, InterruptedException {
-        T entry = getEntry(toInter(Pair.of(x, z), entry_len)).get();
-        var intra = toIntra(Pair.of(x, z), entry_len);
+        final T entry = getEntry(toInter(Pair.of(x, z), entry_len)).get();
+        final var intra = toIntra(Pair.of(x, z), entry_len);
         return entry.entryAt(new long[] {intra.getFirst(), entry_len - 1 - intra.getSecond()});
     }
 
     public float getValue(int x, int z) throws ExecutionException, InterruptedException {
-        T entry = getEntry(toInter(Pair.of(x, z), entry_len)).get();
-        var intra = toIntra(Pair.of(x, z), entry_len);
+        final T entry = getEntry(toInter(Pair.of(x, z), entry_len)).get();
+        final var intra = toIntra(Pair.of(x, z), entry_len);
         return entry.entryAt(new long[] {intra.getFirst(), intra.getSecond()});
     }
 
     public float getValue(Pair<Integer, Integer> xz, int ch) throws ExecutionException, InterruptedException {
-        T entry = getEntry(toInter(xz, entry_len)).get();
-        var intra = toIntra(xz, entry_len);
+        final T entry = getEntry(toInter(xz, entry_len)).get();
+        final var intra = toIntra(xz, entry_len);
         return entry.entryAt(new long[] {ch, intra.getFirst(), intra.getSecond()});
     }
 
@@ -99,7 +99,7 @@ public class EntryStorage<T extends Tile> {
     // xz inter coords
     public synchronized void addOrOverwriteEntry(CompletableFuture<T> t, Pair<Integer, Integer> xz) {
 
-        CompletableFuture<T> ct = t.thenApply(entry -> {
+        final CompletableFuture<T> ct = t.thenApply(entry -> {
             try {
                 entry.serialize(getEntryDir() + "/" + giveNameToTile(xz));
             } catch (IOException e) {
@@ -125,9 +125,9 @@ public class EntryStorage<T extends Tile> {
 
         if (GENERATED_ENTRIES.contains(xz)) {
             //            LOGGER.info("reading_tile");
-            CompletableFuture<T> ct = CompletableFuture.supplyAsync(
+            final CompletableFuture<T> ct = CompletableFuture.supplyAsync(
                     () -> {
-                        File file = new File(getEntryDir() + "/" + giveNameToTile(xz) + ".ser");
+                        final File file = new File(getEntryDir() + "/" + giveNameToTile(xz) + ".ser");
                         if (!file.exists()) {
 
                             LOGGER.error(
@@ -139,7 +139,7 @@ public class EntryStorage<T extends Tile> {
                         }
                         try {
 
-                            T t = empty_entry_maker.get();
+                            final T t = empty_entry_maker.get();
                             t.deserialize(getEntryDir() + "/" + giveNameToTile(xz));
                             return t;
                         } catch (IOException | ClassNotFoundException e) {

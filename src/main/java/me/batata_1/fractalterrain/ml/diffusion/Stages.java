@@ -63,43 +63,31 @@ public class Stages {
         }
 
         @Override
-        public OnnxTensor[] runInference(int x, int z)
+        public OnnxTensor[] runInference(final int x, final int z)
                 throws OrtException, ExecutionException, InterruptedException, IOException {
-
-            FloatBuffer fl = FloatBuffer.allocate(4 * 4 * 7);
-
-            int xi = x;
-            int zi = z;
+            final FloatBuffer fl = FloatBuffer.allocate(4 * 4 * 7);
             for (int i = 0; i < 7; i++)
-                for (int j = xi; j < xi + 4; j++)
-                    for (int k = zi; k < zi + 4; k++) fl.put(coarseModel.getValue(Pair.of(j, k), i));
+                for (int j = x; j < x + 4; j++)
+                    for (int k = z; k < z + 4; k++) fl.put(coarseModel.getValue(Pair.of(j, k), i));
             fl.flip();
-            OnnxTensor coarse_tensor = OnnxTensor.createTensor(ENV, fl, new long[] {7, 4, 4});
-
-            OnnxTensor sample;
+            final OnnxTensor coarse_tensor = OnnxTensor.createTensor(ENV, fl, new long[] {7, 4, 4});
+            final OnnxTensor sample;
             if (latentStageInstanceNumber == 0) sample = sampleAvgNull(new long[] {6, 64, 64});
             else {
                 assert prev_state != null;
                 sample = prev_state.getTilesAsTensor(x, z);
             }
-
             isNan(sample);
-
-            var xz = Pair.of(x, z);
-
-            OnnxTensor noise = sampleNoise(xz, new long[] {1, 5, 64, 64}, 3);
-
+            final var xz = Pair.of(x, z);
+            final OnnxTensor noise = sampleNoise(xz, new long[] {1, 5, 64, 64}, 3);
             //        seeTensor(noise,"noise latent_t" + latentStageInstanceNumber + "__" + xz.getFirst()
             // + " " + xz.getSecond(), false);
-
-            var inputs = Map.of(
+           final var inputs = Map.of(
                     "sample", sample,
                     "noise", noise,
                     "cond_img", coarse_tensor,
                     "t_tensor", OnnxTensor.createTensor(ENV, tSteps[latentStageInstanceNumber]));
-
-            var out = (OnnxTensor) model.get().run(inputs).get(0);
-
+           final var out = (OnnxTensor) model.get().run(inputs).get(0);
             isNan(out);
             return slice(out);
         }
@@ -115,7 +103,6 @@ public class Stages {
 
         protected CoarseStage() throws OrtException, IOException {
             super(new EntryStorage<>("coarse", TileRegion::new, 32), 32 * 32 * 7, new long[] {7, 32, 32});
-
             prep = Models.getOrCreateDirectModel("models/prepare_coarse");
             first_order = Models.getOrCreateModel("models/run_first_order_coarse");
             second_order = Models.getOrCreateModel("models/run_second_order_coarse");
@@ -146,18 +133,15 @@ public class Stages {
         }
 
         @Override
-        public OnnxTensor[] runInference(int x, int z) throws OrtException, ExecutionException, InterruptedException {
-            var xz = Pair.of(x, z);
-
+        public OnnxTensor[] runInference(final int x, final int z) throws OrtException, ExecutionException, InterruptedException {
+            final var xz = Pair.of(x, z);
             var inputs = Map.of(
                     "synthetic_map", sampleMap(xz, new long[] {5, 64, 64}),
                     "cond_noise", sampleNoise(xz, new long[] {5, 64, 64}, 1),
                     "sample_noise", sampleNoise(xz, new long[] {6, 64, 64}, 2));
 
             var out = prep.get().run(inputs);
-
-            OnnxTensor img = (OnnxTensor) out.get(1);
-
+            final OnnxTensor img = (OnnxTensor) out.get(1);
             for (int i = 0; i < sigmas.length - 1; i++) {
                 if (i == 0 || i == sigmas.length - 2) {
                     inputs = Map.of(
@@ -185,10 +169,8 @@ public class Stages {
                 out = second_order.get().run(inputs);
             }
             inputs = Map.of("sample", (OnnxTensor) out.get(0));
-
-            var finalOut = (OnnxTensor) output.get().run(inputs).get(0);
+            final var finalOut = (OnnxTensor) output.get().run(inputs).get(0);
             isNan(finalOut);
-
             return slice(finalOut);
         }
     }

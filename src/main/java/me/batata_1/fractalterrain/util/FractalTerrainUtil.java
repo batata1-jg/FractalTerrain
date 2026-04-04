@@ -30,7 +30,7 @@ public class FractalTerrainUtil {
     }
 
     public static Pair<Integer, Integer> interpretTileName(String s) {
-        int m = s.indexOf('-');
+        final int m = s.indexOf('-');
         if (m == -1) {
             LOGGER.error("invalid in tiles dir (no '-')");
             return null;

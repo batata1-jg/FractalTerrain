@@ -22,8 +22,8 @@ public class MlUtil {
     }
 
     public static OnnxTensor[] slice(OnnxTensor t) throws OrtException, ExecutionException, InterruptedException {
-        var out = slicer.get().run(Map.of("x", t));
-        OnnxTensor[] outTensor = new OnnxTensor[4];
+        final var out = slicer.get().run(Map.of("x", t));
+        final OnnxTensor[] outTensor = new OnnxTensor[4];
         for (int i = 0; i < 4; i++) {
             outTensor[i] = (OnnxTensor) out.get(i);
         }
@@ -31,8 +31,8 @@ public class MlUtil {
     }
 
     public static OnnxTensor[] slice2d(OnnxTensor t) throws OrtException, ExecutionException, InterruptedException {
-        var out = slicer2d.get().run(Map.of("x", t));
-        OnnxTensor[] outTensor = new OnnxTensor[4];
+        final var out = slicer2d.get().run(Map.of("x", t));
+        final OnnxTensor[] outTensor = new OnnxTensor[4];
         for (int i = 0; i < 4; i++) {
             outTensor[i] = (OnnxTensor) out.get(i);
         }
@@ -40,7 +40,7 @@ public class MlUtil {
     }
 
     public static OnnxTensor merge(OnnxTensor[] t) throws OrtException, ExecutionException, InterruptedException {
-        var in = Map.of(
+        final var in = Map.of(
                 "a", t[2],
                 "b", t[0],
                 "c", t[3],
