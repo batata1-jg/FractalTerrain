@@ -273,13 +273,19 @@ public class DebugTensors {
         }
     }
 
-    public static synchronized void debug() throws ExecutionException, InterruptedException {
+    public static synchronized void debug() {
         try {
             seeTensor(MapProvider.sampleMap(Pair.of(-32, -32), new long[] {5, 64, 64}), "feedElev", false, 0);
         } catch (OrtException | IOException e) {
             throw new RuntimeException(e);
         }
-        toTiffChannel(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0, 0), 0, "tensor");
+        try {
+            toTiffChannel(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0, 0), 4, "tensor");
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } catch (ExecutionException e) {
+            throw new RuntimeException(e);
+        }
         //        for(int i=-4 ; i<4 ; i++) {
         //            for(int j=-4 ; j<4 ; j++) {
         //                toTiffChannel(FractalTerrainInstance.reliefSource.getTilesAsTensor(i,j),0,

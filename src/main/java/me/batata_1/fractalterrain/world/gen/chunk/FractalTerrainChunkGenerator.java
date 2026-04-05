@@ -125,6 +125,17 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         return (int) interpolatedRelief;
     }
 
+    private int[] getBaseHeightArr(final int startX , final int startZ) {
+        final int[] heights = new int[1<<8];
+        final int seaLevel = + settings.value().seaLevel() - 1;
+        for (int dx = 0; dx < 16; dx++) {
+            for (int dz = 0; dz < 16; dz++) {
+                heights[(dx<<4)+dz] = getBaseHeight(startX + dx, startZ + dz) + seaLevel;
+            }
+        }
+        return heights;
+    }
+
     // TODO add more control to strata
 
     private void initStrataInterpolation() {
@@ -147,27 +158,6 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
     }
 
     @Override
-    public void carve(
-            ChunkRegion chunkRegion,
-            long seed,
-            NoiseConfig noiseConfig,
-            BiomeAccess biomeAccess,
-            StructureAccessor structureAccessor,
-            Chunk chunk,
-            GenerationStep.Carver carverStep) {}
-
-    @Override
-    public void buildSurface(ChunkRegion region, StructureAccessor structures, NoiseConfig noiseConfig, Chunk chunk) {}
-
-    @Override
-    public void populateEntities(ChunkRegion region) {}
-
-    @Override
-    public int getWorldHeight() {
-        return settings.value().topY();
-    }
-
-    @Override
     public CompletableFuture<Chunk> populateNoise(
             Executor executor,
             Blender blender,
@@ -177,23 +167,83 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         return CompletableFuture.supplyAsync(() -> this.populateNoise(chunk), executor);
     }
 
-    private Chunk populateNoise(Chunk chunk) {
-        ChunkPos chunkPos = chunk.getPos();
+    private Chunk populateNoise(final Chunk chunk) {
+        final ChunkPos chunkPos = chunk.getPos();
         final int startingX = chunkPos.getStartX();
         final int startingZ = chunkPos.getStartZ();
         final int bottom = settings.value().bottomY();
+        final int[] reliefBaseHeight = getBaseHeightArr(startingX,startingZ);
         for (int dx = 0; dx < 16; dx++) {
             for (int dz = 0; dz < 16; dz++) {
-                final int h = getBaseHeight(startingX + dx, startingZ + dz)
-                        + settings.value().seaLevel()
-                        - 1;
-                for (int y = bottom; y <= h; y++) {
+                for (int y = bottom; y <= reliefBaseHeight[(dx<<4)+dz]; y++) {
                     chunk.setBlockState(new BlockPos(startingX + dx, y, startingZ + dz), DEFAUT, false);
                 }
             }
         }
-
+        for (int dx = 0; dx < 16; dx++) {
+            for (int dz = 0; dz < 16; dz++) {
+                this.buildSurface(startingX + dx,startingZ + dz,chunk, dx,dz, reliefBaseHeight);
+            }
+        }
         return chunk;
+    }
+
+    @Override
+    public void carve(
+            ChunkRegion chunkRegion,
+            long seed,
+            NoiseConfig noiseConfig,
+            BiomeAccess biomeAccess,
+            StructureAccessor structureAccessor,
+            Chunk chunk,
+            GenerationStep.Carver carverStep) {}
+
+    private void buildSurface(final int x, final int z,final Chunk chunk,final int dx,final int dz,final int[] reliefBaseHeight) {
+        // first layer
+        chunk.setBlockState(new BlockPos(x, reliefBaseHeight[((dx<<4)+dz)], z),topLayer(x,z),false);
+
+
+
+    }
+
+    private BlockState topLayer(final int x, final int z) {
+        return applyTerrainGradient(x,z);
+    }
+
+    private static final BlockState[] terrainGradient = {
+            Blocks.OBSIDIAN.getDefaultState(),
+            Blocks.BLACKSTONE.getDefaultState(),
+            Blocks.POLISHED_BLACKSTONE.getDefaultState(),
+            Blocks.SMOOTH_BASALT.getDefaultState(),
+            Blocks.COBBLED_DEEPSLATE.getDefaultState(),
+            Blocks.CYAN_TERRACOTTA.getDefaultState(),
+            Blocks.DEEPSLATE.getDefaultState(),
+            Blocks.TUFF.getDefaultState(),
+            Blocks.COBBLESTONE.getDefaultState(),
+            Blocks.STONE.getDefaultState(),
+            Blocks.ANDESITE.getDefaultState(),
+            Blocks.DIORITE.getDefaultState(),
+            Blocks.CALCITE.getDefaultState(),
+            Blocks.SNOW_BLOCK.getDefaultState()
+    };
+
+    public BlockState applyTerrainGradient(final int x , final int z) {
+        final int colors = terrainGradient.length-1;
+        final int idx = (int) (Math.floor((Math.tanh(reliefResInterpolation.interpolateBilinear(x,z) / 15.0 )*0.5 + 0.5)*colors + 0.5));
+        return terrainGradient[idx];
+    }
+
+
+    @Override
+    public void buildSurface(ChunkRegion region, StructureAccessor structures, NoiseConfig noiseConfig, Chunk chunk) {
+    }
+
+    @Override
+    public void populateEntities(ChunkRegion region) {}
+
+    @Override
+    public int getWorldHeight() {
+        return settings.value().topY();
     }
 
     @Override

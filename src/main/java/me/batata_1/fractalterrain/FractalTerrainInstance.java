@@ -1,6 +1,7 @@
 package me.batata_1.fractalterrain;
 
 import static me.batata_1.fractalterrain.references.Reference.LOGGER;
+import static me.batata_1.fractalterrain.util.DebugTensors.debug;
 import static me.batata_1.fractalterrain.util.MlUtil.initUtil;
 
 import ai.onnxruntime.OrtEnvironment;
@@ -74,6 +75,7 @@ public class FractalTerrainInstance {
         ContinentalScaleMapProvider.initSamplers(seed);
         OctaveSimplexNoiseSampler.init(seed);
         Models.initialize();
+        debug();
         LOGGER.info("init set size: {}", OctaveSimplexNoiseSampler.getInitSetSize());
     }
 

@@ -78,6 +78,7 @@ public class Tile {
         checkRank(pos.length);
         int idx = 0;
         for (int i = 0; i < shape.length; i++) idx += (int) (cProd[i] * pos[i]);
+        if(idx >= entries.length) throw new RuntimeException("outOfBOundsTensor: " + Arrays.toString(pos));
         return entries[idx];
     }
 
@@ -130,7 +131,7 @@ public class Tile {
         coords[i] = ch;
         final float[] resp = new float[(int) (shape[shape.length - 1] * shape[shape.length - 2])];
         for (int k = 0; k < shape[shape.length - 1]; k++) {
-            for (int l = 0; k < shape[shape.length - 2]; l++) {
+            for (int l = 0; l < shape[shape.length - 2]; l++) {
                 coords[shape.length - 1] = k;
                 coords[shape.length - 2] = l;
                 resp[(int) (shape[shape.length - 2] * k + l)] = entryAt(coords);
