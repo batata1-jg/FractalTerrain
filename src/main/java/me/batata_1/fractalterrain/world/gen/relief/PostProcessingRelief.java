@@ -2,7 +2,7 @@ package me.batata_1.fractalterrain.world.gen.relief;
 
 import static me.batata_1.fractalterrain.FractalTerrainInstance.ENV;
 import static me.batata_1.fractalterrain.ml.tensorProviders.GaussianNoisePatchProvider.sampleNoise;
-import static me.batata_1.fractalterrain.util.DebugTensors.isNan;
+import static me.batata_1.fractalterrain.util.Debug.isNan;
 import static me.batata_1.fractalterrain.util.MlUtil.*;
 
 import ai.onnxruntime.OnnxTensor;
@@ -23,7 +23,7 @@ import me.batata_1.fractalterrain.storage.EntryStorage;
 import me.batata_1.fractalterrain.storage.StorageInterface;
 import me.batata_1.fractalterrain.storage.Tile;
 import me.batata_1.fractalterrain.storage.TileRegion;
-import me.batata_1.fractalterrain.util.DebugTensors;
+import me.batata_1.fractalterrain.util.Debug;
 import me.batata_1.fractalterrain.world.ContinentalScaleMapProvider;
 import net.minecraft.registry.entry.RegistryElementCodec;
 import net.minecraft.registry.entry.RegistryEntry;
@@ -80,7 +80,7 @@ public class PostProcessingRelief {
                         .run(Map.of("x", decodeAndFinish.getTilesAsTensor(x, z)))
                         .get(0);
 
-                DebugTensors.seeFinal(t, x, z);
+                Debug.seeFinal(t, x, z);
                 return new Tile(t);
             } catch (ExecutionException | IOException | InterruptedException | OrtException e) {
                 throw new RuntimeException(e);

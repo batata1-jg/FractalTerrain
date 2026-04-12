@@ -5,7 +5,7 @@ import static me.batata_1.fractalterrain.ml.tensorProviders.ConstantProvider.sam
 import static me.batata_1.fractalterrain.ml.tensorProviders.ConstantProvider.sampleConst;
 import static me.batata_1.fractalterrain.ml.tensorProviders.GaussianNoisePatchProvider.sampleNoise;
 import static me.batata_1.fractalterrain.ml.tensorProviders.MapProvider.sampleMap;
-import static me.batata_1.fractalterrain.util.DebugTensors.isNan;
+import static me.batata_1.fractalterrain.util.Debug.isNan;
 import static me.batata_1.fractalterrain.util.MlUtil.slice;
 
 import ai.onnxruntime.OnnxTensor;
@@ -21,7 +21,7 @@ import me.batata_1.fractalterrain.ml.Models;
 import me.batata_1.fractalterrain.storage.EntryStorage;
 import me.batata_1.fractalterrain.storage.StorageInterface;
 import me.batata_1.fractalterrain.storage.TileRegion;
-import me.batata_1.fractalterrain.util.DebugTensors;
+import me.batata_1.fractalterrain.util.Debug;
 
 public class Stages {
 
@@ -48,7 +48,7 @@ public class Stages {
             super(new EntryStorage<>("latent/" + startInstanceNum, TileRegion::new, 32), 32 * 32 * 6, new long[] {
                 6, 32, 32
             });
-            DebugTensors.debugLatentStageConstructor();
+            Debug.debugLatentStageConstructor();
             latentStageInstanceNumber = startInstanceNum;
             if (startInstanceNum == 0) {
                 prev_state = null;

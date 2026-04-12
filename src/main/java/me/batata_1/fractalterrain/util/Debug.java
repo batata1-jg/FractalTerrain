@@ -17,9 +17,12 @@ import me.batata_1.fractalterrain.FractalTerrainInstance;
 import me.batata_1.fractalterrain.ml.Models;
 import me.batata_1.fractalterrain.ml.tensorProviders.MapProvider;
 import me.batata_1.fractalterrain.storage.Tile;
+import me.batata_1.fractalterrain.world.noise.NoiseSampler;
+import me.batata_1.fractalterrain.world.noise.VoronoiNoiseSampler;
 import net.minecraft.util.WorldSavePath;
+import net.minecraft.world.biome.source.util.MultiNoiseUtil;
 
-public class DebugTensors {
+public class Debug {
 
     public static CompletableFuture<OrtSession> test_in;
 
@@ -122,6 +125,41 @@ public class DebugTensors {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public static void seeNoise(NoiseSampler sampler , String name, int x , int z , int size) throws IOException {
+
+        Path path = FractalTerrainInstance.getServer()
+                .getSavePath(WorldSavePath.ROOT)
+                .normalize();
+        sampler.initSampler(FractalTerrainInstance.getServer().getOverworld().getSeed());
+        File outputFile = new File(path + "/" + name + ".png");
+        LOGGER.info("O caminho eh: {} , ", outputFile.getPath());
+        float max = -1000000;
+        float min = 1000000;
+        for (int i = 0; i < size; i++)
+            for (int j = 0; j < size; j++) {
+                max = Math.max(max, sampler.sample(i,j));
+                min = Math.min(min, sampler.sample(i,j));
+            }
+        LOGGER.info(" bounds of amplitude min are [{},{}] for {}", min, max, name);
+        final float eps = 1e-5F;
+        int[] arr = new int[size*size];
+        for (int i = 0; i < size; i++) {
+            for (int j = 0; j < size; j++) {
+
+                float vi = (sampler.sample(i,j) - min) / (max - min + eps);
+                int v = (int) (255F * vi);
+
+                arr[(int) (j + i * size)] = v;
+            }
+        }
+        BufferedImage outputImage =
+                new BufferedImage(size, size, BufferedImage.TYPE_BYTE_GRAY);
+        WritableRaster raster = outputImage.getRaster();
+        raster.setSamples(0, 0, size, size, 0, arr);
+        ImageIO.write(outputImage, "png", outputFile);
+        System.out.println("end");
     }
 
     public static void debugModels() {
@@ -276,16 +314,19 @@ public class DebugTensors {
     public static synchronized void debug() {
         try {
             seeTensor(MapProvider.sampleMap(Pair.of(-32, -32), new long[] {5, 64, 64}), "feedElev", false, 0);
-        } catch (OrtException | IOException e) {
-            throw new RuntimeException(e);
-        }
-        try {
+
             toTiffChannel(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0, 0), 4, "tensor");
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } catch (ExecutionException e) {
+
+
+            VoronoiNoiseSampler s = new VoronoiNoiseSampler(64,1);
+
+            seeNoise(s,"voronoi",0,0,512);
+
+        } catch (InterruptedException | ExecutionException | OrtException | IOException e) {
             throw new RuntimeException(e);
         }
+
+
         //        for(int i=-4 ; i<4 ; i++) {
         //            for(int j=-4 ; j<4 ; j++) {
         //                toTiffChannel(FractalTerrainInstance.reliefSource.getTilesAsTensor(i,j),0,
