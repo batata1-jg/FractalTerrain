@@ -44,7 +44,7 @@ public abstract class RockStrata {
         return y0 + settings.layerSpacing() * curLayer;
     }
 
-    public abstract double transformY(double x, double z, double y);
+    public abstract double sample(double x, double z, double y);
 
     public static final class AngledPlaneStrata extends RockStrata {
 
@@ -68,7 +68,7 @@ public abstract class RockStrata {
         }
 
         @Override
-        public double transformY(double x, double z, double y) {
+        public double sample(double x, double z, double y) {
             try {
                 int curLayer = getCurLayer(new double[] {x, z}, y);
                 return super.transform(new double[] {x, z}, y);

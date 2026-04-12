@@ -1,15 +1,14 @@
 package me.batata_1.fractalterrain.world.noise;
 
+import java.awt.font.NumericShaper;
 import java.util.*;
 import java.util.function.Function;
 import net.minecraft.util.math.noise.SimplexNoiseSampler;
 import net.minecraft.util.math.random.Random;
 import org.jetbrains.annotations.Nullable;
 
-public class OctaveSimplexNoiseSampler {
+public class OctaveSimplexNoiseSampler extends NoiseSampler {
 
-    private static final Set<OctaveSimplexNoiseSampler> INIT_SET = Collections.synchronizedSet(new HashSet<>());
-    private final long seedOffset;
     private final int numOctaves;
     private SimplexNoiseSampler sampler = null;
     private final double[] amplitudes;
@@ -25,8 +24,8 @@ public class OctaveSimplexNoiseSampler {
             double persistence,
             @Nullable Function<Double, Double> periodDecay,
             @Nullable Function<Double, Double> amplitudeDecay) {
+        super(seedOffset);
         INIT_SET.add(this);
-        this.seedOffset = seedOffset;
         this.numOctaves = numOctaves;
         periods = new double[numOctaves];
         amplitudes = new double[numOctaves];
@@ -45,28 +44,19 @@ public class OctaveSimplexNoiseSampler {
         this.norm = norm;
     }
 
-    public static synchronized void init(long seed) {
-        OctaveSimplexNoiseSampler[] toInit = INIT_SET.toArray(new OctaveSimplexNoiseSampler[0]);
-        for (var s : toInit) {
-            s.initSampler(seed);
-        }
-    }
-
-    public static synchronized int getInitSetSize() {
-        return INIT_SET.size();
-    }
-
+    @Override
     public synchronized void initSampler(long seed) {
         sampler = new SimplexNoiseSampler(Random.create(seed + seedOffset));
         INIT_SET.remove(this);
     }
 
     // always between -1 and 1
-    public <T> float sample(T x, T z) {
+    @Override
+    public float sample(Number x, Number z) {
         double resp = 0;
         for (int i = 0; i < numOctaves; i++) {
             resp += sampler.sample(
-                            ((Number) x).doubleValue() / periods[i] + i, ((Number) z).doubleValue() / periods[i] + i)
+                            x.doubleValue() / periods[i] + i, z.doubleValue() / periods[i] + i)
                     * amplitudes[i];
         }
         return (float) (resp / norm);

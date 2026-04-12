@@ -144,7 +144,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         strataInterpolation.setF(xz -> {
             try {
                 final double h = reliefSource.get().getElev(xz);
-                final double hStrat = strata.transformY(xz.getFirst(), xz.getSecond(), h);
+                final double hStrat = strata.sample(xz.getFirst(), xz.getSecond(), h);
                 final double mask = Math.min(1.0, Math.exp(-reliefSource.get().getRefinedGrad(xz) / 1000.0));
                 return (float) MaskedOps.DOUBLE.Add(h, hStrat, mask);
             } catch (InterruptedException | ExecutionException e) {
@@ -154,7 +154,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
     }
 
     private double computeBaseStrata(int x, int z, double h) {
-        final double hStrat = strata.transformY(x, z, h);
+        final double hStrat = strata.sample(x, z, h);
         final double mask = Math.min(1.0, Math.exp(-reliefGradInterpolation.interpolateSmoothStep(x, z) / 1000.0));
         return MaskedOps.DOUBLE.Add(h, hStrat, mask) * 0.5 + strataInterpolation.interpolateBilinear(x, z) * 0.5;
 ////        return MaskedOps.DOUBLE.Add(h,hStrat,mask) * 0.5 + reliefInterpolation.interpolateBilinear(x,z) + 0.5;
