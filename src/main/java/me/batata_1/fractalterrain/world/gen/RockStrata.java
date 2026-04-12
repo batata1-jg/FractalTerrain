@@ -60,7 +60,7 @@ public abstract class RockStrata {
                 double phi = noiseSamplerZ.sample(doubles[0], doubles[1]) * Math.PI / 8.0;
                 return Math.tan(phi) * (Math.sin(theta) * doubles[0] + Math.cos(theta) * doubles[1]);
             });
-            //            super.settings.layer_function.complete(doubles -> 0.25*doubles[0] + -0.5*doubles[1]);
+//                        super.settings.layer_function.complete(doubles -> 0.25*doubles[0] + -0.5*doubles[1]);
         }
 
         public static AngledPlaneStrata create(double layerSpacing, long seedOff) {
