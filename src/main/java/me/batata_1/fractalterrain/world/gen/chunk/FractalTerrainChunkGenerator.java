@@ -55,15 +55,21 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
     }
 
     private static final BlockState DEFAUT = Blocks.STONE.getDefaultState();
+    private static final BlockState[] Rocks = new BlockState[]{
+            Blocks.STONE.getDefaultState(),
+            Blocks.DIORITE.getDefaultState(),
+            Blocks.ANDESITE.getDefaultState(),
+            Blocks.GRANITE.getDefaultState()
+    };
+
 
     private final RegistryEntry<Settings> settings;
     private final Interpolation reliefInterpolation;
     private final Interpolation reliefGradInterpolation;
     private final Interpolation reliefResInterpolation;
+    private final Interpolation reliefBlurredInterpolation;
     private final Interpolation reliefLowFreqInterpolation;
-    private final Interpolation strataInterpolation;
     private final RockStrata strata;
-    private final float GRAD_NORM_CONST = 4;
 
 
     public static final Codec<FractalTerrainChunkGenerator> CODEC =
@@ -80,12 +86,11 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         reliefInterpolation = new Interpolation(settings.value().scale());
         reliefGradInterpolation = new Interpolation(settings.value().scale());
         reliefResInterpolation = new Interpolation(settings.value().scale());
+        reliefBlurredInterpolation = new Interpolation(settings.value().scale());
         // TODO: implementar isso direito ou ser mais inteligente e descobri qual dos caras la eu tenho q usar
         reliefLowFreqInterpolation = new Interpolation(settings.value().scale() * (1 << 6));
         initReliefRelatedInterpolation();
-        strataInterpolation = new Interpolation(settings.value().scale());
-        strata = RockStrata.AngledPlaneStrata.create(7, 8);
-        initStrataInterpolation();
+        strata = RockStrata.AngledPlaneStrata.create(9, 8,Rocks);
     }
 
     private void initReliefRelatedInterpolation() {
@@ -110,6 +115,13 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
                 throw new RuntimeException(e);
             }
         });
+        reliefBlurredInterpolation.setF( xz -> {
+            try {
+                return reliefSource.get().getBlurredElev(xz);
+            } catch (InterruptedException | ExecutionException e) {
+                throw new RuntimeException(e);
+            }
+        });
     }
 
     @Override
@@ -122,8 +134,10 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
     }
 
     private int getBaseHeight(int x, int z) {
+        final double interpolatedBlurredRelief = reliefBlurredInterpolation.interpolateBilinear(x,z);
         final double interpolatedRelief = reliefInterpolation.interpolateSmoothStep(x, z);
-        final double strata = computeBaseStrata(x,z,interpolatedRelief);
+        final double interpolatedGrad = reliefGradInterpolation.interpolateSmoothStep(x,z);
+        final double strata = this.strata.sample(x,z,interpolatedRelief,interpolatedGrad,interpolatedBlurredRelief);
         return (int) strata;
     }
 
@@ -138,28 +152,6 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         return heights;
     }
 
-    // TODO add more control to strata
-    // TODO add smarter strata
-    private void initStrataInterpolation() {
-        strataInterpolation.setF(xz -> {
-            try {
-                final double h = reliefSource.get().getElev(xz);
-                final double hStrat = strata.sample(xz.getFirst(), xz.getSecond(), h);
-                final double mask = Math.min(1.0, Math.exp(-reliefSource.get().getRefinedGrad(xz) / 1000.0));
-                return (float) MaskedOps.DOUBLE.Add(h, hStrat, mask);
-            } catch (InterruptedException | ExecutionException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
-
-    private double computeBaseStrata(int x, int z, double h) {
-        final double hStrat = strata.sample(x, z, h);
-        final double mask = Math.min(1.0, Math.exp(-reliefGradInterpolation.interpolateSmoothStep(x, z) / 1000.0));
-        return MaskedOps.DOUBLE.Add(h, hStrat, mask) * 0.5 + strataInterpolation.interpolateBilinear(x, z) * 0.5;
-////        return MaskedOps.DOUBLE.Add(h,hStrat,mask) * 0.5 + reliefInterpolation.interpolateBilinear(x,z) + 0.5;
-//        return MaskedOps.DOUBLE.Add(h,hStrat,mask);
-    }
 
     @Override
     public CompletableFuture<Chunk> populateNoise(
@@ -179,8 +171,9 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         final int[] reliefBaseHeight = getBaseHeightArr(startingX,startingZ);
         for (int dx = 0; dx < 16; dx++) {
             for (int dz = 0; dz < 16; dz++) {
+                final int curTopLayer = strata.getCurLayer(new double[]{startingX + dx,startingZ + dz},reliefBaseHeight[(dx<<4)+dz]);
                 for (int y = bottom; y <= reliefBaseHeight[(dx<<4)+dz]; y++) {
-                    chunk.setBlockState(new BlockPos(startingX + dx, y, startingZ + dz), DEFAUT, false);
+                    chunk.setBlockState(new BlockPos(startingX + dx, y, startingZ + dz), strata.getStrataBlock(curTopLayer + (int) Math.floor(y/strata.getSpacing())), false);
                 }
             }
         }
@@ -207,20 +200,28 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
     }
 
     private int sedimentDepth(final int x , final int z , final int maxDepth , final int minDepth , final float fallOf) {
-        final float grad = (float) (reliefGradInterpolation.interpolateBilinear(x,z) / GRAD_NORM_CONST);
+        final float grad = (float) (reliefGradInterpolation.interpolateBilinear(x,z));
         final float normDepth = 1 / ( 1 + grad*grad / fallOf);
         return quantize(normDepth,maxDepth-minDepth) + minDepth;
     }
 
+
+    final static BlockState GRASS_BLOCK = Blocks.GRASS_BLOCK.getDefaultState();
+    final static BlockState DIRT = Blocks.DIRT.getDefaultState();
+    private BlockState sedimentStrata(int x , int z , int distFromSurface , int surfaceHeight ) {
+        if( distFromSurface == surfaceHeight) return GRASS_BLOCK;
+        return DIRT;
+    }
+
     private void buildSurface(final int x, final int z,final Chunk chunk,final int dx,final int dz,final int[] reliefBaseHeight) {
         final int surfaceHeight = reliefBaseHeight[((dx<<4)+dz)];
-        final int sedimentLayerDepth = sedimentDepth(x,z,10,-1,10);
+        final int sedimentLayerDepth = sedimentDepth(x,z,10,-1,16);
         for(int i=0 ; i<=sedimentLayerDepth ; i++ ) {
             chunk.setBlockState(new BlockPos(x,surfaceHeight-i,z), sedimentStrata(x,z,surfaceHeight-i,surfaceHeight),false);
         }
 
         // first layer
-        chunk.setBlockState(new BlockPos(x, reliefBaseHeight[((dx<<4)+dz)], z),topLayer(x,z),false);
+//        chunk.setBlockState(new BlockPos(x, reliefBaseHeight[((dx<<4)+dz)], z),topLayer(x,z),false);
 
 
 

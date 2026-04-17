@@ -22,8 +22,17 @@ public class Models {
             new ConcurrentHashMap<>();
 
     public static synchronized void initialize() {
-        for (var e : MODEL_CACHE.entrySet()) {
-            e.getValue().complete(fetchModel(e.getKey()));
+        for (final var e : MODEL_CACHE.entrySet()) {
+            try {
+                e.getValue().complete(fetchModel(e.getKey()));
+            } catch (OrtException | IOException ex) {
+                LOGGER.warn("could not load model {} with dml, falling back to cpu",e.getKey());
+                try {
+                    e.getValue().complete(fetchModel(e.getKey().substring(0,e.getKey().indexOf("&dml")) + "&cpu"));
+                } catch (OrtException | IOException exc) {
+                    throw new RuntimeException(exc);
+                }
+            }
         }
     }
 
@@ -35,7 +44,7 @@ public class Models {
         return MODEL_CACHE.computeIfAbsent(path + "&dml", key -> new CompletableFuture<>());
     }
 
-    private static synchronized OrtSession fetchModel(String key) {
+    private static synchronized OrtSession fetchModel(String key) throws OrtException, IOException {
         String path = key.substring(0, key.indexOf("&"));
         Identifier modelId = Identifier.of(ModID, path + ".onnx");
         assert modelId != null;
@@ -51,8 +60,6 @@ public class Models {
             InputStream inputStream = resource.get().getInputStream();
             final byte[] modelArr = inputStream.readAllBytes();
             return ENV.createSession(modelArr, opt);
-        } catch (IOException | OrtException e) {
-            throw new RuntimeException(e);
         }
     }
 }

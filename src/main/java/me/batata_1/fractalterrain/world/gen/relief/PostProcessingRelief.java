@@ -37,14 +37,10 @@ public class PostProcessingRelief {
     private final EntryStorage<Tile> final_tiles;
     private final EntryStorage<Tile> final_raw_tiles;
 
-    public record Settings(float alpha, float beta, float gamma, float grad_blur, float tau)
+    public record Settings(float tau)
             implements SettingsRegistry.Settings {
 
         public static final Codec<Settings> CODEC = RecordCodecBuilder.create(i -> i.group(
-                        Codec.FLOAT.optionalFieldOf("alpha", 0F).forGetter(Settings::alpha),
-                        Codec.FLOAT.optionalFieldOf("beta", 0.5F).forGetter(Settings::beta),
-                        Codec.FLOAT.optionalFieldOf("gamma", 5F).forGetter(Settings::gamma),
-                        Codec.FLOAT.optionalFieldOf("grad_blur", 0.1F).forGetter(Settings::grad_blur),
                         Codec.FLOAT.optionalFieldOf("tau", 2.0F).forGetter(Settings::tau))
                 .apply(i, Settings::new));
 
@@ -89,19 +85,25 @@ public class PostProcessingRelief {
     }
 
     public float getElev(Pair<Integer, Integer> xz) {
-        return getValue(xz, 1);
+        return getValue(xz, 0);
     }
 
+    public float getBlurredElev(Pair<Integer,Integer> xz) {return getValue(xz,1);}
+
+    public float getGradX(Pair<Integer,Integer> xz) {return getValue(xz,2);}
+
+    public float getGradY(Pair<Integer,Integer> xz) {return getValue(xz,3);}
+
     public float getRefinedGrad(Pair<Integer, Integer> xz) {
-        return getValue(xz, 2);
+        return getValue(xz, 4);
     }
 
     public float getBlurredGrad(Pair<Integer, Integer> xz) {
-        return getValue(xz, 3);
+        return getValue(xz, 5);
     }
 
     public float getRes(Pair<Integer, Integer> xz) {
-        return getValue(xz, 4);
+        return getValue(xz, 6);
     }
 
     private float getValue(Pair<Integer, Integer> xz, int ch) {
@@ -192,10 +194,6 @@ public class PostProcessingRelief {
             inputs = Map.of(
                     "residual_init", (OnnxTensor) decoder.get().run(inputs).get(0),
                     "latents_init", latent.getTilesAsTensor(x, z),
-                    "alpha", OnnxTensor.createTensor(ENV, settings.alpha()),
-                    "beta", OnnxTensor.createTensor(ENV, settings.beta()),
-                    "gamma", OnnxTensor.createTensor(ENV, settings.gamma()),
-                    "grad_blur", OnnxTensor.createTensor(ENV, settings.grad_blur()),
                     "tau", OnnxTensor.createTensor(ENV, settings.tau()));
 
             final var out = (OnnxTensor) fuzed_finisher.get().run(inputs).get(0);

@@ -120,8 +120,9 @@ public class Debug {
 
     public static void seeFinal(OnnxTensor t, int x, int z) {
         try {
-            seeTensor(t, "final" + (x >> 1) + " " + (z >> 1), false, 1);
-            seeTensor(t, "final_res" + (x >> 1) + " " + (z >> 1), false, 4);
+            seeTensor(t, "final" + (x >> 1) + " " + (z >> 1), false, 0);
+            seeTensor(t, "final_blurred" + (x >> 1) + " " + (z >> 1), false, 1);
+            seeTensor(t, "final_res" + (x >> 1) + " " + (z >> 1), false, 6);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

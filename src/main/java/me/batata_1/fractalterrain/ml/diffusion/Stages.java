@@ -33,12 +33,8 @@ public class Stages {
         private static volatile CoarseStage coarseModel;
 
         public static synchronized void initModels() {
-            try {
-                model = Models.getOrCreateModel("models/run_latent");
+                model = Models.getOrCreateDirectModel("models/run_latent");
                 coarseModel = new CoarseStage();
-            } catch (OrtException | IOException e) {
-                throw new RuntimeException(e);
-            }
         }
 
         private final int latentStageInstanceNumber;
@@ -101,7 +97,7 @@ public class Stages {
         private final CompletableFuture<OrtSession> output;
         private final float[] sigmas;
 
-        protected CoarseStage() throws OrtException, IOException {
+        protected CoarseStage() {
             super(new EntryStorage<>("coarse", TileRegion::new, 32), 32 * 32 * 7, new long[] {7, 32, 32});
             prep = Models.getOrCreateDirectModel("models/prepare_coarse");
             first_order = Models.getOrCreateModel("models/run_first_order_coarse");
