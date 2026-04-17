@@ -173,7 +173,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
             for (int dz = 0; dz < 16; dz++) {
                 final int curTopLayer = strata.getCurLayer(new double[]{startingX + dx,startingZ + dz},reliefBaseHeight[(dx<<4)+dz]);
                 for (int y = bottom; y <= reliefBaseHeight[(dx<<4)+dz]; y++) {
-                    chunk.setBlockState(new BlockPos(startingX + dx, y, startingZ + dz), strata.getStrataBlock(curTopLayer + (int) Math.floor(y/strata.getSpacing())), false);
+                    chunk.setBlockState(new BlockPos(startingX + dx, y, startingZ + dz), strata.getStrataBlock(curTopLayer + (int) Math.floor((y-reliefBaseHeight[(dx<<4)+dz])/strata.getSpacing())), false);
                 }
             }
         }
