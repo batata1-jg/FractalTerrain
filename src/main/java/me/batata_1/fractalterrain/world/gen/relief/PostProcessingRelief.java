@@ -114,6 +114,9 @@ public class PostProcessingRelief {
         }
     }
 
+    public EntryStorage<Tile> getStorage() {
+        return final_tiles;
+    }
     // global coords -> correct to get coarse value
     private Pair<Integer, Integer> convertCoarse(Pair<Integer, Integer> xz) {
         return xz;

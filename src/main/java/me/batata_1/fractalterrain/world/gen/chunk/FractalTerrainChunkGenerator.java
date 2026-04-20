@@ -11,10 +11,12 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import me.batata_1.fractalterrain.math.Interpolation;
 import me.batata_1.fractalterrain.math.MaskedOps;
+import me.batata_1.fractalterrain.math.Spline;
 import me.batata_1.fractalterrain.registry.FractalTerrainRegistryKeys;
 import me.batata_1.fractalterrain.registry.SettingsRegistry;
 import me.batata_1.fractalterrain.world.gen.RockStrata;
 import me.batata_1.fractalterrain.world.gen.relief.PostProcessingRelief;
+import me.batata_1.fractalterrain.world.noise.PhacelleNoiseSampler;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.registry.entry.RegistryElementCodec;
@@ -66,11 +68,13 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
     private final RegistryEntry<Settings> settings;
     private final Interpolation reliefInterpolation;
     private final Interpolation reliefGradInterpolation;
+    private final Interpolation reliefGradXInterpolation;
+    private final Interpolation reliefGradYInterpolation;
     private final Interpolation reliefResInterpolation;
     private final Interpolation reliefBlurredInterpolation;
     private final Interpolation reliefLowFreqInterpolation;
     private final RockStrata strata;
-
+    private final PhacelleNoiseSampler phacelleSampler;
 
     public static final Codec<FractalTerrainChunkGenerator> CODEC =
             RecordCodecBuilder.create(instance -> instance.group(
@@ -87,10 +91,16 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         reliefGradInterpolation = new Interpolation(settings.value().scale());
         reliefResInterpolation = new Interpolation(settings.value().scale());
         reliefBlurredInterpolation = new Interpolation(settings.value().scale());
+        reliefGradXInterpolation = new Interpolation(settings.value().scale());
+        reliefGradYInterpolation = new Interpolation(settings.value().scale());
         // TODO: implementar isso direito ou ser mais inteligente e descobri qual dos caras la eu tenho q usar
         reliefLowFreqInterpolation = new Interpolation(settings.value().scale() * (1 << 6));
         initReliefRelatedInterpolation();
         strata = RockStrata.AngledPlaneStrata.create(9, 8,Rocks);
+        phacelleSampler = new PhacelleNoiseSampler(5,32F);
+        phacelleInterp.setF(xz -> {
+            return phacelleSampler.sample(xz.getFirst(),xz.getSecond());
+        });
     }
 
     private void initReliefRelatedInterpolation() {
@@ -104,6 +114,20 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         reliefGradInterpolation.setF(xz -> {
             try {
                 return reliefSource.get().getRefinedGrad(xz);
+            } catch (InterruptedException | ExecutionException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        reliefGradXInterpolation.setF(xz-> {
+            try {
+                return reliefSource.get().getGradX(xz);
+            } catch (InterruptedException | ExecutionException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        reliefGradYInterpolation.setF(xz-> {
+            try {
+                return reliefSource.get().getGradY(xz);
             } catch (InterruptedException | ExecutionException e) {
                 throw new RuntimeException(e);
             }
@@ -133,12 +157,27 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         return settings;
     }
 
+
+    // shouldn't depende on the getBaseHeight
+    private BlockState fillRocks(int x , int z , int y) {
+        return DEFAUT;
+    }
+
+    private static final Spline phacelleSpline = new Spline(
+            new float[]{4,8,40},
+            new float[]{0,0.25F,1},
+            new float[]{0,0,0}
+    );
+
+    private final Interpolation phacelleInterp = new Interpolation(1F);
+
+
     private int getBaseHeight(int x, int z) {
         final double interpolatedBlurredRelief = reliefBlurredInterpolation.interpolateBilinear(x,z);
         final double interpolatedRelief = reliefInterpolation.interpolateSmoothStep(x, z);
         final double interpolatedGrad = reliefGradInterpolation.interpolateSmoothStep(x,z);
         final double strata = this.strata.sample(x,z,interpolatedRelief,interpolatedGrad,interpolatedBlurredRelief);
-        return (int) strata;
+        return (int) interpolatedRelief;
     }
 
     private int[] getBaseHeightArr(final int startX , final int startZ) {
@@ -151,7 +190,6 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         }
         return heights;
     }
-
 
     @Override
     public CompletableFuture<Chunk> populateNoise(
@@ -173,8 +211,9 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
             for (int dz = 0; dz < 16; dz++) {
                 final int curTopLayer = strata.getCurLayer(new double[]{startingX + dx,startingZ + dz},reliefBaseHeight[(dx<<4)+dz]);
                 for (int y = bottom; y <= reliefBaseHeight[(dx<<4)+dz]; y++) {
+
        //             chunk.setBlockState(new BlockPos(startingX + dx, y, startingZ + dz), strata.getStrataBlock(curTopLayer + (int) Math.floor((y-reliefBaseHeight[(dx<<4)+dz])/strata.getSpacing())), false);
-                    chunk.setBlockState(new BlockPos(startingX + dx, y, startingZ + dz),DEFAUT, false);
+                    chunk.setBlockState(new BlockPos(startingX + dx, y, startingZ + dz), fillRocks(startingX+dx,startingZ+dz,y), false);
                 }
             }
         }
@@ -206,7 +245,6 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         return quantize(normDepth,maxDepth-minDepth) + minDepth;
     }
 
-
     final static BlockState GRASS_BLOCK = Blocks.GRASS_BLOCK.getDefaultState();
     final static BlockState DIRT = Blocks.DIRT.getDefaultState();
     private BlockState sedimentStrata(int x , int z , int distFromSurface , int surfaceHeight ) {
@@ -216,15 +254,10 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
 
     private void buildSurface(final int x, final int z,final Chunk chunk,final int dx,final int dz,final int[] reliefBaseHeight) {
         final int surfaceHeight = reliefBaseHeight[((dx<<4)+dz)];
-        final int sedimentLayerDepth = sedimentDepth(x,z,10,-1,16);
+        final int sedimentLayerDepth = sedimentDepth(x,z,10,-1,4);
         for(int i=0 ; i<=sedimentLayerDepth ; i++ ) {
-            chunk.setBlockState(new BlockPos(x,surfaceHeight-i,z), sedimentStrata(x,z,surfaceHeight-i,surfaceHeight),false);
+            chunk.setBlockState(new BlockPos(x, surfaceHeight - i, z), sedimentStrata(x, z, surfaceHeight - i, surfaceHeight), false);
         }
-
-        // first layer
-//        chunk.setBlockState(new BlockPos(x, reliefBaseHeight[((dx<<4)+dz)], z),topLayer(x,z),false);
-
-
 
     }
 

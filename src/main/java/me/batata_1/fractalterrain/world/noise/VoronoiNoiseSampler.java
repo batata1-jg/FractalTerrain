@@ -3,10 +3,12 @@ package me.batata_1.fractalterrain.world.noise;
 import com.google.common.hash.Hashing;
 import net.minecraft.util.math.random.Random;
 
+import java.util.function.Function;
+
 public class VoronoiNoiseSampler extends NoiseSampler {
 
     private long seed = 0;
-    private final float scale;
+    protected final float scale;
 
     private static long getHash(final long[] longs , long seed) {
         for(final long l : longs) {
@@ -14,7 +16,6 @@ public class VoronoiNoiseSampler extends NoiseSampler {
         }
         return seed;
     }
-
 
     public VoronoiNoiseSampler(float scale,long off) {
         super(off);
@@ -27,7 +28,7 @@ public class VoronoiNoiseSampler extends NoiseSampler {
         INIT_SET.remove(this);
     }
 
-    private float distPoint(final double x , final double z , final int i , final int j) {
+    protected float distPoint(final double x , final double z , final int i , final int j) {
         final Random r = Random.create(getHash(new long[]{i,j},seed));
         final double x0 = r.nextDouble();
         final double z0 = r.nextDouble();
@@ -42,19 +43,17 @@ public class VoronoiNoiseSampler extends NoiseSampler {
         final double zi = z.doubleValue() / scale;
         final int xCurSquare = (int) Math.floor(xi);
         final int zCurSquare = (int) Math.floor(zi);
-        byte ptx = 0;
-        byte ptz = 0;
         float curMinDist = 1e9F;
         for(byte i=-1 ; i<=1 ; i++) {
             for(byte j=-1 ; j<=1 ; j++) {
                 final float curDist = distPoint(xi,zi,xCurSquare+i,zCurSquare+j);
                 if( curDist < curMinDist ) {
                     curMinDist = curDist;
-                    ptx = i;
-                    ptz = j;
                 }
             }
         }
         return curMinDist;
     }
+
+
 }

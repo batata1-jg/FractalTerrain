@@ -23,7 +23,7 @@ base {
 
 repositories {
 //    mavenCentral()
-
+    flatDir { dirs 'libs/onnxruntime' }
 }
 
 loom {
@@ -50,7 +50,8 @@ dependencies {
     mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
     modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
     // check
-    implementation(files("libs/onnxruntime/onnxruntime4minecraft-directml-1.25.0.jar"))
+    implementation(files("libs/onnxruntime/teste-jar.jar"))
+    include name: 'teste-jar'
 
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 }

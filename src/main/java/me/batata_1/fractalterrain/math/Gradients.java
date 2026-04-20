@@ -27,7 +27,7 @@ public class Gradients {
         return x * kernel_y[i][j];
     }
 
-    public static <T extends Tile> float entryGradMagnitude(int x, int z, int ch, EntryStorage<T> s) {
+    public static <T extends Tile> double[] entryGradMagnitude(final int x,final int z,final int ch,final EntryStorage<T> s) {
         double respX = 0;
         double respY = 0;
         for (int i = 0; i < 3; i++) {
@@ -42,6 +42,9 @@ public class Gradients {
             }
         }
 
-        return (float) (respX * respX + respY * respY);
+        return new double[]{respX,respY,Math.sqrt(respX*respX+respY*respY)};
     }
+
+
+
 }
