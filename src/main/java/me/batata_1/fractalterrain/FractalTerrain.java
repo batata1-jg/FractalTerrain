@@ -8,7 +8,7 @@ import me.batata_1.fractalterrain.registry.FractalTerrainRegistryKeys;
 import me.batata_1.fractalterrain.world.biome.source.FractalTerrainBiomeSource;
 import me.batata_1.fractalterrain.world.gen.chunk.FractalTerrainChunkGenerator;
 import me.batata_1.fractalterrain.world.gen.densityfunction.FractalTerrainDensityFunctionTypes;
-import me.batata_1.fractalterrain.world.gen.relief.PostProcessingRelief;
+import me.batata_1.fractalterrain.world.gen.relief.ReliefProvider;
 import me.batata_1.fractalterrain.world.gen.surfacebuilder.FractalTerrainMaterialRules;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -36,7 +36,7 @@ public class FractalTerrain implements ModInitializer {
                 FractalTerrainRegistryKeys.FRACTAL_TERRAIN_CHUNK_GENERATOR_SETTINGS,
                 FractalTerrainChunkGenerator.Settings.CODEC);
         DynamicRegistries.register(
-                FractalTerrainRegistryKeys.POST_PROCESSING_SETTINGS, PostProcessingRelief.Settings.CODEC);
+                FractalTerrainRegistryKeys.POST_PROCESSING_SETTINGS, ReliefProvider.Settings.CODEC);
         Registry.register(
                 Registries.CHUNK_GENERATOR,
                 Reference.identifier("chunk_generator"),

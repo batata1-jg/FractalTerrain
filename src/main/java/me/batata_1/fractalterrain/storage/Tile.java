@@ -25,11 +25,13 @@ public class Tile {
         arr[el + sl] = (float) el;
         final ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(path + ".ser"));
         out.writeObject(arr);
+        out.close();
     }
 
-    public void deserialize(String path) throws IOException, ClassNotFoundException {
+    public void deserialize(String path) throws IOException, ClassNotFoundException  {
         final ObjectInputStream in = new ObjectInputStream(new FileInputStream(path + ".ser"));
         final float[] arr = (float[]) in.readObject();
+        in.close();
         final int slAddEl = arr.length - 1;
         final int el = (int) arr[slAddEl];
         final int sl = slAddEl - el;
@@ -78,7 +80,7 @@ public class Tile {
         checkRank(pos.length);
         int idx = 0;
         for (int i = 0; i < shape.length; i++) idx += (int) (cProd[i] * pos[i]);
-        if(idx >= entries.length) throw new RuntimeException("outOfBOundsTensor: " + Arrays.toString(pos));
+        if (idx >= entries.length) throw new RuntimeException("outOfBOundsTensor: " + Arrays.toString(pos));
         return entries[idx];
     }
 

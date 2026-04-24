@@ -15,11 +15,12 @@ import net.minecraft.util.math.random.Random;
 import net.minecraft.world.WorldView;
 import net.minecraft.world.biome.Biome;
 import net.minecraft.world.biome.source.BiomeSource;
+import net.minecraft.world.biome.source.MultiNoiseBiomeSource;
 import net.minecraft.world.biome.source.MultiNoiseBiomeSourceParameterList;
 import net.minecraft.world.biome.source.util.MultiNoiseUtil;
 import org.jetbrains.annotations.Nullable;
 
-public class FractalTerrainBiomeSource extends BiomeSource {
+public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
 
     private static final MapCodec<RegistryEntry<Biome>> BIOME_CODEC;
     public static final MapCodec<MultiNoiseUtil.Entries<RegistryEntry<Biome>>> CUSTOM_CODEC;
@@ -44,6 +45,7 @@ public class FractalTerrainBiomeSource extends BiomeSource {
     private FractalTerrainBiomeSource(
             Either<MultiNoiseUtil.Entries<RegistryEntry<Biome>>, RegistryEntry<MultiNoiseBiomeSourceParameterList>>
                     biomeEntries) {
+        super();
         this.biomeEntries = biomeEntries;
     }
 
@@ -77,6 +79,9 @@ public class FractalTerrainBiomeSource extends BiomeSource {
 
     @Override
     public RegistryEntry<Biome> getBiome(int x, int y, int z, MultiNoiseUtil.MultiNoiseSampler noise) {
+
+
+
         return this.getBiomeAtPoint(noise.sample(x, y, z));
     }
 

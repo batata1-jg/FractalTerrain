@@ -21,7 +21,6 @@ import me.batata_1.fractalterrain.world.noise.NoiseSampler;
 import me.batata_1.fractalterrain.world.noise.PhacelleNoiseSampler;
 import me.batata_1.fractalterrain.world.noise.VoronoiNoiseSampler;
 import net.minecraft.util.WorldSavePath;
-import net.minecraft.world.biome.source.util.MultiNoiseUtil;
 
 public class Debug {
 
@@ -129,7 +128,7 @@ public class Debug {
         }
     }
 
-    public static void seeNoise(NoiseSampler sampler , String name, int x , int z , int size) throws IOException {
+    public static void seeNoise(NoiseSampler sampler, String name, int x, int z, int size) throws IOException {
 
         Path path = FractalTerrainInstance.getServer()
                 .getSavePath(WorldSavePath.ROOT)
@@ -141,35 +140,34 @@ public class Debug {
         float min = 1000000;
         for (int i = 0; i < size; i++)
             for (int j = 0; j < size; j++) {
-                max = Math.max(max, sampler.sample(i,j));
-                min = Math.min(min, sampler.sample(i,j));
+                max = Math.max(max, sampler.sample(i, j));
+                min = Math.min(min, sampler.sample(i, j));
             }
         LOGGER.info(" bounds of amplitude min are [{},{}] for {}", min, max, name);
         final float eps = 1e-5F;
-        int[] arr = new int[size*size];
+        int[] arr = new int[size * size];
         for (int i = 0; i < size; i++) {
             for (int j = 0; j < size; j++) {
 
-                float vi = (sampler.sample(i,j) - min) / (max - min + eps);
+                float vi = (sampler.sample(i, j) - min) / (max - min + eps);
                 int v = (int) (255F * vi);
 
                 arr[(int) (j + i * size)] = v;
             }
         }
-        BufferedImage outputImage =
-                new BufferedImage(size, size, BufferedImage.TYPE_BYTE_GRAY);
+        BufferedImage outputImage = new BufferedImage(size, size, BufferedImage.TYPE_BYTE_GRAY);
         WritableRaster raster = outputImage.getRaster();
         raster.setSamples(0, 0, size, size, 0, arr);
         ImageIO.write(outputImage, "png", outputFile);
         System.out.println("end");
     }
 
-    public static void seePhacelleNormal(float freq , String name, int x , int z , int size) throws IOException {
+    public static void seePhacelleNormal(float freq, String name, int x, int z, int size) throws IOException {
 
         Path path = FractalTerrainInstance.getServer()
                 .getSavePath(WorldSavePath.ROOT)
                 .normalize();
-        PhacelleNoiseSampler sampler = new PhacelleNoiseSampler(1,freq);
+        PhacelleNoiseSampler sampler = new PhacelleNoiseSampler(1, freq);
         sampler.initSampler(FractalTerrainInstance.getServer().getOverworld().getSeed());
         File outputFile = new File(path + "/" + name + ".png");
         LOGGER.info("O caminho eh: {} , ", outputFile.getPath());
@@ -177,35 +175,34 @@ public class Debug {
         float min = 1000000;
         for (int i = 0; i < size; i++)
             for (int j = 0; j < size; j++) {
-                max = Math.max(max, sampler.sampleNormal(i,j));
-                min = Math.min(min, sampler.sampleNormal(i,j));
+                max = Math.max(max, sampler.sampleNormal(i, j));
+                min = Math.min(min, sampler.sampleNormal(i, j));
             }
         LOGGER.info(" bounds of amplitude min are [{},{}] for {}", min, max, name);
         final float eps = 1e-5F;
-        int[] arr = new int[size*size];
+        int[] arr = new int[size * size];
         for (int i = 0; i < size; i++) {
             for (int j = 0; j < size; j++) {
 
-                float vi = (sampler.sampleNormal(i,j) - min) / (max - min + eps);
+                float vi = (sampler.sampleNormal(i, j) - min) / (max - min + eps);
                 int v = (int) (255F * vi);
 
                 arr[(int) (j + i * size)] = v;
             }
         }
-        BufferedImage outputImage =
-                new BufferedImage(size, size, BufferedImage.TYPE_BYTE_GRAY);
+        BufferedImage outputImage = new BufferedImage(size, size, BufferedImage.TYPE_BYTE_GRAY);
         WritableRaster raster = outputImage.getRaster();
         raster.setSamples(0, 0, size, size, 0, arr);
         ImageIO.write(outputImage, "png", outputFile);
         System.out.println("end");
     }
 
-    public static void seePhacelle(float freq , String name, Tile t, int size) throws IOException {
+    public static void seePhacelle(float freq, String name, Tile t, int size) throws IOException {
 
         Path path = FractalTerrainInstance.getServer()
                 .getSavePath(WorldSavePath.ROOT)
                 .normalize();
-        PhacelleNoiseSampler sampler = new PhacelleNoiseSampler(1,freq);
+        PhacelleNoiseSampler sampler = new PhacelleNoiseSampler(1, freq);
         sampler.initSampler(FractalTerrainInstance.getServer().getOverworld().getSeed());
         File outputFile = new File(path + "/" + name + ".png");
         LOGGER.info("O caminho eh: {} , ", outputFile.getPath());
@@ -213,23 +210,22 @@ public class Debug {
         float min = 1000000;
         for (int i = 0; i < size; i++)
             for (int j = 0; j < size; j++) {
-                max = Math.max(max, sampler.sampleNormal(i,j));
-                min = Math.min(min, sampler.sampleNormal(i,j));
+                max = Math.max(max, sampler.sampleNormal(i, j));
+                min = Math.min(min, sampler.sampleNormal(i, j));
             }
         LOGGER.info(" bounds of amplitude min are [{},{}] for {}", min, max, name);
         final float eps = 1e-5F;
-        int[] arr = new int[size*size];
+        int[] arr = new int[size * size];
         for (int i = 0; i < size; i++) {
             for (int j = 0; j < size; j++) {
 
-                float vi = (sampler.sampleNormal(i,j) - min) / (max - min + eps);
+                float vi = (sampler.sampleNormal(i, j) - min) / (max - min + eps);
                 int v = (int) (255F * vi);
 
                 arr[(int) (j + i * size)] = v;
             }
         }
-        BufferedImage outputImage =
-                new BufferedImage(size, size, BufferedImage.TYPE_BYTE_GRAY);
+        BufferedImage outputImage = new BufferedImage(size, size, BufferedImage.TYPE_BYTE_GRAY);
         WritableRaster raster = outputImage.getRaster();
         raster.setSamples(0, 0, size, size, 0, arr);
         ImageIO.write(outputImage, "png", outputFile);
@@ -392,24 +388,22 @@ public class Debug {
 
             toTiffChannel(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0, 0), 4, "tensor");
 
+            VoronoiNoiseSampler s = new VoronoiNoiseSampler(64, 1);
 
-            VoronoiNoiseSampler s = new VoronoiNoiseSampler(64,1);
-
-            seeNoise(s,"voronoi",0,0,512);
-            seeTensor(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0,0),"analysie",false,0);
-            seeTensor(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0,0),"grad",false,4);
-            seeTensor(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0,0),"gradY",false,3);
-            seeTensor(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0,0),"gradX",false,2);
-            seeNoise(new PhacelleNoiseSampler(5,3), "phacelle",0,0,512);
-//
-//            for(float freq=1F ; freq<=512F ; freq *= 2F ) {
-//                seePhacelleNormal(freq,"phacelleNormal" + freq,0,0,512);
-//                seeNoise(new PhacelleNoiseSampler(5,freq), "phacelle"+freq,0,0,512);
-//            }
+            seeNoise(s, "voronoi", 0, 0, 512);
+            seeTensor(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0, 0), "analysie", false, 0);
+            seeTensor(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0, 0), "grad", false, 4);
+            seeTensor(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0, 0), "gradY", false, 3);
+            seeTensor(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0, 0), "gradX", false, 2);
+            seeNoise(new PhacelleNoiseSampler(5, 3), "phacelle", 0, 0, 512);
+            //
+            //            for(float freq=1F ; freq<=512F ; freq *= 2F ) {
+            //                seePhacelleNormal(freq,"phacelleNormal" + freq,0,0,512);
+            //                seeNoise(new PhacelleNoiseSampler(5,freq), "phacelle"+freq,0,0,512);
+            //            }
         } catch (InterruptedException | ExecutionException | OrtException | IOException e) {
             throw new RuntimeException(e);
         }
-
 
         //        for(int i=-4 ; i<4 ; i++) {
         //            for(int j=-4 ; j<4 ; j++) {

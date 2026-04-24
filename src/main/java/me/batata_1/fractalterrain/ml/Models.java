@@ -26,9 +26,11 @@ public class Models {
             try {
                 e.getValue().complete(fetchModel(e.getKey()));
             } catch (OrtException | IOException ex) {
-                LOGGER.warn("could not load model {} with dml, falling back to cpu",e.getKey());
+                LOGGER.warn("could not load model {} with dml, falling back to cpu", e.getKey());
                 try {
-                    e.getValue().complete(fetchModel(e.getKey().substring(0,e.getKey().indexOf("&dml")) + "&cpu"));
+                    e.getValue()
+                            .complete(fetchModel(
+                                    e.getKey().substring(0, e.getKey().indexOf("&dml")) + "&cpu"));
                 } catch (OrtException | IOException exc) {
                     throw new RuntimeException(exc);
                 }

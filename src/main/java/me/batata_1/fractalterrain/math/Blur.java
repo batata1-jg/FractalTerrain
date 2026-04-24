@@ -1,12 +1,11 @@
 package me.batata_1.fractalterrain.math;
 
-import com.mojang.datafixers.util.Pair;
+import static me.batata_1.fractalterrain.references.Reference.LOGGER;
 
+import com.mojang.datafixers.util.Pair;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
-
-import static me.batata_1.fractalterrain.references.Reference.LOGGER;
 
 public class Blur {
     private static final double[][] gauss_kernel_3x3 = {
@@ -17,10 +16,11 @@ public class Blur {
 
     private static final int[] d5 = {-2, -1, 0, 1, 2};
 
-    private final CompletableFuture<Function<double[],Double>> functionCompletableFuture = new CompletableFuture<>();
+    private final CompletableFuture<Function<double[], Double>> functionCompletableFuture = new CompletableFuture<>();
+
     public Blur() {}
 
-    public void setF(Function<double[],Double> f) {
+    public void setF(Function<double[], Double> f) {
         this.functionCompletableFuture.complete(f);
     }
 

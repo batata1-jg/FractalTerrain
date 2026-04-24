@@ -13,7 +13,7 @@ import me.batata_1.fractalterrain.ml.tensorProviders.GaussianNoisePatchProvider;
 import me.batata_1.fractalterrain.world.ContinentalScaleMapProvider;
 import me.batata_1.fractalterrain.world.gen.chunk.FractalTerrainChunkGenerator;
 import me.batata_1.fractalterrain.world.gen.densityfunction.FractalTerrainDensityFunctionTypes;
-import me.batata_1.fractalterrain.world.gen.relief.PostProcessingRelief;
+import me.batata_1.fractalterrain.world.gen.relief.ReliefProvider;
 import me.batata_1.fractalterrain.world.noise.OctaveSimplexNoiseSampler;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.world.ServerWorld;
@@ -26,7 +26,7 @@ public class FractalTerrainInstance {
     public static volatile MinecraftServer curServer = null;
     public static volatile OrtEnvironment ENV = null;
     private static volatile Path pathMundo = null;
-    public static volatile CompletableFuture<PostProcessingRelief> reliefSource = new CompletableFuture<>();
+    public static volatile CompletableFuture<ReliefProvider> reliefSource = new CompletableFuture<>();
 
     public static synchronized void setServer(MinecraftServer server, ServerWorld serverWorld) {
         final ChunkGenerator chunkGenerator =
@@ -57,7 +57,7 @@ public class FractalTerrainInstance {
         LOGGER.info("session providers {}", OrtEnvironment.getAvailableProviders());
         initUtil();
 
-        final PostProcessingRelief.Settings post_config = (chunkGenerator instanceof FractalTerrainChunkGenerator)
+        final ReliefProvider.Settings post_config = (chunkGenerator instanceof FractalTerrainChunkGenerator)
                 ? ((FractalTerrainChunkGenerator) chunkGenerator)
                         .getSettings()
                         .value()
@@ -65,7 +65,7 @@ public class FractalTerrainInstance {
                         .value()
                 : FractalTerrainDensityFunctionTypes.RefinedElevation.post_config;
 
-        reliefSource.complete(new PostProcessingRelief(post_config));
+        reliefSource.complete(new ReliefProvider(post_config));
         LOGGER.info("completed reliefSource");
         final long seed = FractalTerrainInstance.getServer()
                 .getSaveProperties()

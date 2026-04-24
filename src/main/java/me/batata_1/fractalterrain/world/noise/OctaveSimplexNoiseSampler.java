@@ -1,6 +1,5 @@
 package me.batata_1.fractalterrain.world.noise;
 
-import java.awt.font.NumericShaper;
 import java.util.*;
 import java.util.function.Function;
 import net.minecraft.util.math.noise.SimplexNoiseSampler;
@@ -55,9 +54,7 @@ public class OctaveSimplexNoiseSampler extends NoiseSampler {
     public float sample(Number x, Number z) {
         double resp = 0;
         for (int i = 0; i < numOctaves; i++) {
-            resp += sampler.sample(
-                            x.doubleValue() / periods[i] + i, z.doubleValue() / periods[i] + i)
-                    * amplitudes[i];
+            resp += sampler.sample(x.doubleValue() / periods[i] + i, z.doubleValue() / periods[i] + i) * amplitudes[i];
         }
         return (float) (resp / norm);
     }

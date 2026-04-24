@@ -8,7 +8,7 @@ import java.util.concurrent.ExecutionException;
 import me.batata_1.fractalterrain.FractalTerrainInstance;
 import me.batata_1.fractalterrain.math.Interpolation;
 import me.batata_1.fractalterrain.references.Reference;
-import me.batata_1.fractalterrain.world.gen.relief.PostProcessingRelief;
+import me.batata_1.fractalterrain.world.gen.relief.ReliefProvider;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
 import net.minecraft.util.dynamic.CodecHolder;
@@ -71,7 +71,7 @@ public final class FractalTerrainDensityFunctionTypes {
         private final float scale;
 
         public static final Codec<RefinedElevation> CODEC = RecordCodecBuilder.create(instance -> instance.group(
-                        PostProcessingRelief.Settings.CODEC
+                        ReliefProvider.Settings.CODEC
                                 .fieldOf("post_config")
                                 .forGetter(null),
                         Codec.FLOAT.optionalFieldOf("scale", 0.2F).forGetter(g -> g.scale),
@@ -81,9 +81,9 @@ public final class FractalTerrainDensityFunctionTypes {
 
         public static final CodecHolder<RefinedElevation> CODEC_HOLDER = CodecHolder.of(CODEC);
 
-        public static PostProcessingRelief.Settings post_config;
+        public static ReliefProvider.Settings post_config;
 
-        public RefinedElevation(PostProcessingRelief.Settings setting, float scale, int minVal, int maxVal) {
+        public RefinedElevation(ReliefProvider.Settings setting, float scale, int minVal, int maxVal) {
             super(new Interpolation(scale));
             this.scale = scale;
             RefinedElevation.post_config = setting;

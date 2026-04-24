@@ -33,8 +33,8 @@ public class Stages {
         private static volatile CoarseStage coarseModel;
 
         public static synchronized void initModels() {
-                model = Models.getOrCreateDirectModel("models/run_latent");
-                coarseModel = new CoarseStage();
+            model = Models.getOrCreateDirectModel("models/run_latent");
+            coarseModel = new CoarseStage();
         }
 
         private final int latentStageInstanceNumber;
