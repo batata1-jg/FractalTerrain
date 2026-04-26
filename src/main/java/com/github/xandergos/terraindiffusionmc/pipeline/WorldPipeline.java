@@ -26,10 +26,8 @@ public final class WorldPipeline implements AutoCloseable {
     static final int COARSE_TILE_STRIDE = 48;
     static final int LATENT_TILE_SIZE   = 64;
     static final int LATENT_TILE_STRIDE = 32;
-    static final int DECODER_TILE_SIZE  = 256;
+    static final int DECODER_TILE_SIZE  = 512;
     static final int DECODER_TILE_STRIDE = 192;
-    static final int POST_PROCESSING_TILE_SIZE = DECODER_TILE_SIZE;
-    static final int POST_PROCESSING_TILE_STRIDE = DECODER_TILE_STRIDE;
 
     static final float[] MODEL_MEANS = WorldPipelineModelConfig.coarseMeans();
     static final float[] MODEL_STDS = WorldPipelineModelConfig.coarseStds();
@@ -74,6 +72,7 @@ public final class WorldPipeline implements AutoCloseable {
     private final boolean ownModels;
     private volatile SyntheticMapFactory syntheticMapFactory;
     private volatile long seed;
+    private volatile float[] tau;
 
     private final MemoryTileStore tileStore;
     private final long cacheLimitBytes = 100L * 1024 * 1024;
@@ -382,7 +381,7 @@ public final class WorldPipeline implements AutoCloseable {
 
     private InfiniteTensor buildDecoderStage() {
         int S = DECODER_TILE_SIZE, ST = DECODER_TILE_STRIDE, lc = LATENT_COMPRESSION;
-        TensorWindow outWin  = new TensorWindow(new int[]{2, S, S},  new int[]{2, ST, ST});
+        TensorWindow outWin  = new TensorWindow(new int[]{8, S, S},  new int[]{8, ST, ST});
         TensorWindow inpWin  = new TensorWindow(new int[]{6, S/lc, S/lc}, new int[]{6, ST/lc, ST/lc});
         float[] ww = linearWeightWindow(S);
         float t = (float) Math.atan(EDMScheduler.SIGMA_MAX / SIGMA_DATA);
@@ -428,32 +427,17 @@ public final class WorldPipeline implements AutoCloseable {
             float pred = -rawPred[k];  // decoder model output is negated
             newSample[k] = (cosT * xT[k] - sinT * SIGMA_DATA * pred) / SIGMA_DATA;
         }
-        FloatTensor result = new FloatTensor(new int[]{2, S, S});
-        for (int px = 0; px < S * S; px++) result.data[px] = newSample[px] * ww[px];
-        System.arraycopy(ww, 0, result.data, S * S, S * S);
-        return result;
-    }
 
-    // =========================================================================
-    // PostProcessing Stage
-    // =========================================================================
+        //post proessing
 
-    private InfiniteTensor buildPostProcessingStage() {
-        int SP = POST_PROCESSING_TILE_SIZE, STP = POST_PROCESSING_TILE_STRIDE;
-        int S = DECODER_TILE_SIZE, ST = DECODER_TILE_STRIDE, lc = LATENT_COMPRESSION;
-        TensorWindow outWin = new TensorWindow(new int[]{3,SP,SP},new int[]{3, SP, SP});
-        TensorWindow inpWinLatent  = new TensorWindow(new int[]{6, S/lc, S/lc}, new int[]{6, ST/lc, ST/lc});
-        TensorWindow inpWinRes  = new TensorWindow(new int[]{2, S, S}, new int[]{2, ST, ST});
+        Object[][] inputs = new Object[3][3];
+        inputs[0] = new Object[]{"residual_init",newSample,new long[]{1,512,512}};
+        inputs[1] = new Object[]{"latent_init",latentSlice.data,new long[]{6,64,64}};
+        inputs[2] = new Object[]{"tau",tau,new long[]{1}};
 
-        float[] ww = linearWeightWindow(S);
-
-        return tileStore.getOrCreate("init_post_processing_map", new Integer[]{2, null, null},
-                (wi, args) -> postProcessingTile(wi, args.get(0), args.get(1), ww),
-                outWin, new InfiniteTensor[]{latents,residual}, new TensorWindow[]{inpWinLatent,inpWinRes}, cacheLimitBytes);
-    }
-
-    private FloatTensor postProcessingTile(int[] wi , FloatTensor latent, FloatTensor residual, float[] ww) {
-        this.fuzedModel.run()
+        //        for (int px = 0; px < S * S; px++) result.data[px] = newSample[px] * ww[px];
+//        System.arraycopy(ww, 0, result.data, S * S, S * S);
+        return new FloatTensor(new int[]{8, S, S},fuzedModel.run(inputs));
     }
 
     // =========================================================================

@@ -5,25 +5,46 @@ import static me.batata_1.fractalterrain.math.CoordTranslator.toIntra;
 import static me.batata_1.fractalterrain.references.Reference.LOGGER;
 import static me.batata_1.fractalterrain.util.FractalTerrainUtil.*;
 
+import com.github.xandergos.terraindiffusionmc.pipeline.FastNoiseLite;
+import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider;
+import com.github.xandergos.terraindiffusionmc.pipeline.WorldPipelineModelConfig;
 import com.google.common.base.Function;
 import com.google.common.base.Supplier;
 import com.mojang.datafixers.util.Pair;
 import java.io.File;
 import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.*;
+
 import me.batata_1.fractalterrain.FractalTerrainInstance;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class EntryStorage<T extends Tile> {
 
-    private final ConcurrentHashMap<Pair<Integer, Integer>, CompletableFuture<T>> CACHE = new ConcurrentHashMap<>();
+    private static final Logger LOG = LoggerFactory.getLogger(EntryStorage.class);
+    private static final int MAX_CACHE_SIZE = 64;
+    private static final Object CACHE_LOCK = new Object();
+  //  private final Map<Pair<Integer,Integer>, Tile> CACHE = new LinkedHashMap<>(16, 0.75f, true);
+    private final Map<Pair<Integer,Integer>, Future<Tile>> PENDING = new ConcurrentHashMap<>();
+    /** Single thread for pipeline.get() so MemoryTileStore is not accessed concurrently. */
+    private static final ExecutorService INFERENCE_EXECUTOR = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "terrain-diffusion-inference");
+        t.setDaemon(true);
+        return t;
+    });
+
+
+
+    private final ConcurrentHashMap<Pair<Integer, Integer>, CompletableFuture<T>> CACHE = new ConcurrentHashMap<>(16,0.75f);
     private final Set<Pair<Integer, Integer>> GENERATED_ENTRIES =
             Collections.synchronizedSet(new LinkedHashSet<>(16, 0.75f));
     private final Supplier<T> empty_entry_maker;
     private final String PATH;
     private final int entry_len;
+
+
+
 
     public EntryStorage(String path, Supplier<T> s, int entryLen) {
         PATH = path;
@@ -146,7 +167,7 @@ public class EntryStorage<T extends Tile> {
                             throw new RuntimeException(e);
                         }
                     },
-                    EXECUTOR);
+                    INFERENCE_EXECUTOR);
             CACHE.put(xz, ct);
             return CACHE.get(xz);
         }
