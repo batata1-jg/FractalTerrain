@@ -20,51 +20,41 @@ import me.batata_1.fractalterrain.FractalTerrainInstance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class EntryStorage<T extends Tile> {
+public class EntryStorage {
 
-    private static final Logger LOG = LoggerFactory.getLogger(EntryStorage.class);
-    private static final int MAX_CACHE_SIZE = 64;
-    private static final Object CACHE_LOCK = new Object();
-  //  private final Map<Pair<Integer,Integer>, Tile> CACHE = new LinkedHashMap<>(16, 0.75f, true);
-    private final Map<Pair<Integer,Integer>, Future<Tile>> PENDING = new ConcurrentHashMap<>();
-    /** Single thread for pipeline.get() so MemoryTileStore is not accessed concurrently. */
-    private static final ExecutorService INFERENCE_EXECUTOR = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "terrain-diffusion-inference");
+       private static final ExecutorService INFERENCE_EXECUTOR = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "inference");
         t.setDaemon(true);
         return t;
     });
 
-
-
-    private final ConcurrentHashMap<Pair<Integer, Integer>, CompletableFuture<T>> CACHE = new ConcurrentHashMap<>(16,0.75f);
+    private final ConcurrentHashMap<Pair<Integer, Integer>, CompletableFuture<Tile>> CACHE = new ConcurrentHashMap<>(16,0.75f);
     private final Set<Pair<Integer, Integer>> GENERATED_ENTRIES =
             Collections.synchronizedSet(new LinkedHashSet<>(16, 0.75f));
-    private final Supplier<T> empty_entry_maker;
+    private final Supplier<Tile> empty_entry_maker = Tile::new;
     private final String PATH;
+    private final String SAVEPATH;
     private final int entry_len;
 
-
-
-
-    public EntryStorage(String path, Supplier<T> s, int entryLen) {
+    public EntryStorage(String savePath,String path, int entryLen) {
         PATH = path;
-        empty_entry_maker = s;
+        SAVEPATH = savePath;
         entry_len = entryLen;
         bootstrap();
     }
 
-    private Function<Pair<Integer, Integer>, T> entry_creating_function = null;
+    private Function<Pair<Integer, Integer>, Tile> entry_creating_function = null;
 
-    public EntryStorage(String path, Supplier<T> s, int entryLen, Function<Pair<Integer, Integer>, T> f) {
+    public EntryStorage(String savePath,String path, int entryLen, Function<Pair<Integer, Integer>, Tile> f) {
         PATH = path;
-        empty_entry_maker = s;
+        SAVEPATH = savePath;
         entry_len = entryLen;
         entry_creating_function = f;
         bootstrap();
     }
 
     public String getEntryDir() {
-        return FractalTerrainInstance.getDir() + "/" + PATH;
+        return SAVEPATH + "/" + PATH;
     }
 
     private synchronized void bootstrap() {
@@ -94,33 +84,33 @@ public class EntryStorage<T extends Tile> {
     }
 
     public float getReverseValue(int x, int z) throws ExecutionException, InterruptedException {
-        final T entry = getEntry(toInter(Pair.of(x, z), entry_len)).get();
+        final Tile entry = getEntry(toInter(Pair.of(x, z), entry_len)).get();
         final var intra = toIntra(Pair.of(x, z), entry_len);
         return entry.entryAt(new long[] {intra.getFirst(), entry_len - 1 - intra.getSecond()});
     }
 
     public float getValue(int x, int z) throws ExecutionException, InterruptedException {
-        final T entry = getEntry(toInter(Pair.of(x, z), entry_len)).get();
+        final Tile entry = getEntry(toInter(Pair.of(x, z), entry_len)).get();
         final var intra = toIntra(Pair.of(x, z), entry_len);
         return entry.entryAt(new long[] {intra.getFirst(), intra.getSecond()});
     }
 
     public float getValue(Pair<Integer, Integer> xz, int ch) throws ExecutionException, InterruptedException {
-        final T entry = getEntry(toInter(xz, entry_len)).get();
+        final Tile entry = getEntry(toInter(xz, entry_len)).get();
         final var intra = toIntra(xz, entry_len);
         return entry.entryAt(new long[] {ch, intra.getFirst(), intra.getSecond()});
     }
 
     // xz inter coords
-    public CompletableFuture<T> getEntry(Pair<Integer, Integer> xz) {
+    public CompletableFuture<Tile> getEntry(Pair<Integer, Integer> xz) {
         if (CACHE.containsKey(xz)) return CACHE.get(xz);
         return fetchEntry(xz);
     }
 
     // xz inter coords
-    public synchronized void addOrOverwriteEntry(CompletableFuture<T> t, Pair<Integer, Integer> xz) {
+    public synchronized void addOrOverwriteEntry(CompletableFuture<Tile> t, Pair<Integer, Integer> xz) {
 
-        final CompletableFuture<T> ct = t.thenApply(entry -> {
+        final CompletableFuture<Tile> ct = t.thenApply(entry -> {
             try {
                 entry.serialize(getEntryDir() + "/" + giveNameToTile(xz));
             } catch (IOException e) {
@@ -139,14 +129,19 @@ public class EntryStorage<T extends Tile> {
         return GENERATED_ENTRIES.contains(xz);
     }
 
+    public void clear() {
+        CACHE.clear();
+        GENERATED_ENTRIES.clear();
+    }
+
     // xz inter coords
-    private synchronized CompletableFuture<T> fetchEntry(Pair<Integer, Integer> xz) {
+    private synchronized CompletableFuture<Tile> fetchEntry(Pair<Integer, Integer> xz) {
 
         if (CACHE.containsKey(xz)) return CACHE.get(xz);
 
         if (GENERATED_ENTRIES.contains(xz)) {
             //            LOGGER.info("reading_tile");
-            final CompletableFuture<T> ct = CompletableFuture.supplyAsync(
+            final CompletableFuture<Tile> ct = CompletableFuture.supplyAsync(
                     () -> {
                         final File file = new File(getEntryDir() + "/" + giveNameToTile(xz) + ".ser");
                         if (!file.exists()) {
@@ -160,7 +155,7 @@ public class EntryStorage<T extends Tile> {
                         }
                         try {
 
-                            final T t = empty_entry_maker.get();
+                            final Tile t = empty_entry_maker.get();
                             t.deserialize(getEntryDir() + "/" + giveNameToTile(xz));
                             return t;
                         } catch (IOException | ClassNotFoundException e) {

@@ -72,7 +72,7 @@ public final class WorldPipeline implements AutoCloseable {
     private final boolean ownModels;
     private volatile SyntheticMapFactory syntheticMapFactory;
     private volatile long seed;
-    private volatile float[] tau;
+    private volatile float[] tau = {1.5F};
 
     private final MemoryTileStore tileStore;
     private final long cacheLimitBytes = 100L * 1024 * 1024;
@@ -80,7 +80,6 @@ public final class WorldPipeline implements AutoCloseable {
     final InfiniteTensor coarse;
     final InfiniteTensor latents;
     final InfiniteTensor residual;
-    final InfiniteTensor postProcessing;
 
     /** Uses shared models from PipelineModels (e.g. from mod init). Does not close models on close(). Seed is 64-bit (Python: seed & 0xFFFFFFFFFFFFFFFF). */
     public WorldPipeline(long seed, PipelineModels models) {
@@ -95,7 +94,6 @@ public final class WorldPipeline implements AutoCloseable {
         this.coarse = buildCoarseStage();
         this.latents = buildLatentStage();
         this.residual = buildDecoderStage();
-        this.postProcessing = buildPostProcessingStage();
     }
 
     /** Loads its own models (e.g. for tests). Caller must close. */
@@ -113,7 +111,6 @@ public final class WorldPipeline implements AutoCloseable {
         this.coarse = buildCoarseStage();
         this.latents = buildLatentStage();
         this.residual = buildDecoderStage();
-        this.postProcessing = buildPostProcessingStage();
     }
 
     /** Lightweight seed change (Python change_seed): update seed and synthetic map, clear tile caches. Models stay loaded. */
@@ -387,7 +384,7 @@ public final class WorldPipeline implements AutoCloseable {
         float t = (float) Math.atan(EDMScheduler.SIGMA_MAX / SIGMA_DATA);
 
         return tileStore.getOrCreate("init_residual_map", new Integer[]{2, null, null},
-                (wi, args) -> decoderTile(wi, args.get(0), t, ww),
+                (wi, args) -> decoderTile(wi, args.getFirst(), t, ww),
                 outWin, new InfiniteTensor[]{latents}, new TensorWindow[]{inpWin}, cacheLimitBytes);
     }
 
@@ -461,6 +458,10 @@ public final class WorldPipeline implements AutoCloseable {
      */
     public FloatTensor getCoarseSlice(int ci0, int cj0, int ci1, int cj1) {
         return coarse.getSlice(new int[]{0, ci0, cj0}, new int[]{7, ci1, cj1});
+    }
+
+    public FloatTensor getDecoderSice(int x , int z) {
+        return residual.getSlice(new int[]{0,x,z},new int[]{8,x+512,z+512});
     }
 
     /**
