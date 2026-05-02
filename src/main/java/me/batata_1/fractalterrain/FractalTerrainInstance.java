@@ -2,7 +2,7 @@ package me.batata_1.fractalterrain;
 
 import static me.batata_1.fractalterrain.references.Reference.LOGGER;
 import static me.batata_1.fractalterrain.util.Debug.debug;
-import static me.batata_1.fractalterrain.util.MlUtil.initUtil;
+
 
 import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtException;
@@ -13,11 +13,11 @@ import java.util.concurrent.ExecutionException;
 import com.github.xandergos.terraindiffusionmc.pipeline.ModelAssetManager;
 import com.github.xandergos.terraindiffusionmc.pipeline.PipelineModels;
 import com.github.xandergos.terraindiffusionmc.pipeline.WorldPipeline;
-import me.batata_1.fractalterrain.ml.Models;
-import me.batata_1.fractalterrain.ml.tensorProviders.GaussianNoisePatchProvider;
+
+//import me.batata_1.fractalterrain.ml.tensorProviders.GaussianNoisePatchProvider;
 import me.batata_1.fractalterrain.world.ContinentalScaleMapProvider;
 import me.batata_1.fractalterrain.world.gen.chunk.FractalTerrainChunkGenerator;
-import me.batata_1.fractalterrain.world.gen.densityfunction.FractalTerrainDensityFunctionTypes;
+
 import me.batata_1.fractalterrain.world.gen.relief.ReliefProvider;
 import me.batata_1.fractalterrain.world.noise.OctaveSimplexNoiseSampler;
 import net.minecraft.server.MinecraftServer;
@@ -40,11 +40,26 @@ public class FractalTerrainInstance {
 
     public static volatile FractalTerrainInstance INSTANCE;
 
-    private FractalTerrainInstance()
+    private final MinecraftServer server;
+    private final Path pathMundo;
+    public final CompletableFuture<ReliefProvider> reliefSource = new CompletableFuture<>();
 
-    private static volatile MinecraftServer curServer = null;
-    private static volatile Path pathMundo = null;
-    public static volatile CompletableFuture<ReliefProvider> reliefSource = new CompletableFuture<>();
+    private FractalTerrainInstance(MinecraftServer server) {
+        pathMundo = Path.of(server.getSavePath(WorldSavePath.ROOT).normalize() + "/fractal_terrain");
+        this.server = server;
+        LOGGER.info("completed reliefSource");
+        final long seed = FractalTerrainInstance.getServer()
+                .getSaveProperties()
+                .getGeneratorOptions()
+                .getSeed();
+        pipeline.setSeed(seed);
+        reliefSource.complete(new ReliefProvider(pathMundo));
+//        GaussianNoisePatchProvider.setSeed(seed);
+        ContinentalScaleMapProvider.initSamplers(seed);
+        OctaveSimplexNoiseSampler.init(seed);
+        debug();
+        LOGGER.info("init set size: {}", OctaveSimplexNoiseSampler.getInitSetSize());
+    }
 
     public static synchronized void setServer(MinecraftServer server, ServerWorld world) {
         final ChunkGenerator chunkGenerator =
@@ -52,43 +67,19 @@ public class FractalTerrainInstance {
         if (!(chunkGenerator instanceof FractalTerrainChunkGenerator)) return;
         if (world.getRegistryKey() != World.OVERWORLD) return;
         LOGGER.info("fractalTerrain initializing");
-        if (curServer != null || pathMundo != null || reliefSource.isDone()) {
-            LOGGER.warn("Already initialized");
-            return;
-        }
-        curServer = server;
-        pathMundo = server.getSavePath(WorldSavePath.ROOT).normalize();
-
-        reliefSource.complete(new ReliefProvider());
-        LOGGER.info("completed reliefSource");
-        final long seed = FractalTerrainInstance.getServer()
-                .getSaveProperties()
-                .getGeneratorOptions()
-                .getSeed();
-        GaussianNoisePatchProvider.setSeed(seed);
-        ContinentalScaleMapProvider.initSamplers(seed);
-        OctaveSimplexNoiseSampler.init(seed);
-        debug();
-        LOGGER.info("init set size: {}", OctaveSimplexNoiseSampler.getInitSetSize());
+        if(INSTANCE != null) return;
+        INSTANCE = new FractalTerrainInstance(server);
     }
 
-    public static synchronized void freeServer(MinecraftServer server) {
-        curServer = null;
-        pathMundo = null;
+    public static void freeServer(MinecraftServer minecraftServer) {
         try {
-            reliefSource.get().getStorage().clear();
-        } catch (InterruptedException | ExecutionException ignored) {
-
-        } finally {
-            reliefSource = new CompletableFuture<>();
+            INSTANCE.reliefSource.get().getStorage().close();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 
     public static MinecraftServer getServer() {
-        return curServer;
-    }
-
-    public static Path getDir() {
-        return Path.of(pathMundo + "/fractal_terrain");
+        return INSTANCE.server;
     }
 }

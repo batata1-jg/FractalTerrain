@@ -6,7 +6,6 @@ import static me.batata_1.fractalterrain.references.Reference.LOGGER;
 import static me.batata_1.fractalterrain.util.FractalTerrainUtil.*;
 
 import com.github.xandergos.terraindiffusionmc.pipeline.FastNoiseLite;
-import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider;
 import com.github.xandergos.terraindiffusionmc.pipeline.WorldPipelineModelConfig;
 import com.google.common.base.Function;
 import com.google.common.base.Supplier;
@@ -20,7 +19,7 @@ import me.batata_1.fractalterrain.FractalTerrainInstance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class EntryStorage {
+public class EntryStorage implements AutoCloseable {
 
        private static final ExecutorService INFERENCE_EXECUTOR = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "inference");
@@ -129,11 +128,6 @@ public class EntryStorage {
         return GENERATED_ENTRIES.contains(xz);
     }
 
-    public void clear() {
-        CACHE.clear();
-        GENERATED_ENTRIES.clear();
-    }
-
     // xz inter coords
     private synchronized CompletableFuture<Tile> fetchEntry(Pair<Integer, Integer> xz) {
 
@@ -186,5 +180,12 @@ public class EntryStorage {
 
     public synchronized String getPath() {
         return PATH;
+    }
+
+    @Override
+    public void close() throws Exception {
+        CACHE.clear();
+        GENERATED_ENTRIES.clear();
+
     }
 }

@@ -1,6 +1,6 @@
 package me.batata_1.fractalterrain.world.gen.chunk;
 
-import static me.batata_1.fractalterrain.FractalTerrainInstance.reliefSource;
+import static me.batata_1.fractalterrain.FractalTerrainInstance.INSTANCE;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
@@ -38,13 +38,10 @@ import net.minecraft.world.gen.noise.NoiseConfig;
 public final class FractalTerrainChunkGenerator extends ChunkGenerator {
 
     public record Settings(
-            RegistryEntry<ReliefProvider.Settings> postConfig, float scale, int seaLevel, int bottomY, int topY)
+            float scale, int seaLevel, int bottomY, int topY)
             implements SettingsRegistry.Settings {
 
         public static final Codec<Settings> CODEC = RecordCodecBuilder.create(instance -> instance.group(
-                        ReliefProvider.Settings.REGISTRY_CODEC
-                                .fieldOf("post_config")
-                                .forGetter(Settings::postConfig),
                         Codec.FLOAT.optionalFieldOf("scale", 1F).forGetter(Settings::scale),
                         Codec.INT.optionalFieldOf("sea_level", 63).forGetter(Settings::seaLevel),
                         Codec.INT.optionalFieldOf("bottom_y", -64).forGetter(Settings::bottomY),
@@ -104,42 +101,42 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
     private void initReliefRelatedInterpolation() {
         reliefInterpolation.setF(xz -> {
             try {
-                return reliefSource.get().getElev(xz);
+                return INSTANCE.reliefSource.get().getElev(xz);
             } catch (InterruptedException | ExecutionException e) {
                 throw new RuntimeException(e);
             }
         });
         reliefGradInterpolation.setF(xz -> {
             try {
-                return reliefSource.get().getRefinedGrad(xz);
+                return INSTANCE.reliefSource.get().getRefinedGrad(xz);
             } catch (InterruptedException | ExecutionException e) {
                 throw new RuntimeException(e);
             }
         });
         reliefGradXInterpolation.setF(xz -> {
             try {
-                return reliefSource.get().getGradX(xz);
+                return INSTANCE.reliefSource.get().getGradX(xz);
             } catch (InterruptedException | ExecutionException e) {
                 throw new RuntimeException(e);
             }
         });
         reliefGradYInterpolation.setF(xz -> {
             try {
-                return reliefSource.get().getGradY(xz);
+                return INSTANCE.reliefSource.get().getGradY(xz);
             } catch (InterruptedException | ExecutionException e) {
                 throw new RuntimeException(e);
             }
         });
         reliefResInterpolation.setF(xz -> {
             try {
-                return reliefSource.get().getRes(xz);
+                return INSTANCE.reliefSource.get().getRes(xz);
             } catch (InterruptedException | ExecutionException e) {
                 throw new RuntimeException(e);
             }
         });
         reliefBlurredInterpolation.setF(xz -> {
             try {
-                return reliefSource.get().getBlurredElev(xz);
+                return INSTANCE.reliefSource.get().getBlurredElev(xz);
             } catch (InterruptedException | ExecutionException e) {
                 throw new RuntimeException(e);
             }

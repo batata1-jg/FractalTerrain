@@ -40,6 +40,9 @@ public final class ModelAssetManager {
     private static final Path MODEL_DIRECTORY = FabricLoader.getInstance()
             .getGameDir()
             .resolve("terrain-diffusion-models");
+    private static final Path MODEL_UTIL_DIRECTORY = FabricLoader.getInstance()
+            .getGameDir()
+            .resolve("ml_util");
     private static final AtomicBoolean READY = new AtomicBoolean(false);
     private static final Gson GSON = new Gson();
     private static final Type MANIFEST_TYPE = new TypeToken<ModelAssetManifest>() {}.getType();
@@ -85,6 +88,10 @@ public final class ModelAssetManager {
      */
     public static Path resolveAssetPath(String fileName) {
         return MODEL_DIRECTORY.resolve(fileName);
+    }
+
+    public static Path resolveUtilPath(String fileName) {
+        return MODEL_UTIL_DIRECTORY.resolve(fileName);
     }
 
     private static void ensureSingleAsset(

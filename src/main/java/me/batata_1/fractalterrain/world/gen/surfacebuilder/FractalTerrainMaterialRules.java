@@ -11,6 +11,7 @@ import net.minecraft.registry.*;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.dynamic.CodecHolder;
 import net.minecraft.world.gen.surfacebuilder.MaterialRules;
+import static me.batata_1.fractalterrain.FractalTerrainInstance.INSTANCE;
 
 public class FractalTerrainMaterialRules extends MaterialRules {
 
@@ -97,7 +98,7 @@ public class FractalTerrainMaterialRules extends MaterialRules {
             final Interpolation i = new Interpolation(scale);
             i.setF(xz -> {
                 try {
-                    return FractalTerrainInstance.reliefSource.get().getRefinedGrad(xz);
+                    return INSTANCE.reliefSource.get().getRefinedGrad(xz);
                 } catch (InterruptedException | ExecutionException e) {
                     throw new RuntimeException(e);
                 }

@@ -1,39 +1,27 @@
 package me.batata_1.fractalterrain.world.gen.relief;
 
 import ai.onnxruntime.OnnxTensor;
-import ai.onnxruntime.OrtException;
-import ai.onnxruntime.OrtSession;
-import com.github.xandergos.terraindiffusionmc.infinitetensor.FloatTensor;
-import com.github.xandergos.terraindiffusionmc.pipeline.*;
 import com.mojang.datafixers.util.Pair;
-import com.mojang.serialization.Codec;
-import com.mojang.serialization.codecs.RecordCodecBuilder;
-import java.io.IOException;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Random;
+
+import java.nio.file.Path;
 import java.util.concurrent.*;
 
-import me.batata_1.fractalterrain.ml.Models;
-import me.batata_1.fractalterrain.registry.FractalTerrainRegistryKeys;
-import me.batata_1.fractalterrain.registry.SettingsRegistry;
+import me.batata_1.fractalterrain.FractalTerrainInstance;
+
 import me.batata_1.fractalterrain.storage.EntryStorage;
 import me.batata_1.fractalterrain.storage.Tile;
 import me.batata_1.fractalterrain.util.Debug;
 import me.batata_1.fractalterrain.world.ContinentalScaleMapProvider;
-import net.minecraft.registry.entry.RegistryElementCodec;
-import net.minecraft.registry.entry.RegistryEntry;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class ReliefProvider {
 
     private final EntryStorage final_tiles;
 
-    public ReliefProvider(String pathSave) {
-        final_tiles = new EntryStorage(pathSave,"fractal_terrain",512,xz->{
-
+    public ReliefProvider(Path pathSave) {
+        final_tiles = new EntryStorage(pathSave.toString(),"final_tiles",512,xz->{
+            Tile t = new Tile(FractalTerrainInstance.pipeline.getDecoderSice(xz.getFirst(),xz.getSecond()));
+            Debug.seeFinal(t.get(),xz.getFirst(),xz.getSecond());
+            return t;
         });
     }
 
@@ -75,45 +63,6 @@ public class ReliefProvider {
 
     public EntryStorage getStorage() {
         return final_tiles;
-    }
-    // global coords -> correct to get coarse value
-    private Pair<Integer, Integer> convertCoarse(Pair<Integer, Integer> xz) {
-        return xz;
-    }
-
-    private float getCoarseValue(Pair<Integer, Integer> xz, int ch) {
-        try {
-            return final_raw_tiles.getValue(convertCoarse(xz), ch);
-        } catch (ExecutionException | InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public float getContinentalElev(Pair<Integer, Integer> xz) {
-        return getElev(xz);
-    }
-
-    public float getRawGrad(Pair<Integer, Integer> xz) {
-        return (float) Math.tanh(getBlurredGrad(xz) / 1000.0);
-    }
-
-    public float getRawTemp(Pair<Integer, Integer> xz) {
-        final double val = ContinentalScaleMapProvider.sampleTemperature(
-                convertCoarse(xz).getFirst(), convertCoarse(xz).getSecond());
-        return (float) val;
-    }
-
-    public float getRawTempSTD(Pair<Integer, Integer> xz) {
-        return getCoarseValue(xz, 3);
-    }
-
-    public float getRawPrecip(Pair<Integer, Integer> xz) {
-        return (float) ContinentalScaleMapProvider.samplePrecipitation(
-                convertCoarse(xz).getFirst(), convertCoarse(xz).getSecond());
-    }
-
-    public float getRawPrecipSTD(Pair<Integer, Integer> xz) {
-        return getCoarseValue(xz, 5);
     }
 
     public OnnxTensor getTilesAsTensor(int i, int j) {
