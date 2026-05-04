@@ -1,5 +1,8 @@
 accessWidener v2 named
 
+accessible field net/minecraft/world/biome/source/MultiNoiseBiomeSource biomeEntries Lcom/mojang/datafixers/util/Either;
+accessible method net/minecraft/world/biome/source/MultiNoiseBiomeSource getBiomeEntries ()Lnet/minecraft/world/biome/source/util/MultiNoiseUtil$Entries;
+accessible field net/minecraft/world/biome/source/MultiNoiseBiomeSource PRESET_CODEC Lcom/mojang/serialization/MapCodec;
 accessible method net/minecraft/world/biome/source/MultiNoiseBiomeSource <init> (Lcom/mojang/datafixers/util/Either;)V
 accessible class net/minecraft/world/gen/surfacebuilder/MaterialRules$BooleanSupplier
 accessible class net/minecraft/world/gen/surfacebuilder/MaterialRules$FullLazyAbstractPredicate
