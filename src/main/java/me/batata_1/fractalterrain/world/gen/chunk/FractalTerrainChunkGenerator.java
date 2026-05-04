@@ -1,7 +1,5 @@
 package me.batata_1.fractalterrain.world.gen.chunk;
 
-import static me.batata_1.fractalterrain.FractalTerrainInstance.reliefSource;
-
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import java.util.Arrays;
@@ -33,18 +31,17 @@ import net.minecraft.world.gen.StructureAccessor;
 import net.minecraft.world.gen.chunk.*;
 import net.minecraft.world.gen.noise.NoiseConfig;
 
+import static me.batata_1.fractalterrain.FractalTerrainInstance.reliefSource;
+
 // TODO: add compat , consertar biomes, reescrever isso
 
 public final class FractalTerrainChunkGenerator extends ChunkGenerator {
 
     public record Settings(
-            RegistryEntry<ReliefProvider.Settings> postConfig, float scale, int seaLevel, int bottomY, int topY)
+            float scale, int seaLevel, int bottomY, int topY)
             implements SettingsRegistry.Settings {
 
         public static final Codec<Settings> CODEC = RecordCodecBuilder.create(instance -> instance.group(
-                        ReliefProvider.Settings.REGISTRY_CODEC
-                                .fieldOf("post_config")
-                                .forGetter(Settings::postConfig),
                         Codec.FLOAT.optionalFieldOf("scale", 1F).forGetter(Settings::scale),
                         Codec.INT.optionalFieldOf("sea_level", 63).forGetter(Settings::seaLevel),
                         Codec.INT.optionalFieldOf("bottom_y", -64).forGetter(Settings::bottomY),
@@ -62,6 +59,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         Blocks.ANDESITE.getDefaultState(),
         Blocks.GRANITE.getDefaultState()
     };
+
 
     private final RegistryEntry<Settings> settings;
     private final Interpolation reliefInterpolation;

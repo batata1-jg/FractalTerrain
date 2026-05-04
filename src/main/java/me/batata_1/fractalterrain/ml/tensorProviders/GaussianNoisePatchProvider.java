@@ -1,10 +1,10 @@
 package me.batata_1.fractalterrain.ml.tensorProviders;
 
-import static me.batata_1.fractalterrain.FractalTerrainInstance.ENV;
 import static me.batata_1.fractalterrain.math.CoordTranslator.toEntry;
 import static net.minecraft.util.math.MathHelper.nextGaussian;
 
 import ai.onnxruntime.OnnxTensor;
+import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtException;
 import com.google.common.hash.Hashing;
 import com.mojang.datafixers.util.Pair;
@@ -44,6 +44,6 @@ public class GaussianNoisePatchProvider {
             }
         }
         noise.flip();
-        return OnnxTensor.createTensor(ENV, noise, shape);
+        return OnnxTensor.createTensor(OrtEnvironment.getEnvironment(), noise, shape);
     }
 }

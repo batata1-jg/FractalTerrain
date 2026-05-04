@@ -1,10 +1,11 @@
 package me.batata_1.fractalterrain.storage;
 
-import static me.batata_1.fractalterrain.FractalTerrainInstance.ENV;
 import static me.batata_1.fractalterrain.references.Reference.LOGGER;
 
 import ai.onnxruntime.OnnxTensor;
+import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtException;
+import com.github.xandergos.terraindiffusionmc.infinitetensor.FloatTensor;
 import com.mojang.datafixers.util.Pair;
 import java.io.*;
 import java.nio.FloatBuffer;
@@ -62,6 +63,17 @@ public class Tile {
         cProd = calcProd();
     }
 
+    public Tile(FloatTensor h) {
+        entries = h.data;
+        int size = h.shape.length;
+        long[] s = new long[size];
+        for(int i=0 ; i<size ; i++){
+            s[i] = h.shape[i];
+        }
+        this.shape = s;
+        cProd = calcProd();
+    }
+
     public Tile(float[] en, long[] sh) {
         entries = en;
         shape = sh;
@@ -98,7 +110,7 @@ public class Tile {
 
     public OnnxTensor get() {
         try {
-            return OnnxTensor.createTensor(ENV, FloatBuffer.wrap(entries), shape);
+            return OnnxTensor.createTensor(OrtEnvironment.getEnvironment(), FloatBuffer.wrap(entries), shape);
         } catch (OrtException e) {
             throw new RuntimeException(e);
         }

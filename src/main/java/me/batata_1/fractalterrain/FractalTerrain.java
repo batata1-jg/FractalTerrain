@@ -3,6 +3,10 @@ package me.batata_1.fractalterrain;
 import static me.batata_1.fractalterrain.references.Reference.LOGGER;
 
 import java.util.Arrays;
+
+import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider;
+import com.github.xandergos.terraindiffusionmc.pipeline.ModelAssetManager;
+import com.github.xandergos.terraindiffusionmc.pipeline.PipelineModels;
 import me.batata_1.fractalterrain.references.Reference;
 import me.batata_1.fractalterrain.registry.FractalTerrainRegistryKeys;
 import me.batata_1.fractalterrain.world.biome.source.FractalTerrainBiomeSource;
@@ -19,6 +23,9 @@ import net.fabricmc.fabric.api.event.registry.DynamicRegistryView;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
 import net.minecraft.registry.RegistryKey;
+import net.minecraft.util.WorldSavePath;
+import net.minecraft.world.World;
+import net.minecraft.world.gen.chunk.ChunkGenerator;
 
 public class FractalTerrain implements ModInitializer {
 
@@ -35,8 +42,6 @@ public class FractalTerrain implements ModInitializer {
         DynamicRegistries.register(
                 FractalTerrainRegistryKeys.FRACTAL_TERRAIN_CHUNK_GENERATOR_SETTINGS,
                 FractalTerrainChunkGenerator.Settings.CODEC);
-        DynamicRegistries.register(
-                FractalTerrainRegistryKeys.POST_PROCESSING_SETTINGS, ReliefProvider.Settings.CODEC);
         Registry.register(
                 Registries.CHUNK_GENERATOR,
                 Reference.identifier("chunk_generator"),
@@ -49,12 +54,19 @@ public class FractalTerrain implements ModInitializer {
 
         LOGGER.info(Arrays.toString(DynamicRegistries.getDynamicRegistries().toArray()));
 
-        DynamicRegistrySetupCallback.EVENT.register(registryView -> {
-            LOGGER.info("isso rodaaa????????????????????????????????????????????????????????");
-            addListenerForDynamic(registryView, FractalTerrainRegistryKeys.FRACTAL_TERRAIN_CHUNK_GENERATOR_SETTINGS);
-            addListenerForDynamic(registryView, FractalTerrainRegistryKeys.POST_PROCESSING_SETTINGS);
-            LOGGER.info("ele so n registra?");
-        });
+
+
+//        DynamicRegistrySetupCallback.EVENT.register(registryView -> {
+//            LOGGER.info("isso rodaaa????????????????????????????????????????????????????????");
+//            addListenerForDynamic(registryView, FractalTerrainRegistryKeys.FRACTAL_TERRAIN_CHUNK_GENERATOR_SETTINGS);
+//            addListenerForDynamic(registryView, FractalTerrainRegistryKeys.POST_PROCESSING_SETTINGS);
+//            LOGGER.info("ele so n registra?");
+//        });
+
+        ModelAssetManager.ensureAssetsReady();
+        PipelineModels.load();
+
+       // ServerLifecycleEvents.SERVER_STARTING.register(server -> ReliefProvider.clearStorage());
 
         ServerWorldEvents.LOAD.register(FractalTerrainInstance::setServer);
 

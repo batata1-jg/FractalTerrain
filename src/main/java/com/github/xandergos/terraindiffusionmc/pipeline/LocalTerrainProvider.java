@@ -171,7 +171,7 @@ public final class LocalTerrainProvider {
             if (cached != null) return cached;
         }
 
-        int scale = WorldScaleManager.getCurrentScale();
+        int scale = 6;
         FutureTask<HeightmapData> task = new FutureTask<>(() -> {
             long computedWindowCountBefore = pipeline.getTotalComputedWindowCount();
             HeightmapData data = scale <= 1

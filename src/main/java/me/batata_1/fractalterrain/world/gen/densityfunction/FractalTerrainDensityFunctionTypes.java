@@ -71,9 +71,6 @@ public final class FractalTerrainDensityFunctionTypes {
         private final float scale;
 
         public static final Codec<RefinedElevation> CODEC = RecordCodecBuilder.create(instance -> instance.group(
-                        ReliefProvider.Settings.CODEC
-                                .fieldOf("post_config")
-                                .forGetter(null),
                         Codec.FLOAT.optionalFieldOf("scale", 0.2F).forGetter(g -> g.scale),
                         Codec.INT.fieldOf("minVal").forGetter(g -> g.MIN_VAL),
                         Codec.INT.fieldOf("maxVal").forGetter(g -> g.MAX_VAL))
@@ -81,12 +78,9 @@ public final class FractalTerrainDensityFunctionTypes {
 
         public static final CodecHolder<RefinedElevation> CODEC_HOLDER = CodecHolder.of(CODEC);
 
-        public static ReliefProvider.Settings post_config;
-
-        public RefinedElevation(ReliefProvider.Settings setting, float scale, int minVal, int maxVal) {
+        public RefinedElevation( float scale, int minVal, int maxVal) {
             super(new Interpolation(scale));
             this.scale = scale;
-            RefinedElevation.post_config = setting;
             MAX_VAL = maxVal;
             MIN_VAL = minVal;
         }

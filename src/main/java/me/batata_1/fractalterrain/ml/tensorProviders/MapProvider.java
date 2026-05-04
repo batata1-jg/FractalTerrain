@@ -1,10 +1,10 @@
 package me.batata_1.fractalterrain.ml.tensorProviders;
 
-import static me.batata_1.fractalterrain.FractalTerrainInstance.ENV;
 import static me.batata_1.fractalterrain.math.CoordTranslator.toEntry;
 import static me.batata_1.fractalterrain.world.ContinentalScaleMapProvider.*;
 
 import ai.onnxruntime.OnnxTensor;
+import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtException;
 import com.mojang.datafixers.util.Pair;
 import java.nio.FloatBuffer;
@@ -42,6 +42,6 @@ public class MapProvider {
             }
         }
         noise.flip();
-        return OnnxTensor.createTensor(ENV, noise, shape);
+        return OnnxTensor.createTensor(OrtEnvironment.getEnvironment(), noise, shape);
     }
 }

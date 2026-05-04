@@ -53,8 +53,12 @@ public final class OnnxModel implements AutoCloseable {
 
     public OnnxModel(Path modelFilePath, String name) {
         this.name = name;
-        try {
+        try (final OrtEnvironment.ThreadingOptions opts = new OrtEnvironment.ThreadingOptions()) {
             long start = System.currentTimeMillis();
+            opts.setGlobalInterOpNumThreads(
+                    (Runtime.getRuntime().availableProcessors() >> 2) == 0
+                            ? 1
+                            : (Runtime.getRuntime().availableProcessors() >> 2));
             this.env = OrtEnvironment.getEnvironment(OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR);
             byte[] sourceModelBytes = Files.readAllBytes(modelFilePath);
             OptimizedModelLoadResult initialOptimizedModelLoadResult = optimizeModelAtRuntime(sourceModelBytes, false);

@@ -14,21 +14,15 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import javax.imageio.ImageIO;
 import me.batata_1.fractalterrain.FractalTerrainInstance;
-import me.batata_1.fractalterrain.ml.Models;
 import me.batata_1.fractalterrain.ml.tensorProviders.MapProvider;
 import me.batata_1.fractalterrain.storage.Tile;
 import me.batata_1.fractalterrain.world.noise.NoiseSampler;
 import me.batata_1.fractalterrain.world.noise.PhacelleNoiseSampler;
-import me.batata_1.fractalterrain.world.noise.VoronoiNoiseSampler;
 import net.minecraft.util.WorldSavePath;
 
 public class Debug {
 
     public static CompletableFuture<OrtSession> test_in;
-
-    public static void readDebug() throws IOException, OrtException {
-        test_in = Models.getOrCreateModel("models/latent_coisado");
-    }
 
     public static void isNan(OnnxTensor t) {
         float[] arr = t.getFloatBuffer().array();
@@ -386,22 +380,22 @@ public class Debug {
 
             seeTensor(MapProvider.sampleMap(Pair.of(-32, -32), new long[] {5, 64, 64}), "feedElev", false, 0);
 
-            toTiffChannel(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0, 0), 4, "tensor");
+//            toTiffChannel(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0, 0), 4, "tensor");
 
-            VoronoiNoiseSampler s = new VoronoiNoiseSampler(64, 1);
-
-            seeNoise(s, "voronoi", 0, 0, 512);
-            seeTensor(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0, 0), "analysie", false, 0);
-            seeTensor(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0, 0), "grad", false, 4);
-            seeTensor(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0, 0), "gradY", false, 3);
-            seeTensor(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0, 0), "gradX", false, 2);
-            seeNoise(new PhacelleNoiseSampler(5, 3), "phacelle", 0, 0, 512);
+//            VoronoiNoiseSampler s = new VoronoiNoiseSampler(64, 1);
+//
+//            seeNoise(s, "voronoi", 0, 0, 512);
+//            seeTensor(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0, 0), "analysie", false, 0);
+//            seeTensor(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0, 0), "grad", false, 4);
+//            seeTensor(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0, 0), "gradY", false, 3);
+//            seeTensor(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0, 0), "gradX", false, 2);
+//            seeNoise(new PhacelleNoiseSampler(5, 3), "phacelle", 0, 0, 512);
             //
             //            for(float freq=1F ; freq<=512F ; freq *= 2F ) {
             //                seePhacelleNormal(freq,"phacelleNormal" + freq,0,0,512);
             //                seeNoise(new PhacelleNoiseSampler(5,freq), "phacelle"+freq,0,0,512);
             //            }
-        } catch (InterruptedException | ExecutionException | OrtException | IOException e) {
+        } catch (OrtException | IOException e) {
             throw new RuntimeException(e);
         }
 

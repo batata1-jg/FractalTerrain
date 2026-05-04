@@ -22,20 +22,10 @@ import org.jetbrains.annotations.Nullable;
 
 public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
 
-    private static final MapCodec<RegistryEntry<Biome>> BIOME_CODEC;
-    public static final MapCodec<MultiNoiseUtil.Entries<RegistryEntry<Biome>>> CUSTOM_CODEC;
-    public static final MapCodec<RegistryEntry<MultiNoiseBiomeSourceParameterList>> PRESET_CODEC;
     public static final Codec<FractalTerrainBiomeSource> CODEC;
 
-    public final Either<MultiNoiseUtil.Entries<RegistryEntry<Biome>>, RegistryEntry<MultiNoiseBiomeSourceParameterList>>
-            biomeEntries;
 
     static {
-        BIOME_CODEC = Biome.REGISTRY_CODEC.fieldOf("biome");
-        CUSTOM_CODEC = MultiNoiseUtil.Entries.createCodec(BIOME_CODEC).fieldOf("biomes");
-        PRESET_CODEC = MultiNoiseBiomeSourceParameterList.REGISTRY_CODEC
-                .fieldOf("preset")
-                .withLifecycle(Lifecycle.stable());
         CODEC = Codec.mapEither(CUSTOM_CODEC, PRESET_CODEC)
                 .xmap(FractalTerrainBiomeSource::new, (FractalTerrainBiomeSource biomeSource) -> biomeSource
                         .biomeEntries)
@@ -45,8 +35,7 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
     private FractalTerrainBiomeSource(
             Either<MultiNoiseUtil.Entries<RegistryEntry<Biome>>, RegistryEntry<MultiNoiseBiomeSourceParameterList>>
                     biomeEntries) {
-        super();
-        this.biomeEntries = biomeEntries;
+        super(biomeEntries);
     }
 
     public static FractalTerrainBiomeSource create(MultiNoiseUtil.Entries<RegistryEntry<Biome>> biomeEntries) {
@@ -60,17 +49,6 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
     @Override
     protected Codec<? extends BiomeSource> getCodec() {
         return CODEC;
-    }
-
-    private MultiNoiseUtil.Entries<RegistryEntry<Biome>> getBiomeEntries() {
-        return this.biomeEntries.map(
-                (entries) -> entries,
-                (parameterListEntry) -> parameterListEntry.value().getEntries());
-    }
-
-    @Override
-    protected Stream<RegistryEntry<Biome>> biomeStream() {
-        return this.getBiomeEntries().getEntries().stream().map(Pair::getSecond);
     }
 
     public RegistryEntry<Biome> getBiomeAtPoint(MultiNoiseUtil.NoiseValuePoint point) {

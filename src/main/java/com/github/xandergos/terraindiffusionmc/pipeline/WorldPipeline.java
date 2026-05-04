@@ -1,5 +1,6 @@
 package com.github.xandergos.terraindiffusionmc.pipeline;
 
+import ai.onnxruntime.OnnxTensor;
 import com.github.xandergos.terraindiffusionmc.infinitetensor.*;
 import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
@@ -80,7 +81,7 @@ public final class WorldPipeline implements AutoCloseable {
     final InfiniteTensor coarse;
     final InfiniteTensor latents;
     final InfiniteTensor residual;
-    final InfiniteTensor postProcessing;
+
 
     /** Uses shared models from PipelineModels (e.g. from mod init). Does not close models on close(). Seed is 64-bit (Python: seed & 0xFFFFFFFFFFFFFFFF). */
     public WorldPipeline(long seed, PipelineModels models) {
@@ -95,7 +96,7 @@ public final class WorldPipeline implements AutoCloseable {
         this.coarse = buildCoarseStage();
         this.latents = buildLatentStage();
         this.residual = buildDecoderStage();
-        this.postProcessing = buildPostProcessingStage();
+
     }
 
     /** Loads its own models (e.g. for tests). Caller must close. */
@@ -113,7 +114,6 @@ public final class WorldPipeline implements AutoCloseable {
         this.coarse = buildCoarseStage();
         this.latents = buildLatentStage();
         this.residual = buildDecoderStage();
-        this.postProcessing = buildPostProcessingStage();
     }
 
     /** Lightweight seed change (Python change_seed): update seed and synthetic map, clear tile caches. Models stay loaded. */
@@ -463,6 +463,10 @@ public final class WorldPipeline implements AutoCloseable {
         return coarse.getSlice(new int[]{0, ci0, cj0}, new int[]{7, ci1, cj1});
     }
 
+    public FloatTensor getDecoderSlice(int x, int z) {
+        return residual.getSlice(new int[]{0,x,z},new int[]{8,x+512,z+512});
+    }
+
     /**
      * Get elevation and climate for a bounding box.
      *
@@ -675,4 +679,5 @@ public final class WorldPipeline implements AutoCloseable {
             fuzedModel.close();
         }
     }
+
 }
