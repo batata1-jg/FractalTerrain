@@ -12,25 +12,12 @@ MemoryProfiler {
 
     private MemoryProfiler() {}
 
-    public static final class TensorStats {
-        public final String id;
-        /** Windows newly computed and cached (proxy for cache misses). */
-        public final long computeCount;
-        public final long evictionCount;
-        /** Number of windows currently in the LRU cache. */
-        public final int cachedWindows;
-        public final long currentBytes;
-        public final long peakBytes;
-
-        public TensorStats(String id, long computeCount, long evictionCount,
-                           int cachedWindows, long currentBytes, long peakBytes) {
-            this.id = id;
-            this.computeCount = computeCount;
-            this.evictionCount = evictionCount;
-            this.cachedWindows = cachedWindows;
-            this.currentBytes = currentBytes;
-            this.peakBytes = peakBytes;
-        }
+    /**
+     * @param computeCount  Windows newly computed and cached (proxy for cache misses).
+     * @param cachedWindows Number of windows currently in the LRU cache.
+     */
+    public record TensorStats(String id, long computeCount, long evictionCount, int cachedWindows, long currentBytes,
+                              long peakBytes) {
     }
 
     public static final class Snapshot {

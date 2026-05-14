@@ -197,7 +197,7 @@ public class MemoryTileStore {
                     size      != null ? size[0]      : 0L,
                     peak      != null ? peak[0]      : 0L));
         }
-        stats.sort(java.util.Comparator.comparing(s -> s.id));
+        stats.sort(java.util.Comparator.comparing(s -> s.id()));
         return new MemoryProfiler.Snapshot(System.currentTimeMillis(), stats);
     }
 
