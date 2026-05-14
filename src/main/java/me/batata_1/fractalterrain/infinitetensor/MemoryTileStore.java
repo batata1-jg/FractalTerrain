@@ -3,6 +3,8 @@ package me.batata_1.fractalterrain.infinitetensor;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 
+import me.batata_1.fractalterrain.debug.MemoryProfiler;
+
 /**
  * In-memory factory and LRU cache for {@link InfiniteTensor} window outputs.
  *
@@ -17,6 +19,13 @@ public class MemoryTileStore {
 
     /** Tracked byte count per tensor id. */
     private final Map<String, long[]> cacheSizes = new HashMap<>();
+
+    /** Cumulative newly-computed window count per tensor id. */
+    private final Map<String, long[]> computeCounts  = new HashMap<>();
+    /** Cumulative eviction count per tensor id. */
+    private final Map<String, long[]> evictionCounts = new HashMap<>();
+    /** Peak cached byte count per tensor id. */
+    private final Map<String, long[]> peakBytes      = new HashMap<>();
 
     /** All registered tensor instances, by id. */
     private final Map<String, InfiniteTensor> tensors = new HashMap<>();
@@ -85,7 +94,10 @@ public class MemoryTileStore {
         tensors.put(id, tensor);
         // access-order LinkedHashMap for LRU eviction
         windowCaches.put(id, new LinkedHashMap<>(16, 0.75f, true));
-        cacheSizes.put(id, new long[]{0L});
+        cacheSizes.put(id,     new long[]{0L});
+        computeCounts.put(id,  new long[]{0L});
+        evictionCounts.put(id, new long[]{0L});
+        peakBytes.put(id,      new long[]{0L});
     }
 
     // -------------------------------------------------------------------------
@@ -106,6 +118,12 @@ public class MemoryTileStore {
         cache.put(key, output);
         size[0] += output.byteSize();
         totalComputedWindowCount.incrementAndGet();
+
+        long[] computes = computeCounts.get(id);
+        if (computes != null) computes[0]++;
+
+        long[] peak = peakBytes.get(id);
+        if (peak != null && size[0] > peak[0]) peak[0] = size[0];
     }
 
     /** Returns how many windows have been newly computed and cached. */
@@ -119,12 +137,14 @@ public class MemoryTileStore {
         long[] size = cacheSizes.get(id);
         if (cache == null) return;
 
+        long[] evictions = evictionCounts.get(id);
         // Keep at least one entry even if it exceeds the limit.
         Iterator<Map.Entry<List<Integer>, FloatTensor>> it = cache.entrySet().iterator();
         while (size[0] > limitBytes && cache.size() > 1 && it.hasNext()) {
             Map.Entry<List<Integer>, FloatTensor> entry = it.next();
             size[0] -= entry.getValue().byteSize();
             it.remove();
+            if (evictions != null) evictions[0]++;
         }
     }
 
@@ -152,6 +172,33 @@ public class MemoryTileStore {
         tensors.remove(id);
         windowCaches.remove(id);
         cacheSizes.remove(id);
+        computeCounts.remove(id);
+        evictionCounts.remove(id);
+        peakBytes.remove(id);
+    }
+
+    /**
+     * Returns a point-in-time snapshot of cache statistics for all registered tensors.
+     * Tensor entries are sorted alphabetically by id.
+     */
+    public MemoryProfiler.Snapshot takeSnapshot() {
+        List<MemoryProfiler.TensorStats> stats = new ArrayList<>(tensors.size());
+        for (String id : tensors.keySet()) {
+            LinkedHashMap<List<Integer>, FloatTensor> cache = windowCaches.get(id);
+            long[] size      = cacheSizes.get(id);
+            long[] computes  = computeCounts.get(id);
+            long[] evictions = evictionCounts.get(id);
+            long[] peak      = peakBytes.get(id);
+            stats.add(new MemoryProfiler.TensorStats(
+                    id,
+                    computes  != null ? computes[0]  : 0L,
+                    evictions != null ? evictions[0] : 0L,
+                    cache     != null ? cache.size() : 0,
+                    size      != null ? size[0]      : 0L,
+                    peak      != null ? peak[0]      : 0L));
+        }
+        stats.sort(java.util.Comparator.comparing(s -> s.id));
+        return new MemoryProfiler.Snapshot(System.currentTimeMillis(), stats);
     }
 
     // -------------------------------------------------------------------------

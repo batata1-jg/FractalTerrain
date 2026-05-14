@@ -1,5 +1,6 @@
 package me.batata_1.fractalterrain.ml.pipeline;
 
+import me.batata_1.fractalterrain.debug.MemoryProfiler;
 import me.batata_1.fractalterrain.infinitetensor.FloatTensor;
 import me.batata_1.fractalterrain.infinitetensor.InfiniteTensor;
 import me.batata_1.fractalterrain.infinitetensor.MemoryTileStore;
@@ -458,6 +459,11 @@ public final class WorldPipeline implements AutoCloseable {
     /** Returns the total count of newly computed tensor windows since startup. */
     public long getTotalComputedWindowCount() {
         return tileStore.getTotalComputedWindowCount();
+    }
+
+    /** Returns a point-in-time memory usage snapshot for all pipeline tensors. */
+    public MemoryProfiler.Snapshot takeMemorySnapshot() {
+        return tileStore.takeSnapshot();
     }
 
     /**
