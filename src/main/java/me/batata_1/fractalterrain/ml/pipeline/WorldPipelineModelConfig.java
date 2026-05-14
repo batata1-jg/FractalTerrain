@@ -2,6 +2,7 @@ package me.batata_1.fractalterrain.ml.pipeline;
 
 import com.google.gson.Gson;
 import com.google.gson.annotations.SerializedName;
+import me.batata_1.fractalterrain.ml.models.ModelAssetManager;
 
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;

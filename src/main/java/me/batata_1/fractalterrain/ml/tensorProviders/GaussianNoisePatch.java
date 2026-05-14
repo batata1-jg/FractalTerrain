@@ -1,6 +1,6 @@
 package me.batata_1.fractalterrain.ml.tensorProviders;
 
-import me.batata_1.fractalterrain.ml.pipeline.PortableRng;
+import me.batata_1.fractalterrain.noise.PortableRng;
 
 /**
  * Deterministic tile-seeded Gaussian noise matching Python world_pipeline.gaussian_noise_patch.

@@ -2,7 +2,6 @@ package me.batata_1.fractalterrain.ml.models;
 
 import ai.onnxruntime.*;
 import me.batata_1.fractalterrain.ml.TerrainDiffusionConfig;
-import me.batata_1.fractalterrain.ml.pipeline.ModelAssetManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
