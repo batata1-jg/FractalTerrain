@@ -6,6 +6,7 @@ import com.github.xandergos.terraindiffusionmc.config.TerrainDiffusionConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.InputStream;
 import java.nio.FloatBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -51,7 +52,7 @@ public final class OnnxModel implements AutoCloseable {
         }
     }
 
-    public OnnxModel(Path modelFilePath, String name) {
+    public OnnxModel(Object modelFilePath, String name) {
         this.name = name;
         try (final OrtEnvironment.ThreadingOptions opts = new OrtEnvironment.ThreadingOptions()) {
             long start = System.currentTimeMillis();
@@ -60,11 +61,22 @@ public final class OnnxModel implements AutoCloseable {
                             ? 1
                             : (Runtime.getRuntime().availableProcessors() >> 2));
             this.env = OrtEnvironment.getEnvironment(OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR);
-            byte[] sourceModelBytes = Files.readAllBytes(modelFilePath);
+
+            byte[] sourceModelBytes = null;
+            if(modelFilePath instanceof Path) {
+                sourceModelBytes = Files.readAllBytes((Path) modelFilePath);
+            } else {
+                LOG.info("class:{}",modelFilePath.getClass());
+                LOG.info("inputStrema {}",modelFilePath);
+                sourceModelBytes = ((InputStream) modelFilePath).readAllBytes();
+
+                ((InputStream) modelFilePath).close();
+
+            }
             OptimizedModelLoadResult initialOptimizedModelLoadResult = optimizeModelAtRuntime(sourceModelBytes, false);
             byte[] loadedModelBytes;
             try {
-                initializeModelSession(initialOptimizedModelLoadResult.modelBytes, start);
+                initializeModelSession(initialOptimizedModelLoadResult.modelBytes, start, false);
                 loadedModelBytes = initialOptimizedModelLoadResult.modelBytes;
             } catch (Exception initialLoadException) {
                 if (!initialOptimizedModelLoadResult.loadedFromCache) {
@@ -75,7 +87,7 @@ public final class OnnxModel implements AutoCloseable {
                         name, initialLoadException.getMessage());
                 deleteOptimizedCacheFile(initialOptimizedModelLoadResult.optimizedModelPath);
                 OptimizedModelLoadResult rebuiltOptimizedModelLoadResult = optimizeModelAtRuntime(sourceModelBytes, true);
-                initializeModelSession(rebuiltOptimizedModelLoadResult.modelBytes, start);
+                initializeModelSession(rebuiltOptimizedModelLoadResult.modelBytes, start, false);
                 loadedModelBytes = rebuiltOptimizedModelLoadResult.modelBytes;
             }
             this.optimizedModelBytes = loadedModelBytes;
@@ -84,6 +96,49 @@ public final class OnnxModel implements AutoCloseable {
         }
     }
 
+    public OnnxModel(Object modelFilePath, String name, boolean hasToBeCpu) {
+        this.name = name;
+        try (final OrtEnvironment.ThreadingOptions opts = new OrtEnvironment.ThreadingOptions()) {
+            long start = System.currentTimeMillis();
+            opts.setGlobalInterOpNumThreads(
+                    (Runtime.getRuntime().availableProcessors() >> 2) == 0
+                            ? 1
+                            : (Runtime.getRuntime().availableProcessors() >> 2));
+            this.env = OrtEnvironment.getEnvironment(OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR);
+
+            byte[] sourceModelBytes = null;
+            if(modelFilePath instanceof Path) {
+                sourceModelBytes = Files.readAllBytes((Path) modelFilePath);
+            } else {
+                LOG.info("class:{}",modelFilePath.getClass());
+                LOG.info("inputStrema {}",modelFilePath);
+                sourceModelBytes = ((InputStream) modelFilePath).readAllBytes();
+
+                ((InputStream) modelFilePath).close();
+
+            }
+            OptimizedModelLoadResult initialOptimizedModelLoadResult = optimizeModelAtRuntime(sourceModelBytes, hasToBeCpu);
+            byte[] loadedModelBytes;
+            try {
+                initializeModelSession(initialOptimizedModelLoadResult.modelBytes, start, hasToBeCpu);
+                loadedModelBytes = initialOptimizedModelLoadResult.modelBytes;
+            } catch (Exception initialLoadException) {
+                if (!initialOptimizedModelLoadResult.loadedFromCache) {
+                    throw initialLoadException;
+                }
+                closeLoadedSessions();
+                LOG.warn("Cached optimized ONNX-cpu model '{}' failed to load. Rebuilding cache: {}",
+                        name, initialLoadException.getMessage());
+                deleteOptimizedCacheFile(initialOptimizedModelLoadResult.optimizedModelPath);
+                OptimizedModelLoadResult rebuiltOptimizedModelLoadResult = optimizeModelAtRuntime(sourceModelBytes, true);
+                initializeModelSession(rebuiltOptimizedModelLoadResult.modelBytes, start, false);
+                loadedModelBytes = rebuiltOptimizedModelLoadResult.modelBytes;
+            }
+            this.optimizedModelBytes = loadedModelBytes;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to load ONNX model: " + modelFilePath, e);
+        }
+    }
     /**
      * Optimizes model bytes and caches the optimized file in the config directory.
      * Falls back to the source model bytes if optimization or cache I/O fails.
@@ -125,8 +180,8 @@ public final class OnnxModel implements AutoCloseable {
     /**
      * Loads model sessions for the active inference device configuration.
      */
-    private void initializeModelSession(byte[] modelBytes, long startMillis) throws OrtException {
-        if ("cpu".equals(TerrainDiffusionConfig.inferenceDevice())) {
+    private void initializeModelSession(byte[] modelBytes, long startMillis , boolean enforceCpu) throws OrtException {
+        if ("cpu".equals(TerrainDiffusionConfig.inferenceDevice()) || enforceCpu) {
             OrtSession.SessionOptions sessionOptions = new OrtSession.SessionOptions();
             sessionOptions.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
             this.cpuSession = env.createSession(modelBytes, sessionOptions);
@@ -273,28 +328,11 @@ public final class OnnxModel implements AutoCloseable {
         boolean added = false;
 
         try {
-            OrtCUDAProviderOptions cudaOpts = new OrtCUDAProviderOptions(0);
-            // Only grow the BFC arena by exactly what is needed, never pre-allocate.
-            cudaOpts.add("arena_extend_strategy", "kSameAsRequested");
-            // Heuristic: fast startup, no exhaustive benchmarking, workspace-efficient.
-            cudaOpts.add("cudnn_conv_algo_search", "HEURISTIC");
-            cudaOpts.add("do_copy_in_default_stream", "1");
-            opts.addCUDA(cudaOpts);
-            cudaOpts.close();
+            opts.addDirectML(0);
             added = true;
-            LOG.info("Terrain diffusion inference: GPU (CUDA)");
+            LOG.info("Terrain diffusion inference: GPU (DirectML)");
         } catch (Throwable t) {
-            LOG.warn("CUDA not available: {} - {}", t.getClass().getSimpleName(), t.getMessage());
-        }
-
-        if (!added) {
-            try {
-                opts.addDirectML(0);
-                added = true;
-                LOG.info("Terrain diffusion inference: GPU (DirectML)");
-            } catch (Throwable t) {
-                LOG.warn("DirectML not available: {} - {}", t.getClass().getSimpleName(), t.getMessage());
-            }
+            LOG.warn("DirectML not available: {} - {}", t.getClass().getSimpleName(), t.getMessage());
         }
         if (gpuRequired && !added) {
             throw new OrtException(

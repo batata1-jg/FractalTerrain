@@ -52,8 +52,6 @@ public class FractalTerrain implements ModInitializer {
         FractalTerrainMaterialRules.FractalTerrainMaterialCondition.register(Registries.MATERIAL_CONDITION);
         FractalTerrainDensityFunctionTypes.register();
 
-        LOGGER.info(Arrays.toString(DynamicRegistries.getDynamicRegistries().toArray()));
-
 
 
 //        DynamicRegistrySetupCallback.EVENT.register(registryView -> {

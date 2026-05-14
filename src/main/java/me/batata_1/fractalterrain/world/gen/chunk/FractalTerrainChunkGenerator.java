@@ -168,6 +168,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         final double interpolatedRelief = reliefInterpolation.interpolateSmoothStep(x, z);
         final double interpolatedGrad = reliefGradInterpolation.interpolateSmoothStep(x, z);
         final double strata = this.strata.sample(x, z, interpolatedRelief, interpolatedGrad, interpolatedBlurredRelief);
+        if( interpolatedBlurredRelief < -50 ) return -50;
         return (int) interpolatedRelief;
     }
 

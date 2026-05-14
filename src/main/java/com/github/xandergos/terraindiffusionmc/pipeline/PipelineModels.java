@@ -1,8 +1,11 @@
 package com.github.xandergos.terraindiffusionmc.pipeline;
 
+import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.InputStream;
+import java.nio.file.Path;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -18,7 +21,6 @@ public final class PipelineModels implements AutoCloseable {
     private static final String COARSE_FILE_NAME = "coarse_model.onnx";
     private static final String BASE_FILE_NAME = "base_model.onnx";
     private static final String DECODER_FILE_NAME = "decoder_model.onnx";
-    private static final String FUZED_FILE_NAME = "fuzed.onnx";
 
     private static volatile PipelineModels INSTANCE;
     private static volatile CountDownLatch loadDone;
@@ -91,7 +93,12 @@ public final class PipelineModels implements AutoCloseable {
         this.coarseModel = new OnnxModel(ModelAssetManager.resolveAssetPath(COARSE_FILE_NAME), "coarse");
         this.baseModel = new OnnxModel(ModelAssetManager.resolveAssetPath(BASE_FILE_NAME), "base");
         this.decoderModel = new OnnxModel(ModelAssetManager.resolveAssetPath(DECODER_FILE_NAME), "decoder");
-        this.fuzedModel = new OnnxModel(ModelAssetManager.resolveAssetPath(FUZED_FILE_NAME),"fuzed");
+
+        InputStream stream = PipelineModels.class.getResourceAsStream("/assets/fractal_terrain/ml_util/fuzed.onnx");
+        assert(stream != null);
+        LOG.info("stream is {}",stream);
+        LOG.info("fabric {}",FabricLoader.getInstance().getGameDir().resolve("/assets/fractal_terrain/ml_util/fuzed.onnx"));
+        this.fuzedModel = new OnnxModel(stream,"fuzed",true);
     }
 
     public OnnxModel getCoarseModel() { return coarseModel; }
@@ -107,6 +114,7 @@ public final class PipelineModels implements AutoCloseable {
             coarseModel.close();
             baseModel.close();
             decoderModel.close();
+            fuzedModel.close();
         } finally {
             INSTANCE = null;
             loadStarted = false;

@@ -73,7 +73,7 @@ public final class WorldPipeline implements AutoCloseable {
     private final boolean ownModels;
     private volatile SyntheticMapFactory syntheticMapFactory;
     private volatile long seed;
-    private volatile float[] tau;
+    private volatile float[] tau = new float[]{1F};
 
     private final MemoryTileStore tileStore;
     private final long cacheLimitBytes = 100L * 1024 * 1024;
@@ -432,7 +432,7 @@ public final class WorldPipeline implements AutoCloseable {
 
         Object[][] inputs = new Object[3][3];
         inputs[0] = new Object[]{"residual_init",newSample,new long[]{1,512,512}};
-        inputs[1] = new Object[]{"latent_init",latentSlice.data,new long[]{6,64,64}};
+        inputs[1] = new Object[]{"latents_init",latentSlice.data,new long[]{6,64,64}};
         inputs[2] = new Object[]{"tau",tau,new long[]{1}};
 
         //        for (int px = 0; px < S * S; px++) result.data[px] = newSample[px] * ww[px];
