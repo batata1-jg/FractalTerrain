@@ -5,13 +5,6 @@
       "generator": {
         "type": "fractal_terrain:chunk_generator",
         "settings": {
-          "post_config": {
-            "alpha": 0.0,
-            "beta": 5.0,
-            "gamma": 0.0,
-            "grad_blur": 1.0,
-            "tau": 1.5
-          },
           "scale": 1.0,
           "sea_level": 63,
           "bottom_y": -64,

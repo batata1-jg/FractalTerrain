@@ -2,8 +2,7 @@ package me.batata_1.fractalterrain.math;
 
 import com.mojang.datafixers.util.Pair;
 import java.util.concurrent.ExecutionException;
-import me.batata_1.fractalterrain.storage.EntryStorage;
-import me.batata_1.fractalterrain.storage.Tile;
+import me.batata_1.fractalterrain.infinitetensor.storage.EntryStorage;
 
 public class Gradients {
 
