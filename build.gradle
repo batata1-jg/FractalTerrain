@@ -1,3 +1,4 @@
+
 plugins {
     id 'fabric-loom' version '1.14.10'
     id 'maven-publish'
@@ -14,6 +15,19 @@ spotless {
     }
 }
 
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import java.security.MessageDigest
+
+def useCpu = project.hasProperty('useCpu') && project.property('useCpu').toString().toLowerCase() == 'true'
+def withSourcesJar = project.hasProperty('withSourcesJar') && project.property('withSourcesJar').toString().toLowerCase() == 'true'
+def modelRepositorySlug = 'xandergos/terrain-diffusion-30m-onnx'
+def modelRepositoryRevision = 'ad2df557eca5645f588766101cf3bc3682455c3e'
+def generatedManifestDirectory = layout.buildDirectory.dir('generated/model-assets').get().asFile
+def generatedManifestFile = new File(generatedManifestDirectory, 'model-assets-manifest.json')
+
+
+
 version = project.mod_version
 group = project.maven_group
 
@@ -21,10 +35,6 @@ base {
     archivesName = project.archives_base_name
 }
 
-repositories {
-//    mavenCentral()
-    flatDir { dirs 'libs/onnxruntime' }
-}
 
 loom {
     splitEnvironmentSourceSets()
@@ -44,6 +54,11 @@ fabricApi {
     }
 }
 
+repositories {
+//    mavenCentral()
+    flatDir { dirs 'libs/onnxruntime' }
+}
+
 dependencies {
     // To change the versions see the gradle.properties file
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
@@ -58,10 +73,14 @@ dependencies {
 
 
 processResources {
+    dependsOn 'generateModelAssetManifest'
     inputs.property "version", project.version
     inputs.property "minecraft_version", project.minecraft_version
     inputs.property "loader_version", project.loader_version
     filteringCharset "UTF-8"
+    from(generatedManifestFile) {
+        into ''
+    }
 
     filesMatching("fabric.mod.json") {
         expand "version": project.version,
@@ -87,7 +106,9 @@ java {
     // Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
     // if it is present.
     // If you remove this line, sources will not be generated.
-    withSourcesJar()
+    if (withSourcesJar) {
+        withSourcesJar()
+    }
 }
 
 jar {
@@ -112,4 +133,67 @@ publishing {
         // The repositories here will be used for publishing your artifact, not for
         // retrieving dependencies.
     }
+}
+
+tasks.register('generateModelAssetManifest') {
+    inputs.property('modelRepositorySlug', modelRepositorySlug)
+    inputs.property('modelRepositoryRevision', modelRepositoryRevision)
+    outputs.file(generatedManifestFile)
+
+    doLast {
+        generatedManifestDirectory.mkdirs()
+
+        String apiUrl = "https://huggingface.co/api/models/${modelRepositorySlug}/revision/${modelRepositoryRevision}?blobs=true"
+        Map modelInfo = new JsonSlurper().parseText(new URL(apiUrl).getText('UTF-8')) as Map
+        List siblings = modelInfo.siblings as List
+
+        List<String> requiredFiles = [
+                'base_model.onnx',
+                'coarse_model.onnx',
+                'decoder_model.onnx',
+                'pipeline_data.json',
+                'world_pipeline_config.json'
+        ]
+
+        Map<String, Object> assetEntries = [:]
+        for (String requiredFileName : requiredFiles) {
+            Map siblingEntry = siblings.find { it.rfilename == requiredFileName } as Map
+            if (siblingEntry == null) {
+                throw new GradleException("Required model asset missing from HF commit ${modelRepositoryRevision}: ${requiredFileName}")
+            }
+
+            String resolveUrl = "https://huggingface.co/${modelRepositorySlug}/resolve/${modelRepositoryRevision}/${requiredFileName}?download=true"
+            long expectedSizeBytes = ((Number) siblingEntry.size).longValue()
+            String expectedSha256
+            if (siblingEntry.lfs instanceof Map && siblingEntry.lfs.sha256 != null) {
+                expectedSha256 = siblingEntry.lfs.sha256 as String
+            } else {
+                byte[] remoteFileBytes = new URL(resolveUrl).bytes
+                expectedSha256 = sha256Hex(remoteFileBytes)
+            }
+
+            assetEntries[requiredFileName] = [
+                    sha256: expectedSha256,
+                    sizeBytes: expectedSizeBytes,
+                    url: resolveUrl
+            ]
+        }
+
+        Map<String, Object> manifestPayload = [
+                repositorySlug: modelRepositorySlug,
+                revision: modelRepositoryRevision,
+                assets: assetEntries
+        ]
+        generatedManifestFile.text = JsonOutput.prettyPrint(JsonOutput.toJson(manifestPayload))
+    }
+}
+
+String sha256Hex(byte[] fileBytes) {
+    MessageDigest messageDigest = MessageDigest.getInstance('SHA-256')
+    byte[] digestBytes = messageDigest.digest(fileBytes)
+    StringBuilder hexBuilder = new StringBuilder(digestBytes.length * 2)
+    for (byte digestByte : digestBytes) {
+        hexBuilder.append(String.format('%02x', digestByte))
+    }
+    return hexBuilder.toString()
 }
