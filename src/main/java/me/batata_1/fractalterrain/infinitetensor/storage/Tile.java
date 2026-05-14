@@ -1,17 +1,21 @@
 package me.batata_1.fractalterrain.infinitetensor.storage;
 
-import static me.batata_1.fractalterrain.references.Reference.LOGGER;
-
 import ai.onnxruntime.OnnxTensor;
 import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtException;
 import me.batata_1.fractalterrain.infinitetensor.FloatTensor;
 import com.mojang.datafixers.util.Pair;
+import org.slf4j.Logger;
+
 import java.io.*;
 import java.nio.FloatBuffer;
 import java.util.Arrays;
 
+import static me.batata_1.fractalterrain.debug.Debug.getLogger;
+
 public class Tile {
+
+    public static final Logger LOG = getLogger(Tile.class);
 
     protected float[] entries;
     protected long[] shape;
@@ -82,7 +86,7 @@ public class Tile {
 
     public float entryAt(Pair<Integer, Integer> xz) {
         if (shape.length != 2) {
-            LOGGER.error("cannot use pair because tensor is not 2D");
+            LOG.error("cannot use pair because tensor is not 2D");
             throw new RuntimeException();
         }
         return entryAt(new long[] {xz.getFirst(), xz.getSecond()});
@@ -118,14 +122,14 @@ public class Tile {
 
     private void checkRank(int len) {
         if (this.shape.length != len) {
-            LOGGER.error("ranks do not match {} {}", this.shape.length, len);
+            LOG.error("ranks do not match {} {}", this.shape.length, len);
             throw new RuntimeException();
         }
     }
 
     private void checkShapes(long[] arr) {
         if (!Arrays.equals(this.shape, arr)) {
-            LOGGER.error("shapes do not match {} {}", this.shape, arr);
+            LOG.error("shapes do not match {} {}", this.shape, arr);
             throw new RuntimeException();
         }
     }

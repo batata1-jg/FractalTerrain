@@ -1,13 +1,13 @@
 package me.batata_1.fractalterrain;
 
 import static me.batata_1.fractalterrain.references.Reference.LOGGER;
-import static me.batata_1.fractalterrain.util.Debug.debug;
+import static me.batata_1.fractalterrain.debug.Debug.debug;
 
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
-import me.batata_1.fractalterrain.ml.pipeline.PipelineModels;
+import me.batata_1.fractalterrain.ml.models.PipelineModels;
 import me.batata_1.fractalterrain.ml.pipeline.WorldPipeline;
 import me.batata_1.fractalterrain.world.gen.chunk.FractalTerrainChunkGenerator;
 import me.batata_1.fractalterrain.world.gen.relief.ReliefProvider;

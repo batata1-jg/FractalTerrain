@@ -4,7 +4,7 @@ import com.mojang.datafixers.util.Pair;
 //import me.batata_1.fractalterrain.ml.tensorProviders.GaussianNoisePatchProvider;
 import me.batata_1.fractalterrain.infinitetensor.storage.EntryStorage;
 import me.batata_1.fractalterrain.infinitetensor.storage.Tile;
-import me.batata_1.fractalterrain.util.Debug;
+import me.batata_1.fractalterrain.debug.Debug;
 //import me.batata_1.fractalterrain.world.ContinentalScaleMapProvider;
 
 import java.io.IOException;

@@ -1,9 +1,8 @@
-package me.batata_1.fractalterrain.util;
+package me.batata_1.fractalterrain.debug;
 
 import static me.batata_1.fractalterrain.references.Reference.LOGGER;
 
 import ai.onnxruntime.OnnxTensor;
-import ai.onnxruntime.OrtException;
 import ai.onnxruntime.OrtSession;
 import com.mojang.datafixers.util.Pair;
 import java.awt.image.BufferedImage;
@@ -18,8 +17,18 @@ import me.batata_1.fractalterrain.infinitetensor.storage.Tile;
 import me.batata_1.fractalterrain.noise.NoiseSampler;
 import me.batata_1.fractalterrain.noise.PhacelleNoiseSampler;
 import net.minecraft.util.WorldSavePath;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class Debug {
+
+    public static final Logger LOGGER = getLogger(Debug.class);
+
+    public static Logger getLogger( Class<?> clazz ) {
+        Logger logger = LoggerFactory.getLogger("fractal_terrain/"+clazz.toString());
+
+        return logger;
+    }
 
     public static CompletableFuture<OrtSession> test_in;
 

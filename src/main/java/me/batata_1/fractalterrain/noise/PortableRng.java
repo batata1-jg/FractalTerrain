@@ -1,4 +1,4 @@
-package me.batata_1.fractalterrain.ml.pipeline;
+package me.batata_1.fractalterrain.noise;
 
 /**
  * Portable RNG matching terrain_diffusion/inference/portable_rng.py and

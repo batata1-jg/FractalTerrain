@@ -2,8 +2,8 @@ package me.batata_1.fractalterrain;
 
 import static me.batata_1.fractalterrain.references.Reference.LOGGER;
 
-import me.batata_1.fractalterrain.ml.pipeline.ModelAssetManager;
-import me.batata_1.fractalterrain.ml.pipeline.PipelineModels;
+import me.batata_1.fractalterrain.ml.models.ModelAssetManager;
+import me.batata_1.fractalterrain.ml.models.PipelineModels;
 import me.batata_1.fractalterrain.references.Reference;
 import me.batata_1.fractalterrain.registry.FractalTerrainRegistryKeys;
 import me.batata_1.fractalterrain.world.biome.source.FractalTerrainBiomeSource;

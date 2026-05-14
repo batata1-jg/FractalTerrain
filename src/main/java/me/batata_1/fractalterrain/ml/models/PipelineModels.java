@@ -1,6 +1,5 @@
-package me.batata_1.fractalterrain.ml.pipeline;
+package me.batata_1.fractalterrain.ml.models;
 
-import me.batata_1.fractalterrain.ml.models.OnnxModel;
 import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

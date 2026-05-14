@@ -1,19 +1,23 @@
 package me.batata_1.fractalterrain.infinitetensor.storage;
 
+import static me.batata_1.fractalterrain.debug.Debug.getLogger;
 import static me.batata_1.fractalterrain.math.CoordTranslator.toInter;
 import static me.batata_1.fractalterrain.math.CoordTranslator.toIntra;
-import static me.batata_1.fractalterrain.references.Reference.LOGGER;
 import static me.batata_1.fractalterrain.util.FractalTerrainUtil.*;
 
 import com.google.common.base.Function;
 import com.google.common.base.Supplier;
 import com.mojang.datafixers.util.Pair;
+import org.slf4j.Logger;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.*;
 
 public class EntryStorage {
+
+    private static final Logger LOG = getLogger(EntryStorage.class);
 
     private static final ExecutorService INFERENCE_EXECUTOR = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "terrain-diffusion-inference");
@@ -55,13 +59,13 @@ public class EntryStorage {
 
     private synchronized void bootstrap() {
         File file = new File(getEntryDir());
-        if (!file.exists()) if (file.mkdirs()) LOGGER.info("created tile dir in: {}", getEntryDir());
+        if (!file.exists()) if (file.mkdirs()) LOG.info("created tile dir in: {}", getEntryDir());
         String[] createdTiles = file.list();
         if (createdTiles != null)
             for (String tile : createdTiles) {
                 final var xz = interpretTileName(tile);
                 if (xz == null) {
-                    LOGGER.error("invalid file, skipping");
+                    LOG.error("invalid file, skipping");
                     continue;
                 }
                 GENERATED_ENTRIES.add(xz);
@@ -137,7 +141,7 @@ public class EntryStorage {
                         final File file = new File(getEntryDir() + "/" + giveNameToTile(xz) + ".ser");
                         if (!file.exists()) {
 
-                            LOGGER.error(
+                            LOG.error(
                                     "file {}, aka: {}-{} not exist",
                                     file.getAbsolutePath(),
                                     xz.getFirst(),
@@ -163,16 +167,16 @@ public class EntryStorage {
             return CACHE.get(xz);
         }
 
-        LOGGER.error("tile not in storage/no creation function found");
+        LOG.error("tile not in storage/no creation function found");
         throw new RuntimeException();
     }
 
     public synchronized void printCurrentEntrySet() {
-        LOGGER.info("Current Tiles: {}", GENERATED_ENTRIES);
+        LOG.info("Current Tiles: {}", GENERATED_ENTRIES);
     }
 
     public synchronized void printEntryMapHash() {
-        LOGGER.info("Tile Map: {}", CACHE);
+        LOG.info("Tile Map: {}", CACHE);
     }
 
     public synchronized String getPath() {
