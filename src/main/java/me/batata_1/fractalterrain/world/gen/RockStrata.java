@@ -8,7 +8,7 @@ import me.batata_1.fractalterrain.math.Blur;
 import me.batata_1.fractalterrain.math.MaskedOps;
 import me.batata_1.fractalterrain.math.Spline;
 import me.batata_1.fractalterrain.registry.SettingsRegistry;
-import me.batata_1.fractalterrain.world.noise.OctaveSimplexNoiseSampler;
+import me.batata_1.fractalterrain.noise.OctaveSimplexNoiseSampler;
 import net.minecraft.block.BlockState;
 import net.minecraft.util.math.random.Random;
 

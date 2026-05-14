@@ -2,30 +2,20 @@ package me.batata_1.fractalterrain;
 
 import static me.batata_1.fractalterrain.references.Reference.LOGGER;
 
-import java.util.Arrays;
-
-import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider;
-import com.github.xandergos.terraindiffusionmc.pipeline.ModelAssetManager;
-import com.github.xandergos.terraindiffusionmc.pipeline.PipelineModels;
+import me.batata_1.fractalterrain.ml.pipeline.ModelAssetManager;
+import me.batata_1.fractalterrain.ml.pipeline.PipelineModels;
 import me.batata_1.fractalterrain.references.Reference;
 import me.batata_1.fractalterrain.registry.FractalTerrainRegistryKeys;
 import me.batata_1.fractalterrain.world.biome.source.FractalTerrainBiomeSource;
 import me.batata_1.fractalterrain.world.gen.chunk.FractalTerrainChunkGenerator;
-import me.batata_1.fractalterrain.world.gen.densityfunction.FractalTerrainDensityFunctionTypes;
-import me.batata_1.fractalterrain.world.gen.relief.ReliefProvider;
-import me.batata_1.fractalterrain.world.gen.surfacebuilder.FractalTerrainMaterialRules;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
 import net.fabricmc.fabric.api.event.registry.DynamicRegistries;
-import net.fabricmc.fabric.api.event.registry.DynamicRegistrySetupCallback;
 import net.fabricmc.fabric.api.event.registry.DynamicRegistryView;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
 import net.minecraft.registry.RegistryKey;
-import net.minecraft.util.WorldSavePath;
-import net.minecraft.world.World;
-import net.minecraft.world.gen.chunk.ChunkGenerator;
 
 public class FractalTerrain implements ModInitializer {
 
@@ -48,10 +38,6 @@ public class FractalTerrain implements ModInitializer {
                 FractalTerrainChunkGenerator.CODEC);
         Registry.register(
                 Registries.BIOME_SOURCE, Reference.identifier("biome_source"), FractalTerrainBiomeSource.CODEC);
-        FractalTerrainMaterialRules.FractalTerrainMaterialRule.register(Registries.MATERIAL_RULE);
-        FractalTerrainMaterialRules.FractalTerrainMaterialCondition.register(Registries.MATERIAL_CONDITION);
-        FractalTerrainDensityFunctionTypes.register();
-
 
 
 //        DynamicRegistrySetupCallback.EVENT.register(registryView -> {

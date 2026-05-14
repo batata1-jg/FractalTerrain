@@ -11,13 +11,12 @@ import java.awt.image.WritableRaster;
 import java.io.*;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import javax.imageio.ImageIO;
 import me.batata_1.fractalterrain.FractalTerrainInstance;
-import me.batata_1.fractalterrain.ml.tensorProviders.MapProvider;
-import me.batata_1.fractalterrain.storage.Tile;
-import me.batata_1.fractalterrain.world.noise.NoiseSampler;
-import me.batata_1.fractalterrain.world.noise.PhacelleNoiseSampler;
+//import me.batata_1.fractalterrain.ml.tensorProviders.MapProvider;
+import me.batata_1.fractalterrain.infinitetensor.storage.Tile;
+import me.batata_1.fractalterrain.noise.NoiseSampler;
+import me.batata_1.fractalterrain.noise.PhacelleNoiseSampler;
 import net.minecraft.util.WorldSavePath;
 
 public class Debug {
@@ -376,9 +375,9 @@ public class Debug {
     }
 
     public static synchronized void debug() {
-        try {
+//        try {
 
-            seeTensor(MapProvider.sampleMap(Pair.of(-32, -32), new long[] {5, 64, 64}), "feedElev", false, 0);
+//            seeTensor(MapProvider.sampleMap(Pair.of(-32, -32), new long[] {5, 64, 64}), "feedElev", false, 0);
 
 //            toTiffChannel(FractalTerrainInstance.reliefSource.get().getTilesAsTensor(0, 0), 4, "tensor");
 
@@ -394,10 +393,10 @@ public class Debug {
             //            for(float freq=1F ; freq<=512F ; freq *= 2F ) {
             //                seePhacelleNormal(freq,"phacelleNormal" + freq,0,0,512);
             //                seeNoise(new PhacelleNoiseSampler(5,freq), "phacelle"+freq,0,0,512);
-            //            }
-        } catch (OrtException | IOException e) {
-            throw new RuntimeException(e);
-        }
+//            //            }
+//        } catch (OrtException | IOException e) {
+//            throw new RuntimeException(e);
+//        }
 
         //        for(int i=-4 ; i<4 ; i++) {
         //            for(int j=-4 ; j<4 ; j++) {

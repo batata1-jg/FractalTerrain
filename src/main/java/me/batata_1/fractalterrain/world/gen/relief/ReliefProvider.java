@@ -1,20 +1,16 @@
 package me.batata_1.fractalterrain.world.gen.relief;
 
-import com.github.xandergos.terraindiffusionmc.pipeline.PipelineModels;
-import com.github.xandergos.terraindiffusionmc.pipeline.WorldPipeline;
 import com.mojang.datafixers.util.Pair;
-import me.batata_1.fractalterrain.ml.tensorProviders.GaussianNoisePatchProvider;
-import me.batata_1.fractalterrain.storage.EntryStorage;
-import me.batata_1.fractalterrain.storage.Tile;
+//import me.batata_1.fractalterrain.ml.tensorProviders.GaussianNoisePatchProvider;
+import me.batata_1.fractalterrain.infinitetensor.storage.EntryStorage;
+import me.batata_1.fractalterrain.infinitetensor.storage.Tile;
 import me.batata_1.fractalterrain.util.Debug;
-import me.batata_1.fractalterrain.world.ContinentalScaleMapProvider;
-import me.batata_1.fractalterrain.world.noise.OctaveSimplexNoiseSampler;
+//import me.batata_1.fractalterrain.world.ContinentalScaleMapProvider;
 
 import java.io.IOException;
 import java.util.concurrent.ExecutionException;
 
 import static me.batata_1.fractalterrain.FractalTerrainInstance.pipeline;
-import static me.batata_1.fractalterrain.util.Debug.debug;
 
 public class ReliefProvider {
 
@@ -22,11 +18,14 @@ public class ReliefProvider {
 
     public ReliefProvider(String path) {
         final_tiles = new EntryStorage(path + "/final_tiles",512,xz -> {
+            int x = xz.getFirst();
+            int z = xz.getSecond();
+
             Tile t = new Tile(
-                    pipeline.getDecoderSlice(xz.getFirst(),xz.getSecond())
+                    pipeline.getDecoderSlice(x,z)
             );
             try {
-                Debug.seeTensor(t.get(),"final",false,0);
+                Debug.seeTensor(t.get(),"final" + x + " " + z ,false,0);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }

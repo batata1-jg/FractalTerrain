@@ -7,13 +7,11 @@ import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
-import com.github.xandergos.terraindiffusionmc.pipeline.PipelineModels;
-import com.github.xandergos.terraindiffusionmc.pipeline.WorldPipeline;
-import me.batata_1.fractalterrain.ml.tensorProviders.GaussianNoisePatchProvider;
-import me.batata_1.fractalterrain.world.ContinentalScaleMapProvider;
+import me.batata_1.fractalterrain.ml.pipeline.PipelineModels;
+import me.batata_1.fractalterrain.ml.pipeline.WorldPipeline;
 import me.batata_1.fractalterrain.world.gen.chunk.FractalTerrainChunkGenerator;
 import me.batata_1.fractalterrain.world.gen.relief.ReliefProvider;
-import me.batata_1.fractalterrain.world.noise.OctaveSimplexNoiseSampler;
+import me.batata_1.fractalterrain.noise.OctaveSimplexNoiseSampler;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.WorldSavePath;
@@ -60,9 +58,7 @@ public class FractalTerrainInstance {
                 .getSaveProperties()
                 .getGeneratorOptions()
                 .getSeed();
-        GaussianNoisePatchProvider.setSeed(seed);
         pipeline.setSeed(seed);
-        ContinentalScaleMapProvider.initSamplers(seed);
         OctaveSimplexNoiseSampler.init(seed);
         debug();
         LOGGER.info("init set size: {}", OctaveSimplexNoiseSampler.getInitSetSize());
