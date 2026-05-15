@@ -533,75 +533,75 @@ public final class WorldPipeline implements AutoCloseable {
     // Climate
     // =========================================================================
 
-    private float[] computeClimate(int i1, int j1, int i2, int j2,
-                                    float[] elevFlat, int H, int W) {
-        int lc = LATENT_COMPRESSION;
-        int S = 32 * lc;  // native pixels per coarse pixel in stride sense
-
-        int ci1 = Math.floorDiv(i1, S);
-        int cj1 = Math.floorDiv(j1, S);
-        int ci2 = -Math.floorDiv(-i2, S);
-        int cj2 = -Math.floorDiv(-j2, S);
-
-        int win = 15, pad = (win - 1) / 2 + 1;
-
-        FloatTensor coarseSlice = coarse.getSlice(
-                new int[]{0, ci1 - pad, cj1 - pad}, new int[]{7, ci2 + pad, cj2 + pad});
-        int cH = ci2 + pad - (ci1 - pad);
-        int cW = cj2 + pad - (cj1 - pad);
-
-        // Unnormalize all 6 coarse channels
-        float[][] coarseMap = new float[6][cH * cW];
-        for (int ch = 0; ch < 6; ch++)
-            for (int px = 0; px < cH * cW; px++) {
-                float w = coarseSlice.data[6 * cH * cW + px];
-                coarseMap[ch][px] = (w > 1e-6f) ? coarseSlice.data[ch * cH * cW + px] / w : 0f;
-            }
-
-        // Coarse elevation (undo sqrt): max(0, v)^2  — ocean pixels clamp to 0, matching Python
-        float[] coarseElev = new float[cH * cW];
-        for (int px = 0; px < cH * cW; px++) {
-            float v = Math.max(0f, coarseMap[0][px]);
-            coarseElev[px] = v * v;
-        }
-
-        // Windowed lapse-rate regression
-        float[][][] lbt = LaplacianUtils.localBaselineTemperature(
-                to2D(coarseMap[2], cH, cW), to2D(coarseElev, cH, cW), win, 0.02f);
-        int lH = lbt[0].length, lW = lbt[0][0].length;
-
-        // Central coarse (crop pad pixels from each side)
-        int cenPad = win / 2;
-        int cenH = cH - 2 * cenPad, cenW = cW - 2 * cenPad;
-        float[][][] centralCoarse = new float[6][cenH][cenW];
-        for (int ch = 0; ch < 6; ch++) {
-            float[][] full = to2D(coarseMap[ch], cH, cW);
-            centralCoarse[ch] = cropArray(full, cenPad, cenPad, cenH, cenW);
-        }
-
-        // Bilinear upsample to native resolution
-        float[] climate = new float[5 * H * W];
-        for (int r = 0; r < H; r++) {
-            // fractional index into lbt/centralCoarse arrays (matches Python's u = (ii+0.5)/S - ci1 + 0.5)
-            float gridY    = (i1 + r + 0.5f) / S - ci1 + 0.5f;
-            float cenGridY = gridY;
-            for (int c = 0; c < W; c++) {
-                float gridX    = (j1 + c + 0.5f) / S - cj1 + 0.5f;
-                float cenGridX = gridX;
-
-                float tBase = bilinearSample2D(lbt[0], lH, lW, gridY, gridX);
-                float beta  = bilinearSample2D(lbt[1], lH, lW, gridY, gridX);
-                float tempReal = tBase + beta * Math.max(0f, elevFlat[r * W + c]);
-
-                climate[r * W + c]             = tempReal;
-                climate[H * W + r * W + c]     = bilinearSample2D(centralCoarse[3], cenH, cenW, cenGridY, cenGridX);
-                climate[2 * H * W + r * W + c] = bilinearSample2D(centralCoarse[4], cenH, cenW, cenGridY, cenGridX);
-                climate[3 * H * W + r * W + c] = bilinearSample2D(centralCoarse[5], cenH, cenW, cenGridY, cenGridX);
-                climate[4 * H * W + r * W + c] = beta;
-            }
-        }
-        return climate;
-    }
+//    private float[] computeClimate(int i1, int j1, int i2, int j2,
+//                                    float[] elevFlat, int H, int W) {
+//        int lc = LATENT_COMPRESSION;
+//        int S = 32 * lc;  // native pixels per coarse pixel in stride sense
+//
+//        int ci1 = Math.floorDiv(i1, S);
+//        int cj1 = Math.floorDiv(j1, S);
+//        int ci2 = -Math.floorDiv(-i2, S);
+//        int cj2 = -Math.floorDiv(-j2, S);
+//
+//        int win = 15, pad = (win - 1) / 2 + 1;
+//
+//        FloatTensor coarseSlice = coarse.getSlice(
+//                new int[]{0, ci1 - pad, cj1 - pad}, new int[]{7, ci2 + pad, cj2 + pad});
+//        int cH = ci2 + pad - (ci1 - pad);
+//        int cW = cj2 + pad - (cj1 - pad);
+//
+//        // Unnormalize all 6 coarse channels
+//        float[][] coarseMap = new float[6][cH * cW];
+//        for (int ch = 0; ch < 6; ch++)
+//            for (int px = 0; px < cH * cW; px++) {
+//                float w = coarseSlice.data[6 * cH * cW + px];
+//                coarseMap[ch][px] = (w > 1e-6f) ? coarseSlice.data[ch * cH * cW + px] / w : 0f;
+//            }
+//
+//        // Coarse elevation (undo sqrt): max(0, v)^2  — ocean pixels clamp to 0, matching Python
+//        float[] coarseElev = new float[cH * cW];
+//        for (int px = 0; px < cH * cW; px++) {
+//            float v = Math.max(0f, coarseMap[0][px]);
+//            coarseElev[px] = v * v;
+//        }
+//
+//        // Windowed lapse-rate regression
+//        float[][][] lbt = LaplacianUtils.localBaselineTemperature(
+//                to2D(coarseMap[2], cH, cW), to2D(coarseElev, cH, cW), win, 0.02f);
+//        int lH = lbt[0].length, lW = lbt[0][0].length;
+//
+//        // Central coarse (crop pad pixels from each side)
+//        int cenPad = win / 2;
+//        int cenH = cH - 2 * cenPad, cenW = cW - 2 * cenPad;
+//        float[][][] centralCoarse = new float[6][cenH][cenW];
+//        for (int ch = 0; ch < 6; ch++) {
+//            float[][] full = to2D(coarseMap[ch], cH, cW);
+//            centralCoarse[ch] = cropArray(full, cenPad, cenPad, cenH, cenW);
+//        }
+//
+//        // Bilinear upsample to native resolution
+//        float[] climate = new float[5 * H * W];
+//        for (int r = 0; r < H; r++) {
+//            // fractional index into lbt/centralCoarse arrays (matches Python's u = (ii+0.5)/S - ci1 + 0.5)
+//            float gridY    = (i1 + r + 0.5f) / S - ci1 + 0.5f;
+//            float cenGridY = gridY;
+//            for (int c = 0; c < W; c++) {
+//                float gridX    = (j1 + c + 0.5f) / S - cj1 + 0.5f;
+//                float cenGridX = gridX;
+//
+//                float tBase = bilinearSample2D(lbt[0], lH, lW, gridY, gridX);
+//                float beta  = bilinearSample2D(lbt[1], lH, lW, gridY, gridX);
+//                float tempReal = tBase + beta * Math.max(0f, elevFlat[r * W + c]);
+//
+//                climate[r * W + c]             = tempReal;
+//                climate[H * W + r * W + c]     = bilinearSample2D(centralCoarse[3], cenH, cenW, cenGridY, cenGridX);
+//                climate[2 * H * W + r * W + c] = bilinearSample2D(centralCoarse[4], cenH, cenW, cenGridY, cenGridX);
+//                climate[3 * H * W + r * W + c] = bilinearSample2D(centralCoarse[5], cenH, cenW, cenGridY, cenGridX);
+//                climate[4 * H * W + r * W + c] = beta;
+//            }
+//        }
+//        return climate;
+//    }
 
     // =========================================================================
     // Static helpers
