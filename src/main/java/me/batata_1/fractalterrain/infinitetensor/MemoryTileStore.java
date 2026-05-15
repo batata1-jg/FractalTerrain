@@ -4,6 +4,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 import me.batata_1.fractalterrain.debug.MemoryProfiler;
+import me.batata_1.fractalterrain.infinitetensor.storage.FloatTensor;
 
 /**
  * In-memory factory and LRU cache for {@link InfiniteTensor} window outputs.
@@ -179,7 +180,7 @@ public class MemoryTileStore {
 
     /**
      * Returns a point-in-time snapshot of cache statistics for all registered tensors.
-     * Tensor entries are sorted alphabetically by id.
+     * Tensor data are sorted alphabetically by id.
      */
     public MemoryProfiler.Snapshot takeSnapshot() {
         List<MemoryProfiler.TensorStats> stats = new ArrayList<>(tensors.size());

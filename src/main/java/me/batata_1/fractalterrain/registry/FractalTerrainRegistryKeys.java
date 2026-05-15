@@ -7,10 +7,4 @@ import net.minecraft.registry.RegistryKey;
 
 public class FractalTerrainRegistryKeys {
 
-    public static final RegistryKey<Registry<FractalTerrainChunkGenerator.Settings>>
-            FRACTAL_TERRAIN_CHUNK_GENERATOR_SETTINGS = of("worldgen/gen_settings");
-
-    private static <T> RegistryKey<Registry<T>> of(String id) {
-        return RegistryKey.ofRegistry(Reference.identifier(id));
-    }
 }

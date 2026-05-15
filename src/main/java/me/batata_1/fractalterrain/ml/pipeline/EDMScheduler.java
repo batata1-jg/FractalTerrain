@@ -32,7 +32,7 @@ public final class EDMScheduler {
     public static final float SIGMA_MAX = 80.0f;
     private static final float RHO = 7.0f;
 
-    /** Sigmas array (numSteps + 1 entries, last entry is 0). */
+    /** Sigmas array (numSteps + 1 data, last entry is 0). */
     public final float[] sigmas;
     /** Timesteps array (c_noise = 0.25 * log(sigma)), same length as numSteps. */
     public final float[] timesteps;
