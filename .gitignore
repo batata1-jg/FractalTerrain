@@ -121,3 +121,4 @@ runs/
 /src/main/resources/data/fractal_terrain/models/
 /src/main/resources/data/fractal_terrain/worldgen/gen_settings/
 /.claude/
+/CLAUDE.md
