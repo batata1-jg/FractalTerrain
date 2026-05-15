@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
+
+import me.batata_1.fractalterrain.FractalTerrainInstance;
 import me.batata_1.fractalterrain.math.Interpolation;
 import me.batata_1.fractalterrain.math.Spline;
 import me.batata_1.fractalterrain.registry.FractalTerrainRegistryKeys;
@@ -30,15 +32,12 @@ import net.minecraft.world.gen.StructureAccessor;
 import net.minecraft.world.gen.chunk.*;
 import net.minecraft.world.gen.noise.NoiseConfig;
 
-import static me.batata_1.fractalterrain.FractalTerrainInstance.reliefSource;
-
 // TODO: add compat , consertar biomes, reescrever isso
 
 public final class FractalTerrainChunkGenerator extends ChunkGenerator {
 
     public record Settings(
-            float scale, int seaLevel, int bottomY, int topY)
-            implements SettingsRegistry.Settings {
+            float scale, int seaLevel, int bottomY, int topY) implements SettingsRegistry.Settings {
 
         public static final Codec<Settings> CODEC = RecordCodecBuilder.create(instance -> instance.group(
                         Codec.FLOAT.optionalFieldOf("scale", 1F).forGetter(Settings::scale),
@@ -58,7 +57,6 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         Blocks.ANDESITE.getDefaultState(),
         Blocks.GRANITE.getDefaultState()
     };
-
 
     private final RegistryEntry<Settings> settings;
     private final Interpolation reliefInterpolation;
@@ -93,54 +91,16 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         initReliefRelatedInterpolation();
         strata = RockStrata.AngledPlaneStrata.create(9, 8, Rocks);
         phacelleSampler = new PhacelleNoiseSampler(5, 32F);
-        phacelleInterp.setF(xz -> {
-            return phacelleSampler.sample(xz.getFirst(), xz.getSecond());
-        });
+        phacelleInterp.setF(xz -> phacelleSampler.sample(xz.getFirst(), xz.getSecond()));
     }
 
     private void initReliefRelatedInterpolation() {
-        reliefInterpolation.setF(xz -> {
-            try {
-                return reliefSource.get().getElev(xz);
-            } catch (InterruptedException | ExecutionException e) {
-                throw new RuntimeException(e);
-            }
-        });
-        reliefGradInterpolation.setF(xz -> {
-            try {
-                return reliefSource.get().getRefinedGrad(xz);
-            } catch (InterruptedException | ExecutionException e) {
-                throw new RuntimeException(e);
-            }
-        });
-        reliefGradXInterpolation.setF(xz -> {
-            try {
-                return reliefSource.get().getGradX(xz);
-            } catch (InterruptedException | ExecutionException e) {
-                throw new RuntimeException(e);
-            }
-        });
-        reliefGradYInterpolation.setF(xz -> {
-            try {
-                return reliefSource.get().getGradY(xz);
-            } catch (InterruptedException | ExecutionException e) {
-                throw new RuntimeException(e);
-            }
-        });
-        reliefResInterpolation.setF(xz -> {
-            try {
-                return reliefSource.get().getRes(xz);
-            } catch (InterruptedException | ExecutionException e) {
-                throw new RuntimeException(e);
-            }
-        });
-        reliefBlurredInterpolation.setF(xz -> {
-            try {
-                return reliefSource.get().getBlurredElev(xz);
-            } catch (InterruptedException | ExecutionException e) {
-                throw new RuntimeException(e);
-            }
-        });
+        reliefInterpolation.setF(xz -> FractalTerrainInstance.getReliefProvider().getElev(xz));
+        reliefGradInterpolation.setF(xz -> FractalTerrainInstance.getReliefProvider().getRefinedGrad(xz));
+        reliefGradXInterpolation.setF(xz -> FractalTerrainInstance.getReliefProvider().getGradX(xz));
+        reliefGradYInterpolation.setF(xz -> FractalTerrainInstance.getReliefProvider().getGradY(xz));
+        reliefResInterpolation.setF(xz -> FractalTerrainInstance.getReliefProvider().getRes(xz));
+        reliefBlurredInterpolation.setF(xz -> FractalTerrainInstance.getReliefProvider().getBlurredElev(xz));
     }
 
     @Override
@@ -198,17 +158,19 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         final int startingZ = chunkPos.getStartZ();
         final int bottom = settings.value().bottomY();
         final int[] reliefBaseHeight = getBaseHeightArr(startingX, startingZ);
+        BlockPos.Mutable mutable = new BlockPos.Mutable();
         for (int dx = 0; dx < 16; dx++) {
             for (int dz = 0; dz < 16; dz++) {
+                mutable.set(startingX + dx,0, startingZ + dz);
                 final int curTopLayer = strata.getCurLayer(
                         new double[] {startingX + dx, startingZ + dz}, reliefBaseHeight[(dx << 4) + dz]);
                 for (int y = bottom; y <= reliefBaseHeight[(dx << 4) + dz]; y++) {
-
+                    mutable.setY(y);
                     //             chunk.setBlockState(new BlockPos(startingX + dx, y, startingZ + dz),
                     // strata.getStrataBlock(curTopLayer + (int)
                     // Math.floor((y-reliefBaseHeight[(dx<<4)+dz])/strata.getSpacing())), false);
                     chunk.setBlockState(
-                            new BlockPos(startingX + dx, y, startingZ + dz),
+                            mutable,
                             fillRocks(startingX + dx, startingZ + dz, y),
                             false);
                 }

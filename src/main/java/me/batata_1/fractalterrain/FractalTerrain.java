@@ -16,6 +16,10 @@ import net.fabricmc.fabric.api.event.registry.DynamicRegistryView;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
 import net.minecraft.registry.RegistryKey;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.world.World;
+import net.minecraft.world.gen.chunk.ChunkGenerator;
 
 public class FractalTerrain implements ModInitializer {
 
@@ -52,8 +56,19 @@ public class FractalTerrain implements ModInitializer {
 
        // ServerLifecycleEvents.SERVER_STARTING.register(server -> ReliefProvider.clearStorage());
 
-        ServerWorldEvents.LOAD.register(FractalTerrainInstance::setServer);
+        ServerWorldEvents.LOAD.register((MinecraftServer server, ServerWorld world) -> {
+            final ChunkGenerator chunkGenerator =
+                    server.getOverworld().getChunkManager().getChunkGenerator();
+            if (!(chunkGenerator instanceof FractalTerrainChunkGenerator)) return;
+            if (world.getRegistryKey() != World.OVERWORLD) return;
+            FractalTerrainInstance.init(server);
+        });
 
-        ServerLifecycleEvents.SERVER_STOPPED.register(FractalTerrainInstance::freeServer);
+        ServerLifecycleEvents.SERVER_STOPPED.register((MinecraftServer server) -> {
+            final ChunkGenerator chunkGenerator =
+                    server.getOverworld().getChunkManager().getChunkGenerator();
+            if (!(chunkGenerator instanceof FractalTerrainChunkGenerator)) return;
+            FractalTerrainInstance.close();
+        });
     }
 }

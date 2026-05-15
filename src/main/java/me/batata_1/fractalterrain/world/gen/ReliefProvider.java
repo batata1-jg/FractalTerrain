@@ -1,7 +1,8 @@
-package me.batata_1.fractalterrain.world.gen.relief;
+package me.batata_1.fractalterrain.world.gen;
 
 import com.mojang.datafixers.util.Pair;
 //import me.batata_1.fractalterrain.ml.tensorProviders.GaussianNoisePatchProvider;
+import me.batata_1.fractalterrain.infinitetensor.FloatTensor;
 import me.batata_1.fractalterrain.infinitetensor.storage.EntryStorage;
 import me.batata_1.fractalterrain.infinitetensor.storage.Tile;
 import me.batata_1.fractalterrain.debug.Debug;
@@ -21,9 +22,16 @@ public class ReliefProvider {
             int x = xz.getFirst();
             int z = xz.getSecond();
 
-            Tile t = new Tile(
-                    pipeline.getDecoderSlice(x,z)
-            );
+            FloatTensor final_slice = pipeline.getDecoderSlice(x,z);
+            float[] entries = new float[7<<18];
+            for (int ch = 0; ch < 4; ch++)
+                for (int px = 0; px < (1<<18); px++) {
+                    final float w = final_slice.data[(7<<18) + px];
+                    entries[(ch<<18) + px] = (w > 1e-6f) ? final_slice.data[(ch<<18) + px] / w : 0f;
+                }
+
+            Tile t = new Tile(entries,new long[]{7,512,512});
+
             try {
                 Debug.seeTensor(t.get(),"final" + x + " " + z ,false,0);
             } catch (IOException e) {
@@ -40,7 +48,7 @@ public class ReliefProvider {
 
     public Float get_entry(Pair<Integer,Integer> xz,int ch) {
         try {
-            return final_tiles.getValue(xz,ch) / final_tiles.getValue(xz,7);
+            return final_tiles.getValue(xz,ch);
         } catch (ExecutionException | InterruptedException e) {
             throw new RuntimeException(e);
         }

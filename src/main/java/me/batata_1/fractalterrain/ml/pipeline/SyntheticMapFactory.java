@@ -209,7 +209,7 @@ public final class SyntheticMapFactory {
         return result;
     }
 
-    /** Linear interpolation matching numpy's np.interp: clamp at boundaries. */
+
     static float interp(float x, float[] xp, float[] fp) {
         int n = xp.length;
         if (x <= xp[0]) return fp[0];

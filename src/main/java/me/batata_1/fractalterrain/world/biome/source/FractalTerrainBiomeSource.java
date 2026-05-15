@@ -24,7 +24,6 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
 
     public static final Codec<FractalTerrainBiomeSource> CODEC;
 
-
     static {
         CODEC = Codec.mapEither(CUSTOM_CODEC, PRESET_CODEC)
                 .xmap(FractalTerrainBiomeSource::new, (FractalTerrainBiomeSource biomeSource) -> biomeSource
@@ -49,18 +48,6 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
     @Override
     protected Codec<? extends BiomeSource> getCodec() {
         return CODEC;
-    }
-
-    public RegistryEntry<Biome> getBiomeAtPoint(MultiNoiseUtil.NoiseValuePoint point) {
-        return this.getBiomeEntries().get(point);
-    }
-
-    @Override
-    public RegistryEntry<Biome> getBiome(int x, int y, int z, MultiNoiseUtil.MultiNoiseSampler noise) {
-
-
-
-        return this.getBiomeAtPoint(noise.sample(x, y, z));
     }
 
     @Nullable
