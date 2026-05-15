@@ -72,7 +72,7 @@ public class FractalTerrainInstance {
 //        LOGGER.info("fractalTerrain initializing");
 //        curServer = server;
 //        worldPath = server.getSavePath(WorldSavePath.ROOT).normalize();
-//        reliefSource.complete(new ReliefProvider(worldPath + "/fractal_terrain"));
+//        reliefSource.complete(new BiomeProvider(worldPath + "/fractal_terrain"));
 //        LOGGER.info("completed reliefSource");
 //        final long seed = FractalTerrainInstance.getServer()
 //                .getSaveProperties()

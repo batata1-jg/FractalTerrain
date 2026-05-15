@@ -1,7 +1,5 @@
 package me.batata_1.fractalterrain;
 
-import static me.batata_1.fractalterrain.references.Reference.LOGGER;
-
 import me.batata_1.fractalterrain.ml.models.ModelAssetManager;
 import me.batata_1.fractalterrain.ml.models.PipelineModels;
 import me.batata_1.fractalterrain.references.Reference;
@@ -20,22 +18,24 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.world.World;
 import net.minecraft.world.gen.chunk.ChunkGenerator;
+import org.slf4j.Logger;
+
+import static me.batata_1.fractalterrain.debug.Debug.getLogger;
 
 public class FractalTerrain implements ModInitializer {
+
+    private static final Logger LOG = getLogger(FractalTerrain.class);
 
     private static void addListenerForDynamic(
             DynamicRegistryView registryView, RegistryKey<? extends Registry<?>> key) {
 
         registryView.registerEntryAdded(key, (rawId, id, object) -> {
-            LOGGER.info("Loaded entry of {}: {} = {}", key, id, object);
+            LOG.info("Loaded entry of {}: {} = {}", key, id, object);
         });
     }
 
     @Override
     public void onInitialize() {
-        DynamicRegistries.register(
-                FractalTerrainRegistryKeys.FRACTAL_TERRAIN_CHUNK_GENERATOR_SETTINGS,
-                FractalTerrainChunkGenerator.Settings.CODEC);
         Registry.register(
                 Registries.CHUNK_GENERATOR,
                 Reference.identifier("chunk_generator"),
@@ -44,21 +44,13 @@ public class FractalTerrain implements ModInitializer {
                 Registries.BIOME_SOURCE, Reference.identifier("biome_source"), FractalTerrainBiomeSource.CODEC);
 
 
-//        DynamicRegistrySetupCallback.EVENT.register(registryView -> {
-//            LOGGER.info("isso rodaaa????????????????????????????????????????????????????????");
-//            addListenerForDynamic(registryView, FractalTerrainRegistryKeys.FRACTAL_TERRAIN_CHUNK_GENERATOR_SETTINGS);
-//            addListenerForDynamic(registryView, FractalTerrainRegistryKeys.POST_PROCESSING_SETTINGS);
-//            LOGGER.info("ele so n registra?");
-//        });
-
         ModelAssetManager.ensureAssetsReady();
         PipelineModels.load();
-
-       // ServerLifecycleEvents.SERVER_STARTING.register(server -> ReliefProvider.clearStorage());
 
         ServerWorldEvents.LOAD.register((MinecraftServer server, ServerWorld world) -> {
             final ChunkGenerator chunkGenerator =
                     server.getOverworld().getChunkManager().getChunkGenerator();
+            LOG.info(" noise config: {}",server.getOverworld().getChunkManager().getNoiseConfig().getNoiseRouter());
             if (!(chunkGenerator instanceof FractalTerrainChunkGenerator)) return;
             if (world.getRegistryKey() != World.OVERWORLD) return;
             FractalTerrainInstance.init(server);

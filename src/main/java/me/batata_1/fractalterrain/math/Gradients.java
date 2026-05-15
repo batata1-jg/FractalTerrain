@@ -2,7 +2,7 @@ package me.batata_1.fractalterrain.math;
 
 import com.mojang.datafixers.util.Pair;
 import java.util.concurrent.ExecutionException;
-import me.batata_1.fractalterrain.infinitetensor.storage.EntryStorage;
+import me.batata_1.fractalterrain.infinitetensor.storage.TensorStorage;
 
 public class Gradients {
 
@@ -27,7 +27,7 @@ public class Gradients {
     }
 
     public static <Tile> double[] entryGradMagnitude(
-            final int x, final int z, final int ch, final EntryStorage s) {
+            final int x, final int z, final int ch, final TensorStorage s) {
         double respX = 0;
         double respY = 0;
         for (int i = 0; i < 3; i++) {

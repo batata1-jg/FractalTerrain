@@ -1,19 +1,14 @@
 {
   "dimensions": {
     "minecraft:overworld": {
-      "type": "fractal_terrain:fractal_terrain_large",
+      "type": "fractal_terrain:fractal_terrain",
       "generator": {
         "type": "fractal_terrain:chunk_generator",
-        "settings": {
-          "scale": 1.0,
-          "sea_level": 63,
-          "bottom_y": -64,
-          "top_y": 1600
-        },
         "biome_source": {
           "type": "fractal_terrain:biome_source",
           "preset": "minecraft:overworld"
-        }
+        },
+        "settings": "fractal_terrain:fractal_terrain"
       }
     },
     "minecraft:the_nether": {

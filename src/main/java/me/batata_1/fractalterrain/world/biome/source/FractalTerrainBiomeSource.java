@@ -1,5 +1,6 @@
 package me.batata_1.fractalterrain.world.biome.source;
 
+import static me.batata_1.fractalterrain.debug.Debug.getLogger;
 import static me.batata_1.fractalterrain.references.Reference.LOGGER;
 
 import com.mojang.datafixers.util.Either;
@@ -19,22 +20,36 @@ import net.minecraft.world.biome.source.MultiNoiseBiomeSource;
 import net.minecraft.world.biome.source.MultiNoiseBiomeSourceParameterList;
 import net.minecraft.world.biome.source.util.MultiNoiseUtil;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
 
 public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
 
+    private static final Logger LOG = getLogger(FractalTerrainBiomeSource.class);
+    private static final MapCodec<RegistryEntry<Biome>> BIOME_CODEC;
+    public static final MapCodec<MultiNoiseUtil.Entries<RegistryEntry<Biome>>> CUSTOM_CODEC;
+    private static final MapCodec<RegistryEntry<MultiNoiseBiomeSourceParameterList>> PRESET_CODEC;
     public static final Codec<FractalTerrainBiomeSource> CODEC;
+    private final Either<MultiNoiseUtil.Entries<RegistryEntry<Biome>>, RegistryEntry<MultiNoiseBiomeSourceParameterList>> biomeEntries;
 
-    static {
-        CODEC = Codec.mapEither(CUSTOM_CODEC, PRESET_CODEC)
-                .xmap(FractalTerrainBiomeSource::new, (FractalTerrainBiomeSource biomeSource) -> biomeSource
-                        .biomeEntries)
-                .codec();
-    }
 
     private FractalTerrainBiomeSource(
             Either<MultiNoiseUtil.Entries<RegistryEntry<Biome>>, RegistryEntry<MultiNoiseBiomeSourceParameterList>>
                     biomeEntries) {
         super(biomeEntries);
+        this.biomeEntries = biomeEntries;
+    }
+
+    private MultiNoiseUtil.Entries<RegistryEntry<Biome>> getBiomeRegistry() {
+        return this.biomeEntries.map((entries) -> {
+            return entries;
+        }, (parameterListEntry) -> {
+            return parameterListEntry.value().getEntries();
+        });
+    }
+
+    @Override
+    protected Stream<RegistryEntry<Biome>> biomeStream() {
+        return this.getBiomeRegistry().getEntries().stream().map(Pair::getSecond);
     }
 
     public static FractalTerrainBiomeSource create(MultiNoiseUtil.Entries<RegistryEntry<Biome>> biomeEntries) {
@@ -46,9 +61,13 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
     }
 
     @Override
-    protected Codec<? extends BiomeSource> getCodec() {
-        return CODEC;
+    public RegistryEntry<Biome> getBiome(int x, int y, int z, MultiNoiseUtil.MultiNoiseSampler noise) {
+        //LOG.debug("getBiome({}, {}, {}, {})", x, y, z, noise);
+//        throw new RuntimeException("Not implemented");
+        return this.getBiomeAtPoint(noise.sample(x, y, z));
     }
+
+
 
     @Nullable
     @Override
@@ -95,4 +114,15 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
 
         return null;
     }
+
+    static {
+        BIOME_CODEC = Biome.REGISTRY_CODEC.fieldOf("biome");
+        CUSTOM_CODEC = MultiNoiseUtil.Entries.createCodec(BIOME_CODEC).fieldOf("biomes");
+        PRESET_CODEC = MultiNoiseBiomeSourceParameterList.REGISTRY_CODEC.fieldOf("preset").withLifecycle(Lifecycle.stable());
+        CODEC = Codec.mapEither(CUSTOM_CODEC, PRESET_CODEC)
+                .xmap(FractalTerrainBiomeSource::new, (FractalTerrainBiomeSource biomeSource) -> biomeSource
+                        .biomeEntries)
+                .codec();
+    }
+
 }

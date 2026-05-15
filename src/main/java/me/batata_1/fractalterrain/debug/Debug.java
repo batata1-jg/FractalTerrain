@@ -1,7 +1,5 @@
 package me.batata_1.fractalterrain.debug;
 
-import static me.batata_1.fractalterrain.references.Reference.LOGGER;
-
 import ai.onnxruntime.OnnxTensor;
 import ai.onnxruntime.OrtSession;
 import com.mojang.datafixers.util.Pair;
@@ -9,11 +7,12 @@ import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
 import java.io.*;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
 import javax.imageio.ImageIO;
 import me.batata_1.fractalterrain.FractalTerrainInstance;
 //import me.batata_1.fractalterrain.ml.tensorProviders.MapProvider;
-import me.batata_1.fractalterrain.infinitetensor.storage.Tile;
+import me.batata_1.fractalterrain.infinitetensor.storage.FloatTensor;
 import me.batata_1.fractalterrain.noise.NoiseSampler;
 import me.batata_1.fractalterrain.noise.PhacelleNoiseSampler;
 import net.minecraft.util.WorldSavePath;
@@ -58,18 +57,16 @@ public class Debug {
     }
 
     public static void seeTensor(OnnxTensor op, String name, boolean seeAvg, int channel) throws IOException {
-
-        Tile tl;
-
+        FloatTensor tl;
         if (op.getInfo().getShape().length > 3) {
-            long[] a = op.getInfo().getShape();
-            tl = new Tile(op.getFloatBuffer().array(), new long[] {a[1], a[2], a[3]});
+            int[] a = Arrays.stream(op.getInfo().getShape()).mapToInt(i->(int)i).toArray();
+            tl = new FloatTensor(op.getFloatBuffer().array(), new int[] {a[1], a[2], a[3]});
         } else if (op.getInfo().getShape().length == 3) {
-            tl = new Tile(op);
+            tl = new FloatTensor(op);
         } else {
-            tl = new Tile(
+            tl = new FloatTensor(
                     op.getFloatBuffer().array(),
-                    new long[] {1, op.getInfo().getShape()[0], op.getInfo().getShape()[1]});
+                    new int[] {1, (int) op.getInfo().getShape()[0], (int) op.getInfo().getShape()[1]});
         }
 
         float[] ftu = new float[(int) (tl.getShape()[1] * tl.getShape()[2])];
@@ -86,7 +83,7 @@ public class Debug {
                 ftu[(int) (j + tl.getShape()[1] * i)] =
                         tl.entryAt(new long[] {channel, i, j}) / tl.entryAt(new long[] {(tl.getShape()[0] - 1), i, j});
             }
-        Tile t = new Tile(ftu, new long[] {tl.getShape()[1], tl.getShape()[2]});
+        FloatTensor t = new FloatTensor(ftu, new int[] {tl.getShape()[1], tl.getShape()[2]});
 
         Path path = FractalTerrainInstance.getServer()
                 .getSavePath(WorldSavePath.ROOT)
@@ -199,7 +196,7 @@ public class Debug {
         System.out.println("end");
     }
 
-    public static void seePhacelle(float freq, String name, Tile t, int size) throws IOException {
+    public static void seePhacelle(float freq, String name, FloatTensor t, int size) throws IOException {
 
         Path path = FractalTerrainInstance.getServer()
                 .getSavePath(WorldSavePath.ROOT)
@@ -362,7 +359,7 @@ public class Debug {
     }
 
     public static void toTiff(OnnxTensor op, String name) {
-        Tile tl = new Tile(op);
+        FloatTensor tl = new FloatTensor(op);
         for (int i = 0; i < tl.getShape()[0]; i++) {
             try (FileOutputStream fos = new FileOutputStream(name + "-" + i + ".tiff")) {
                 float[] fl = tl.getBand(0, i);
@@ -374,7 +371,7 @@ public class Debug {
     }
 
     public static void toTiffChannel(OnnxTensor op, int ch, String name) {
-        Tile tl = new Tile(op);
+        FloatTensor tl = new FloatTensor(op);
         try (FileOutputStream fos = new FileOutputStream(name + "-" + ch + ".tiff")) {
             float[] fl = tl.getBand(0, ch);
             fos.write(FloatTiffWriter.createFloatTiff(fl));

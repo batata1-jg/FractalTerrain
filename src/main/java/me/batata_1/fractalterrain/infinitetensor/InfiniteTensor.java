@@ -3,6 +3,8 @@ package me.batata_1.fractalterrain.infinitetensor;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import me.batata_1.fractalterrain.infinitetensor.storage.FloatTensor;
+
 /**
  * A lazy, sliding-window "infinite" tensor backed by a {@link MemoryTileStore}.
  *

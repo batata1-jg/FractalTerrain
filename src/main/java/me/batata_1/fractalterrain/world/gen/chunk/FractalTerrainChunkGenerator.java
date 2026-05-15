@@ -13,6 +13,7 @@ import me.batata_1.fractalterrain.math.Interpolation;
 import me.batata_1.fractalterrain.math.Spline;
 import me.batata_1.fractalterrain.registry.FractalTerrainRegistryKeys;
 import me.batata_1.fractalterrain.registry.SettingsRegistry;
+import me.batata_1.fractalterrain.world.biome.source.FractalTerrainBiomeSource;
 import me.batata_1.fractalterrain.world.gen.RockStrata;
 import me.batata_1.fractalterrain.noise.PhacelleNoiseSampler;
 import net.minecraft.block.BlockState;
@@ -36,19 +37,7 @@ import net.minecraft.world.gen.noise.NoiseConfig;
 
 public final class FractalTerrainChunkGenerator extends ChunkGenerator {
 
-    public record Settings(
-            float scale, int seaLevel, int bottomY, int topY) implements SettingsRegistry.Settings {
-
-        public static final Codec<Settings> CODEC = RecordCodecBuilder.create(instance -> instance.group(
-                        Codec.FLOAT.optionalFieldOf("scale", 1F).forGetter(Settings::scale),
-                        Codec.INT.optionalFieldOf("sea_level", 63).forGetter(Settings::seaLevel),
-                        Codec.INT.optionalFieldOf("bottom_y", -64).forGetter(Settings::bottomY),
-                        Codec.INT.optionalFieldOf("top_y", 1600).forGetter(Settings::topY))
-                .apply(instance, Settings::new));
-
-        public static final Codec<RegistryEntry<Settings>> REGISTRY_CODEC =
-                RegistryElementCodec.of(FractalTerrainRegistryKeys.FRACTAL_TERRAIN_CHUNK_GENERATOR_SETTINGS, CODEC);
-    }
+    private static final BlockState AIR = Blocks.AIR.getDefaultState();
 
     private static final BlockState DEFAUT = Blocks.STONE.getDefaultState();
     private static final BlockState[] Rocks = new BlockState[] {
@@ -58,7 +47,8 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         Blocks.GRANITE.getDefaultState()
     };
 
-    private final RegistryEntry<Settings> settings;
+    private final RegistryEntry<ChunkGeneratorSettings> settings;
+    private final FractalTerrainBiomeSource biomeSource;
     private final Interpolation reliefInterpolation;
     private final Interpolation reliefGradInterpolation;
     private final Interpolation reliefGradXInterpolation;
@@ -71,23 +61,26 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
 
     public static final Codec<FractalTerrainChunkGenerator> CODEC =
             RecordCodecBuilder.create(instance -> instance.group(
-                            BiomeSource.CODEC.fieldOf("biome_source").forGetter(g -> g.biomeSource),
-                            Settings.REGISTRY_CODEC
-                                    .fieldOf("settings")
-                                    .forGetter((FractalTerrainChunkGenerator g) -> g.settings))
-                    .apply(instance, FractalTerrainChunkGenerator::new));
+                    FractalTerrainBiomeSource.CODEC // Use your biome source's CODEC
+                            .fieldOf("biome_source")
+                            .forGetter(FractalTerrainChunkGenerator::getBiomeSource),
+                    ChunkGeneratorSettings.REGISTRY_CODEC
+                            .fieldOf("settings")
+                            .forGetter(FractalTerrainChunkGenerator::getSettings)
+            ).apply(instance, FractalTerrainChunkGenerator::new));
 
-    public FractalTerrainChunkGenerator(BiomeSource biomeSource, RegistryEntry<Settings> settings) {
+    public FractalTerrainChunkGenerator(FractalTerrainBiomeSource biomeSource, RegistryEntry<ChunkGeneratorSettings> settings) {
         super(biomeSource);
+        this.biomeSource = biomeSource;
         this.settings = settings;
-        reliefInterpolation = new Interpolation(settings.value().scale());
-        reliefGradInterpolation = new Interpolation(settings.value().scale());
-        reliefResInterpolation = new Interpolation(settings.value().scale());
-        reliefBlurredInterpolation = new Interpolation(settings.value().scale());
-        reliefGradXInterpolation = new Interpolation(settings.value().scale());
-        reliefGradYInterpolation = new Interpolation(settings.value().scale());
+        reliefInterpolation = new Interpolation(1.0F);
+        reliefGradInterpolation = new Interpolation(1.0F);
+        reliefResInterpolation = new Interpolation(1.0F);
+        reliefBlurredInterpolation = new Interpolation(1.0F);
+        reliefGradXInterpolation = new Interpolation(1.0F);
+        reliefGradYInterpolation = new Interpolation(1.0F);
         // TODO: implementar isso direito ou ser mais inteligente e descobri qual dos caras la eu tenho q usar
-        reliefLowFreqInterpolation = new Interpolation(settings.value().scale() * (1 << 6));
+        reliefLowFreqInterpolation = new Interpolation(1.0F * (1 << 6));
         initReliefRelatedInterpolation();
         strata = RockStrata.AngledPlaneStrata.create(9, 8, Rocks);
         phacelleSampler = new PhacelleNoiseSampler(5, 32F);
@@ -108,8 +101,12 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         return CODEC;
     }
 
-    public RegistryEntry<Settings> getSettings() {
+    public RegistryEntry<ChunkGeneratorSettings> getSettings() {
         return settings;
+    }
+
+    public FractalTerrainBiomeSource getBiomeSource() {
+        return biomeSource;
     }
 
     // shouldn't depende on the getBaseHeight
@@ -127,7 +124,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         final double interpolatedRelief = reliefInterpolation.interpolateSmoothStep(x, z);
         final double interpolatedGrad = reliefGradInterpolation.interpolateSmoothStep(x, z);
         final double strata = this.strata.sample(x, z, interpolatedRelief, interpolatedGrad, interpolatedBlurredRelief);
-        if( interpolatedBlurredRelief < -50 ) return -50;
+        if( interpolatedBlurredRelief < settings.value().generationShapeConfig().minimumY() ) return settings.value().generationShapeConfig().minimumY();
         return (int) interpolatedRelief;
     }
 
@@ -156,7 +153,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         final ChunkPos chunkPos = chunk.getPos();
         final int startingX = chunkPos.getStartX();
         final int startingZ = chunkPos.getStartZ();
-        final int bottom = settings.value().bottomY();
+        final int bottom = settings.value().generationShapeConfig().minimumY();
         final int[] reliefBaseHeight = getBaseHeightArr(startingX, startingZ);
         BlockPos.Mutable mutable = new BlockPos.Mutable();
         for (int dx = 0; dx < 16; dx++) {
@@ -260,7 +257,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
 
     @Override
     public int getWorldHeight() {
-        return settings.value().topY();
+        return settings.value().generationShapeConfig().height();
     }
 
     @Override
@@ -270,23 +267,24 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
 
     @Override
     public int getMinimumY() {
-        return settings.value().bottomY();
+        return settings.value().generationShapeConfig().minimumY();
     }
 
     @Override
     public int getHeight(int x, int z, Heightmap.Type heightmap, HeightLimitView world, NoiseConfig noiseConfig) {
-        return 0;
+        return getBaseHeight(x,z);
     }
 
     @Override
     public VerticalBlockSample getColumnSample(int x, int z, HeightLimitView world, NoiseConfig noiseConfig) {
         BlockState[] blockStates =
                 // can be negative
-                new BlockState[getBaseHeight(x, z) - settings.value().bottomY()];
+                new BlockState[getBaseHeight(x, z) - settings.value().generationShapeConfig().minimumY()];
         Arrays.fill(blockStates, DEFAUT);
-        return new VerticalBlockSample(settings.value().bottomY(), blockStates);
+        return new VerticalBlockSample(settings.value().generationShapeConfig().minimumY(), blockStates);
     }
 
     @Override
     public void getDebugHudText(List<String> text, NoiseConfig noiseConfig, BlockPos pos) {}
+
 }

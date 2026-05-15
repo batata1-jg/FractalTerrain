@@ -8,7 +8,7 @@
 //import me.batata_1.fractalterrain.FractalTerrainInstance;
 //import me.batata_1.fractalterrain.math.Interpolation;
 //import me.batata_1.fractalterrain.references.Reference;
-//import me.batata_1.fractalterrain.world.gen.ReliefProvider;
+//import me.batata_1.fractalterrain.world.gen.BiomeProvider;
 //import net.minecraft.registry.Registries;
 //import net.minecraft.registry.Registry;
 //import net.minecraft.util.dynamic.CodecHolder;

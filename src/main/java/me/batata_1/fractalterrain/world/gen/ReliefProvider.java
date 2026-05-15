@@ -2,9 +2,8 @@ package me.batata_1.fractalterrain.world.gen;
 
 import com.mojang.datafixers.util.Pair;
 //import me.batata_1.fractalterrain.ml.tensorProviders.GaussianNoisePatchProvider;
-import me.batata_1.fractalterrain.infinitetensor.FloatTensor;
-import me.batata_1.fractalterrain.infinitetensor.storage.EntryStorage;
-import me.batata_1.fractalterrain.infinitetensor.storage.Tile;
+import me.batata_1.fractalterrain.infinitetensor.storage.FloatTensor;
+import me.batata_1.fractalterrain.infinitetensor.storage.TensorStorage;
 import me.batata_1.fractalterrain.debug.Debug;
 //import me.batata_1.fractalterrain.world.ContinentalScaleMapProvider;
 
@@ -15,10 +14,10 @@ import static me.batata_1.fractalterrain.FractalTerrainInstance.pipeline;
 
 public class ReliefProvider {
 
-    private final EntryStorage final_tiles;
+    private final TensorStorage final_tiles;
 
     public ReliefProvider(String path) {
-        final_tiles = new EntryStorage(path + "/final_tiles",512,xz -> {
+        final_tiles = new TensorStorage(path + "/final_relief_tiles",512, xz -> {
             int x = xz.getFirst();
             int z = xz.getSecond();
 
@@ -30,7 +29,7 @@ public class ReliefProvider {
                     entries[(ch<<18) + px] = (w > 1e-6f) ? final_slice.data[(ch<<18) + px] / w : 0f;
                 }
 
-            Tile t = new Tile(entries,new long[]{7,512,512});
+            me.batata_1.fractalterrain.infinitetensor.storage.FloatTensor t = new me.batata_1.fractalterrain.infinitetensor.storage.FloatTensor(entries,new int[]{7,512,512});
 
             try {
                 Debug.seeTensor(t.get(),"final" + x + " " + z ,false,0);
@@ -42,7 +41,7 @@ public class ReliefProvider {
     }
 
 
-    public EntryStorage getStorage() {
+    public TensorStorage getStorage() {
         return final_tiles;
     }
 
