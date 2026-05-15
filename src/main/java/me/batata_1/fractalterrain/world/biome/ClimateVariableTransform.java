@@ -41,7 +41,7 @@ public class ClimateVariableTransform {
     static final short FOREST_SPARSE = 108, TAIGA_SPARSE = 115, SNOWY_TAIGA_SPARSE = 116;
 
     // continentalness erosion temperature vegetation weirdness<-(PV)
-    public static float[] transform(int x0, int z0, float[] elev, float[] slopeRatio, float[] lowFreqSlopeRatio,
+    public static float[] transform(int x0, int z0, float[] elev, float[] grad, float[] lowFreqGrad,
                                     float[] climate, float[] res) {
         float[] out = new float[5<<18];
         for (int i = 0; i < (5<<18); i++) out[i] = -1;
@@ -85,7 +85,7 @@ public class ClimateVariableTransform {
             for (int c = 0; c < (1<<9); c++) {
                 int idx = r * (1<<9) + c;
                 float elevVal   = elev[idx];
-                float slope     = slopeRatio[idx];
+                float slope     = grad[idx];
                 float residual = res[idx];
 
                 // Climate channels: [0]=temp, [1]=t_season, [2]=precip, [3]=p_cv
@@ -180,7 +180,7 @@ public class ClimateVariableTransform {
                     continentalness = (tStdCont + hStdCont + eCont) / 3F + continentNoise[idx]*0.2F;
                 }
 
-                float slopeLowFreq = lowFreqSlopeRatio[idx];
+                float slopeLowFreq = lowFreqGrad[idx];
                 float lowE = 0.52F/(Math.abs(slopeLowFreq)+1);
                 float resE = 0.02F*Math.clamp(residual/10F,-1,1);
                 float slopeE = 0.1F/(Math.abs(slope)+1) - 0.05F;

@@ -29,7 +29,7 @@ public class ReliefProvider {
                     entries[(ch<<18) + px] = (w > 1e-6f) ? final_slice.data[(ch<<18) + px] / w : 0f;
                 }
 
-            me.batata_1.fractalterrain.infinitetensor.storage.FloatTensor t = new me.batata_1.fractalterrain.infinitetensor.storage.FloatTensor(entries,new int[]{7,512,512});
+            FloatTensor t = new FloatTensor(entries,new int[]{7,512,512});
 
             try {
                 Debug.seeTensor(t.get(),"final" + x + " " + z ,false,0);
@@ -40,17 +40,12 @@ public class ReliefProvider {
         });
     }
 
-
     public TensorStorage getStorage() {
         return final_tiles;
     }
 
     public Float get_entry(Pair<Integer,Integer> xz,int ch) {
-        try {
-            return final_tiles.getValue(xz,ch);
-        } catch (ExecutionException | InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        return final_tiles.getValue(xz,ch);
     }
 
     public Float getElev(Pair<Integer, Integer> xz) {

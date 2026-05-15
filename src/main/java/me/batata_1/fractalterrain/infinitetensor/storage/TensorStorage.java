@@ -106,28 +106,32 @@ public class TensorStorage {
                 || intra.getSecond() == 0;
     }
 
-    public float getReverseValue(int x, int z) throws ExecutionException, InterruptedException {
-        final FloatTensor entry = getEntry(toInter(Pair.of(x, z), entry_len)).get();
+    public float getReverseValue(int x, int z) {
+        final FloatTensor entry = getEntry(toInter(Pair.of(x, z), entry_len));
         final var intra = toIntra(Pair.of(x, z), entry_len);
         return entry.entryAt(new long[] {intra.getFirst(), entry_len - 1 - intra.getSecond()});
     }
 
-    public float getValue(int x, int z) throws ExecutionException, InterruptedException {
-        final FloatTensor entry = getEntry(toInter(Pair.of(x, z), entry_len)).get();
+    public float getValue(int x, int z) {
+        final FloatTensor entry = getEntry(toInter(Pair.of(x, z), entry_len));
         final var intra = toIntra(Pair.of(x, z), entry_len);
         return entry.entryAt(new long[] {intra.getFirst(), intra.getSecond()});
     }
 
-    public float getValue(Pair<Integer, Integer> xz, int ch) throws ExecutionException, InterruptedException {
-        final FloatTensor entry = getEntry(toInter(xz, entry_len)).get();
+    public float getValue(Pair<Integer, Integer> xz, int ch){
+        final FloatTensor entry = getEntry(toInter(xz, entry_len));
         final var intra = toIntra(xz, entry_len);
         return entry.entryAt(new long[] {ch, intra.getFirst(), intra.getSecond()});
     }
 
     // xz inter coords
-    public CompletableFuture<FloatTensor> getEntry(Pair<Integer, Integer> xz) {
-        if (CACHE.containsKey(xz)) return CACHE.get(xz);
-        return fetchEntry(xz);
+    public FloatTensor getEntry(Pair<Integer, Integer> xz) {
+        try {
+            if (CACHE.containsKey(xz)) return CACHE.get(xz).get();
+            return fetchEntry(xz).get();
+        } catch (InterruptedException | ExecutionException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     // xz inter coords
