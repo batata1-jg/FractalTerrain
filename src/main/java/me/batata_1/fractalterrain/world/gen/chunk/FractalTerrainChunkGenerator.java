@@ -55,7 +55,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
     private final Interpolation reliefGradYInterpolation;
     private final Interpolation reliefResInterpolation;
     private final Interpolation reliefBlurredInterpolation;
-    private final Interpolation reliefLowFreqInterpolation;
+    private final Interpolation reliefLowFreqInterpolation = null;
     private final RockStrata strata;
     private final PhacelleNoiseSampler phacelleSampler;
 
@@ -73,27 +73,23 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         super(biomeSource);
         this.biomeSource = biomeSource;
         this.settings = settings;
-        reliefInterpolation = new Interpolation(1.0F);
-        reliefGradInterpolation = new Interpolation(1.0F);
-        reliefResInterpolation = new Interpolation(1.0F);
-        reliefBlurredInterpolation = new Interpolation(1.0F);
-        reliefGradXInterpolation = new Interpolation(1.0F);
-        reliefGradYInterpolation = new Interpolation(1.0F);
+        reliefInterpolation = new Interpolation(1.0F,
+                xz -> FractalTerrainInstance.getReliefProvider().getElev(xz));
+        reliefGradInterpolation = new Interpolation(1.0F,
+                xz -> FractalTerrainInstance.getReliefProvider().getRefinedGrad(xz));
+        reliefResInterpolation = new Interpolation(1.0F,
+                xz -> FractalTerrainInstance.getReliefProvider().getRes(xz));
+        reliefBlurredInterpolation = new Interpolation(1.0F,
+                xz -> FractalTerrainInstance.getReliefProvider().getBlurredElev(xz));
+        reliefGradXInterpolation = new Interpolation(1.0F,
+                xz -> FractalTerrainInstance.getReliefProvider().getGradX(xz));
+        reliefGradYInterpolation = new Interpolation(1.0F,
+                xz -> FractalTerrainInstance.getReliefProvider().getGradY(xz));
         // TODO: implementar isso direito ou ser mais inteligente e descobri qual dos caras la eu tenho q usar
-        reliefLowFreqInterpolation = new Interpolation(1.0F * (1 << 6));
-        initReliefRelatedInterpolation();
+       // reliefLowFreqInterpolation = new Interpolation(1.0F * (1 << 6));
         strata = RockStrata.AngledPlaneStrata.create(9, 8, Rocks);
         phacelleSampler = new PhacelleNoiseSampler(5, 32F);
-        phacelleInterp.setF(xz -> phacelleSampler.sample(xz.getFirst(), xz.getSecond()));
-    }
 
-    private void initReliefRelatedInterpolation() {
-        reliefInterpolation.setF(xz -> FractalTerrainInstance.getReliefProvider().getElev(xz));
-        reliefGradInterpolation.setF(xz -> FractalTerrainInstance.getReliefProvider().getRefinedGrad(xz));
-        reliefGradXInterpolation.setF(xz -> FractalTerrainInstance.getReliefProvider().getGradX(xz));
-        reliefGradYInterpolation.setF(xz -> FractalTerrainInstance.getReliefProvider().getGradY(xz));
-        reliefResInterpolation.setF(xz -> FractalTerrainInstance.getReliefProvider().getRes(xz));
-        reliefBlurredInterpolation.setF(xz -> FractalTerrainInstance.getReliefProvider().getBlurredElev(xz));
     }
 
     @Override
@@ -116,8 +112,6 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
 
     private static final Spline phacelleSpline =
             new Spline(new float[] {4, 8, 40}, new float[] {0, 0.25F, 1}, new float[] {0, 0, 0});
-
-    private final Interpolation phacelleInterp = new Interpolation(1F);
 
     private int getBaseHeight(int x, int z) {
         final double interpolatedBlurredRelief = reliefBlurredInterpolation.interpolateBilinear(x, z);

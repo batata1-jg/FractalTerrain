@@ -10,6 +10,7 @@ import java.util.concurrent.ExecutionException;
 
 import me.batata_1.fractalterrain.ml.models.PipelineModels;
 import me.batata_1.fractalterrain.ml.pipeline.WorldPipeline;
+import me.batata_1.fractalterrain.world.biome.BiomeProvider;
 import me.batata_1.fractalterrain.world.gen.chunk.FractalTerrainChunkGenerator;
 import me.batata_1.fractalterrain.world.gen.ReliefProvider;
 import me.batata_1.fractalterrain.noise.OctaveSimplexNoiseSampler;
@@ -23,10 +24,12 @@ import org.slf4j.Logger;
 public class FractalTerrainInstance {
 
     private static final Logger LOG = getLogger(FractalTerrainInstance.class);
-    public static volatile FractalTerrainInstance instance = null;
+    public static volatile CompletableFuture<FractalTerrainInstance> instance = new CompletableFuture<>();
 
     private final MinecraftServer curServer;
-    private final Path worldPath;
+    private final ReliefProvider reliefSource;
+    private final BiomeProvider biomeProvider;
+
     public static final WorldPipeline pipeline;
     static {
         PipelineModels.load();
@@ -35,12 +38,12 @@ public class FractalTerrainInstance {
         if (models == null) throw new IllegalStateException("PipelineModels failed to load");
         pipeline = new WorldPipeline(0, models);
     }
-    public final CompletableFuture<ReliefProvider> reliefSource = new CompletableFuture<>();
 
     private FractalTerrainInstance(MinecraftServer server) {
         this.curServer = server;
-        this.worldPath = server.getSavePath(WorldSavePath.ROOT).normalize();
-        reliefSource.complete(new ReliefProvider(worldPath + "/fractal_terrain"));
+        final Path worldPath = server.getSavePath(WorldSavePath.ROOT).normalize();
+        this.reliefSource = new ReliefProvider(worldPath + "/fractal_terrain");
+        this.biomeProvider = new BiomeProvider( worldPath + "/fractal_terrain");
         final long seed = server
                 .getSaveProperties()
                 .getGeneratorOptions()
@@ -51,71 +54,38 @@ public class FractalTerrainInstance {
     }
 
     public static synchronized void init(MinecraftServer server) {
-        if (instance != null) {
+        if (instance.isDone()) {
             LOG.warn("Already initialized");
             return;
         }
-        instance = new FractalTerrainInstance(server);
+        instance.complete(new FractalTerrainInstance(server));
     }
 
-
-
-//    public static synchronized void setServer(MinecraftServer server, ServerWorld world) {
-//        final ChunkGenerator chunkGenerator =
-//                server.getOverworld().getChunkManager().getChunkGenerator();
-//        if (!(chunkGenerator instanceof FractalTerrainChunkGenerator)) return;
-//        if (world.getRegistryKey() != World.OVERWORLD) return;
-//        if (curServer != null || worldPath != null || reliefSource.isDone()) {
-//            LOGGER.warn("Already initialized");
-//            return;
-//        }
-//        LOGGER.info("fractalTerrain initializing");
-//        curServer = server;
-//        worldPath = server.getSavePath(WorldSavePath.ROOT).normalize();
-//        reliefSource.complete(new BiomeProvider(worldPath + "/fractal_terrain"));
-//        LOGGER.info("completed reliefSource");
-//        final long seed = FractalTerrainInstance.getServer()
-//                .getSaveProperties()
-//                .getGeneratorOptions()
-//                .getSeed();
-//        pipeline.setSeed(seed);
-//        OctaveSimplexNoiseSampler.init(seed);
-//        debug();
-//        LOGGER.info("init set size: {}", OctaveSimplexNoiseSampler.getInitSetSize());
-//    }
-//
-//    public static synchronized void freeServer(MinecraftServer server) {
-//        curServer = null;
-//        worldPath = null;
-//        try {
-//            reliefSource.get().getStorage().clear();
-//        } catch (InterruptedException | ExecutionException ignored) {
-//        } finally {
-//            reliefSource = new CompletableFuture<>();
-//        }
-//    }
-
     public static synchronized void close() {
-        if (instance == null) return;
-        try {
-            instance.reliefSource.get().getStorage().clear();
-        } catch (InterruptedException | ExecutionException ignored) {
-        }
-        instance = null;
+        if (!instance.isDone()) return;
+        getInstance().reliefSource.getStorage().clear();
+        getInstance().biomeProvider.getStorage().clear();
+        instance = new CompletableFuture<>();
         LOG.info("fractal terrain instance closed");
     }
 
-    public static ReliefProvider getReliefProvider() {
+    public static FractalTerrainInstance getInstance() {
         try {
-            return instance.reliefSource.get();
+            return instance.get();
         } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException(e);
         }
     }
 
-    public static MinecraftServer getServer() {
-        return instance.curServer;
+    public static ReliefProvider getReliefProvider() {
+        return getInstance().reliefSource;
     }
 
+    public static MinecraftServer getServer() {
+        return getInstance().curServer;
+    }
 
+    public static BiomeProvider getBiomeProvider() {
+        return getInstance().biomeProvider;
+    }
 }

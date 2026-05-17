@@ -10,6 +10,9 @@ import com.mojang.serialization.Lifecycle;
 import com.mojang.serialization.MapCodec;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
+
+import me.batata_1.fractalterrain.FractalTerrainInstance;
+import me.batata_1.fractalterrain.world.biome.BiomeProvider;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.random.Random;
@@ -64,7 +67,7 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
     public RegistryEntry<Biome> getBiome(int x, int y, int z, MultiNoiseUtil.MultiNoiseSampler noise) {
         //LOG.debug("getBiome({}, {}, {}, {})", x, y, z, noise);
 //        throw new RuntimeException("Not implemented");
-        return this.getBiomeAtPoint(noise.sample(x, y, z));
+        return this.getBiomeAtPoint(FractalTerrainInstance.getBiomeProvider().sampler.sample(x,y,z));
     }
 
 
