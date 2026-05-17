@@ -10,13 +10,10 @@ public class Interpolation {
     private static final Function<Double, Double> stepSmoothstep = x -> 3 * (x * x) - 2 * (x * x * x);
 
     private final float interpolation_scale;
-    private Function<Pair<Integer, Integer>, Float> f;
+    private final Function<Pair<Integer, Integer>, Float> f;
 
-    public Interpolation(float interpolationScale) {
+    public Interpolation(final float interpolationScale, final Function<Pair<Integer, Integer>, Float> f) {
         interpolation_scale = interpolationScale;
-    }
-
-    public void setF(Function<Pair<Integer, Integer>, Float> f) {
         this.f = f;
     }
 
@@ -29,7 +26,7 @@ public class Interpolation {
     }
 
     // xz real coords
-    private double interpolate(float x, float z, Function<Double, Double> step) {
+    private double interpolate(float x, float z, final Function<Double, Double> step) {
 
         x /= interpolation_scale * 5;
         z /= interpolation_scale * 5;
