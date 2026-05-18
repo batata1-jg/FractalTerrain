@@ -7,11 +7,10 @@ import static me.batata_1.fractalterrain.util.FractalTerrainUtil.*;
 
 import com.google.common.base.Function;
 import com.mojang.datafixers.util.Pair;
-import org.slf4j.Logger;
-
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
+import org.slf4j.Logger;
 
 public class TensorStorage {
 
@@ -23,7 +22,8 @@ public class TensorStorage {
         return t;
     });
 
-    private final ConcurrentHashMap<Pair<Integer, Integer>, CompletableFuture<FloatTensor>> CACHE = new ConcurrentHashMap<>(16,0.75f);
+    private final ConcurrentHashMap<Pair<Integer, Integer>, CompletableFuture<FloatTensor>> CACHE =
+            new ConcurrentHashMap<>(16, 0.75f);
     private final Set<Pair<Integer, Integer>> GENERATED_ENTRIES =
             Collections.synchronizedSet(new LinkedHashSet<>(16, 0.75f));
 
@@ -57,7 +57,7 @@ public class TensorStorage {
         out.close();
     }
 
-    private FloatTensor deserialize(String path) throws IOException, ClassNotFoundException  {
+    private FloatTensor deserialize(String path) throws IOException, ClassNotFoundException {
         final ObjectInputStream in = new ObjectInputStream(new FileInputStream(path + ".ser"));
         final float[] arr = (float[]) in.readObject();
         in.close();
@@ -70,7 +70,6 @@ public class TensorStorage {
         for (int i = el; i < el + sl; i++) shape[i - el] = (int) arr[i];
         return new FloatTensor(entries, shape);
     }
-
 
     public String getEntryDir() {
         return PATH;
@@ -118,7 +117,7 @@ public class TensorStorage {
         return entry.entryAt(new long[] {intra.getFirst(), intra.getSecond()});
     }
 
-    public float getValue(Pair<Integer, Integer> xz, int ch){
+    public float getValue(Pair<Integer, Integer> xz, int ch) {
         final FloatTensor entry = getEntry(toInter(xz, entry_len));
         final var intra = toIntra(xz, entry_len);
         return entry.entryAt(new long[] {ch, intra.getFirst(), intra.getSecond()});
@@ -139,7 +138,7 @@ public class TensorStorage {
 
         final CompletableFuture<FloatTensor> ct = t.thenApply(entry -> {
             try {
-                serialize(getEntryDir() + "/" + giveNameToTile(xz),entry);
+                serialize(getEntryDir() + "/" + giveNameToTile(xz), entry);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -203,5 +202,4 @@ public class TensorStorage {
     public synchronized String getPath() {
         return PATH;
     }
-
 }

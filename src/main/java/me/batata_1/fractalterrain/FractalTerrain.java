@@ -1,16 +1,18 @@
 package me.batata_1.fractalterrain;
 
+import static me.batata_1.fractalterrain.debug.Debug.getLogger;
+
+import me.batata_1.fractalterrain.debug.Debug;
 import me.batata_1.fractalterrain.ml.models.ModelAssetManager;
 import me.batata_1.fractalterrain.ml.models.PipelineModels;
 import me.batata_1.fractalterrain.references.Reference;
-import me.batata_1.fractalterrain.registry.FractalTerrainRegistryKeys;
 import me.batata_1.fractalterrain.world.biome.source.FractalTerrainBiomeSource;
 import me.batata_1.fractalterrain.world.gen.chunk.FractalTerrainChunkGenerator;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
-import net.fabricmc.fabric.api.event.registry.DynamicRegistries;
 import net.fabricmc.fabric.api.event.registry.DynamicRegistryView;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
 import net.minecraft.registry.RegistryKey;
@@ -19,8 +21,6 @@ import net.minecraft.server.world.ServerWorld;
 import net.minecraft.world.World;
 import net.minecraft.world.gen.chunk.ChunkGenerator;
 import org.slf4j.Logger;
-
-import static me.batata_1.fractalterrain.debug.Debug.getLogger;
 
 public class FractalTerrain implements ModInitializer {
 
@@ -33,7 +33,7 @@ public class FractalTerrain implements ModInitializer {
             LOG.info("Loaded entry of {}: {} = {}", key, id, object);
         });
     }
-
+    //TODO: usar FabricLoader.getInstance().isDevelopmentEnvironment();
     @Override
     public void onInitialize() {
         Registry.register(
@@ -43,14 +43,12 @@ public class FractalTerrain implements ModInitializer {
         Registry.register(
                 Registries.BIOME_SOURCE, Reference.identifier("biome_source"), FractalTerrainBiomeSource.CODEC);
 
-
         ModelAssetManager.ensureAssetsReady();
         PipelineModels.load();
-
+        
         ServerWorldEvents.LOAD.register((MinecraftServer server, ServerWorld world) -> {
             final ChunkGenerator chunkGenerator =
                     server.getOverworld().getChunkManager().getChunkGenerator();
-            LOG.info(" noise config: {}",server.getOverworld().getChunkManager().getNoiseConfig().getNoiseRouter());
             if (!(chunkGenerator instanceof FractalTerrainChunkGenerator)) return;
             if (world.getRegistryKey() != World.OVERWORLD) return;
             FractalTerrainInstance.init(server);
@@ -62,5 +60,6 @@ public class FractalTerrain implements ModInitializer {
             if (!(chunkGenerator instanceof FractalTerrainChunkGenerator)) return;
             FractalTerrainInstance.close();
         });
+
     }
 }

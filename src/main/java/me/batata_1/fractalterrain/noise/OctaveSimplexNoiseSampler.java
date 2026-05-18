@@ -35,7 +35,7 @@ public class OctaveSimplexNoiseSampler extends NoiseSampler {
             if (amplitudeDecay != null) amplitudes[i] *= amplitudeDecay.apply((double) i);
         }
 
-        //        LOGGER.info("printar amplitude: {}",amplitudes);
+        //        DEBUG_LOGGER.info("printar amplitude: {}",amplitudes);
 
         double norm = 0;
         for (int i = 0; i < numOctaves; i++) norm += amplitudes[i];

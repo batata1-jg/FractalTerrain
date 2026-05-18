@@ -1,14 +1,14 @@
-//package me.batata_1.fractalterrain.world.gen.surfacebuilder;
+// package me.batata_1.fractalterrain.world.gen.surfacebuilder;
 //
-//import com.google.common.collect.ImmutableList;
-//import net.minecraft.block.Block;
-//import net.minecraft.block.Blocks;
-//import net.minecraft.world.biome.BiomeKeys;
-//import net.minecraft.world.gen.YOffset;
-//import net.minecraft.world.gen.noise.NoiseParametersKeys;
-//import net.minecraft.world.gen.surfacebuilder.MaterialRules;
+// import com.google.common.collect.ImmutableList;
+// import net.minecraft.block.Block;
+// import net.minecraft.block.Blocks;
+// import net.minecraft.world.biome.BiomeKeys;
+// import net.minecraft.world.gen.YOffset;
+// import net.minecraft.world.gen.noise.NoiseParametersKeys;
+// import net.minecraft.world.gen.surfacebuilder.MaterialRules;
 //
-//public class FractalTerrainSurfaceRules {
+// public class FractalTerrainSurfaceRules {
 //
 //    private static final MaterialRules.MaterialRule AIR = block(Blocks.AIR);
 //    private static final MaterialRules.MaterialRule BEDROCK = block(Blocks.BEDROCK);
@@ -74,7 +74,8 @@
 //        MaterialRules.MaterialCondition isBeachOrWarmOcean =
 //                MaterialRules.biome(BiomeKeys.WARM_OCEAN, BiomeKeys.BEACH, BiomeKeys.SNOWY_BEACH);
 //        MaterialRules.MaterialCondition isDesert = MaterialRules.biome(BiomeKeys.DESERT);
-//        MaterialRules.MaterialRule realizeStonyPeaks_StonyShore_WindsweptHills_DripstoneCaves = MaterialRules.sequence(
+//        MaterialRules.MaterialRule realizeStonyPeaks_StonyShore_WindsweptHills_DripstoneCaves =
+// MaterialRules.sequence(
 //                MaterialRules.condition(
 //                        MaterialRules.biome(BiomeKeys.STONY_PEAKS),
 //                        MaterialRules.sequence(
@@ -102,7 +103,8 @@
 //                MaterialRules.noiseThreshold(NoiseParametersKeys.POWDER_SNOW, 0.35, 0.6),
 //                MaterialRules.condition(isAboveWaterZero, POWDER_SNOW));
 //        MaterialRules.MaterialRule
-//                realizeFrozenPeaks_SnowySlopes_JaggedPeaks_Grove_WindsweptSavanna_WindsweptGravellyHills_MangroveSwamp =
+//                realizeFrozenPeaks_SnowySlopes_JaggedPeaks_Grove_WindsweptSavanna_WindsweptGravellyHills_MangroveSwamp
+// =
 //                        MaterialRules.sequence(
 //                                MaterialRules.condition(
 //                                        MaterialRules.biome(BiomeKeys.FROZEN_PEAKS),
@@ -142,7 +144,8 @@
 //                                MaterialRules.condition(MaterialRules.biome(BiomeKeys.MANGROVE_SWAMP), MUD),
 //                                DIRT);
 //        MaterialRules.MaterialRule
-//                realizeFrozenPeaks_SnowySlopes_JaggedPeaks_Grove_WindsweptSavanna_WindsweptGravellyHills_OldGrowthPineTaiga_IceSpikes_MangroveSwamp_MushroomFields =
+//
+// realizeFrozenPeaks_SnowySlopes_JaggedPeaks_Grove_WindsweptSavanna_WindsweptGravellyHills_OldGrowthPineTaiga_IceSpikes_MangroveSwamp_MushroomFields =
 //                        MaterialRules.sequence(
 //                                MaterialRules.condition(
 //                                        MaterialRules.biome(BiomeKeys.FROZEN_PEAKS),
@@ -185,7 +188,8 @@
 //                                                MaterialRules.condition(
 //                                                        surfaceNoiseThreshold(2.0), placeGravelAndStone),
 //                                                MaterialRules.condition(surfaceNoiseThreshold(1.0), STONE),
-//                                                MaterialRules.condition(surfaceNoiseThreshold(-1.0), placeGrassAndDirt),
+//                                                MaterialRules.condition(surfaceNoiseThreshold(-1.0),
+// placeGrassAndDirt),
 //                                                placeGravelAndStone)),
 //                                MaterialRules.condition(
 //                                        MaterialRules.biome(
@@ -289,7 +293,8 @@
 //                                                                MaterialRules.condition(
 //                                                                        MaterialRules.temperature(), ICE),
 //                                                                WATER))),
-//                                        realizeFrozenPeaks_SnowySlopes_JaggedPeaks_Grove_WindsweptSavanna_WindsweptGravellyHills_OldGrowthPineTaiga_IceSpikes_MangroveSwamp_MushroomFields))),
+//
+// realizeFrozenPeaks_SnowySlopes_JaggedPeaks_Grove_WindsweptSavanna_WindsweptGravellyHills_OldGrowthPineTaiga_IceSpikes_MangroveSwamp_MushroomFields))),
 //                MaterialRules.condition(
 //                        waterWithStoneDepth,
 //                        MaterialRules.sequence(
@@ -299,11 +304,13 @@
 //                                                isFrozenOcean, MaterialRules.condition(theHoleOne, WATER))),
 //                                MaterialRules.condition(
 //                                        MaterialRules.STONE_DEPTH_FLOOR_WITH_SURFACE_DEPTH,
-//                                        realizeFrozenPeaks_SnowySlopes_JaggedPeaks_Grove_WindsweptSavanna_WindsweptGravellyHills_MangroveSwamp),
+//
+// realizeFrozenPeaks_SnowySlopes_JaggedPeaks_Grove_WindsweptSavanna_WindsweptGravellyHills_MangroveSwamp),
 //                                MaterialRules.condition(
 //                                        isBeachOrWarmOcean,
 //                                        MaterialRules.condition(
-//                                                MaterialRules.STONE_DEPTH_FLOOR_WITH_SURFACE_DEPTH_RANGE_6, SANDSTONE)),
+//                                                MaterialRules.STONE_DEPTH_FLOOR_WITH_SURFACE_DEPTH_RANGE_6,
+// SANDSTONE)),
 //                                MaterialRules.condition(
 //                                        isDesert,
 //                                        MaterialRules.condition(
@@ -335,7 +342,8 @@
 //                    BEDROCK));
 //        }
 //
-//        FractalTerrainMaterialRules.SteepSlope fracSteepSlope = new FractalTerrainMaterialRules.SteepSlope(1200, 0.2F);
+//        FractalTerrainMaterialRules.SteepSlope fracSteepSlope = new FractalTerrainMaterialRules.SteepSlope(1200,
+// 0.2F);
 //
 //        MaterialRules.MaterialRule conditionOnSlopeTest =
 //                MaterialRules.condition(MaterialRules.not(fracSteepSlope), realizeEverything);
@@ -372,7 +380,8 @@
 //        MaterialRules.MaterialCondition isBeachOrWarmOcean =
 //                MaterialRules.biome(BiomeKeys.WARM_OCEAN, BiomeKeys.BEACH, BiomeKeys.SNOWY_BEACH);
 //        MaterialRules.MaterialCondition isDesert = MaterialRules.biome(BiomeKeys.DESERT);
-//        MaterialRules.MaterialRule realizeStonyPeaks_StonyShore_WindsweptHills_DripstoneCaves = MaterialRules.sequence(
+//        MaterialRules.MaterialRule realizeStonyPeaks_StonyShore_WindsweptHills_DripstoneCaves =
+// MaterialRules.sequence(
 //                MaterialRules.condition(
 //                        MaterialRules.biome(BiomeKeys.STONY_PEAKS),
 //                        MaterialRules.sequence(
@@ -400,7 +409,8 @@
 //                MaterialRules.noiseThreshold(NoiseParametersKeys.POWDER_SNOW, 0.35, 0.6),
 //                MaterialRules.condition(isAboveWaterZero, POWDER_SNOW));
 //        MaterialRules.MaterialRule
-//                realizeFrozenPeaks_SnowySlopes_JaggedPeaks_Grove_WindsweptSavanna_WindsweptGravellyHills_MangroveSwamp =
+//                realizeFrozenPeaks_SnowySlopes_JaggedPeaks_Grove_WindsweptSavanna_WindsweptGravellyHills_MangroveSwamp
+// =
 //                        MaterialRules.sequence(
 //                                MaterialRules.condition(
 //                                        MaterialRules.biome(BiomeKeys.FROZEN_PEAKS),
@@ -440,7 +450,8 @@
 //                                MaterialRules.condition(MaterialRules.biome(BiomeKeys.MANGROVE_SWAMP), MUD),
 //                                DIRT);
 //        MaterialRules.MaterialRule
-//                realizeFrozenPeaks_SnowySlopes_JaggedPeaks_Grove_WindsweptSavanna_WindsweptGravellyHills_OldGrowthPineTaiga_IceSpikes_MangroveSwamp_MushroomFields =
+//
+// realizeFrozenPeaks_SnowySlopes_JaggedPeaks_Grove_WindsweptSavanna_WindsweptGravellyHills_OldGrowthPineTaiga_IceSpikes_MangroveSwamp_MushroomFields =
 //                        MaterialRules.sequence(
 //                                MaterialRules.condition(
 //                                        MaterialRules.biome(BiomeKeys.FROZEN_PEAKS),
@@ -483,7 +494,8 @@
 //                                                MaterialRules.condition(
 //                                                        surfaceNoiseThreshold(2.0), placeGravelAndStone),
 //                                                MaterialRules.condition(surfaceNoiseThreshold(1.0), STONE),
-//                                                MaterialRules.condition(surfaceNoiseThreshold(-1.0), placeGrassAndDirt),
+//                                                MaterialRules.condition(surfaceNoiseThreshold(-1.0),
+// placeGrassAndDirt),
 //                                                placeGravelAndStone)),
 //                                MaterialRules.condition(
 //                                        MaterialRules.biome(
@@ -587,7 +599,8 @@
 //                                                                MaterialRules.condition(
 //                                                                        MaterialRules.temperature(), ICE),
 //                                                                WATER))),
-//                                        realizeFrozenPeaks_SnowySlopes_JaggedPeaks_Grove_WindsweptSavanna_WindsweptGravellyHills_OldGrowthPineTaiga_IceSpikes_MangroveSwamp_MushroomFields))),
+//
+// realizeFrozenPeaks_SnowySlopes_JaggedPeaks_Grove_WindsweptSavanna_WindsweptGravellyHills_OldGrowthPineTaiga_IceSpikes_MangroveSwamp_MushroomFields))),
 //                MaterialRules.condition(
 //                        waterWithStoneDepth,
 //                        MaterialRules.sequence(
@@ -597,11 +610,13 @@
 //                                                isFrozenOcean, MaterialRules.condition(theHoleOne, WATER))),
 //                                MaterialRules.condition(
 //                                        MaterialRules.STONE_DEPTH_FLOOR_WITH_SURFACE_DEPTH,
-//                                        realizeFrozenPeaks_SnowySlopes_JaggedPeaks_Grove_WindsweptSavanna_WindsweptGravellyHills_MangroveSwamp),
+//
+// realizeFrozenPeaks_SnowySlopes_JaggedPeaks_Grove_WindsweptSavanna_WindsweptGravellyHills_MangroveSwamp),
 //                                MaterialRules.condition(
 //                                        isBeachOrWarmOcean,
 //                                        MaterialRules.condition(
-//                                                MaterialRules.STONE_DEPTH_FLOOR_WITH_SURFACE_DEPTH_RANGE_6, SANDSTONE)),
+//                                                MaterialRules.STONE_DEPTH_FLOOR_WITH_SURFACE_DEPTH_RANGE_6,
+// SANDSTONE)),
 //                                MaterialRules.condition(
 //                                        isDesert,
 //                                        MaterialRules.condition(
@@ -646,4 +661,4 @@
 //    private static MaterialRules.MaterialCondition surfaceNoiseThreshold(double min) {
 //        return MaterialRules.noiseThreshold(NoiseParametersKeys.SURFACE, min / 8.25, Double.MAX_VALUE);
 //    }
-//}
+// }

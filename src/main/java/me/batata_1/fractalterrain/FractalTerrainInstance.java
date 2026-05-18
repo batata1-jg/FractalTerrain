@@ -1,24 +1,17 @@
 package me.batata_1.fractalterrain;
 
 import static me.batata_1.fractalterrain.debug.Debug.getLogger;
-import static me.batata_1.fractalterrain.references.Reference.LOGGER;
-import static me.batata_1.fractalterrain.debug.Debug.debug;
 
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-
 import me.batata_1.fractalterrain.ml.models.PipelineModels;
 import me.batata_1.fractalterrain.ml.pipeline.WorldPipeline;
-import me.batata_1.fractalterrain.world.biome.BiomeProvider;
-import me.batata_1.fractalterrain.world.gen.chunk.FractalTerrainChunkGenerator;
-import me.batata_1.fractalterrain.world.gen.ReliefProvider;
 import me.batata_1.fractalterrain.noise.OctaveSimplexNoiseSampler;
+import me.batata_1.fractalterrain.world.biome.BiomeProvider;
+import me.batata_1.fractalterrain.world.gen.ReliefProvider;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.WorldSavePath;
-import net.minecraft.world.World;
-import net.minecraft.world.gen.chunk.ChunkGenerator;
 import org.slf4j.Logger;
 
 public class FractalTerrainInstance {
@@ -31,6 +24,7 @@ public class FractalTerrainInstance {
     private final BiomeProvider biomeProvider;
 
     public static final WorldPipeline pipeline;
+
     static {
         PipelineModels.load();
         PipelineModels.awaitLoad();
@@ -43,11 +37,8 @@ public class FractalTerrainInstance {
         this.curServer = server;
         final Path worldPath = server.getSavePath(WorldSavePath.ROOT).normalize();
         this.reliefSource = new ReliefProvider(worldPath + "/fractal_terrain");
-        this.biomeProvider = new BiomeProvider( worldPath + "/fractal_terrain");
-        final long seed = server
-                .getSaveProperties()
-                .getGeneratorOptions()
-                .getSeed();
+        this.biomeProvider = new BiomeProvider(worldPath + "/fractal_terrain");
+        final long seed = server.getSaveProperties().getGeneratorOptions().getSeed();
         pipeline.setSeed(seed);
         OctaveSimplexNoiseSampler.init(seed);
         LOG.info("fractal terrain instance created");

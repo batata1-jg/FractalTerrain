@@ -2,7 +2,6 @@ package me.batata_1.fractalterrain.infinitetensor;
 
 import java.util.*;
 import java.util.stream.Collectors;
-
 import me.batata_1.fractalterrain.infinitetensor.storage.FloatTensor;
 
 /**
@@ -177,10 +176,10 @@ public class InfiniteTensor {
         for (int i = 0; i < deps.length; i++) {
             int[][] bounds = depWindows[i].getBounds(windowIndex);
             int[] depStart = new int[bounds.length];
-            int[] depEnd   = new int[bounds.length];
+            int[] depEnd = new int[bounds.length];
             for (int d = 0; d < bounds.length; d++) {
                 depStart[d] = bounds[d][0];
-                depEnd[d]   = bounds[d][1];
+                depEnd[d] = bounds[d][1];
             }
             args.add(deps[i].getSlice(depStart, depEnd));
         }
@@ -202,10 +201,10 @@ public class InfiniteTensor {
                 for (int[] windowIndex : batch) {
                     int[][] bounds = depWindows[i].getBounds(windowIndex);
                     int[] depStart = new int[bounds.length];
-                    int[] depEnd   = new int[bounds.length];
+                    int[] depEnd = new int[bounds.length];
                     for (int d = 0; d < bounds.length; d++) {
                         depStart[d] = bounds[d][0];
-                        depEnd[d]   = bounds[d][1];
+                        depEnd[d] = bounds[d][1];
                     }
                     depArgs.add(deps[i].getSlice(depStart, depEnd));
                 }
@@ -227,15 +226,13 @@ public class InfiniteTensor {
     private void validateOutputShape(FloatTensor result, int[] windowIndex) {
         int n = outputWindow.size.length;
         if (result.shape.length != n) {
-            throw new IllegalStateException(
-                    "Function for tensor '" + id + "' returned shape with " +
-                    result.shape.length + " dims, expected " + n);
+            throw new IllegalStateException("Function for tensor '" + id + "' returned shape with "
+                    + result.shape.length + " dims, expected " + n);
         }
         for (int d = 0; d < n; d++) {
             if (result.shape[d] != outputWindow.size[d]) {
-                throw new IllegalStateException(
-                        "Function for tensor '" + id + "' returned shape[" + d + "]=" +
-                        result.shape[d] + ", expected " + outputWindow.size[d]);
+                throw new IllegalStateException("Function for tensor '" + id + "' returned shape[" + d + "]="
+                        + result.shape[d] + ", expected " + outputWindow.size[d]);
             }
         }
     }

@@ -2,12 +2,11 @@ package me.batata_1.fractalterrain.ml.pipeline;
 
 import com.google.gson.Gson;
 import com.google.gson.annotations.SerializedName;
-import me.batata_1.fractalterrain.ml.models.ModelAssetManager;
-
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import me.batata_1.fractalterrain.ml.models.ModelAssetManager;
 
 /**
  * Loads model-specific WorldPipeline constants from a JSON resource.
@@ -20,8 +19,7 @@ public final class WorldPipelineModelConfig {
     private static final Gson GSON = new Gson();
     private static final ConfigJson CONFIG = loadConfig();
 
-    private WorldPipelineModelConfig() {
-    }
+    private WorldPipelineModelConfig() {}
 
     /** Native meters-per-pixel resolution used by the model outputs. */
     public static float nativeResolution() {

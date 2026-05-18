@@ -25,8 +25,7 @@ public class Gradients {
         return x * kernel_y[i][j];
     }
 
-    public static double[] entryGradMagnitude(
-            final int x, final int z, final int ch, final TensorStorage s) {
+    public static double[] entryGradMagnitude(final int x, final int z, final int ch, final TensorStorage s) {
         double respX = 0;
         double respY = 0;
         for (int i = 0; i < 3; i++) {

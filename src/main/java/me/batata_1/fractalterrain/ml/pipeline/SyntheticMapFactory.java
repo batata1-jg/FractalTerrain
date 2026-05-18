@@ -3,14 +3,13 @@ package me.batata_1.fractalterrain.ml.pipeline;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import me.batata_1.fractalterrain.ml.models.ModelAssetManager;
-import me.batata_1.fractalterrain.noise.FastNoiseLite;
-
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import me.batata_1.fractalterrain.ml.models.ModelAssetManager;
+import me.batata_1.fractalterrain.noise.FastNoiseLite;
 
 /**
  * Generates synthetic climate conditioning maps from Perlin noise quantile-matched
@@ -75,21 +74,21 @@ public final class SyntheticMapFactory {
             ModelAssetManager.ensureAssetsReady();
             Path pipelineDataPath = ModelAssetManager.resolveAssetPath("pipeline_data.json");
             try (Reader reader = Files.newBufferedReader(pipelineDataPath, StandardCharsets.UTF_8)) {
-            JsonObject data = new Gson().fromJson(reader, JsonObject.class);
-            int nQ = data.get("n_quantiles").getAsInt();
-            JsonArray dataArr = data.getAsJsonArray("data_quantile_tables");
-            cachedDataQuantiles = new float[N_CHANNELS][nQ];
-            for (int ch = 0; ch < N_CHANNELS; ch++) {
-                JsonArray dq = dataArr.get(ch).getAsJsonArray();
-                for (int i = 0; i < nQ; i++) {
-                    cachedDataQuantiles[ch][i] = dq.get(i).getAsFloat();
+                JsonObject data = new Gson().fromJson(reader, JsonObject.class);
+                int nQ = data.get("n_quantiles").getAsInt();
+                JsonArray dataArr = data.getAsJsonArray("data_quantile_tables");
+                cachedDataQuantiles = new float[N_CHANNELS][nQ];
+                for (int ch = 0; ch < N_CHANNELS; ch++) {
+                    JsonArray dq = dataArr.get(ch).getAsJsonArray();
+                    for (int i = 0; i < nQ; i++) {
+                        cachedDataQuantiles[ch][i] = dq.get(i).getAsFloat();
+                    }
                 }
-            }
-            cachedATempStd = data.get("a_temp_std").getAsFloat();
-            cachedBTempStd = data.get("b_temp_std").getAsFloat();
-            cachedTempStdP1 = data.get("temp_std_p1").getAsFloat();
-            cachedTempStdP99 = data.get("temp_std_p99").getAsFloat();
-            dataLoaded = true;
+                cachedATempStd = data.get("a_temp_std").getAsFloat();
+                cachedBTempStd = data.get("b_temp_std").getAsFloat();
+                cachedTempStdP1 = data.get("temp_std_p1").getAsFloat();
+                cachedTempStdP99 = data.get("temp_std_p99").getAsFloat();
+                dataLoaded = true;
             }
         } catch (Exception e) {
             throw new RuntimeException("Failed to load pipeline_data.json", e);
@@ -104,9 +103,7 @@ public final class SyntheticMapFactory {
     static float[] buildNoiseQuantiles(FastNoiseLite fnl, int nQuantiles, float eps) {
         float[] values = new float[1024 * 1024];
         int k = 0;
-        for (int r = 0; r < 1024; r++)
-            for (int c = 0; c < 1024; c++)
-                values[k++] = fnl.GetNoise(c * 32, r * 32);
+        for (int r = 0; r < 1024; r++) for (int c = 0; c < 1024; c++) values[k++] = fnl.GetNoise(c * 32, r * 32);
         Arrays.sort(values);
 
         float[] q = new float[nQuantiles];
@@ -121,11 +118,9 @@ public final class SyntheticMapFactory {
 
         // Ensure strictly increasing (matches Python build_quantiles)
         float minDiff = Float.MAX_VALUE;
-        for (int i = 1; i < nQuantiles; i++)
-            if (q[i] > q[i - 1]) minDiff = Math.min(minDiff, q[i] - q[i - 1]);
+        for (int i = 1; i < nQuantiles; i++) if (q[i] > q[i - 1]) minDiff = Math.min(minDiff, q[i] - q[i - 1]);
         if (minDiff == Float.MAX_VALUE) minDiff = 1e-10f;
-        for (int i = 1; i < nQuantiles; i++)
-            if (q[i] <= q[i - 1]) q[i] = q[i - 1] + minDiff * 0.1f;
+        for (int i = 1; i < nQuantiles; i++) if (q[i] <= q[i - 1]) q[i] = q[i - 1] + minDiff * 0.1f;
 
         return q;
     }
@@ -209,7 +204,6 @@ public final class SyntheticMapFactory {
         return result;
     }
 
-
     static float interp(float x, float[] xp, float[] fp) {
         int n = xp.length;
         if (x <= xp[0]) return fp[0];
@@ -218,7 +212,8 @@ public final class SyntheticMapFactory {
         int lo = 0, hi = n - 1;
         while (hi - lo > 1) {
             int mid = (lo + hi) >>> 1;
-            if (xp[mid] <= x) lo = mid; else hi = mid;
+            if (xp[mid] <= x) lo = mid;
+            else hi = mid;
         }
         float t = (x - xp[lo]) / (xp[hi] - xp[lo]);
         return fp[lo] + t * (fp[hi] - fp[lo]);

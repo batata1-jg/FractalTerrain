@@ -1,11 +1,11 @@
-//package me.batata_1.fractalterrain.util;
+// package me.batata_1.fractalterrain.util;
 //
-//import ai.onnxruntime.*;
-//import java.util.Map;
-//import java.util.concurrent.CompletableFuture;
-//import java.util.concurrent.ExecutionException;
+// import ai.onnxruntime.*;
+// import java.util.Map;
+// import java.util.concurrent.CompletableFuture;
+// import java.util.concurrent.ExecutionException;
 //
-//public class MlUtil {
+// public class MlUtil {
 //
 //    private static CompletableFuture<OrtSession> slicer2d;
 //    private static CompletableFuture<OrtSession> slicer;
@@ -45,4 +45,4 @@
 //                "d", t[1]);
 //        return (OnnxTensor) merger.get().run(in).get(0);
 //    }
-//}
+// }

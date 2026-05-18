@@ -1,16 +1,14 @@
 package me.batata_1.fractalterrain.infinitetensor.storage;
 
+import static me.batata_1.fractalterrain.debug.Debug.getLogger;
+
 import ai.onnxruntime.OnnxTensor;
 import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtException;
 import com.mojang.datafixers.util.Pair;
-
-import org.slf4j.Logger;
-
 import java.nio.FloatBuffer;
 import java.util.Arrays;
-
-import static me.batata_1.fractalterrain.debug.Debug.getLogger;
+import org.slf4j.Logger;
 
 public class FloatTensor {
 
@@ -33,11 +31,10 @@ public class FloatTensor {
 
     public FloatTensor(OnnxTensor h) {
         data = h.getFloatBuffer().array();
-        shape = Arrays.stream(h.getInfo().getShape()).mapToInt(i->(int)i).toArray();
+        shape = Arrays.stream(h.getInfo().getShape()).mapToInt(i -> (int) i).toArray();
         this.strides = computeStrides(shape);
         cProd = calcProd();
     }
-
 
     public FloatTensor(int[] shape) {
         this.shape = shape.clone();
@@ -169,7 +166,10 @@ public class FloatTensor {
 
     public OnnxTensor get() {
         try {
-            return OnnxTensor.createTensor(OrtEnvironment.getEnvironment(), FloatBuffer.wrap(data), Arrays.stream(shape).mapToLong(i -> (long) i ).toArray());
+            return OnnxTensor.createTensor(
+                    OrtEnvironment.getEnvironment(),
+                    FloatBuffer.wrap(data),
+                    Arrays.stream(shape).mapToLong(i -> (long) i).toArray());
         } catch (OrtException e) {
             throw new RuntimeException(e);
         }

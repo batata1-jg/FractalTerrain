@@ -8,20 +8,22 @@ import com.mojang.datafixers.util.Pair;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.Lifecycle;
 import com.mojang.serialization.MapCodec;
+
+import java.util.List;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
-
 import me.batata_1.fractalterrain.FractalTerrainInstance;
-import me.batata_1.fractalterrain.world.biome.BiomeProvider;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.random.Random;
 import net.minecraft.world.WorldView;
 import net.minecraft.world.biome.Biome;
-import net.minecraft.world.biome.source.BiomeSource;
+import net.minecraft.world.biome.source.BiomeCoords;
 import net.minecraft.world.biome.source.MultiNoiseBiomeSource;
 import net.minecraft.world.biome.source.MultiNoiseBiomeSourceParameterList;
 import net.minecraft.world.biome.source.util.MultiNoiseUtil;
+import net.minecraft.world.biome.source.util.VanillaBiomeParameters;
+import net.minecraft.world.gen.densityfunction.DensityFunctions;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -32,8 +34,9 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
     public static final MapCodec<MultiNoiseUtil.Entries<RegistryEntry<Biome>>> CUSTOM_CODEC;
     private static final MapCodec<RegistryEntry<MultiNoiseBiomeSourceParameterList>> PRESET_CODEC;
     public static final Codec<FractalTerrainBiomeSource> CODEC;
-    private final Either<MultiNoiseUtil.Entries<RegistryEntry<Biome>>, RegistryEntry<MultiNoiseBiomeSourceParameterList>> biomeEntries;
-
+    private final Either<
+                    MultiNoiseUtil.Entries<RegistryEntry<Biome>>, RegistryEntry<MultiNoiseBiomeSourceParameterList>>
+            biomeEntries;
 
     private FractalTerrainBiomeSource(
             Either<MultiNoiseUtil.Entries<RegistryEntry<Biome>>, RegistryEntry<MultiNoiseBiomeSourceParameterList>>
@@ -43,11 +46,13 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
     }
 
     private MultiNoiseUtil.Entries<RegistryEntry<Biome>> getBiomeRegistry() {
-        return this.biomeEntries.map((entries) -> {
-            return entries;
-        }, (parameterListEntry) -> {
-            return parameterListEntry.value().getEntries();
-        });
+        return this.biomeEntries.map(
+                (entries) -> {
+                    return entries;
+                },
+                (parameterListEntry) -> {
+                    return parameterListEntry.value().getEntries();
+                });
     }
 
     @Override
@@ -65,11 +70,29 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
 
     @Override
     public RegistryEntry<Biome> getBiome(int x, int y, int z, MultiNoiseUtil.MultiNoiseSampler noise) {
-        //LOG.debug("getBiome({}, {}, {}, {})", x, y, z, noise);
-//        throw new RuntimeException("Not implemented");
-        return this.getBiomeAtPoint(FractalTerrainInstance.getBiomeProvider().sampler.sample(x,y,z));
+        // LOG.debug("getBiome({}, {}, {}, {})", x, y, z, noise);
+        //        throw new RuntimeException("Not implemented");
+        return this.getBiomeAtPoint(
+                FractalTerrainInstance.getBiomeProvider().sampler.sample(x, y, z));
     }
 
+    @Override
+    public void addDebugInfo(List<String> info, BlockPos pos, MultiNoiseUtil.MultiNoiseSampler noiseSampler) {
+        final MultiNoiseUtil.MultiNoiseSampler sampler = FractalTerrainInstance.getBiomeProvider().sampler;
+        super.addDebugInfo(info, pos, noiseSampler);
+        int i = BiomeCoords.fromBlock(pos.getX());
+        int j = BiomeCoords.fromBlock(pos.getY());
+        int k = BiomeCoords.fromBlock(pos.getZ());
+
+        MultiNoiseUtil.NoiseValuePoint noiseValuePoint = sampler.sample(i, j, k);
+        float cont = MultiNoiseUtil.toFloat(noiseValuePoint.continentalnessNoise());
+        float erosion = MultiNoiseUtil.toFloat(noiseValuePoint.erosionNoise());
+        float temp = MultiNoiseUtil.toFloat(noiseValuePoint.temperatureNoise());
+        float humid = MultiNoiseUtil.toFloat(noiseValuePoint.humidityNoise());
+        float weird = MultiNoiseUtil.toFloat(noiseValuePoint.weirdnessNoise());
+        float depth = MultiNoiseUtil.toFloat(noiseValuePoint.depth());
+        info.add("fractal_terrain_biomes C: " + cont + " E: " + erosion + " T: " + temp + " H: " + humid + " W: " + weird + " D: " + depth);
+    }
 
 
     @Nullable
@@ -121,11 +144,12 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
     static {
         BIOME_CODEC = Biome.REGISTRY_CODEC.fieldOf("biome");
         CUSTOM_CODEC = MultiNoiseUtil.Entries.createCodec(BIOME_CODEC).fieldOf("biomes");
-        PRESET_CODEC = MultiNoiseBiomeSourceParameterList.REGISTRY_CODEC.fieldOf("preset").withLifecycle(Lifecycle.stable());
+        PRESET_CODEC = MultiNoiseBiomeSourceParameterList.REGISTRY_CODEC
+                .fieldOf("preset")
+                .withLifecycle(Lifecycle.stable());
         CODEC = Codec.mapEither(CUSTOM_CODEC, PRESET_CODEC)
                 .xmap(FractalTerrainBiomeSource::new, (FractalTerrainBiomeSource biomeSource) -> biomeSource
                         .biomeEntries)
                 .codec();
     }
-
 }

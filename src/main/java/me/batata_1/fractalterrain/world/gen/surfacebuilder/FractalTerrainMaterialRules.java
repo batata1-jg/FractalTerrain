@@ -1,18 +1,18 @@
-//package me.batata_1.fractalterrain.world.gen.surfacebuilder;
+// package me.batata_1.fractalterrain.world.gen.surfacebuilder;
 //
-//import com.mojang.serialization.Codec;
-//import com.mojang.serialization.MapCodec;
-//import com.mojang.serialization.codecs.RecordCodecBuilder;
-//import java.util.concurrent.ExecutionException;
-//import me.batata_1.fractalterrain.FractalTerrainInstance;
-//import me.batata_1.fractalterrain.math.Interpolation;
-//import me.batata_1.fractalterrain.references.Reference;
-//import net.minecraft.registry.*;
-//import net.minecraft.util.Identifier;
-//import net.minecraft.util.dynamic.CodecHolder;
-//import net.minecraft.world.gen.surfacebuilder.MaterialRules;
+// import com.mojang.serialization.Codec;
+// import com.mojang.serialization.MapCodec;
+// import com.mojang.serialization.codecs.RecordCodecBuilder;
+// import java.util.concurrent.ExecutionException;
+// import me.batata_1.fractalterrain.FractalTerrainInstance;
+// import me.batata_1.fractalterrain.math.Interpolation;
+// import me.batata_1.fractalterrain.references.Reference;
+// import net.minecraft.registry.*;
+// import net.minecraft.util.Identifier;
+// import net.minecraft.util.dynamic.CodecHolder;
+// import net.minecraft.world.gen.surfacebuilder.MaterialRules;
 //
-//public class FractalTerrainMaterialRules extends MaterialRules {
+// public class FractalTerrainMaterialRules extends MaterialRules {
 //
 //    static <A> void register(
 //            Registry<Codec<? extends A>> registry, Identifier id, CodecHolder<? extends A> codecHolder) {
@@ -23,7 +23,8 @@
 //
 //        static void register(Registry<Codec<? extends MaterialRule>> registry) {
 //            FractalTerrainMaterialRules.register(
-//                    registry, Reference.identifier("fractal_terrain_default"), FractalTerrainMaterialDefaultRule.CODEC);
+//                    registry, Reference.identifier("fractal_terrain_default"),
+// FractalTerrainMaterialDefaultRule.CODEC);
 //            FractalTerrainMaterialRules.register(
 //                    registry, Reference.identifier("fractal_terrain_large"), FractalTerrainMaterialLargeRule.CODEC);
 //        }
@@ -119,4 +120,4 @@
 //            return new aboveSlopePredicate();
 //        }
 //    }
-//}
+// }

@@ -1,8 +1,7 @@
 package me.batata_1.fractalterrain.infinitetensor;
 
-import me.batata_1.fractalterrain.infinitetensor.storage.FloatTensor;
-
 import java.util.List;
+import me.batata_1.fractalterrain.infinitetensor.storage.FloatTensor;
 
 /**
  * Batched variant of TensorFunction.
