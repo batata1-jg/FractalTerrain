@@ -32,7 +32,7 @@ public final class PortableRng {
         long x = (((state >>> 18) ^ state) >>> 27) & 0xFFFFFFFFL;
         int rot = (int) (state >>> 59);
         long out32 = ((x >>> rot) | (x << ((32 - rot) & 31))) & 0xFFFFFFFFL;
-        return new long[]{state, out32};
+        return new long[] {state, out32};
     }
 
     /**

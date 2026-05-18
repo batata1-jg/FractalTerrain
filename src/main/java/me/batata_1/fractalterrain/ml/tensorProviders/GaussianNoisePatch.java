@@ -24,8 +24,8 @@ public final class GaussianNoisePatch {
      * @param tileW     tile width for seeding
      * @return float array [channels][h][w] with Gaussian values
      */
-    public static float[][][] generate(long baseSeed, int y0, int x0, int h, int w,
-                                       int channels, int tileH, int tileW) {
+    public static float[][][] generate(
+            long baseSeed, int y0, int x0, int h, int w, int channels, int tileH, int tileW) {
         float[][][] out = new float[channels][h][w];
 
         int ty0 = Math.floorDiv(y0, tileH);

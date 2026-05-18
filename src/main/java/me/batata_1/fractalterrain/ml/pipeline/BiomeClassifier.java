@@ -16,11 +16,11 @@ public final class BiomeClassifier {
     private static final FastNoiseLite SNOW_NOISE, SNOW_NOISE_FINE;
 
     static {
-        TEMP_NOISE = makeFnl(12345, 1f/500f, 3, 2f, 0.5f);
-        TEMP_NOISE_FINE = makeFnl(54321, 1f/128f, 2, 2f, 0.5f);
-        PRECIP_NOISE = makeFnl(12345, 1f/500f, 5, 2f, 0.5f);
-        SNOW_NOISE = makeFnl(12345, 1f/500f, 3, 2f, 0.5f);
-        SNOW_NOISE_FINE = makeFnl(54321, 1f/128f, 2, 2f, 0.5f);
+        TEMP_NOISE = makeFnl(12345, 1f / 500f, 3, 2f, 0.5f);
+        TEMP_NOISE_FINE = makeFnl(54321, 1f / 128f, 2, 2f, 0.5f);
+        PRECIP_NOISE = makeFnl(12345, 1f / 500f, 5, 2f, 0.5f);
+        SNOW_NOISE = makeFnl(12345, 1f / 500f, 3, 2f, 0.5f);
+        SNOW_NOISE_FINE = makeFnl(54321, 1f / 128f, 2, 2f, 0.5f);
     }
 
     private static FastNoiseLite makeFnl(int seed, float freq, int oct, float lac, float gain) {
@@ -55,8 +55,8 @@ public final class BiomeClassifier {
      * @param pixelSizeM physical size of one pixel in meters
      * @return short array (H, W) with biome IDs
      */
-    public static short[] classify(float[] elev, float[] climate, int i0, int j0,
-                                    float[] elevPadded, int H, int W, float pixelSizeM) {
+    public static short[] classify(
+            float[] elev, float[] climate, int i0, int j0, float[] elevPadded, int H, int W, float pixelSizeM) {
         short[] out = new short[H * W];
         for (int i = 0; i < H * W; i++) out[i] = PLAINS;
 
@@ -93,21 +93,21 @@ public final class BiomeClassifier {
         for (int r = 0; r < H; r++) {
             for (int c = 0; c < W; c++) {
                 int idx = r * W + c;
-                float elevVal   = elev[idx];
-                float altM      = Math.max(0f, elevVal);
-                float slope     = slopeRatio[idx];
+                float elevVal = elev[idx];
+                float altM = Math.max(0f, elevVal);
+                float slope = slopeRatio[idx];
 
                 // Climate channels: [0]=temp, [1]=t_season, [2]=precip, [3]=p_cv
-                float temp     = climate[idx] + tempNoise[idx];
-                float tSeason  = climate[H * W + idx];
-                float precip   = Math.max(0f, climate[2 * H * W + idx]) * precipNoiseFact[idx];
-                float pCV      = climate[3 * H * W + idx];
+                float temp = climate[idx] + tempNoise[idx];
+                float tSeason = climate[H * W + idx];
+                float precip = Math.max(0f, climate[2 * H * W + idx]) * precipNoiseFact[idx];
+                float pCV = climate[3 * H * W + idx];
 
                 // Derived climate variables
-                float tStd     = tSeason / 100f;
-                float tEff     = Math.max(0f, temp + 0.5f * tStd);
-                float pet      = Math.max(250f, 250f + 25f * tEff + 0.7f * tEff * tEff);
-                float aridity  = precip / Math.max(1f, pet);
+                float tStd = tSeason / 100f;
+                float tEff = Math.max(0f, temp + 0.5f * tStd);
+                float pet = Math.max(250f, 250f + 25f * tEff + 0.7f * tEff * tEff);
+                float aridity = precip / Math.max(1f, pet);
                 float seasonPenalty = 1f - 0.35f * Math.min(1f, pCV / 100f);
                 float treeMoisture = aridity * seasonPenalty;
 
@@ -120,7 +120,9 @@ public final class BiomeClassifier {
                     float x = (5f - temp) / amplitude;
                     if (x <= -1f) growingSeason = 365f;
                     else if (x >= 1f) growingSeason = 0f;
-                    else growingSeason = 365f * (0.5f - (float) Math.asin(Math.max(-1f, Math.min(1f, x))) / (float) Math.PI);
+                    else
+                        growingSeason =
+                                365f * (0.5f - (float) Math.asin(Math.max(-1f, Math.min(1f, x))) / (float) Math.PI);
                 }
 
                 float gsFactor = Math.max(0f, Math.min(1f, (growingSeason - 60f) / (150f - 60f)));
@@ -132,24 +134,31 @@ public final class BiomeClassifier {
 
                 // Tree coverage classification
                 boolean treesNone = effTreeMoisture < 0.2f;
-                boolean tooArid   = treeMoisture < 0.05f;
-                boolean tooCold   = growingSeason < 60f;
-                boolean barren    = tooArid || tooCold;
-                boolean treesSparse    = !treesNone && effTreeMoisture < 0.5f;
-                boolean treesForest    = !treesNone && effTreeMoisture >= 0.5f && effTreeMoisture < 0.8f;
-                boolean treesDense     = !treesNone && effTreeMoisture >= 0.8f && effTreeMoisture < 1.3f;
+                boolean tooArid = treeMoisture < 0.05f;
+                boolean tooCold = growingSeason < 60f;
+                boolean barren = tooArid || tooCold;
+                boolean treesSparse = !treesNone && effTreeMoisture < 0.5f;
+                boolean treesForest = !treesNone && effTreeMoisture >= 0.5f && effTreeMoisture < 0.8f;
+                boolean treesDense = !treesNone && effTreeMoisture >= 0.8f && effTreeMoisture < 1.3f;
                 boolean treesRainforest = !treesNone && effTreeMoisture >= 1.3f;
 
                 // Slope overrides
                 boolean slopeMedium = slope >= 0.62f && slope < bareThreshold;
-                boolean slopeBare   = slope >= bareThreshold;
+                boolean slopeBare = slope >= bareThreshold;
                 if (slopeMedium) {
-                    if (treesForest || treesDense || treesRainforest) { treesSparse = true; }
-                    treesForest = treesForest && false; treesDense = false; treesRainforest = false;
+                    if (treesForest || treesDense || treesRainforest) {
+                        treesSparse = true;
+                    }
+                    treesForest = treesForest && false;
+                    treesDense = false;
+                    treesRainforest = false;
                 }
                 if (slopeBare) {
-                    treesNone = true; treesSparse = false; treesForest = false;
-                    treesDense = false; treesRainforest = false;
+                    treesNone = true;
+                    treesSparse = false;
+                    treesForest = false;
+                    treesDense = false;
+                    treesRainforest = false;
                 }
 
                 // Snow classification
@@ -158,15 +167,15 @@ public final class BiomeClassifier {
                 boolean hasSnow = snowTemp < 0f && precip > 150f && !isSteep;
 
                 // Elevation/temp bands
-                boolean isOcean   = elevVal < 0f;
+                boolean isOcean = elevVal < 0f;
                 boolean mountains = altM > 2500f;
-                boolean lowland   = altM < 200f;
-                boolean frozen    = temp < -5f;
-                boolean cold      = temp >= -5f && temp < 5f;
-                boolean cool      = temp >= 5f  && temp < 12f;
+                boolean lowland = altM < 200f;
+                boolean frozen = temp < -5f;
+                boolean cold = temp >= -5f && temp < 5f;
+                boolean cool = temp >= 5f && temp < 12f;
                 boolean temperate = temp >= 12f && temp < 20f;
-                boolean warm      = temp >= 20f && temp < 26f;
-                boolean hot       = temp >= 26f;
+                boolean warm = temp >= 20f && temp < 26f;
+                boolean hot = temp >= 26f;
 
                 short biome = PLAINS;
 
@@ -236,8 +245,8 @@ public final class BiomeClassifier {
         // Sobel kernels / 8 applied to (H+2, W+2) padded array → (H, W) output
         float[] slope = new float[H * W];
         int PW = W + 2;
-        float[] sx = {-1,0,1, -2,0,2, -1,0,1};
-        float[] sy = {-1,-2,-1, 0,0,0, 1,2,1};
+        float[] sx = {-1, 0, 1, -2, 0, 2, -1, 0, 1};
+        float[] sy = {-1, -2, -1, 0, 0, 0, 1, 2, 1};
         for (int r = 0; r < H; r++) {
             for (int c = 0; c < W; c++) {
                 float dx = 0, dy = 0;
@@ -247,7 +256,8 @@ public final class BiomeClassifier {
                         dx += v * sx[kr * 3 + kc];
                         dy += v * sy[kr * 3 + kc];
                     }
-                dx /= 8f; dy /= 8f;
+                dx /= 8f;
+                dy /= 8f;
                 slope[r * W + c] = (float) Math.sqrt(dx * dx + dy * dy) / pixelSizeM;
             }
         }

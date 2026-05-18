@@ -19,9 +19,7 @@ public final class LaplacianUtils {
         int H = residual.length, W = residual[0].length;
         float[][] lowresUp = bilinearResize(lowres, H, W);
         float[][] result = new float[H][W];
-        for (int r = 0; r < H; r++)
-            for (int c = 0; c < W; c++)
-                result[r][c] = residual[r][c] + lowresUp[r][c];
+        for (int r = 0; r < H; r++) for (int c = 0; c < W; c++) result[r][c] = residual[r][c] + lowresUp[r][c];
         return result;
     }
 
@@ -38,9 +36,7 @@ public final class LaplacianUtils {
         // Step 1: decode with extrapolation
         float[][] lowresUpEx = bilinearResizeExtrapolated(lowres, H, W);
         float[][] decoded = new float[H][W];
-        for (int r = 0; r < H; r++)
-            for (int c = 0; c < W; c++)
-                decoded[r][c] = residual[r][c] + lowresUpEx[r][c];
+        for (int r = 0; r < H; r++) for (int c = 0; c < W; c++) decoded[r][c] = residual[r][c] + lowresUpEx[r][c];
 
         // Step 2: laplacian_encode(decoded, lW, sigma)
         // = downsample to (lH, lW), blur, return blurred as new_lowres
@@ -87,9 +83,7 @@ public final class LaplacianUtils {
         float[][] padded = new float[sH + 2][sW + 2];
 
         // Copy interior
-        for (int r = 0; r < sH; r++)
-            for (int c = 0; c < sW; c++)
-                padded[r + 1][c + 1] = src[r][c];
+        for (int r = 0; r < sH; r++) for (int c = 0; c < sW; c++) padded[r + 1][c + 1] = src[r][c];
 
         // Extrapolate rows
         for (int c = 1; c <= sW; c++) {
@@ -110,15 +104,13 @@ public final class LaplacianUtils {
         int padH = (int) Math.round((double) dstH / sH);
         int padW = (int) Math.round((double) dstW / sW);
         float[][] cropped = new float[dstH][dstW];
-        for (int r = 0; r < dstH; r++)
-            for (int c = 0; c < dstW; c++)
-                cropped[r][c] = resized[r + padH][c + padW];
+        for (int r = 0; r < dstH; r++) for (int c = 0; c < dstW; c++) cropped[r][c] = resized[r + padH][c + padW];
         return cropped;
     }
 
     /** Build 1D Gaussian kernel for separable blur. */
     public static float[][] gaussianKernel1D(float sigma) {
-        int ks = ((int) (sigma * 2) / 2) * 2 + 1;  // matches PyTorch gaussian_blur
+        int ks = ((int) (sigma * 2) / 2) * 2 + 1; // matches PyTorch gaussian_blur
         float[] k = new float[ks];
         float sum = 0;
         int half = ks / 2;
@@ -128,7 +120,7 @@ public final class LaplacianUtils {
             sum += k[i];
         }
         for (int i = 0; i < ks; i++) k[i] /= sum;
-        return new float[][]{k};
+        return new float[][] {k};
     }
 
     /** Separable Gaussian blur with reflect padding. */
@@ -201,7 +193,10 @@ public final class LaplacianUtils {
                     }
                 }
                 double den = sumW + eps;
-                muT /= den; muE /= den; muE2 /= den; muET /= den;
+                muT /= den;
+                muE /= den;
+                muE2 /= den;
+                muET /= den;
                 double varE = muE2 - muE * muE;
                 double covET = muET - muE * muT;
                 double beta = (varE < 1.0 || sumW < fallbackThreshold * n) ? fallbackBeta : (covET / (varE + eps));

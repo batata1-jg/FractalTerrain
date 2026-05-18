@@ -1,12 +1,11 @@
 package me.batata_1.fractalterrain.ml;
 
-import net.fabricmc.loader.api.FabricLoader;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
+import net.fabricmc.loader.api.FabricLoader;
 
 public final class TerrainDiffusionConfig {
     private static final String FILE_NAME = "terrain-diffusion-mc.properties";
@@ -26,8 +25,7 @@ public final class TerrainDiffusionConfig {
         }
     }
 
-    private TerrainDiffusionConfig() {
-    }
+    private TerrainDiffusionConfig() {}
 
     /** Inference device: "cpu", "gpu", or "auto" (try GPU then fall back to CPU). */
     public static String inferenceDevice() {
@@ -139,5 +137,4 @@ public final class TerrainDiffusionConfig {
     private static boolean isPowerOfTwo(int value) {
         return (value & (value - 1)) == 0;
     }
-
 }

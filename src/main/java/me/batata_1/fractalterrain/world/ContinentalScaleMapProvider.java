@@ -1,15 +1,15 @@
-//package me.batata_1.fractalterrain.world;
+// package me.batata_1.fractalterrain.world;
 //
-//import static me.batata_1.fractalterrain.references.Reference.LOGGER;
+// import static me.batata_1.fractalterrain.references.Reference.DEBUG_LOGGER;
 //
-//import me.batata_1.fractalterrain.world.noise.OctaveSimplexNoiseSampler;
+// import me.batata_1.fractalterrain.world.noise.OctaveSimplexNoiseSampler;
 //
-//public class ContinentalScaleMapProvider {
+// public class ContinentalScaleMapProvider {
 //
 //    public record Settings(float min, float max, double amplitude, float offset, OctaveSimplexNoiseSampler sampler) {}
 //
 //    public static void initSamplers(long seed) {
-//        LOGGER.info("seed:{}", seed);
+//        DEBUG_LOGGER.info("seed:{}", seed);
 //        elevSettings.sampler.initSampler(seed);
 //        tempSettings.sampler.initSampler(seed);
 //        tempSTDSettings.sampler.initSampler(seed);
@@ -61,4 +61,4 @@
 //    public static double samplePrecipitationAmplitude(int x, int z) {
 //        return sample(x, z, precipSTDSettings);
 //    }
-//}
+// }

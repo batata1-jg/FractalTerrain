@@ -1,24 +1,24 @@
-//package com.github.xandergos.terraindiffusionmc.pipeline;
+// package com.github.xandergos.terraindiffusionmc.pipeline;
 //
-//import com.github.xandergos.terraindiffusionmc.infinitetensor.FloatTensor;
-//import me.batata_1.fractalterrain.math.noise.FastNoiseLite;
-//import org.slf4j.Logger;
-//import org.slf4j.LoggerFactory;
+// import com.github.xandergos.terraindiffusionmc.infinitetensor.FloatTensor;
+// import me.batata_1.fractalterrain.math.noise.FastNoiseLite;
+// import org.slf4j.Logger;
+// import org.slf4j.LoggerFactory;
 //
-//import java.util.Iterator;
-//import java.util.LinkedHashMap;
-//import java.util.Map;
-//import java.util.Random;
-//import java.util.concurrent.*;
+// import java.util.Iterator;
+// import java.util.LinkedHashMap;
+// import java.util.Map;
+// import java.util.Random;
+// import java.util.concurrent.*;
 //
-///**
+/// **
 // * Provides terrain heightmap and biome data from the local WorldPipeline.
 // *
 // * <p>When scale=1 the pipeline is sampled at native model resolution directly.
 // * When scale>1 the pipeline is sampled at native resolution and the result is
 // * bilinearly upsampled, giving 1 block = nativeResolution/scale.
 // */
-//public final class LocalTerrainProvider {
+// public final class LocalTerrainProvider {
 //    private static final Logger LOG = LoggerFactory.getLogger(LocalTerrainProvider.class);
 //
 //    private static final float NATIVE_RESOLUTION = WorldPipelineModelConfig.nativeResolution();
@@ -71,7 +71,8 @@
 //        this.pipeline = new WorldPipeline(seed, models);
 //    }
 //
-//    /** Seed is 64-bit world seed. Creates provider once; later worlds only update seed and clear caches (lightweight). */
+//    /** Seed is 64-bit world seed. Creates provider once; later worlds only update seed and clear caches
+// (lightweight). */
 //    public static synchronized void init(long seed) {
 //        PipelineModels.awaitLoad();
 //        PipelineModels models = PipelineModels.getInstance();
@@ -275,7 +276,8 @@
 //        float[] elevPadded = cropFlat(elevUp, cropI1 - 1, cropJ1 - 1, H+2, W+2, nH * scale, nW * scale);
 //
 //        // Upsample climate (4, nH, nW) → (4, H, W)
-//        float[] climate = upsampleClimate(climateNativeFlat, nH, nW, cropI1, cropJ1, H, W, scale, nH * scale, nW * scale);
+//        float[] climate = upsampleClimate(climateNativeFlat, nH, nW, cropI1, cropJ1, H, W, scale, nH * scale, nW *
+// scale);
 //
 //        float[] elevOut = addElevationNoise(elevSmooth, elevPadded, i1, j1, H, W, pixelSizeM);
 //
@@ -377,4 +379,4 @@
 //            }
 //        return new HeightmapData(heightmap, biomeIds, W, H);
 //    }
-//}
+// }

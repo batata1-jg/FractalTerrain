@@ -2,7 +2,6 @@ package me.batata_1.fractalterrain.infinitetensor;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
-
 import me.batata_1.fractalterrain.debug.MemoryProfiler;
 import me.batata_1.fractalterrain.infinitetensor.storage.FloatTensor;
 
@@ -22,11 +21,11 @@ public class MemoryTileStore {
     private final Map<String, long[]> cacheSizes = new HashMap<>();
 
     /** Cumulative newly-computed window count per tensor id. */
-    private final Map<String, long[]> computeCounts  = new HashMap<>();
+    private final Map<String, long[]> computeCounts = new HashMap<>();
     /** Cumulative eviction count per tensor id. */
     private final Map<String, long[]> evictionCounts = new HashMap<>();
     /** Peak cached byte count per tensor id. */
-    private final Map<String, long[]> peakBytes      = new HashMap<>();
+    private final Map<String, long[]> peakBytes = new HashMap<>();
 
     /** All registered tensor instances, by id. */
     private final Map<String, InfiniteTensor> tensors = new HashMap<>();
@@ -57,12 +56,11 @@ public class MemoryTileStore {
             InfiniteTensor[] deps,
             TensorWindow[] depWindows,
             long cacheLimitBytes) {
-        //TODO: add deep storage of tensors
+        // TODO: add deep storage of tensors
         if (tensors.containsKey(id)) return tensors.get(id);
 
-        InfiniteTensor tensor = new InfiniteTensor(
-                id, shape, outputWindow, function, null, 0,
-                deps, depWindows, this, cacheLimitBytes);
+        InfiniteTensor tensor =
+                new InfiniteTensor(id, shape, outputWindow, function, null, 0, deps, depWindows, this, cacheLimitBytes);
         register(id, tensor);
         return tensor;
     }
@@ -85,8 +83,7 @@ public class MemoryTileStore {
         if (tensors.containsKey(id)) return tensors.get(id);
 
         InfiniteTensor tensor = new InfiniteTensor(
-                id, shape, outputWindow, null, batchFunction, batchSize,
-                deps, depWindows, this, cacheLimitBytes);
+                id, shape, outputWindow, null, batchFunction, batchSize, deps, depWindows, this, cacheLimitBytes);
         register(id, tensor);
         return tensor;
     }
@@ -95,10 +92,10 @@ public class MemoryTileStore {
         tensors.put(id, tensor);
         // access-order LinkedHashMap for LRU eviction
         windowCaches.put(id, new LinkedHashMap<>(16, 0.75f, true));
-        cacheSizes.put(id,     new long[]{0L});
-        computeCounts.put(id,  new long[]{0L});
-        evictionCounts.put(id, new long[]{0L});
-        peakBytes.put(id,      new long[]{0L});
+        cacheSizes.put(id, new long[] {0L});
+        computeCounts.put(id, new long[] {0L});
+        evictionCounts.put(id, new long[] {0L});
+        peakBytes.put(id, new long[] {0L});
     }
 
     // -------------------------------------------------------------------------
@@ -186,17 +183,17 @@ public class MemoryTileStore {
         List<MemoryProfiler.TensorStats> stats = new ArrayList<>(tensors.size());
         for (String id : tensors.keySet()) {
             LinkedHashMap<List<Integer>, FloatTensor> cache = windowCaches.get(id);
-            long[] size      = cacheSizes.get(id);
-            long[] computes  = computeCounts.get(id);
+            long[] size = cacheSizes.get(id);
+            long[] computes = computeCounts.get(id);
             long[] evictions = evictionCounts.get(id);
-            long[] peak      = peakBytes.get(id);
+            long[] peak = peakBytes.get(id);
             stats.add(new MemoryProfiler.TensorStats(
                     id,
-                    computes  != null ? computes[0]  : 0L,
+                    computes != null ? computes[0] : 0L,
                     evictions != null ? evictions[0] : 0L,
-                    cache     != null ? cache.size() : 0,
-                    size      != null ? size[0]      : 0L,
-                    peak      != null ? peak[0]      : 0L));
+                    cache != null ? cache.size() : 0,
+                    size != null ? size[0] : 0L,
+                    peak != null ? peak[0] : 0L));
         }
         stats.sort(java.util.Comparator.comparing(s -> s.id));
         return new MemoryProfiler.Snapshot(System.currentTimeMillis(), stats);

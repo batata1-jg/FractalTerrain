@@ -36,12 +36,13 @@ public final class EDMScheduler {
     public final float[] sigmas;
     /** Timesteps array (c_noise = 0.25 * log(sigma)), same length as numSteps. */
     public final float[] timesteps;
+
     private final int numSteps;
 
     // State for DPM-Solver++ multi-step
     private int stepIndex = 0;
     private int lowerOrderNums = 0;
-    private float[] prevModelOutput = null;  // x0_pred from previous step
+    private float[] prevModelOutput = null; // x0_pred from previous step
 
     public EDMScheduler(int numSteps) {
         this.numSteps = numSteps;
@@ -134,7 +135,7 @@ public final class EDMScheduler {
      *      = (sigma_t/sigma_s)*sample - (sigma_t/sigma_s - 1)*D0
      */
     private static float[] firstOrderUpdate(float[] x0Pred, float[] sample, float sigmaS, float sigmaT) {
-        float ratio = sigmaT / sigmaS;  // exp(-h) = sigma_t / sigma_s
+        float ratio = sigmaT / sigmaS; // exp(-h) = sigma_t / sigma_s
         float[] xt = new float[sample.length];
         for (int i = 0; i < sample.length; i++) {
             xt[i] = ratio * sample[i] - (ratio - 1.0f) * x0Pred[i];
@@ -149,18 +150,18 @@ public final class EDMScheduler {
      * D0 = m0, D1 = (m0 - m1) / r0
      * x_t = (sigma_t/sigma_s0)*sample - (exp(-h)-1)*D0 - 0.5*(exp(-h)-1)*D1
      */
-    private static float[] secondOrderUpdate(float[] m1, float[] m0, float[] sample,
-                                              float sigmaS0, float sigmaT, float sigmaS1) {
-        double lT  = -Math.log(sigmaT);
+    private static float[] secondOrderUpdate(
+            float[] m1, float[] m0, float[] sample, float sigmaS0, float sigmaT, float sigmaS1) {
+        double lT = -Math.log(sigmaT);
         double lS0 = -Math.log(sigmaS0);
         double lS1 = -Math.log(sigmaS1);
-        double h   = lT - lS0;
-        double h0  = lS0 - lS1;
-        float r0   = (float) (h0 / h);
-        float expNH    = sigmaT / sigmaS0;  // = exp(-h) in float32 like Python
-        float sCoeff   = sigmaT / sigmaS0;
-        float d0Coeff  = -(expNH - 1.0f);
-        float d1Coeff  = -0.5f * (expNH - 1.0f);
+        double h = lT - lS0;
+        double h0 = lS0 - lS1;
+        float r0 = (float) (h0 / h);
+        float expNH = sigmaT / sigmaS0; // = exp(-h) in float32 like Python
+        float sCoeff = sigmaT / sigmaS0;
+        float d0Coeff = -(expNH - 1.0f);
+        float d1Coeff = -0.5f * (expNH - 1.0f);
         float[] xt = new float[sample.length];
         for (int i = 0; i < sample.length; i++) {
             float d1 = (m0[i] - m1[i]) / r0;
@@ -179,7 +180,7 @@ public final class EDMScheduler {
             float invRho = maxInvRho + t * (minInvRho - maxInvRho);
             sigmas[i] = (float) Math.pow(invRho, RHO);
         }
-        sigmas[n] = 0.0f;  // final_sigmas_type == "zero"
+        sigmas[n] = 0.0f; // final_sigmas_type == "zero"
         return sigmas;
     }
 }
