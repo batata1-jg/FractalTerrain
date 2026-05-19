@@ -1,7 +1,7 @@
 {
   "required": true,
   "minVersion": "0.8",
-  "package": "me.batata_1.fractalterrain.mixin.client",
+  "package": "me.batata_1.fractal_terrain.mixin.client",
   "compatibilityLevel": "JAVA_21",
   "client": [
   ],

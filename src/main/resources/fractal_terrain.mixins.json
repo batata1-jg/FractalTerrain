@@ -4,6 +4,7 @@
   "package": "me.batata_1.fractal_terrain.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "MaterialRuleContextAccessor",
   ],
   "injectors": {
     "defaultRequire": 1
