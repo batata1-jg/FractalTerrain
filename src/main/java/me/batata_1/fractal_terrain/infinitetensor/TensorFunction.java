@@ -1,0 +1,16 @@
+package me.batata_1.fractal_terrain.infinitetensor;
+
+import java.util.List;
+import me.batata_1.fractal_terrain.infinitetensor.storage.FloatTensor;
+
+/**
+ * Function that computes a window of an InfiniteTensor.
+ *
+ * @param windowIndex the N-dimensional index of the window being computed
+ * @param args        slices from each upstream dependency tensor, in the order declared
+ * @return the computed FloatTensor with shape matching the output TensorWindow size
+ */
+@FunctionalInterface
+public interface TensorFunction {
+    FloatTensor apply(int[] windowIndex, List<FloatTensor> args);
+}
