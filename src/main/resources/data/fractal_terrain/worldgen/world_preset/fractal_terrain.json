@@ -1,11 +1,11 @@
 {
   "dimensions": {
     "minecraft:overworld": {
-      "type": "fractal_terrain:fractal_terrain",
+      "type": "fractal_terrain:overworld",
       "generator": {
         "type": "fractal_terrain:chunk_generator",
         "biome_source": {
-          "type": "fractal_terrain:biome_source",
+          "type": "minecraft:multi_noise",
           "preset": "minecraft:overworld"
         },
         "settings": "fractal_terrain:fractal_terrain"
