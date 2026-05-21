@@ -105,7 +105,7 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
             Random random,
             boolean bl,
             MultiNoiseUtil.MultiNoiseSampler noiseSampler) {
-        LOGGER.warn("locate biome is WIP");
+       // LOGGER.warn("locate biome is WIP");
         for (int i = 0; i < getBiomeEntries().getEntries().size(); i++) {
             if (predicate.test(getBiomeEntries().getEntries().get(i).getSecond())) {
                 return Pair.of(
@@ -127,7 +127,7 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
             Predicate<RegistryEntry<Biome>> predicate,
             MultiNoiseUtil.MultiNoiseSampler noiseSampler,
             WorldView world) {
-        LOGGER.warn("locate biome is WIP");
+     //   LOGGER.warn("locate biome is WIP");
         for (int i = 0; i < getBiomeEntries().getEntries().size(); i++) {
             if (predicate.test(getBiomeEntries().getEntries().get(i).getSecond())) {
                 return Pair.of(

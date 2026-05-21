@@ -17,6 +17,7 @@ import net.minecraft.registry.RegistryKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.world.World;
+import net.minecraft.world.biome.source.BiomeSource;
 import net.minecraft.world.gen.chunk.ChunkGenerator;
 import org.slf4j.Logger;
 
@@ -47,6 +48,8 @@ public class FractalTerrain implements ModInitializer {
         ServerWorldEvents.LOAD.register((MinecraftServer server, ServerWorld world) -> {
             final ChunkGenerator chunkGenerator =
                     server.getOverworld().getChunkManager().getChunkGenerator();
+            BiomeSource source = server.getOverworld().getChunkManager().getChunkGenerator().getBiomeSource();
+            LOG.info("biomas: {} ",source.getBiomes());
             if (!(chunkGenerator instanceof FractalTerrainChunkGenerator)) return;
             if (world.getRegistryKey() != World.OVERWORLD) return;
             FractalTerrainInstance.init(server);

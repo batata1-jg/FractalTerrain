@@ -27,13 +27,6 @@ import org.slf4j.Logger;
 public class FractalTerrainInstance {
 
     private static final Logger LOG = getLogger(FractalTerrainInstance.class);
-    public static volatile CompletableFuture<FractalTerrainInstance> instance = new CompletableFuture<>();
-
-    private final MinecraftServer curServer;
-    private final ReliefProvider reliefSource;
-    private final BiomeProvider biomeProvider;
-    private final FractalTerrainSurfaceBuilder surfaceBuilder;
-    private final NoiseConfig noiseConfig;
     public static final WorldPipeline pipeline;
 
     static {
@@ -43,6 +36,16 @@ public class FractalTerrainInstance {
         if (models == null) throw new IllegalStateException("PipelineModels failed to load");
         pipeline = new WorldPipeline(0, models);
     }
+
+    private static volatile CompletableFuture<FractalTerrainInstance> instance = new CompletableFuture<>();
+
+    private final MinecraftServer curServer;
+    private final ReliefProvider reliefSource;
+    private final BiomeProvider biomeProvider;
+    private final FractalTerrainSurfaceBuilder surfaceBuilder;
+    private final NoiseConfig noiseConfig;
+
+
 
     private FractalTerrainInstance(MinecraftServer server) {
         this.curServer = server;
@@ -62,7 +65,7 @@ public class FractalTerrainInstance {
     }
 
     public static synchronized void init(MinecraftServer server) {
-        if (instance.isDone()) {
+        if (exists()) {
             LOG.warn("Already initialized");
             return;
         }
@@ -70,7 +73,7 @@ public class FractalTerrainInstance {
     }
 
     public static synchronized void close() {
-        if (!instance.isDone()) return;
+        if (!exists()) return;
         getInstance().reliefSource.getStorage().clear();
         getInstance().biomeProvider.getStorage().clear();
         instance = new CompletableFuture<>();
@@ -99,5 +102,13 @@ public class FractalTerrainInstance {
 
     public static FractalTerrainSurfaceBuilder getSurfaceBuilder() {
         return getInstance().surfaceBuilder;
+    }
+
+    public static boolean exists() {
+        return instance.isDone();
+    }
+
+    public static NoiseConfig getNoiseConfig() {
+        return getInstance().noiseConfig;
     }
 }

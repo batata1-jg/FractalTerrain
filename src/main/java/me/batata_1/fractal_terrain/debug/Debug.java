@@ -11,6 +11,7 @@ import me.batata_1.fractal_terrain.infinitetensor.storage.FloatTensor;
 import me.batata_1.fractal_terrain.noise.NoiseSampler;
 import me.batata_1.fractal_terrain.noise.PhacelleNoiseSampler;
 import net.minecraft.util.WorldSavePath;
+import net.minecraft.world.gen.surfacebuilder.MaterialRules;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -187,4 +188,16 @@ public class Debug {
         //        }
     }
 
+    public static void debugMixin(MaterialRules.MaterialRuleContext context) {
+        MaterialRules.MaterialCondition condition = MaterialRules.surface();
+        DEBUG_LOGGER.info(" contidio: {} <- true",condition.apply(context).get());
+    }
+
+    public static void debugSurfaceBuilder(int x, int y,int surface_h, int z, MaterialRules.MaterialRuleContext materialRuleContext) {
+        if( x == 0 && z == 0 && y == surface_h) {
+            DEBUG_LOGGER.info(" surface_h = {} , coords {} {}",y,x,z);
+            MaterialRules.MaterialCondition condition = MaterialRules.surface();
+            DEBUG_LOGGER.info(" contidion: {} <- true",condition.apply(materialRuleContext).get());
+        }
+    }
 }

@@ -7,6 +7,8 @@ accessible method net/minecraft/world/biome/source/MultiNoiseBiomeSource getBiom
 accessible method net/minecraft/world/gen/surfacebuilder/MaterialRules$MaterialRuleContext initHorizontalContext (II)V
 accessible method net/minecraft/world/gen/surfacebuilder/MaterialRules$MaterialRuleContext initVerticalContext (IIIIII)V
 
+accessible class net/minecraft/world/gen/surfacebuilder/MaterialRules$MaterialRuleContext$SteepSlopePredicate
+accessible field net/minecraft/world/gen/surfacebuilder/MaterialRules$LazyAbstractPredicate context Lnet/minecraft/world/gen/surfacebuilder/MaterialRules$MaterialRuleContext;
 
 accessible class net/minecraft/world/gen/surfacebuilder/MaterialRules$BooleanSupplier
 accessible class net/minecraft/world/gen/surfacebuilder/MaterialRules$FullLazyAbstractPredicate

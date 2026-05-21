@@ -11,6 +11,7 @@ import java.util.concurrent.Executor;
 import java.util.function.Supplier;
 
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
+import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.math.Spline;
 import me.batata_1.fractal_terrain.world.biome.source.FractalTerrainBiomeSource;
 import net.minecraft.SharedConstants;
@@ -36,11 +37,13 @@ import net.minecraft.world.gen.StructureAccessor;
 import net.minecraft.world.gen.StructureWeightSampler;
 import net.minecraft.world.gen.chunk.*;
 import net.minecraft.world.gen.noise.NoiseConfig;
+import org.slf4j.Logger;
 
 // TODO: add compat , consertar biomes, reescrever isso
 
 public final class FractalTerrainChunkGenerator extends ChunkGenerator {
 
+    private static final Logger LOG = Debug.getLogger(FractalTerrainChunkGenerator.class);
     private static final BlockState AIR = Blocks.AIR.getDefaultState();
     private static final BlockState WATER = Blocks.WATER.getDefaultState();
     private static final BlockState DEFAUT = Blocks.STONE.getDefaultState();
@@ -181,9 +184,15 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         }
     }
 
+
+
     @VisibleForTesting
     public void buildSurface(Chunk chunk, HeightContext heightContext, NoiseConfig noiseConfig, StructureAccessor structureAccessor, BiomeAccess biomeAccess, Registry<Biome> biomeRegistry, Blender blender) {
-        ChunkNoiseSampler chunkNoiseSampler = chunk.getOrCreateChunkNoiseSampler((chunkx) -> this.createChunkNoiseSampler(chunkx, structureAccessor, blender, noiseConfig));
+        ChunkNoiseSampler chunkNoiseSampler = chunk.getOrCreateChunkNoiseSampler((chunkx) -> this.createChunkNoiseSampler(chunkx, structureAccessor, blender, FractalTerrainInstance.getNoiseConfig()));
+        if(chunk.getPos().z == 0 && chunk.getPos().x == 0) {
+            LOG.info(" chunkNoise sampler of 0 ,0 : {}",chunkNoiseSampler);
+            LOG.info(" chunkNoise sampler estiate H : {}",chunkNoiseSampler.estimateSurfaceHeight(0,0));
+        }
         FractalTerrainInstance.getSurfaceBuilder().buildSurface(noiseConfig, biomeAccess, biomeRegistry, heightContext, chunk, chunkNoiseSampler);
     }
 
