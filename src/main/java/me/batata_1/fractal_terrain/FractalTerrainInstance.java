@@ -3,22 +3,27 @@ package me.batata_1.fractal_terrain;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import me.batata_1.fractal_terrain.ml.pipeline.WorldPipeline;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
+import me.batata_1.fractal_terrain.terrablender.InitTerrablender;
 import me.batata_1.fractal_terrain.world.biome.BiomeProvider;
 import me.batata_1.fractal_terrain.world.gen.ReliefProvider;
 import me.batata_1.fractal_terrain.world.gen.chunk.FractalTerrainChunkGenerator;
 import me.batata_1.fractal_terrain.world.gen.chunk.FractalTerrainSurfaceBuilder;
 import net.minecraft.block.Blocks;
 import net.minecraft.registry.DynamicRegistryManager;
+import net.minecraft.registry.Registry;
+import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.WorldSavePath;
+import net.minecraft.world.dimension.DimensionOptions;
 import net.minecraft.world.gen.chunk.ChunkGeneratorSettings;
 import net.minecraft.world.gen.noise.NoiseConfig;
 import net.minecraft.world.gen.surfacebuilder.SurfaceBuilder;
@@ -60,7 +65,15 @@ public class FractalTerrainInstance {
         pipeline.setSeed(seed);
         OctaveSimplexNoiseSampler.init(seed);
        // LOG.info("chunk Generator settings: {}", chunkGenerator.getSettings().value());
+        DynamicRegistryManager registryAccess = server.getRegistryManager();
+        InitTerrablender.initializeBlenderBiomes(registryAccess,
+                DimensionOptions.OVERWORLD,
+                chunkGenerator.getSettings().value(),
+                chunkGenerator.getBiomeSource(),
+                seed
+                );
         surfaceBuilder = new FractalTerrainSurfaceBuilder(this.noiseConfig, Blocks.STONE.getDefaultState(),63, this.noiseConfig.randomDeriver,chunkGenerator.getSettings().value().surfaceRule());
+
         LOG.info("fractal terrain instance created");
     }
 

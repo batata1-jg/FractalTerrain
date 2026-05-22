@@ -5,7 +5,7 @@
       "generator": {
         "type": "fractal_terrain:chunk_generator",
         "biome_source": {
-          "type": "minecraft:multi_noise",
+          "type": "fractal_terrain:biome_source",
           "preset": "minecraft:overworld"
         },
         "settings": "fractal_terrain:fractal_terrain"
