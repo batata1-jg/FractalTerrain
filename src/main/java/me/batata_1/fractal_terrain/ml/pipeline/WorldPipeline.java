@@ -1,6 +1,7 @@
 package me.batata_1.fractal_terrain.ml.pipeline;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 import me.batata_1.fractal_terrain.debug.MemoryProfiler;
@@ -15,6 +16,10 @@ import me.batata_1.fractal_terrain.ml.tensorProviders.GaussianNoisePatch;
 import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static me.batata_1.fractal_terrain.FractalTerrainConfig.DECODER_CHANNELS;
+import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.computeDirection;
+import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.computeFlow;
 
 /**
  * Java port of terrain_diffusion/inference/world_pipeline.py WorldPipeline.
@@ -413,7 +418,7 @@ public final class WorldPipeline implements AutoCloseable {
 
     private InfiniteTensor buildDecoderStage() {
         int S = DECODER_TILE_SIZE, ST = DECODER_TILE_STRIDE, lc = LATENT_COMPRESSION;
-        TensorWindow outWin = new TensorWindow(new int[] {8, S, S}, new int[] {8, ST, ST});
+        TensorWindow outWin = new TensorWindow(new int[] {DECODER_CHANNELS, S, S}, new int[] {DECODER_CHANNELS, ST, ST});
         TensorWindow inpWin = new TensorWindow(new int[] {6, S / lc, S / lc}, new int[] {6, ST / lc, ST / lc});
         float[] ww = linearWeightWindow(S);
         float t = (float) Math.atan(EDMScheduler.SIGMA_MAX / SIGMA_DATA);
@@ -421,7 +426,7 @@ public final class WorldPipeline implements AutoCloseable {
         return tileStore.getOrCreate(
                 "init_residual_map",
                 new Integer[] {2, null, null},
-                (wi, args) -> decoderTile(wi, args.get(0), t, ww),
+                (wi, args) -> decoderTile(wi, args.getFirst(), t, ww),
                 outWin,
                 new InfiniteTensor[] {latents},
                 new TensorWindow[] {inpWin},
@@ -473,7 +478,7 @@ public final class WorldPipeline implements AutoCloseable {
         }
 
         // post proessing
-
+        // TODO: implement d-8 algorithim inside fuzed
         Object[][] inputs = new Object[3][3];
         inputs[0] = new Object[] {"residual_init", newSample, new long[] {1, 512, 512}};
         inputs[1] = new Object[] {"latents_init", latentSlice.data, new long[] {6, 64, 64}};
@@ -481,7 +486,16 @@ public final class WorldPipeline implements AutoCloseable {
 
         //        for (int px = 0; px < S * S; px++) result.data[px] = newSample[px] * ww[px];
         //        System.arraycopy(ww, 0, result.data, S * S, S * S);
-        return new FloatTensor(new int[] {8, S, S}, fuzedModel.run(inputs));
+        final float[] data = fuzedModel.run(inputs);
+        final float[] adj = computeDirection(Arrays.copyOfRange(data,0,S*S),S);
+        final float[] flow = computeFlow(adj,S);
+        final float[] out = new float[S*S*DECODER_CHANNELS];
+        System.arraycopy(data, 7*S*S, out, 0, S*S);
+        System.arraycopy(data, 0, out, S*S, 7*S*S);
+        System.arraycopy(adj, 0, out, 8*S*S, S*S);
+        System.arraycopy(flow,0,out,9*S*S,S*S);
+
+        return new FloatTensor(new int[] {DECODER_CHANNELS, S, S}, out);
     }
 
     // =========================================================================
@@ -513,7 +527,7 @@ public final class WorldPipeline implements AutoCloseable {
     }
 
     public FloatTensor getDecoderSlice(int x, int z) {
-        return residual.getSlice(new int[] {0, x << 9, z << 9}, new int[] {8, (x + 1) << 9, (z + 1) << 9});
+        return residual.getSlice(new int[] {0, x << 9, z << 9}, new int[] {DECODER_CHANNELS, (x + 1) << 9, (z + 1) << 9});
     }
 
     public float[] getClimate(int x, int z, float[] elevFlat) {

@@ -19,18 +19,24 @@ public class ReliefProvider {
             int z = xz.getSecond();
 
             FloatTensor final_slice = pipeline.getDecoderSlice(x, z);
-            float[] entries = new float[7 << 18];
-            for (int ch = 0; ch < 4; ch++)
+            float[] entries = new float[9 << 18];
+            //TODO: mover weight para canal 0
+            for (int ch = 1; ch < 10; ch++) {
                 for (int px = 0; px < (1 << 18); px++) {
-                    final float w = final_slice.data[(7 << 18) + px];
-                    entries[(ch << 18) + px] = (w > 1e-6f) ? final_slice.data[(ch << 18) + px] / w : 0f;
+                    final float w = final_slice.data[px];
+                    entries[((ch-1) << 18) + px] = (w > 1e-6f) ? final_slice.data[(ch << 18) + px] / w : 0f;
                 }
-
-            FloatTensor t = new FloatTensor(entries, new int[] {7, 512, 512});
-            Debug.tensor.see(t.get(), "final" + x + " " + z, false, 0);
+            }
+            FloatTensor t = new FloatTensor(entries, new int[] {9, 512, 512});
+            //Debug.tensor.see(t.get(), "final" + x + " " + z, false, 0);
+            Debug.seeTile(t,x,z,"final");
             return t;
         });
     }
+
+
+    // ch7 -> adj
+    // ch8 -> flow
 
     public TensorStorage getStorage() {
         return final_tiles;
