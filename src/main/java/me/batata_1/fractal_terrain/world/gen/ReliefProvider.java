@@ -1,76 +1,100 @@
-package me.batata_1.fractalterrain.world.gen.relief;
+package me.batata_1.fractal_terrain.world.gen;
 
-import ai.onnxruntime.OnnxTensor;
+import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
+
 import com.mojang.datafixers.util.Pair;
-
-import java.nio.file.Path;
-import java.util.concurrent.*;
-
-import me.batata_1.fractalterrain.FractalTerrainInstance;
-
-import me.batata_1.fractalterrain.storage.EntryStorage;
-import me.batata_1.fractalterrain.storage.Tile;
-import me.batata_1.fractalterrain.util.Debug;
-import me.batata_1.fractalterrain.world.ContinentalScaleMapProvider;
+// import me.batata_1.fractalterrain.ml.tensorProviders.GaussianNoisePatchProvider;
+import me.batata_1.fractal_terrain.debug.Debug;
+// import me.batata_1.fractalterrain.world.ContinentalScaleMapProvider;
+import me.batata_1.fractal_terrain.infinitetensor.storage.FloatTensor;
+import me.batata_1.fractal_terrain.infinitetensor.storage.TensorStorage;
 
 public class ReliefProvider {
 
-    private final EntryStorage final_tiles;
+    private final TensorStorage final_tiles;
 
-    public ReliefProvider(Path pathSave) {
-        final_tiles = new EntryStorage(pathSave.toString(),"final_tiles",512,xz->{
-            Tile t = new Tile(FractalTerrainInstance.pipeline.getDecoderSice(xz.getFirst(),xz.getSecond()));
-            Debug.seeFinal(t.get(),xz.getFirst(),xz.getSecond());
+    public ReliefProvider(String path) {
+        final_tiles = new TensorStorage(path + "/final_relief_tiles", 512, xz -> {
+            int x = xz.getFirst();
+            int z = xz.getSecond();
+
+            FloatTensor final_slice = pipeline.getDecoderSlice(x, z);
+            float[] entries = new float[9 << 18];
+            //TODO: mover weight para canal 0
+            for (int ch = 1; ch < 10; ch++) {
+                for (int px = 0; px < (1 << 18); px++) {
+                    final float w = final_slice.data[px];
+                    entries[((ch-1) << 18) + px] = (w > 1e-6f) ? final_slice.data[(ch << 18) + px] / w : 0f;
+                }
+            }
+            FloatTensor t = new FloatTensor(entries, new int[] {9, 512, 512});
+            //Debug.tensor.see(t.get(), "final" + x + " " + z, false, 0);
+            Debug.seeTile(t,x,z,"final");
             return t;
         });
     }
 
-    public float getElev(Pair<Integer, Integer> xz) {
-        return getValue(xz, 0);
-    }
 
-    public float getBlurredElev(Pair<Integer, Integer> xz) {
-        return getValue(xz, 1);
-    }
+    // ch7 -> adj
+    // ch8 -> flow
 
-    public float getGradX(Pair<Integer, Integer> xz) {
-        return getValue(xz, 2);
-    }
-
-    public float getGradY(Pair<Integer, Integer> xz) {
-        return getValue(xz, 3);
-    }
-
-    public float getRefinedGrad(Pair<Integer, Integer> xz) {
-        return getValue(xz, 4);
-    }
-
-    public float getBlurredGrad(Pair<Integer, Integer> xz) {
-        return getValue(xz, 5);
-    }
-
-    public float getRes(Pair<Integer, Integer> xz) {
-        return getValue(xz, 6);
-    }
-
-    private float getValue(Pair<Integer, Integer> xz, int ch) {
-        try {
-            return final_tiles.getValue(xz, ch);
-        } catch (ExecutionException | InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public EntryStorage getStorage() {
+    public TensorStorage getStorage() {
         return final_tiles;
     }
 
-    public OnnxTensor getTilesAsTensor(int i, int j) {
-        try {
-            return final_tiles.getEntry(Pair.of(i, j)).get().get();
-        } catch (InterruptedException | ExecutionException e) {
-            throw new RuntimeException(e);
-        }
+    public Float get_entry(Pair<Integer, Integer> xz, int ch) {
+        return final_tiles.getValue(xz, ch);
     }
 
+    public Float getElev(Pair<Integer, Integer> xz) {
+        return get_entry(xz, 0);
+    }
+
+    public Float getRefinedGrad(Pair<Integer, Integer> xz) {
+        return get_entry(xz, 4);
+    }
+
+    public Float getGradX(Pair<Integer, Integer> xz) {
+        return get_entry(xz, 2);
+    }
+
+    public Float getGradY(Pair<Integer, Integer> xz) {
+        return get_entry(xz, 3);
+    }
+
+    public Float getRes(Pair<Integer, Integer> xz) {
+        return get_entry(xz, 6);
+    }
+
+    public Float getBlurredElev(Pair<Integer, Integer> xz) {
+        return get_entry(xz, 1);
+    }
+
+    public double getContinentalElev(Pair<Integer, Integer> xz) {
+        return 0;
+    }
+
+    public double getRawTemp(Pair<Integer, Integer> xz) {
+        return 0;
+    }
+
+    public Float getRawTempSTD(Pair<Integer, Integer> xz) {
+        return (float) 0;
+    }
+
+    public double getRawPrecip(Pair<Integer, Integer> xz) {
+        return 0;
+    }
+
+    public Float getRawPrecipSTD(Pair<Integer, Integer> xz) {
+        return (float) 0;
+    }
+
+    public int getRawGrad(Pair<Integer, Integer> xz) {
+        return 0;
+    }
+
+    public double getBlurredGrad(Pair<Integer, Integer> xz) {
+        return 0;
+    }
 }

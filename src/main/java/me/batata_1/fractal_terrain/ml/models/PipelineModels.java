@@ -1,10 +1,11 @@
-package com.github.xandergos.terraindiffusionmc.pipeline;
+package me.batata_1.fractal_terrain.ml.models;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import java.io.InputStream;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import net.fabricmc.loader.api.FabricLoader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Holds the three ONNX models used by WorldPipeline. Loaded once at mod init
@@ -18,7 +19,6 @@ public final class PipelineModels implements AutoCloseable {
     private static final String COARSE_FILE_NAME = "coarse_model.onnx";
     private static final String BASE_FILE_NAME = "base_model.onnx";
     private static final String DECODER_FILE_NAME = "decoder_model.onnx";
-    private static final String FUZED_FILE_NAME = "fuzed.onnx";
 
     private static volatile PipelineModels INSTANCE;
     private static volatile CountDownLatch loadDone;
@@ -37,21 +37,23 @@ public final class PipelineModels implements AutoCloseable {
         loadStarted = true;
         loadFailure = null;
         loadDone = new CountDownLatch(1);
-        Thread t = new Thread(() -> {
-            try {
-                LOG.info("Loading terrain-diffusion ML models (background)...");
-                long start = System.currentTimeMillis();
-                INSTANCE = new PipelineModels();
-                long elapsed = System.currentTimeMillis() - start;
-                LOG.info("Terrain-diffusion ML models loaded in {} ms", elapsed);
-            } catch (Throwable e) {
-                loadFailure = e;
-                loadStarted = false;
-                LOG.error("Failed to load terrain-diffusion models", e);
-            } finally {
-                loadDone.countDown();
-            }
-        }, "terrain-diffusion-models");
+        Thread t = new Thread(
+                () -> {
+                    try {
+                        LOG.info("Loading terrain-diffusion ML models (background)...");
+                        long start = System.currentTimeMillis();
+                        INSTANCE = new PipelineModels();
+                        long elapsed = System.currentTimeMillis() - start;
+                        LOG.info("Terrain-diffusion ML models loaded in {} ms", elapsed);
+                    } catch (Throwable e) {
+                        loadFailure = e;
+                        loadStarted = false;
+                        LOG.error("Failed to load terrain-diffusion models", e);
+                    } finally {
+                        loadDone.countDown();
+                    }
+                },
+                "terrain-diffusion-models");
         t.setDaemon(true);
         t.start();
     }
@@ -91,13 +93,31 @@ public final class PipelineModels implements AutoCloseable {
         this.coarseModel = new OnnxModel(ModelAssetManager.resolveAssetPath(COARSE_FILE_NAME), "coarse");
         this.baseModel = new OnnxModel(ModelAssetManager.resolveAssetPath(BASE_FILE_NAME), "base");
         this.decoderModel = new OnnxModel(ModelAssetManager.resolveAssetPath(DECODER_FILE_NAME), "decoder");
-        this.fuzedModel = new OnnxModel(ModelAssetManager.resolveUtilPath(FUZED_FILE_NAME),"fuzed");
+
+        InputStream stream = PipelineModels.class.getResourceAsStream("/assets/fractal_terrain/ml_util/fuzed.onnx");
+        assert (stream != null);
+        LOG.info("stream is {}", stream);
+        LOG.info(
+                "fabric {}",
+                FabricLoader.getInstance().getGameDir().resolve("/assets/fractal_terrain/ml_util/fuzed.onnx"));
+        this.fuzedModel = new OnnxModel(stream, "fuzed", true);
     }
 
-    public OnnxModel getCoarseModel() { return coarseModel; }
-    public OnnxModel getBaseModel() { return baseModel; }
-    public OnnxModel getDecoderModel() { return decoderModel; }
-    public OnnxModel getFuzedModel() { return fuzedModel;}
+    public OnnxModel getCoarseModel() {
+        return coarseModel;
+    }
+
+    public OnnxModel getBaseModel() {
+        return baseModel;
+    }
+
+    public OnnxModel getDecoderModel() {
+        return decoderModel;
+    }
+
+    public OnnxModel getFuzedModel() {
+        return fuzedModel;
+    }
 
     @Override
     public synchronized void close() {
@@ -107,6 +127,7 @@ public final class PipelineModels implements AutoCloseable {
             coarseModel.close();
             baseModel.close();
             decoderModel.close();
+            fuzedModel.close();
         } finally {
             INSTANCE = null;
             loadStarted = false;

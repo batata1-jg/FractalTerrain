@@ -1,65 +1,66 @@
-package me.batata_1.fractalterrain;
+package me.batata_1.fractal_terrain;
 
-import static me.batata_1.fractalterrain.references.Reference.LOGGER;
+import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
-import java.util.Arrays;
-
-import com.github.xandergos.terraindiffusionmc.pipeline.ModelAssetManager;
-import com.github.xandergos.terraindiffusionmc.pipeline.PipelineModels;
-import me.batata_1.fractalterrain.references.Reference;
-import me.batata_1.fractalterrain.registry.FractalTerrainRegistryKeys;
-import me.batata_1.fractalterrain.world.biome.source.FractalTerrainBiomeSource;
-import me.batata_1.fractalterrain.world.gen.chunk.FractalTerrainChunkGenerator;
-
-import me.batata_1.fractalterrain.world.gen.surfacebuilder.FractalTerrainMaterialRules;
+import me.batata_1.fractal_terrain.ml.models.ModelAssetManager;
+import me.batata_1.fractal_terrain.ml.models.PipelineModels;
+import me.batata_1.fractal_terrain.references.Reference;
+import me.batata_1.fractal_terrain.world.biome.source.FractalTerrainBiomeSource;
+import me.batata_1.fractal_terrain.world.gen.chunk.FractalTerrainChunkGenerator;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
-import net.fabricmc.fabric.api.event.registry.DynamicRegistries;
-import net.fabricmc.fabric.api.event.registry.DynamicRegistrySetupCallback;
 import net.fabricmc.fabric.api.event.registry.DynamicRegistryView;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
 import net.minecraft.registry.RegistryKey;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.world.World;
+import net.minecraft.world.biome.source.BiomeSource;
+import net.minecraft.world.gen.chunk.ChunkGenerator;
+import org.slf4j.Logger;
 
 public class FractalTerrain implements ModInitializer {
+
+    private static final Logger LOG = getLogger(FractalTerrain.class);
 
     private static void addListenerForDynamic(
             DynamicRegistryView registryView, RegistryKey<? extends Registry<?>> key) {
 
         registryView.registerEntryAdded(key, (rawId, id, object) -> {
-            LOGGER.info("Loaded entry of {}: {} = {}", key, id, object);
+            LOG.info("Loaded entry of {}: {} = {}", key, id, object);
         });
     }
-
+    //TODO: usar FabricLoader.getInstance().isDevelopmentEnvironment();
     @Override
     public void onInitialize() {
-        DynamicRegistries.register(
-                FractalTerrainRegistryKeys.FRACTAL_TERRAIN_CHUNK_GENERATOR_SETTINGS,
-                FractalTerrainChunkGenerator.Settings.CODEC);
         Registry.register(
                 Registries.CHUNK_GENERATOR,
                 Reference.identifier("chunk_generator"),
                 FractalTerrainChunkGenerator.CODEC);
         Registry.register(
                 Registries.BIOME_SOURCE, Reference.identifier("biome_source"), FractalTerrainBiomeSource.CODEC);
-        FractalTerrainMaterialRules.FractalTerrainMaterialRule.register(Registries.MATERIAL_RULE);
-        FractalTerrainMaterialRules.FractalTerrainMaterialCondition.register(Registries.MATERIAL_CONDITION);
-
-        LOGGER.info(Arrays.toString(DynamicRegistries.getDynamicRegistries().toArray()));
-//
-//        DynamicRegistrySetupCallback.EVENT.register(registryView -> {
-//            LOGGER.info("isso rodaaa????????????????????????????????????????????????????????");
-//            addListenerForDynamic(registryView, FractalTerrainRegistryKeys.FRACTAL_TERRAIN_CHUNK_GENERATOR_SETTINGS);
-//            addListenerForDynamic(registryView, FractalTerrainRegistryKeys.POST_PROCESSING_SETTINGS);
-//            LOGGER.info("ele so n registra?");
-//        });
 
         ModelAssetManager.ensureAssetsReady();
         PipelineModels.load();
+        
+        ServerWorldEvents.LOAD.register((MinecraftServer server, ServerWorld world) -> {
+            final ChunkGenerator chunkGenerator =
+                    server.getOverworld().getChunkManager().getChunkGenerator();
+            BiomeSource source = server.getOverworld().getChunkManager().getChunkGenerator().getBiomeSource();
+            LOG.info("biomas: {} ",source.getBiomes());
+            if (!(chunkGenerator instanceof FractalTerrainChunkGenerator)) return;
+            if (world.getRegistryKey() != World.OVERWORLD) return;
+            FractalTerrainInstance.init(server);
+        });
 
-        ServerWorldEvents.LOAD.register(FractalTerrainInstance::setServer);
+        ServerLifecycleEvents.SERVER_STOPPED.register((MinecraftServer server) -> {
+            final ChunkGenerator chunkGenerator =
+                    server.getOverworld().getChunkManager().getChunkGenerator();
+            if (!(chunkGenerator instanceof FractalTerrainChunkGenerator)) return;
+            FractalTerrainInstance.close();
+        });
 
-        ServerLifecycleEvents.SERVER_STOPPED.register(FractalTerrainInstance::freeServer);
     }
 }
