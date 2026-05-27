@@ -42,13 +42,4 @@ public class Blur {
         }
     }
 
-//    public static double entryAvgBlur5x5(int x, int z, Function<int[], Double> f) {
-//        double resp = 0;
-//        for (int i = 0; i < 5; i++) {
-//            for (int j = 0; j < 5; j++) {
-//                resp += f.apply(Pair.of(x + d5[i], z + d5[j]));
-//            }
-//        }
-//        return (resp / 25);
-//    }
 }

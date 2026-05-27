@@ -502,7 +502,8 @@ public final class WorldPipeline implements AutoCloseable {
         //        System.arraycopy(ww, 0, result.data, S * S, S * S);
         // TODO: pesar as tiles de flow e adj
         final float[] data = fuzedModel.run(inputs);
-        final float[] adj = computeDirection(Arrays.copyOfRange(data, 0, S * S), S);
+        // n funciona pq esse data esta pesado
+        final float[] adj = computeDirection(Arrays.copyOfRange(data, 0, S * S), ww,S);
         final float[] flow = computeFlow(adj, S);
         final float[] out = new float[S * S * DECODER_CHANNELS];
         System.arraycopy(data, 7 * S * S, out, 0, S * S);

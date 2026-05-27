@@ -157,9 +157,12 @@ public class Debug {
     }
 
     public static synchronized void debug() {
-        FloatTensor fl = FractalTerrainInstance.getDecoderStorage().getEntry(new int[]{0,-1,-1});
+        int x = -1;
+        int z = -1;
+        FractalTerrainInstance.pipeline.getDecoderSlice(x,z);
+        FloatTensor fl = FractalTerrainInstance.getDecoderStorage().getEntry(new int[]{0,x,z});
         DEBUG_LOGGER.info("debug {}",fl.shape);
-        seeTile(fl,-1,-1,"decoder_tile");
+        seeTile(fl,x,z,"decoder_tile");
     }
 
     public static void debugMixin(MaterialRules.MaterialRuleContext context) {
