@@ -1,6 +1,5 @@
 package me.batata_1.fractal_terrain.math;
 
-import com.mojang.datafixers.util.Pair;
 import java.util.function.Function;
 import net.minecraft.util.math.MathHelper;
 
@@ -10,9 +9,9 @@ public class Interpolation {
     private static final Function<Double, Double> stepSmoothstep = x -> 3 * (x * x) - 2 * (x * x * x);
 
     private final float interpolation_scale;
-    private final Function<Pair<Integer, Integer>, Float> f;
+    private final Function<int[], Float> f;
 
-    public Interpolation(final float interpolationScale, final Function<Pair<Integer, Integer>, Float> f) {
+    public Interpolation(final float interpolationScale, final Function<int[], Float> f) {
         interpolation_scale = interpolationScale;
         this.f = f;
     }
@@ -35,10 +34,12 @@ public class Interpolation {
         final int[] zs = {(int) Math.floor(z), (int) Math.ceil(z)};
 
         final float[] nodes = new float[4];
-
+        final int[] mutablePos = new int[] {0, 0, 0};
         for (int i = 0; i < 2; i++) {
             for (int j = 0; j < 2; j++) {
-                nodes[2 * i + j] = f.apply(Pair.of(xs[j], zs[i]));
+                mutablePos[1] = xs[j];
+                mutablePos[2] = zs[i];
+                nodes[2 * i + j] = f.apply(mutablePos);
             }
         }
 

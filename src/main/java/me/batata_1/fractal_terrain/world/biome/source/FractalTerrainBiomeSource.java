@@ -1,14 +1,12 @@
 package me.batata_1.fractal_terrain.world.biome.source;
 
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
-import static me.batata_1.fractal_terrain.references.Reference.LOGGER;
 
 import com.mojang.datafixers.util.Either;
 import com.mojang.datafixers.util.Pair;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.Lifecycle;
 import com.mojang.serialization.MapCodec;
-
 import java.util.List;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
@@ -89,9 +87,9 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
         float humid = MultiNoiseUtil.toFloat(noiseValuePoint.humidityNoise());
         float weird = MultiNoiseUtil.toFloat(noiseValuePoint.weirdnessNoise());
         float depth = MultiNoiseUtil.toFloat(noiseValuePoint.depth());
-        info.add("fractal_terrain_biomes C: " + cont + " E: " + erosion + " T: " + temp + " H: " + humid + " W: " + weird + " D: " + depth);
+        info.add("fractal_terrain_biomes C: " + cont + " E: " + erosion + " T: " + temp + " H: " + humid + " W: "
+                + weird + " D: " + depth);
     }
-
 
     @Nullable
     @Override
@@ -105,7 +103,7 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
             Random random,
             boolean bl,
             MultiNoiseUtil.MultiNoiseSampler noiseSampler) {
-       // LOGGER.warn("locate biome is WIP");
+        // LOGGER.warn("locate biome is WIP");
         for (int i = 0; i < getBiomeEntries().getEntries().size(); i++) {
             if (predicate.test(getBiomeEntries().getEntries().get(i).getSecond())) {
                 return Pair.of(
@@ -127,7 +125,7 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
             Predicate<RegistryEntry<Biome>> predicate,
             MultiNoiseUtil.MultiNoiseSampler noiseSampler,
             WorldView world) {
-     //   LOGGER.warn("locate biome is WIP");
+        //   LOGGER.warn("locate biome is WIP");
         for (int i = 0; i < getBiomeEntries().getEntries().size(); i++) {
             if (predicate.test(getBiomeEntries().getEntries().get(i).getSecond())) {
                 return Pair.of(

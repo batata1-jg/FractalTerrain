@@ -1,25 +1,26 @@
 package me.batata_1.fractal_terrain.ml.pipeline;
 
+import static me.batata_1.fractal_terrain.FractalTerrainConfig.DECODER_CHANNELS;
+import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.computeDirection;
+import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.computeFlow;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
-import me.batata_1.fractal_terrain.debug.MemoryProfiler;
+import me.batata_1.fractal_terrain.debug.Debug;
+import me.batata_1.fractal_terrain.infinitetensor.AdditiveInfiniteTensor;
 import me.batata_1.fractal_terrain.infinitetensor.InfiniteTensor;
-import me.batata_1.fractal_terrain.infinitetensor.MemoryTileStore;
 import me.batata_1.fractal_terrain.infinitetensor.TensorWindow;
 import me.batata_1.fractal_terrain.infinitetensor.storage.FloatTensor;
 import me.batata_1.fractal_terrain.ml.models.ModelAssetManager;
 import me.batata_1.fractal_terrain.ml.models.OnnxModel;
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import me.batata_1.fractal_terrain.ml.tensorProviders.GaussianNoisePatch;
+import net.fabricmc.loader.api.FabricLoader;
 import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static me.batata_1.fractal_terrain.FractalTerrainConfig.DECODER_CHANNELS;
-import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.computeDirection;
-import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.computeFlow;
 
 /**
  * Java port of terrain_diffusion/inference/world_pipeline.py WorldPipeline.
@@ -39,7 +40,7 @@ public final class WorldPipeline implements AutoCloseable {
     static final int LATENT_TILE_SIZE = 64;
     static final int LATENT_TILE_STRIDE = 32;
     static final int DECODER_TILE_SIZE = 512;
-    static final int DECODER_TILE_STRIDE = 192;
+    static final int DECODER_TILE_STRIDE = 384;
 
     static final float[] MODEL_MEANS = WorldPipelineModelConfig.coarseMeans();
     static final float[] MODEL_STDS = WorldPipelineModelConfig.coarseStds();
@@ -56,6 +57,8 @@ public final class WorldPipeline implements AutoCloseable {
     static final int COARSE_POOLING = WorldPipelineModelConfig.coarsePooling();
     static final float[] COND_VALS; // log(COND_SNR / 8)
 
+    static final String DEFAULT_PATH;
+
     static {
         if (COARSE_POOLING != 1) {
             throw new IllegalStateException(
@@ -63,6 +66,7 @@ public final class WorldPipeline implements AutoCloseable {
         }
         COND_VALS = new float[COND_SNR.length];
         for (int i = 0; i < COND_SNR.length; i++) COND_VALS[i] = (float) Math.log(COND_SNR[i] / 8.0);
+        DEFAULT_PATH = FabricLoader.getInstance().getGameDir().normalize().toString();
     }
 
     // mp_concat scales for 6 tensors of sizes [16, 16, 4, 16, 5, 1] → 58 total
@@ -89,24 +93,21 @@ public final class WorldPipeline implements AutoCloseable {
     private volatile SyntheticMapFactory syntheticMapFactory;
     private volatile long seed;
     private volatile float[] tau = new float[] {1F};
-
-    private final MemoryTileStore tileStore;
     private final long cacheLimitBytes = 100L * 1024 * 1024;
 
-    final InfiniteTensor coarse;
-    final InfiniteTensor latents;
-    final InfiniteTensor residual;
+    final AdditiveInfiniteTensor coarse;
+    final AdditiveInfiniteTensor latents;
+    final AdditiveInfiniteTensor residual;
 
     /** Uses shared models from PipelineModels (e.g. from mod init). Does not close models on close(). Seed is 64-bit (Python: seed & 0xFFFFFFFFFFFFFFFF). */
     public WorldPipeline(long seed, PipelineModels models) {
-        this.seed = seed & 0xFFFFFFFFFFFFFFFFL;
+        this.seed = seed;
         this.coarseModel = models.getCoarseModel();
         this.baseModel = models.getBaseModel();
         this.decoderModel = models.getDecoderModel();
         this.fuzedModel = models.getFuzedModel();
         this.ownModels = false;
         this.syntheticMapFactory = new SyntheticMapFactory(this.seed);
-        this.tileStore = new MemoryTileStore();
         this.coarse = buildCoarseStage();
         this.latents = buildLatentStage();
         this.residual = buildDecoderStage();
@@ -115,7 +116,7 @@ public final class WorldPipeline implements AutoCloseable {
     /** Loads its own models (e.g. for tests). Caller must close. */
     @TestOnly
     public WorldPipeline(long seed) {
-        this.seed = seed & 0xFFFFFFFFFFFFFFFFL;
+        this.seed = seed;
         ModelAssetManager.ensureAssetsReady();
         this.coarseModel = new OnnxModel(ModelAssetManager.resolveAssetPath("coarse_model.onnx"), "coarse");
         this.baseModel = new OnnxModel(ModelAssetManager.resolveAssetPath("base_model.onnx"), "base");
@@ -123,35 +124,41 @@ public final class WorldPipeline implements AutoCloseable {
         this.fuzedModel = new OnnxModel(ModelAssetManager.resolveAssetPath("fuzed.onnx"), "fuzed");
         this.ownModels = true;
         this.syntheticMapFactory = new SyntheticMapFactory(this.seed);
-        this.tileStore = new MemoryTileStore();
         this.coarse = buildCoarseStage();
         this.latents = buildLatentStage();
         this.residual = buildDecoderStage();
     }
 
     /** Lightweight seed change (Python change_seed): update seed and synthetic map, clear tile caches. Models stay loaded. */
-    public void setSeed(long newSeed) {
-        long s = newSeed & 0xFFFFFFFFFFFFFFFFL;
-        if (s == this.seed) return;
-        this.seed = s;
-        this.syntheticMapFactory = new SyntheticMapFactory(s);
-        tileStore.clearAllCaches();
+    public synchronized void updateInstance(final long newSeed, final String newPath) {
+        if (newSeed == this.seed && coarse.getCurrentPath().equals(newPath)) return;
+        updateInfiniteTensors(newPath);
+        this.seed = newSeed;
+        this.syntheticMapFactory = new SyntheticMapFactory(newSeed);
+    }
+
+    private synchronized void updateInfiniteTensors(String newPath) {
+        coarse.updatePath(newPath);
+        latents.updatePath(newPath);
+        residual.updatePath(newPath);
     }
 
     // =========================================================================
     // Coarse Stage
     // =========================================================================
 
-    private InfiniteTensor buildCoarseStage() {
+    private AdditiveInfiniteTensor buildCoarseStage() {
         int S = COARSE_TILE_SIZE, ST = COARSE_TILE_STRIDE;
         float[] ww = linearWeightWindow(S);
         TensorWindow outWin = new TensorWindow(new int[] {7, S, S}, new int[] {7, ST, ST});
-        return tileStore.getOrCreate(
+        return new AdditiveInfiniteTensor(
                 "base_coarse_map",
-                new Integer[] {7, null, null},
-                (wi, args) -> coarseTile(wi, ww),
+                new int[] {7, -1, -1},
                 outWin,
-                new InfiniteTensor[] {},
+                (wi, args) -> coarseTile(wi, ww),
+                null,
+                -1,
+                new AdditiveInfiniteTensor[] {},
                 new TensorWindow[] {},
                 cacheLimitBytes);
     }
@@ -160,7 +167,7 @@ public final class WorldPipeline implements AutoCloseable {
         int S = COARSE_TILE_SIZE, ST = COARSE_TILE_STRIDE;
         int i = wi[1], j = wi[2];
         int i1 = i * ST, j1 = j * ST;
-
+        Debug.debugCalls(wi, "coarse");
         // Synthetic map conditioning: channels [elev_sqrt, temp, tempStd, precip, precipStd]
         // Python call: synthetic_map_factory(j1, i1, j2, i2)
         // Coordinates are intentionally swapped
@@ -250,33 +257,35 @@ public final class WorldPipeline implements AutoCloseable {
     // Latent Stage
     // =========================================================================
 
-    private InfiniteTensor buildLatentStage() {
+    private AdditiveInfiniteTensor buildLatentStage() {
         int S = LATENT_TILE_SIZE, ST = LATENT_TILE_STRIDE;
         TensorWindow outWin = new TensorWindow(new int[] {6, S, S}, new int[] {6, ST, ST});
         TensorWindow coarseWin = new TensorWindow(new int[] {7, 4, 4}, new int[] {7, 1, 1}, new int[] {0, -1, -1});
         float[] ww = linearWeightWindow(S);
         float tInit = (float) Math.atan(EDMScheduler.SIGMA_MAX / SIGMA_DATA);
 
-        InfiniteTensor initLatent = tileStore.getOrCreateBatched(
+        final AdditiveInfiniteTensor initLatent = new AdditiveInfiniteTensor(
                 "init_latent_map",
-                new Integer[] {6, null, null},
-                (wis, args) -> latentBatch(wis, null, args.get(0), tInit, 5819, ww),
+                new int[] {6, -1, -1},
                 outWin,
-                new InfiniteTensor[] {coarse},
+                null,
+                (wis, args) -> latentBatch(wis, null, args.getFirst(), tInit, 5819, ww),
+                4,
+                new AdditiveInfiniteTensor[] {coarse},
                 new TensorWindow[] {coarseWin},
-                cacheLimitBytes,
-                4);
+                cacheLimitBytes);
 
         float interT = (float) Math.atan(0.35f / SIGMA_DATA);
-        return tileStore.getOrCreateBatched(
+        return new AdditiveInfiniteTensor(
                 "step_latent_map_0",
-                new Integer[] {6, null, null},
-                (wis, args) -> latentBatch(wis, args.get(0), args.get(1), interT, 5820, ww),
+                new int[] {6, -1, -1},
                 outWin,
-                new InfiniteTensor[] {initLatent, coarse},
+                null,
+                (wis, args) -> latentBatch(wis, args.getFirst(), args.get(1), interT, 5820, ww),
+                4,
+                new AdditiveInfiniteTensor[] {initLatent, coarse},
                 new TensorWindow[] {outWin, coarseWin},
-                cacheLimitBytes,
-                4);
+                cacheLimitBytes);
     }
 
     private List<FloatTensor> latentBatch(
@@ -298,6 +307,7 @@ public final class WorldPipeline implements AutoCloseable {
 
         for (int b = 0; b < batch; b++) {
             int[] ctx = wis.get(b);
+            Debug.debugCalls(ctx, "latent" + (prevSamples == null));
             int i1 = ctx[1] * ST, j1 = ctx[2] * ST;
 
             // Build conditioning from coarse slice (7, 4, 4)
@@ -332,7 +342,7 @@ public final class WorldPipeline implements AutoCloseable {
         LOG.debug("Base model called for {} chunks: {}", batch, chunkList);
 
         float[] noiseLabels = new float[batch];
-        for (int b = 0; b < batch; b++) noiseLabels[b] = t;
+        Arrays.fill(noiseLabels, t);
 
         float[] predBatch = baseModel.runModel(
                 modelInBatch, new long[] {batch, 5, S, S}, noiseLabels, new float[][] {condInputBatch}, new long[][] {
@@ -398,7 +408,6 @@ public final class WorldPipeline implements AutoCloseable {
         }
 
         float noiseLevelNorm = (0f - 0.5f) * (float) Math.sqrt(12.0);
-        float[] histRaw = HISTOGRAM_RAW;
 
         // mp_concat
         float[] out = new float[58];
@@ -407,7 +416,7 @@ public final class WorldPipeline implements AutoCloseable {
         off = appendScaled(out, off, p5Crop, MP_CONCAT_SCALES[1]);
         off = appendScaled(out, off, climateMeans, MP_CONCAT_SCALES[2]);
         off = appendScaled(out, off, maskCrop, MP_CONCAT_SCALES[3]);
-        off = appendScaled(out, off, histRaw, MP_CONCAT_SCALES[4]);
+        off = appendScaled(out, off, HISTOGRAM_RAW, MP_CONCAT_SCALES[4]);
         out[off] = noiseLevelNorm * MP_CONCAT_SCALES[5];
         return out;
     }
@@ -416,31 +425,36 @@ public final class WorldPipeline implements AutoCloseable {
     // Decoder Stage
     // =========================================================================
 
-    private InfiniteTensor buildDecoderStage() {
+    private AdditiveInfiniteTensor buildDecoderStage() {
         int S = DECODER_TILE_SIZE, ST = DECODER_TILE_STRIDE, lc = LATENT_COMPRESSION;
-        TensorWindow outWin = new TensorWindow(new int[] {DECODER_CHANNELS, S, S}, new int[] {DECODER_CHANNELS, ST, ST});
+        TensorWindow outWin =
+                new TensorWindow(new int[] {DECODER_CHANNELS, S, S}, new int[] {DECODER_CHANNELS, ST, ST});
         TensorWindow inpWin = new TensorWindow(new int[] {6, S / lc, S / lc}, new int[] {6, ST / lc, ST / lc});
         float[] ww = linearWeightWindow(S);
         float t = (float) Math.atan(EDMScheduler.SIGMA_MAX / SIGMA_DATA);
 
-        return tileStore.getOrCreate(
+        return new AdditiveInfiniteTensor(
                 "init_residual_map",
-                new Integer[] {2, null, null},
-                (wi, args) -> decoderTile(wi, args.getFirst(), t, ww),
+                new int[] {2, -1, -1},
                 outWin,
-                new InfiniteTensor[] {latents},
+                (wi, args) -> decoderTile(wi, args.getFirst(), t, ww),
+                null,
+                -1,
+                new AdditiveInfiniteTensor[] {latents},
                 new TensorWindow[] {inpWin},
                 cacheLimitBytes);
     }
 
     private FloatTensor decoderTile(int[] wi, FloatTensor latentSlice, float t, float[] ww) {
-        int S = DECODER_TILE_SIZE, ST = DECODER_TILE_STRIDE, lc = LATENT_COMPRESSION;
-        int Slc = S / lc;
-        int i1 = wi[1] * ST, j1 = wi[2] * ST;
-        float cosT = (float) Math.cos(t), sinT = (float) Math.sin(t);
+        Debug.debugCalls(wi, "decoder");
+        final int S = DECODER_TILE_SIZE;
+        final int ST = DECODER_TILE_STRIDE;
+        final int Slc = S / LATENT_COMPRESSION;
+        final int i1 = wi[1] * ST, j1 = wi[2] * ST;
+        final float cosT = (float) Math.cos(t), sinT = (float) Math.sin(t);
 
         // Unnormalize latents channels 0..3 (4 channels)
-        float[] latFlat = new float[4 * Slc * Slc];
+        final float[] latFlat = new float[4 * Slc * Slc];
         for (int ch = 0; ch < 4; ch++)
             for (int px = 0; px < Slc * Slc; px++) {
                 float w = latentSlice.data[5 * Slc * Slc + px];
@@ -486,14 +500,15 @@ public final class WorldPipeline implements AutoCloseable {
 
         //        for (int px = 0; px < S * S; px++) result.data[px] = newSample[px] * ww[px];
         //        System.arraycopy(ww, 0, result.data, S * S, S * S);
+        // TODO: pesar as tiles de flow e adj
         final float[] data = fuzedModel.run(inputs);
-        final float[] adj = computeDirection(Arrays.copyOfRange(data,0,S*S),S);
-        final float[] flow = computeFlow(adj,S);
-        final float[] out = new float[S*S*DECODER_CHANNELS];
-        System.arraycopy(data, 7*S*S, out, 0, S*S);
-        System.arraycopy(data, 0, out, S*S, 7*S*S);
-        System.arraycopy(adj, 0, out, 8*S*S, S*S);
-        System.arraycopy(flow,0,out,9*S*S,S*S);
+        final float[] adj = computeDirection(Arrays.copyOfRange(data, 0, S * S), S);
+        final float[] flow = computeFlow(adj, S);
+        final float[] out = new float[S * S * DECODER_CHANNELS];
+        System.arraycopy(data, 7 * S * S, out, 0, S * S);
+        System.arraycopy(data, 0, out, S * S, 7 * S * S);
+        System.arraycopy(adj, 0, out, 8 * S * S, S * S);
+        System.arraycopy(flow, 0, out, 9 * S * S, S * S);
 
         return new FloatTensor(new int[] {DECODER_CHANNELS, S, S}, out);
     }
@@ -507,16 +522,6 @@ public final class WorldPipeline implements AutoCloseable {
         return seed;
     }
 
-    /** Returns the total count of newly computed tensor windows since startup. */
-    public long getTotalComputedWindowCount() {
-        return tileStore.getTotalComputedWindowCount();
-    }
-
-    /** Returns a point-in-time memory usage snapshot for all pipeline tensors. */
-    public MemoryProfiler.Snapshot takeMemorySnapshot() {
-        return tileStore.takeSnapshot();
-    }
-
     /**
      * Returns a coarse tensor slice with shape [7, ci1-ci0, cj1-cj0].
      * Coordinates are in coarse index units (1 unit = 256 native pixels).
@@ -527,81 +532,61 @@ public final class WorldPipeline implements AutoCloseable {
     }
 
     public FloatTensor getDecoderSlice(int x, int z) {
-        return residual.getSlice(new int[] {0, x << 9, z << 9}, new int[] {DECODER_CHANNELS, (x + 1) << 9, (z + 1) << 9});
+        return residual.getSlice(
+                new int[] {0, x << 9, z << 9}, new int[] {DECODER_CHANNELS, (x + 1) << 9, (z + 1) << 9});
     }
 
     public float[] getClimate(int x, int z, float[] elevFlat) {
         return computeClimate(x << 9, z << 9, (x + 1) << 9, (z + 1) << 9, elevFlat, 1 << 9, 1 << 9);
     }
 
-    /**
-     * Get elevation and climate for a bounding box.
-     *
-     * @return float[2]: [0] = elev (H*W flat), [1] = climate (5*H*W flat, or null)
-     */
-    //    public float[][] get(int i1, int j1, int i2, int j2, boolean withClimate) {
-    //        float[] elevFlat = computeElev(i1, j1, i2, j2);
-    //        int H = i2 - i1, W = j2 - j1;
-    //        float[] climate = withClimate ? computeClimate(i1, j1, i2, j2, elevFlat, H, W) : null;
-    //        return new float[][]{elevFlat, climate};
-    //    }
-
-    // =========================================================================
-    // Elevation
-    // =========================================================================
-
-    //    private float[] computeElev(int i1, int j1, int i2, int j2) {
-    //        int lc = LATENT_COMPRESSION;
-    //        float sigma = 5.0f;
-    //        int ks = ((int) (sigma * 2) / 2) * 2 + 1;
-    //        int padLr = ks / 2 + 1;
-    //        int padHr = padLr * lc;
-    //
-    //        // Align padding to lc-pixel grid
-    //        int pi1 = Math.floorDiv(i1 - padHr, lc) * lc;
-    //        int pj1 = Math.floorDiv(j1 - padHr, lc) * lc;
-    //        int pi2 = -Math.floorDiv(-(i2 + padHr), lc) * lc;
-    //        int pj2 = -Math.floorDiv(-(j2 + padHr), lc) * lc;
-    //        int pH = pi2 - pi1, pW = pj2 - pj1;
-    //
-    //        // Residual slice (2, pH, pW)
-    //        FloatTensor resSlice = residual.getSlice(new int[]{0, pi1, pj1}, new int[]{2, pi2, pj2});
-    //        float[][] residualP = new float[pH][pW];
-    //        for (int r = 0; r < pH; r++)
-    //            for (int c = 0; c < pW; c++) {
-    //                float w = resSlice.data[pH * pW + r * pW + c];
-    //                float v = (w > 1e-6f) ? resSlice.data[r * pW + c] / w : 0f;
-    //                residualP[r][c] = v * RESIDUAL_STD + RESIDUAL_MEAN;
-    //            }
-    //
-    //        // Latent slice (6, lH, lW)
-    //        int lH = pH / lc, lW = pW / lc;
-    //        FloatTensor latSlice = latents.getSlice(
-    //                new int[]{0, pi1 / lc, pj1 / lc}, new int[]{6, pi2 / lc, pj2 / lc});
-    //        float[][] lowfreqP = new float[lH][lW];
-    //        for (int r = 0; r < lH; r++)
-    //            for (int c = 0; c < lW; c++) {
-    //                float w = latSlice.data[5 * lH * lW + r * lW + c];
-    //                float v = (w > 1e-6f) ? latSlice.data[4 * lH * lW + r * lW + c] / w : 0f;
-    //                lowfreqP[r][c] = v * LOWFREQ_STD + LOWFREQ_MEAN;
-    //            }
-    //
-    //        float[][] newLowres = LaplacianUtils.laplacianDenoise(residualP, lowfreqP, sigma);
-    //        float[][] elevP = LaplacianUtils.laplacianDecode(residualP, newLowres);
-    //
-    //        int oi = i1 - pi1, oj = j1 - pj1, H = i2 - i1, W = j2 - j1;
-    //        float[] flat = new float[H * W];
-    //        for (int r = 0; r < H; r++)
-    //            for (int c = 0; c < W; c++) {
-    //                float es = elevP[oi + r][oj + c];
-    //                flat[r * W + c] = (float) (Math.signum(es) * es * es);
-    //            }
-    //        return flat;
-    //    }
-
     // =========================================================================
     // Climate
     // =========================================================================
+
+    public static float[][][] localBaselineTemperature(float[][] T, float[][] e, int win, float fallbackThreshold) {
+        int H = T.length, W = T[0].length;
+        int outH = H - win + 1, outW = W - win + 1;
+        float[][][] result = new float[2][outH][outW];
+
+        float fallbackBeta = -0.0065f;
+        float betaMin = -0.012f, betaMax = 0.0f;
+        float eps = 1e-6f;
+
+        for (int r = 0; r < outH; r++) {
+            for (int c = 0; c < outW; c++) {
+                // Compute windowed weighted averages (weight = land mask = e > 0)
+                double muT = 0, muE = 0, muE2 = 0, muET = 0, sumW = 0;
+                int n = win * win;
+                for (int dr = 0; dr < win; dr++) {
+                    for (int dc = 0; dc < win; dc++) {
+                        float land = (e[r + dr][c + dc] > 0) ? 1.0f : 0.0f;
+                        muT += T[r + dr][c + dc] * land;
+                        muE += e[r + dr][c + dc] * land;
+                        muE2 += e[r + dr][c + dc] * e[r + dr][c + dc] * land;
+                        muET += e[r + dr][c + dc] * T[r + dr][c + dc] * land;
+                        sumW += land;
+                    }
+                }
+                double den = sumW + eps;
+                muT /= den;
+                muE /= den;
+                muE2 /= den;
+                muET /= den;
+                double varE = muE2 - muE * muE;
+                double covET = muET - muE * muT;
+                double beta = (varE < 1.0 || sumW < fallbackThreshold * n) ? fallbackBeta : (covET / (varE + eps));
+                beta = Math.max(betaMin, Math.min(betaMax, beta));
+
+                int pad = (win - 1) / 2;
+                float Tc = T[r + pad][c + pad];
+                float ec = e[r + pad][c + pad];
+                result[0][r][c] = (float) (Tc - beta * ec);
+                result[1][r][c] = (float) beta;
+            }
+        }
+        return result;
+    }
 
     private float[] computeClimate(int i1, int j1, int i2, int j2, float[] elevFlat, int H, int W) {
         int S = 32 * LATENT_COMPRESSION; // native pixels per coarse pixel in stride sense
@@ -634,8 +619,7 @@ public final class WorldPipeline implements AutoCloseable {
         }
 
         // Windowed lapse-rate regression
-        float[][][] lbt = LaplacianUtils.localBaselineTemperature(
-                to2D(coarseMap[2], cH, cW), to2D(coarseElev, cH, cW), win, 0.02f);
+        float[][][] lbt = localBaselineTemperature(to2D(coarseMap[2], cH, cW), to2D(coarseElev, cH, cW), win, 0.02f);
         int lH = lbt[0].length, lW = lbt[0][0].length;
 
         // Central coarse (crop pad pixels from each side)
@@ -651,14 +635,12 @@ public final class WorldPipeline implements AutoCloseable {
         float[] climate = new float[5 * H * W];
         for (int r = 0; r < H; r++) {
             // fractional index into lbt/centralCoarse arrays (matches Python's u = (ii+0.5)/S - ci1 + 0.5)
-            float gridY = (i1 + r + 0.5f) / S - ci1 + 0.5f;
-            float cenGridY = gridY;
+            float cenGridY = (i1 + r + 0.5f) / S - ci1 + 0.5f;
             for (int c = 0; c < W; c++) {
-                float gridX = (j1 + c + 0.5f) / S - cj1 + 0.5f;
-                float cenGridX = gridX;
+                float cenGridX = (j1 + c + 0.5f) / S - cj1 + 0.5f;
 
-                float tBase = bilinearSample2D(lbt[0], lH, lW, gridY, gridX);
-                float beta = bilinearSample2D(lbt[1], lH, lW, gridY, gridX);
+                float tBase = bilinearSample2D(lbt[0], lH, lW, cenGridY, cenGridX);
+                float beta = bilinearSample2D(lbt[1], lH, lW, cenGridY, cenGridX);
                 float tempReal = tBase + beta * Math.max(0f, elevFlat[r * W + c]);
 
                 climate[r * W + c] = tempReal;
@@ -725,8 +707,8 @@ public final class WorldPipeline implements AutoCloseable {
     }
 
     static float bilinearSample2D(float[][] src, int H, int W, float gy, float gx) {
-        float y = Math.max(0f, Math.min(H - 1f, gy));
-        float x = Math.max(0f, Math.min(W - 1f, gx));
+        float y = Math.clamp(gy, 0f, H - 1f);
+        float x = Math.clamp(gx, 0f, W - 1f);
         int y0 = (int) y, y1 = Math.min(H - 1, y0 + 1);
         int x0 = (int) x, x1 = Math.min(W - 1, x0 + 1);
         float wy = y - y0, wx = x - x0;
@@ -745,4 +727,10 @@ public final class WorldPipeline implements AutoCloseable {
             fuzedModel.close();
         }
     }
+
+    @TestOnly
+    public InfiniteTensor getDecoder() {
+        return residual;
+    }
+
 }

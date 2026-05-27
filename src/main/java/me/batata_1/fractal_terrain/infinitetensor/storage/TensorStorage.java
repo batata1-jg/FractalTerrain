@@ -1,51 +1,41 @@
 package me.batata_1.fractal_terrain.infinitetensor.storage;
 
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
-import static me.batata_1.fractal_terrain.math.CoordTranslator.toInter;
-import static me.batata_1.fractal_terrain.math.CoordTranslator.toIntra;
-import static me.batata_1.fractal_terrain.util.FractalTerrainUtil.*;
 
-import com.google.common.base.Function;
-import com.mojang.datafixers.util.Pair;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 public class TensorStorage {
 
     private static final Logger LOG = getLogger(TensorStorage.class);
 
-    private static final ExecutorService INFERENCE_EXECUTOR = Executors.newSingleThreadExecutor(r -> {
+    protected static final ExecutorService INFERENCE_EXECUTOR = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "terrain-diffusion-inference");
         t.setDaemon(true);
         return t;
     });
 
-    private final ConcurrentHashMap<Pair<Integer, Integer>, CompletableFuture<FloatTensor>> CACHE =
+    protected final ConcurrentHashMap<List<Integer>, CompletableFuture<FloatTensor>> CACHE =
             new ConcurrentHashMap<>(16, 0.75f);
-    private final Set<Pair<Integer, Integer>> GENERATED_ENTRIES =
-            Collections.synchronizedSet(new LinkedHashSet<>(16, 0.75f));
+    protected final Set<List<Integer>> GENERATED_ENTRIES = Collections.synchronizedSet(new LinkedHashSet<>(16, 0.75f));
 
-    private final String PATH;
-    private final int entry_len;
+    protected final String PATH;
+    protected final int rank;
 
-    public TensorStorage(String path, int entryLen) {
+    public TensorStorage(String path, int rank) {
         PATH = path;
-        entry_len = entryLen;
+        this.rank = rank;
         bootstrap();
     }
 
-    private Function<Pair<Integer, Integer>, FloatTensor> entry_creating_function = null;
-
-    public TensorStorage(String path, int entryLen, Function<Pair<Integer, Integer>, FloatTensor> f) {
-        PATH = path;
-        entry_len = entryLen;
-        entry_creating_function = f;
-        bootstrap();
+    public boolean inStorage(int[] index) {
+        return GENERATED_ENTRIES.contains(toKey(index));
     }
 
-    private void serialize(String path, FloatTensor t) throws IOException {
+    protected void serialize(String path, FloatTensor t) throws IOException {
         final int el = t.data.length;
         final int sl = t.shape.length;
         final float[] arr = new float[el + sl + 1];
@@ -57,7 +47,7 @@ public class TensorStorage {
         out.close();
     }
 
-    private FloatTensor deserialize(String path) throws IOException, ClassNotFoundException {
+    protected FloatTensor deserialize(String path) throws IOException, ClassNotFoundException {
         final ObjectInputStream in = new ObjectInputStream(new FileInputStream(path + ".ser"));
         final float[] arr = (float[]) in.readObject();
         in.close();
@@ -80,114 +70,114 @@ public class TensorStorage {
         CACHE.clear();
     }
 
+    // TODO: implementar isso
+    private static String NorP(int x) {
+        if (x < 0) return "N";
+        return "P";
+    }
+
+    // will not be a strong implementation because will be replaced by sqlite
+    private static List<Integer> getKeyFromName(final String s, final int rank) {
+        int curIndex = s.indexOf('_');
+        String curString = s;
+
+        if (curIndex == -1) {
+            LOG.error("invalid in tiles dir (no '_')");
+            return null;
+        }
+
+        final int[] ans = new int[rank];
+        for (int id = 0; id < rank; id++) {
+            curString = curString.substring(curIndex + 1);
+            curIndex = curString.indexOf("_");
+            if (curIndex == -1) curIndex = curString.length();
+            int pos = Integer.parseInt(curString.substring(1, curIndex));
+            int sign = curString.charAt(0) == 'N' ? -1 : 1;
+            ans[id] = pos * sign;
+        }
+        return toKey(ans);
+    }
+
+    protected static String giveNameToKey(List<Integer> key) {
+        StringBuilder ans = new StringBuilder();
+        for (int id : key) {
+            ans.append("_").append(NorP(id)).append(Math.abs(id));
+        }
+        return ans.append("_").toString();
+    }
+
     private synchronized void bootstrap() {
         File file = new File(getEntryDir());
         if (!file.exists()) if (file.mkdirs()) LOG.info("created tile dir in: {}", getEntryDir());
         String[] createdTiles = file.list();
         if (createdTiles != null)
             for (String tile : createdTiles) {
-                final var xz = interpretTileName(tile);
-                if (xz == null) {
+                final List<Integer> key = getKeyFromName(tile, rank);
+                if (key == null) {
                     LOG.error("invalid file, skipping");
                     continue;
                 }
-                GENERATED_ENTRIES.add(xz);
+                GENERATED_ENTRIES.add(key);
             }
     }
 
-    // xz global coords
-
-    public boolean inBorder(Pair<Integer, Integer> xz) {
-        final var intra = toIntra(xz, entry_len);
-        return intra.getFirst() == entry_len - 1
-                || intra.getFirst() == 0
-                || intra.getSecond() == entry_len - 1
-                || intra.getSecond() == 0;
+    public FloatTensor getEntry(int[] index) {
+        return getEntry(toKey(index));
     }
 
-    public float getReverseValue(int x, int z) {
-        final FloatTensor entry = getEntry(toInter(Pair.of(x, z), entry_len));
-        final var intra = toIntra(Pair.of(x, z), entry_len);
-        return entry.entryAt(new long[] {intra.getFirst(), entry_len - 1 - intra.getSecond()});
-    }
-
-    public float getValue(int x, int z) {
-        final FloatTensor entry = getEntry(toInter(Pair.of(x, z), entry_len));
-        final var intra = toIntra(Pair.of(x, z), entry_len);
-        return entry.entryAt(new long[] {intra.getFirst(), intra.getSecond()});
-    }
-
-    public float getValue(Pair<Integer, Integer> xz, int ch) {
-        final FloatTensor entry = getEntry(toInter(xz, entry_len));
-        final var intra = toIntra(xz, entry_len);
-        return entry.entryAt(new long[] {ch, intra.getFirst(), intra.getSecond()});
-    }
-
-    // xz inter coords
-    public FloatTensor getEntry(Pair<Integer, Integer> xz) {
+    public FloatTensor getEntry(List<Integer> key) {
         try {
-            if (CACHE.containsKey(xz)) return CACHE.get(xz).get();
-            return fetchEntry(xz).get();
+            if (CACHE.containsKey(key)) return CACHE.get(key).get();
+            return fetchEntry(key).get();
         } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException(e);
         }
     }
 
-    // xz inter coords
-    public synchronized void addOrOverwriteEntry(CompletableFuture<FloatTensor> t, Pair<Integer, Integer> xz) {
-
+    public synchronized void addOrOverwriteEntry(CompletableFuture<FloatTensor> t, final int[] index) {
+        final List<Integer> key = toKey(index);
         final CompletableFuture<FloatTensor> ct = t.thenApply(entry -> {
             try {
-                serialize(getEntryDir() + "/" + giveNameToTile(xz), entry);
+                serialize(getEntryDir() + "/" + giveNameToKey(key), entry);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
             return entry;
         });
-
-        GENERATED_ENTRIES.add(xz);
-        CACHE.put(xz, ct);
+        GENERATED_ENTRIES.add(key);
+        CACHE.put(key, ct);
     }
 
     // xz inter coords
-    public boolean existsEntry(Pair<Integer, Integer> xz) {
-        return GENERATED_ENTRIES.contains(xz);
-    }
-
-    // xz inter coords
-    private synchronized CompletableFuture<FloatTensor> fetchEntry(Pair<Integer, Integer> xz) {
-
-        if (CACHE.containsKey(xz)) return CACHE.get(xz);
-
-        if (GENERATED_ENTRIES.contains(xz)) {
+    protected synchronized CompletableFuture<FloatTensor> fetchEntry(List<Integer> key) {
+        if (CACHE.containsKey(key)) return CACHE.get(key);
+        if (GENERATED_ENTRIES.contains(key)) {
             final CompletableFuture<FloatTensor> ct = CompletableFuture.supplyAsync(
                     () -> {
-                        final File file = new File(getEntryDir() + "/" + giveNameToTile(xz) + ".ser");
+                        final File file = new File(getEntryDir() + "/" + giveNameToKey(key) + ".ser");
                         if (!file.exists()) {
-                            LOG.error(
-                                    "file {}, aka: {}-{} not exist",
-                                    file.getAbsolutePath(),
-                                    xz.getFirst(),
-                                    xz.getSecond());
+                            LOG.error("file {}, aka: {} not exist", file.getAbsolutePath(), key);
                             throw new RuntimeException();
                         }
                         try {
-                            return deserialize(getEntryDir() + "/" + giveNameToTile(xz));
+                            return deserialize(getEntryDir() + "/" + giveNameToKey(key));
                         } catch (IOException | ClassNotFoundException e) {
                             throw new RuntimeException(e);
                         }
                     },
                     INFERENCE_EXECUTOR);
-            CACHE.put(xz, ct);
-            return CACHE.get(xz);
+            CACHE.put(key, ct);
+            return CACHE.get(key);
         }
 
-        if (entry_creating_function != null) {
-            addOrOverwriteEntry(CompletableFuture.completedFuture(entry_creating_function.apply(xz)), xz);
-            return CACHE.get(xz);
-        }
-
-        LOG.error("tile not in storage/no creation function found");
+        LOG.error(
+                "tile index = {} of path  {} not in storage/no ( GeneratedEntries = {} and CACHE = {} creation function found",
+                key,
+                getPath(),
+                GENERATED_ENTRIES.contains(key),
+                CACHE.containsKey(key));
+        printCurrentEntrySet();
+        printEntryMapHash();
         throw new RuntimeException();
     }
 
@@ -199,7 +189,15 @@ public class TensorStorage {
         LOG.info("FloatTensor Map: {}", CACHE);
     }
 
+    @Nullable
     public synchronized String getPath() {
         return PATH;
+    }
+
+    // TODO:implement this
+    public void evictIfNeeded(long cacheLimitBytes) {}
+
+    protected static List<Integer> toKey(int[] index) {
+        return Arrays.stream(index).boxed().toList();
     }
 }

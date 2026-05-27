@@ -1,21 +1,21 @@
-//package me.batata_1.fractalterrain.ml.tensorProviders;
+// package me.batata_1.fractalterrain.ml.tensorProviders;
 //
-//import static me.batata_1.fractalterrain.FractalTerrainInstance.ENV;
-//import static me.batata_1.fractalterrain.math.CoordTranslator.toEntry;
-//import static net.minecraft.util.math.MathHelper.nextGaussian;
+// import static me.batata_1.fractalterrain.FractalTerrainInstance.ENV;
+// import static me.batata_1.fractalterrain.math.CoordTranslator.toEntry;
+// import static net.minecraft.util.math.MathHelper.nextGaussian;
 //
-//import ai.onnxruntime.OnnxTensor;
-//import ai.onnxruntime.OrtException;
-//import com.google.common.hash.Hashing;
-//import com.mojang.datafixers.util.Pair;
-//import java.nio.FloatBuffer;
-//import net.minecraft.util.math.random.Random;
+// import ai.onnxruntime.OnnxTensor;
+// import ai.onnxruntime.OrtException;
+// import com.google.common.hash.Hashing;
+// import com.mojang.datafixers.util.Pair;
+// import java.nio.FloatBuffer;
+// import net.minecraft.util.math.random.Random;
 //
-//public class GaussianNoisePatchProvider {
+// public class GaussianNoisePatchProvider {
 //
 //    public static long wseed;
 //
-//    public static void setSeed(long seed) {
+//    public static void updateInstance(long seed) {
 //        wseed = seed;
 //    }
 //
@@ -46,4 +46,4 @@
 //        noise.flip();
 //        return OnnxTensor.createTensor(ENV, noise, shape);
 //    }
-//}
+// }

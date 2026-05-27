@@ -1,5 +1,6 @@
 package me.batata_1.fractal_terrain;
 
+import static me.batata_1.fractal_terrain.debug.Debug.debug;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import me.batata_1.fractal_terrain.ml.models.ModelAssetManager;
@@ -32,7 +33,7 @@ public class FractalTerrain implements ModInitializer {
             LOG.info("Loaded entry of {}: {} = {}", key, id, object);
         });
     }
-    //TODO: usar FabricLoader.getInstance().isDevelopmentEnvironment();
+    // TODO: usar FabricLoader.getInstance().isDevelopmentEnvironment();
     @Override
     public void onInitialize() {
         Registry.register(
@@ -44,15 +45,17 @@ public class FractalTerrain implements ModInitializer {
 
         ModelAssetManager.ensureAssetsReady();
         PipelineModels.load();
-        
+
         ServerWorldEvents.LOAD.register((MinecraftServer server, ServerWorld world) -> {
             final ChunkGenerator chunkGenerator =
                     server.getOverworld().getChunkManager().getChunkGenerator();
-            BiomeSource source = server.getOverworld().getChunkManager().getChunkGenerator().getBiomeSource();
-            LOG.info("biomas: {} ",source.getBiomes());
+            BiomeSource source =
+                    server.getOverworld().getChunkManager().getChunkGenerator().getBiomeSource();
+            LOG.info("biomas: {} ", source.getBiomes());
             if (!(chunkGenerator instanceof FractalTerrainChunkGenerator)) return;
             if (world.getRegistryKey() != World.OVERWORLD) return;
             FractalTerrainInstance.init(server);
+            debug();
         });
 
         ServerLifecycleEvents.SERVER_STOPPED.register((MinecraftServer server) -> {
@@ -61,6 +64,5 @@ public class FractalTerrain implements ModInitializer {
             if (!(chunkGenerator instanceof FractalTerrainChunkGenerator)) return;
             FractalTerrainInstance.close();
         });
-
     }
 }
