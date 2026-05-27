@@ -10,14 +10,11 @@ public class PipelinePreprocessing {
     private static final int[] dx = {-1, 1, -1, 1, 0, 0, -1, 1};
     private static final int[] dz = {1, 1, -1, -1, -1, 1, 0, 0};
 
-    // so retorna um valor
     public static int neighbor(float adj) {
-        for (int i = 0; i < 8; i++) if ((((int) adj) & (1 << i)) == 1) return i;
+        for (int i = 0; i < 8; i++) if ((((int) adj) & (1 << i))!=0) return i;
         return -1;
     }
 
-
-    //TODO: correct flow
     public static float[] computeFlow(final float[] adj, final int size) {
         final int[] inDegree = new int[size * size];
         final float[] flow = new float[size * size];
