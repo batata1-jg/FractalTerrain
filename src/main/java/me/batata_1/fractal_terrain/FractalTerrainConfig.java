@@ -9,6 +9,8 @@ import net.fabricmc.loader.api.FabricLoader;
 
 public final class FractalTerrainConfig {
 
+    public static final int BINARY_SEARCH_MAX_STEPS = 20;
+    public static final String DEFAULT_DEBUG_PATH = "run/debug";
     public static final boolean DEBUG = false;
     public static final int CH = 0;
     public static final int X = 1;
