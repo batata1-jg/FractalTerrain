@@ -1,5 +1,7 @@
 package me.batata_1.fractal_terrain.infinitetensor;
 
+import java.util.Arrays;
+
 /**
  * Defines the sliding window layout for an InfiniteTensor.
  *
@@ -25,6 +27,7 @@ public class TensorWindow {
         this.size = size.clone();
         this.stride = size.clone();
         this.offset = new int[size.length];
+        Arrays.fill(this.offset, 0);
     }
 
     /** Overlapping windows with given stride, starting at zero. */
@@ -91,5 +94,23 @@ public class TensorWindow {
             result[i] = Math.floorDiv(p - offset[i], stride[i]);
         }
         return result;
+    }
+
+    // TODO: tentar otimizar isso pra ter menos memoria (tirar esse new)
+    public int[] getSinglePixelIntersection(final int[] coords) {
+        final int n = size.length;
+        final int[] res = new int[n];
+        for (int i = 0; i < n; i++) {
+            res[i] = Math.floorDiv(coords[i] - offset[i], stride[i]);
+        }
+        return res;
+    }
+
+    public int[] getPerWindowCoord(final int[] coords) {
+        for (int i = 0; i < coords.length; i++) {
+            coords[i] %= stride[i];
+            if (coords[i] < 0) coords[i] = (coords[i] + stride[i]) % stride[i];
+        }
+        return coords;
     }
 }

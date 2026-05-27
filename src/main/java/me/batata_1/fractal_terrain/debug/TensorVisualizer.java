@@ -3,7 +3,6 @@ package me.batata_1.fractal_terrain.debug;
 import static me.batata_1.fractal_terrain.debug.Debug.DEBUG_LOGGER;
 
 import ai.onnxruntime.OnnxTensor;
-import com.mojang.datafixers.util.Pair;
 import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
 import java.io.File;
@@ -59,17 +58,17 @@ public class TensorVisualizer {
 
         float[] ftu = new float[(int) (tl.getShape()[1] * tl.getShape()[2])];
 
-        DEBUG_LOGGER.info("first tensor sampleElev {} {}", tl.entryAt(new long[] {channel, 0, 0}), name);
+        DEBUG_LOGGER.info("first tensor sampleElev {} {}", tl.entryAt(new int[] {channel, 0, 0}), name);
         printBounds(tl.get(), "cur seen tensor has bounds");
         for (int i = 0; i < tl.getShape()[1]; i++)
             for (int j = 0; j < tl.getShape()[2]; j++) {
                 if (0 == tl.getShape()[0] - 1 || !seeAvg) {
-                    ftu[(int) (j + tl.getShape()[1] * i)] = tl.entryAt(new long[] {channel, i, j});
+                    ftu[(int) (j + tl.getShape()[1] * i)] = tl.entryAt(new int[] {channel, i, j});
                     continue;
                 }
 
                 ftu[(int) (j + tl.getShape()[1] * i)] =
-                        tl.entryAt(new long[] {channel, i, j}) / tl.entryAt(new long[] {(tl.getShape()[0] - 1), i, j});
+                        tl.entryAt(new int[] {channel, i, j}) / tl.entryAt(new int[] {(tl.getShape()[0] - 1), i, j});
             }
         FloatTensor t = new FloatTensor(ftu, new int[] {tl.getShape()[1], tl.getShape()[2]});
 
@@ -82,8 +81,8 @@ public class TensorVisualizer {
         float min = 1000000;
         for (int i = 0; i < t.getShape()[0]; i++)
             for (int j = 0; j < t.getShape()[1]; j++) {
-                max = Math.max(max, t.entryAt(Pair.of(i, j)));
-                min = Math.min(min, t.entryAt(Pair.of(i, j)));
+                max = Math.max(max, t.entryAt(new int[]{i,j}));
+                min = Math.min(min, t.entryAt(new int[]{i,j}));
             }
         DEBUG_LOGGER.info(" bounds of amplitude min are [{},{}] for {}", min, max, name);
         final float eps = 1e-5F;
@@ -91,7 +90,7 @@ public class TensorVisualizer {
         for (int i = 0; i < t.getShape()[0]; i++) {
             for (int j = 0; j < t.getShape()[1]; j++) {
 
-                float vi = (t.entryAt(Pair.of(i, j)) - min) / (max - min + eps);
+                float vi = (t.entryAt(new int[]{i,j}) - min) / (max - min + eps);
                 int v = (int) (255F * vi);
 
                 arr[(int) (j + i * t.getShape()[0])] = v;

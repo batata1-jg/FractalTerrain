@@ -1,62 +1,59 @@
 package me.batata_1.fractal_terrain.infinitetensor;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import me.batata_1.fractal_terrain.infinitetensor.storage.FloatTensor;
+import me.batata_1.fractal_terrain.infinitetensor.storage.TensorStorage;
+import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.TestOnly;
 
-/**
- * A lazy, sliding-window "infinite" tensor backed by a {@link MemoryTileStore}.
- *
- * <p>Only the <em>direct</em> cache strategy is implemented: each computed window
- * output is stored in an LRU cache keyed by window index.  Overlapping windows
- * are summed to produce the final slice.
- *
- * <p>Create instances exclusively through {@link MemoryTileStore#getOrCreate}.
- */
-public class InfiniteTensor {
+public abstract class InfiniteTensor {
 
-    final String id;
+    protected final String id;
 
     /** Shape in each dimension; null = unbounded. */
-    final Integer[] shape;
+    protected final int[] shape;
 
     /** Defines position and size of each output window. */
-    final TensorWindow outputWindow;
+    protected final TensorWindow outputWindow;
 
     /** Non-batched compute function (null if batched). */
-    final TensorFunction function;
+    protected final TensorFunction function;
 
     /** Batched compute function (null if non-batched). */
-    final BatchTensorFunction batchFunction;
+    protected final TensorFunction.BatchTensorFunction batchFunction;
 
     /** Maximum number of windows per batch call (0 = non-batched). */
-    final int batchSize;
+    protected final int batchSize;
 
     /** Upstream dependency tensors. */
-    final InfiniteTensor[] deps;
+    protected final InfiniteTensor[] deps;
 
     /** How to slice each dependency for a given window index. */
-    final TensorWindow[] depWindows;
+    protected final TensorWindow[] depWindows;
 
-    /** Owning store — used for cache reads/writes and dependency resolution. */
-    final MemoryTileStore store;
+    /** Owning storage — used for cache reads/writes and dependency resolution. */
+    protected volatile TensorStorage storage;
+
+    protected volatile AtomicLong counter = new AtomicLong(0);
 
     /**
      * Soft limit on cached window bytes.  {@code Long.MAX_VALUE} = unlimited.
      * Eviction occurs after a new window is written.
      */
-    final long cacheLimitBytes;
+    protected final long cacheLimitBytes;
 
     InfiniteTensor(
             String id,
-            Integer[] shape,
+            int[] shape,
             TensorWindow outputWindow,
             TensorFunction function,
-            BatchTensorFunction batchFunction,
+            TensorFunction.BatchTensorFunction batchFunction,
             int batchSize,
             InfiniteTensor[] deps,
             TensorWindow[] depWindows,
-            MemoryTileStore store,
             long cacheLimitBytes) {
         this.id = id;
         this.shape = shape;
@@ -66,7 +63,7 @@ public class InfiniteTensor {
         this.batchSize = batchSize;
         this.deps = deps;
         this.depWindows = depWindows;
-        this.store = store;
+        this.storage = null;
         this.cacheLimitBytes = cacheLimitBytes;
     }
 
@@ -90,23 +87,24 @@ public class InfiniteTensor {
 
         int[] lo = outputWindow.getLowestIntersection(pixelRange);
         int[] hi = outputWindow.getHighestIntersection(pixelRange);
-
+        if (storage == null) throw new IllegalStateException("storage was not initialized");
         iterateWindows(lo, hi, windowIndex -> {
-            FloatTensor cached = store.getCachedWindow(id, windowIndex);
+            final FloatTensor cached = storage.getEntry(windowIndex);
+            // FloatTensor cached = storage.getCachedWindow(id, windowIndex);
             if (cached == null) return;
 
-            int[][] wBounds = outputWindow.getBounds(windowIndex);
+            final int[][] wBounds = outputWindow.getBounds(windowIndex);
 
             // Intersection of the window bounds with the requested pixel range.
-            int[][] isect = new int[n][2];
+            final int[][] isect = new int[n][2];
             for (int d = 0; d < n; d++) {
                 isect[d][0] = Math.max(pixelRange[d][0], wBounds[d][0]);
                 isect[d][1] = Math.min(pixelRange[d][1], wBounds[d][1]);
                 if (isect[d][0] >= isect[d][1]) return; // no overlap
             }
 
-            int[][] srcRegion = new int[n][2];
-            int[][] dstRegion = new int[n][2];
+            final int[][] srcRegion = new int[n][2];
+            final int[][] dstRegion = new int[n][2];
             for (int d = 0; d < n; d++) {
                 srcRegion[d][0] = isect[d][0] - wBounds[d][0];
                 srcRegion[d][1] = isect[d][1] - wBounds[d][0];
@@ -114,18 +112,22 @@ public class InfiniteTensor {
                 dstRegion[d][1] = isect[d][1] - pixelRange[d][0];
             }
 
+            updateOutput(output, cached, dstRegion, srcRegion);
             output.addFrom(cached, dstRegion, srcRegion);
         });
 
-        store.evictIfNeeded(id, cacheLimitBytes);
+        storage.evictIfNeeded(cacheLimitBytes);
         return output;
     }
+
+    protected abstract void updateOutput(
+            final FloatTensor output, final FloatTensor src, final int[][] dstRegion, final int[][] srcRegion);
 
     /**
      * Ensures every window intersecting {@code pixelRange} is present in the cache.
      * Recursively ensures upstream dependencies are computed first.
      */
-    void ensureComputed(int[][] pixelRange) {
+    protected void ensureComputed(int[][] pixelRange) {
         ensureComputedRanges(Collections.singletonList(pixelRange));
     }
 
@@ -135,13 +137,15 @@ public class InfiniteTensor {
      * deduped (no bounding-box union, so we only request windows that actually intersect
      * at least one range).
      */
-    void ensureComputedRanges(List<int[][]> pixelRanges) {
+    protected void ensureComputedRanges(List<int[][]> pixelRanges) {
         Set<List<Integer>> pendingSet = new LinkedHashSet<>();
         for (int[][] range : pixelRanges) {
             int[] lo = outputWindow.getLowestIntersection(range);
             int[] hi = outputWindow.getHighestIntersection(range);
+            if (storage == null) throw new IllegalStateException("storage was not initialized");
             iterateWindows(lo, hi, wi -> {
-                if (!store.isWindowCached(id, wi)) {
+                // TODO:aqui esta errado
+                if (!storage.inStorage(wi)) {
                     List<Integer> key = new ArrayList<>(wi.length);
                     for (int v : wi) key.add(v);
                     pendingSet.add(key);
@@ -171,6 +175,10 @@ public class InfiniteTensor {
         }
     }
 
+    protected void ensureComputedSingle(int[] windowIndex) {
+        ensureComputed(outputWindow.getBounds(windowIndex));
+    }
+
     private void computeSingle(int[] windowIndex) {
         List<FloatTensor> args = new ArrayList<>(deps.length);
         for (int i = 0; i < deps.length; i++) {
@@ -183,9 +191,12 @@ public class InfiniteTensor {
             }
             args.add(deps[i].getSlice(depStart, depEnd));
         }
+        counter.getAndIncrement();
         FloatTensor result = function.apply(windowIndex, args);
         validateOutputShape(result, windowIndex);
-        store.cacheWindow(id, windowIndex, result);
+        // storage.cacheWindow(id, windowIndex, result);
+        if (storage == null) throw new IllegalStateException("storage was not initialized");
+        storage.addOrOverwriteEntry(CompletableFuture.completedFuture(result), windowIndex);
     }
 
     private void computeBatched(List<int[]> windowIndices) {
@@ -210,13 +221,15 @@ public class InfiniteTensor {
                 }
                 args.add(depArgs);
             }
-
+            counter.getAndIncrement();
             List<FloatTensor> outputs = batchFunction.apply(batch, args);
+            if (storage == null) throw new IllegalStateException("storage was not initialized");
             for (int k = 0; k < batch.size(); k++) {
                 FloatTensor result = outputs.get(k);
                 int[] windowIndex = batch.get(k);
                 validateOutputShape(result, windowIndex);
-                store.cacheWindow(id, windowIndex, result);
+                storage.addOrOverwriteEntry(CompletableFuture.completedFuture(result), windowIndex);
+                // storage.cacheWindow(id, windowIndex, result);
             }
 
             from = to;
@@ -254,7 +267,7 @@ public class InfiniteTensor {
     /**
      * Iterate over all window index combinations in the inclusive range [lo, hi].
      */
-    static void iterateWindows(int[] lo, int[] hi, WindowConsumer action) {
+    static void iterateWindows(int[] lo, int[] hi, InfiniteTensor.WindowConsumer action) {
         int n = lo.length;
         for (int d = 0; d < n; d++) {
             if (lo[d] > hi[d]) return;
@@ -275,8 +288,29 @@ public class InfiniteTensor {
         }
     }
 
+    @Nullable
+    public String getCurrentPath() {
+        return (storage != null) ? storage.getPath() : null;
+    }
+
+    public synchronized long getAppliedFCount() {
+        return counter.get();
+    }
+
+    public synchronized void updatePath(String newPath) {
+        if (Objects.equals(getCurrentPath(), newPath + "/" + id)) return;
+        if (storage != null) storage.clear();
+        storage = new TensorStorage(newPath + "/" + id, outputWindow.ndim());
+        for (InfiniteTensor dependent : deps) dependent.updatePath(newPath);
+    }
+
     @FunctionalInterface
     interface WindowConsumer {
         void accept(int[] windowIndex);
+    }
+
+    @TestOnly
+    public TensorStorage getStorage() {
+        return storage;
     }
 }

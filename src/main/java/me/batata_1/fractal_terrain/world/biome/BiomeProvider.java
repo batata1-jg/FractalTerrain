@@ -1,13 +1,14 @@
 package me.batata_1.fractal_terrain.world.biome;
 
+import static me.batata_1.fractal_terrain.FractalTerrainConfig.*;
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 
 import java.util.Arrays;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.debug.Debug;
+import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.infinitetensor.storage.FloatTensor;
-import me.batata_1.fractal_terrain.infinitetensor.storage.TensorStorage;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import net.minecraft.util.dynamic.CodecHolder;
 import net.minecraft.world.biome.source.util.MultiNoiseUtil;
@@ -17,15 +18,16 @@ import org.jetbrains.annotations.NotNull;
 
 public class BiomeProvider {
 
-    private final TensorStorage final_tiles;
+    private final NonIntersectingInfiniteTensor final_tiles;
     public final MultiNoiseUtil.MultiNoiseSampler sampler;
 
     public BiomeProvider(String path) {
-        final_tiles = new TensorStorage(path + "/final_biome_tiles", 512, xz -> {
-            int x = xz.getFirst();
-            int z = xz.getSecond();
-            FloatTensor reliefTensor =
-                    FractalTerrainInstance.getReliefProvider().getStorage().getEntry(xz);
+        final_tiles = new NonIntersectingInfiniteTensor(path + "/final_biome_tiles", new int[] {5, 512, 512}, key -> {
+            int x = key.get(X);
+            int z = key.get(Z);
+            FloatTensor reliefTensor = FractalTerrainInstance.getReliefProvider()
+                    .getInfiniteTensor()
+                    .getEntry(key);
 
             final float[] elev = Arrays.copyOfRange(reliefTensor.data, 0, 1 << 18);
             final float[] grad = Arrays.copyOfRange(reliefTensor.data, 4 << 18, 5 << 18);
@@ -37,7 +39,7 @@ public class BiomeProvider {
 
             FloatTensor t = new FloatTensor(biomeVariables, new int[] {5, 512, 512});
 
-            Debug.seeTileTiff(t,x,z,"final_biomes");
+            Debug.seeTileTiff(t, x, z, "final_biomes");
             return t;
         });
         // T H C E D W SpawnTarget
@@ -52,7 +54,7 @@ public class BiomeProvider {
                 List.of());
     }
 
-    public TensorStorage getStorage() {
+    public NonIntersectingInfiniteTensor getInfiniteTensor() {
         return final_tiles;
     }
 
@@ -61,9 +63,10 @@ public class BiomeProvider {
         private final Interpolation interpolation;
 
         public BiomeProviderDensity(final float scale, final int ch) {
-            interpolation = new Interpolation(
-                    scale,
-                    xz -> FractalTerrainInstance.getBiomeProvider().final_tiles.getValue(xz, ch));
+            interpolation = new Interpolation(scale, mutablePos -> {
+                mutablePos[CH] = ch;
+                return FractalTerrainInstance.getBiomeProvider().final_tiles.getValue(mutablePos);
+            });
         }
 
         @Override

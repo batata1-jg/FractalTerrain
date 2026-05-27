@@ -13,4 +13,16 @@ import me.batata_1.fractal_terrain.infinitetensor.storage.FloatTensor;
 @FunctionalInterface
 public interface TensorFunction {
     FloatTensor apply(int[] windowIndex, List<FloatTensor> args);
+
+    /**
+     * Batched variant of TensorFunction.
+     *
+     * @param windowIndices the window indices for the batch
+     * @param args          args.get(depIdx) is the list of dependency slices — one per window in the batch
+     * @return list of output tensors, one per window in the batch
+     */
+    @FunctionalInterface
+    interface BatchTensorFunction {
+        List<FloatTensor> apply(List<int[]> windowIndices, List<List<FloatTensor>> args);
+    }
 }

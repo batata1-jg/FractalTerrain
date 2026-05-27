@@ -10,7 +10,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import me.batata_1.fractal_terrain.ml.TerrainDiffusionConfig;
+import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -190,7 +190,7 @@ public final class OnnxModel implements AutoCloseable {
      * Loads model sessions for the active inference device configuration.
      */
     private void initializeModelSession(byte[] modelBytes, long startMillis, boolean enforceCpu) throws OrtException {
-        if ("cpu".equals(TerrainDiffusionConfig.inferenceDevice()) || enforceCpu) {
+        if ("cpu".equals(FractalTerrainConfig.inferenceDevice()) || enforceCpu) {
             OrtSession.SessionOptions sessionOptions = new OrtSession.SessionOptions();
             sessionOptions.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
             this.cpuSession = env.createSession(modelBytes, sessionOptions);
@@ -202,7 +202,7 @@ public final class OnnxModel implements AutoCloseable {
                     System.currentTimeMillis() - startMillis);
             return;
         }
-        if (!TerrainDiffusionConfig.offloadModels()) {
+        if (!FractalTerrainConfig.offloadModels()) {
             OrtSession.SessionOptions sessionOptions = new OrtSession.SessionOptions();
             sessionOptions.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
             addGpuProvider(sessionOptions);
@@ -350,7 +350,7 @@ public final class OnnxModel implements AutoCloseable {
     }
 
     private static void addGpuProvider(OrtSession.SessionOptions opts) throws OrtException {
-        boolean gpuRequired = "gpu".equals(TerrainDiffusionConfig.inferenceDevice());
+        boolean gpuRequired = "gpu".equals(FractalTerrainConfig.inferenceDevice());
         boolean added = false;
 
         try {

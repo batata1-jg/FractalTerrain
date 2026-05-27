@@ -1,8 +1,5 @@
 package me.batata_1.fractal_terrain.math;
 
-import com.mojang.datafixers.util.Pair;
-import me.batata_1.fractal_terrain.infinitetensor.storage.TensorStorage;
-
 public class Gradients {
 
     private static final int[] d = {-1, 0, 1};
@@ -25,17 +22,17 @@ public class Gradients {
         return x * kernel_y[i][j];
     }
 
-    public static double[] entryGradMagnitude(final int x, final int z, final int ch, final TensorStorage s) {
-        double respX = 0;
-        double respY = 0;
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                float entry = s.getValue(Pair.of(x + d[i], z + d[j]), ch);
-                respX += singleGradX(entry, i, j);
-                respY += singleGradY(entry, i, j);
-            }
-        }
-
-        return new double[] {respX, respY, Math.sqrt(respX * respX + respY * respY)};
-    }
+    //    public static double[] entryGradMagnitude(final int x, final int z, final int ch, final TensorStorage s) {
+    //        double respX = 0;
+    //        double respY = 0;
+    //        for (int i = 0; i < 3; i++) {
+    //            for (int j = 0; j < 3; j++) {
+    //                float entry = s.getValue(Pair.of(x + d[i], z + d[j]), ch);
+    //                respX += singleGradX(entry, i, j);
+    //                respY += singleGradY(entry, i, j);
+    //            }
+    //        }
+    //
+    //        return new double[] {respX, respY, Math.sqrt(respX * respX + respY * respY)};
+    //    }
 }

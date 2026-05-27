@@ -10,10 +10,10 @@ import net.minecraft.block.Blocks;
 public class PopulateNoiseStep {
 
     private static final BlockState[] rocks = new BlockState[] {
-            Blocks.STONE.getDefaultState(),
-            Blocks.DIORITE.getDefaultState(),
-            Blocks.ANDESITE.getDefaultState(),
-            Blocks.GRANITE.getDefaultState()
+        Blocks.STONE.getDefaultState(),
+        Blocks.DIORITE.getDefaultState(),
+        Blocks.ANDESITE.getDefaultState(),
+        Blocks.GRANITE.getDefaultState()
     };
     private final Interpolation reliefInterpolation;
     private final Interpolation reliefGradInterpolation;
@@ -41,14 +41,13 @@ public class PopulateNoiseStep {
         phacelleSampler = new PhacelleNoiseSampler(5, 32F);
     }
 
-    public int getHeight(final int x , final int z) {
+    public int getHeight(final int x, final int z) {
         final double interpolatedBlurredRelief = reliefBlurredInterpolation.interpolateBilinear(x, z);
         final double interpolatedRelief = reliefInterpolation.interpolateSmoothStep(x, z);
         final double interpolatedGrad = reliefGradInterpolation.interpolateSmoothStep(x, z);
         final double strata = this.strata.sample(x, z, interpolatedRelief, interpolatedGrad, interpolatedBlurredRelief);
         return (int) interpolatedRelief;
     }
-
 
     // shouldn't depend on getHeight
     public BlockState fillRocks(int x, int y, int z) {

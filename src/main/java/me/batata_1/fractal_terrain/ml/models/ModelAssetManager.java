@@ -21,7 +21,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
-import me.batata_1.fractal_terrain.ml.TerrainDiffusionConfig;
+import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,7 +59,7 @@ public final class ModelAssetManager {
                 Files.createDirectories(MODEL_DIRECTORY);
                 ModelAssetManifest manifest = loadManifest();
                 String offlineHelpUrl = buildOfflineHelpUrl(manifest);
-                boolean shouldValidatePreExistingModels = TerrainDiffusionConfig.validateModel();
+                boolean shouldValidatePreExistingModels = FractalTerrainConfig.validateModel();
                 LOG.info("Preparing terrain diffusion model assets in {}", MODEL_DIRECTORY);
                 for (Map.Entry<String, ManifestAsset> assetEntry : manifest.assets.entrySet()) {
                     String fileName = assetEntry.getKey();

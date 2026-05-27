@@ -1,7 +1,5 @@
 package me.batata_1.fractal_terrain.noise;
 
-import me.batata_1.fractal_terrain.FractalTerrainInstance;
-import me.batata_1.fractal_terrain.math.Gradients;
 import org.jetbrains.annotations.TestOnly;
 
 public class PhacelleNoiseSampler extends VoronoiNoiseSampler {
@@ -20,12 +18,7 @@ public class PhacelleNoiseSampler extends VoronoiNoiseSampler {
     @Override
     @TestOnly
     public float sample(final Number x, final Number z) {
-        final double[] grads = Gradients.entryGradMagnitude(
-                x.intValue(),
-                z.intValue(),
-                1,
-                FractalTerrainInstance.getReliefProvider().getStorage());
-
+        final float[] grads = null;
         return this.sample(x.floatValue(), z.floatValue(), (float) grads[0], (float) grads[1], (float) grads[2]);
     }
 

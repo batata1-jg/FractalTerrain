@@ -1,5 +1,6 @@
 package me.batata_1.fractal_terrain.mixin;
 
+import java.util.function.Function;
 import net.minecraft.registry.Registry;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.util.math.BlockPos;
@@ -13,13 +14,17 @@ import net.minecraft.world.gen.surfacebuilder.SurfaceBuilder;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Invoker;
 
-import java.util.function.Function;
-
 @Mixin(MaterialRules.MaterialRuleContext.class)
 public interface MaterialRuleContextAccessor {
     @Invoker("<init>")
-    static MaterialRules.MaterialRuleContext createMaterialRuleContext(SurfaceBuilder surfaceBuilder, NoiseConfig noiseConfig, Chunk chunk, ChunkNoiseSampler chunkNoiseSampler, Function<BlockPos, RegistryEntry<Biome>> posToBiome, Registry<Biome> registry, HeightContext heightContext) {
+    static MaterialRules.MaterialRuleContext createMaterialRuleContext(
+            SurfaceBuilder surfaceBuilder,
+            NoiseConfig noiseConfig,
+            Chunk chunk,
+            ChunkNoiseSampler chunkNoiseSampler,
+            Function<BlockPos, RegistryEntry<Biome>> posToBiome,
+            Registry<Biome> registry,
+            HeightContext heightContext) {
         throw new UnsupportedOperationException();
     }
-
 }

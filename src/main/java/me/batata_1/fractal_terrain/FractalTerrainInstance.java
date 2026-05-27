@@ -1,12 +1,14 @@
 package me.batata_1.fractal_terrain;
 
+import static me.batata_1.fractal_terrain.debug.Debug.debug;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import java.nio.file.Path;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
+import me.batata_1.fractal_terrain.infinitetensor.InfiniteTensor;
+import me.batata_1.fractal_terrain.infinitetensor.storage.TensorStorage;
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import me.batata_1.fractal_terrain.ml.pipeline.WorldPipeline;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
@@ -14,19 +16,16 @@ import me.batata_1.fractal_terrain.terrablender.InitTerrablender;
 import me.batata_1.fractal_terrain.world.biome.BiomeProvider;
 import me.batata_1.fractal_terrain.world.gen.ReliefProvider;
 import me.batata_1.fractal_terrain.world.gen.chunk.FractalTerrainChunkGenerator;
-import me.batata_1.fractal_terrain.world.gen.chunk.FractalTerrainSurfaceBuilder;
+import me.batata_1.fractal_terrain.world.gen.surfacebuilder.FractalTerrainSurfaceBuilder;
 import net.minecraft.block.Blocks;
 import net.minecraft.registry.DynamicRegistryManager;
-import net.minecraft.registry.Registry;
-import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.WorldSavePath;
 import net.minecraft.world.dimension.DimensionOptions;
-import net.minecraft.world.gen.chunk.ChunkGeneratorSettings;
 import net.minecraft.world.gen.noise.NoiseConfig;
-import net.minecraft.world.gen.surfacebuilder.SurfaceBuilder;
+import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 
 public class FractalTerrainInstance {
@@ -50,8 +49,6 @@ public class FractalTerrainInstance {
     private final FractalTerrainSurfaceBuilder surfaceBuilder;
     private final NoiseConfig noiseConfig;
 
-
-
     private FractalTerrainInstance(MinecraftServer server) {
         this.curServer = server;
         final Path worldPath = server.getSavePath(WorldSavePath.ROOT).normalize();
@@ -60,19 +57,28 @@ public class FractalTerrainInstance {
         final long seed = server.getSaveProperties().getGeneratorOptions().getSeed();
         final ServerWorld world = server.getOverworld();
         final DynamicRegistryManager dynamicRegistryManager = world.getRegistryManager();
-        final FractalTerrainChunkGenerator chunkGenerator = (FractalTerrainChunkGenerator) world.getChunkManager().getChunkGenerator();
-        this.noiseConfig = NoiseConfig.create(chunkGenerator.getSettings().value(), dynamicRegistryManager.getWrapperOrThrow(RegistryKeys.NOISE_PARAMETERS), seed);
-        pipeline.setSeed(seed);
+        final FractalTerrainChunkGenerator chunkGenerator =
+                (FractalTerrainChunkGenerator) world.getChunkManager().getChunkGenerator();
+        this.noiseConfig = NoiseConfig.create(
+                chunkGenerator.getSettings().value(),
+                dynamicRegistryManager.getWrapperOrThrow(RegistryKeys.NOISE_PARAMETERS),
+                seed);
+        pipeline.updateInstance(seed, worldPath + "/fractal_terrain");
         OctaveSimplexNoiseSampler.init(seed);
-       // LOG.info("chunk Generator settings: {}", chunkGenerator.getSettings().value());
+        // LOG.info("chunk Generator settings: {}", chunkGenerator.getSettings().value());
         DynamicRegistryManager registryAccess = server.getRegistryManager();
-        InitTerrablender.initializeBlenderBiomes(registryAccess,
+        InitTerrablender.initializeBlenderBiomes(
+                registryAccess,
                 DimensionOptions.OVERWORLD,
                 chunkGenerator.getSettings().value(),
                 chunkGenerator.getBiomeSource(),
-                seed
-                );
-        surfaceBuilder = new FractalTerrainSurfaceBuilder(this.noiseConfig, Blocks.STONE.getDefaultState(),63, this.noiseConfig.randomDeriver,chunkGenerator.getSettings().value().surfaceRule());
+                seed);
+        surfaceBuilder = new FractalTerrainSurfaceBuilder(
+                this.noiseConfig,
+                Blocks.STONE.getDefaultState(),
+                63,
+                this.noiseConfig.randomDeriver,
+                chunkGenerator.getSettings().value().surfaceRule());
 
         LOG.info("fractal terrain instance created");
     }
@@ -87,8 +93,8 @@ public class FractalTerrainInstance {
 
     public static synchronized void close() {
         if (!exists()) return;
-        getInstance().reliefSource.getStorage().clear();
-        getInstance().biomeProvider.getStorage().clear();
+        getInstance().biomeProvider.getInfiniteTensor().clear();
+        getInstance().reliefSource.getInfiniteTensor().clear();
         instance = new CompletableFuture<>();
         LOG.info("fractal terrain instance closed");
     }
@@ -124,4 +130,10 @@ public class FractalTerrainInstance {
     public static NoiseConfig getNoiseConfig() {
         return getInstance().noiseConfig;
     }
+
+    @TestOnly
+    public static TensorStorage getDecoderStorage() {
+        return pipeline.getDecoder().getStorage();
+    }
+
 }

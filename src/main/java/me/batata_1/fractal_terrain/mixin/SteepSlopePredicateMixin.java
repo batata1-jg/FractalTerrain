@@ -14,18 +14,19 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class SteepSlopePredicateMixin {
 
     private static final Logger LOG = Debug.getLogger(SteepSlopePredicateMixin.class);
-    private final Interpolation interpolation = new Interpolation(1.0F,xz -> FractalTerrainInstance.getReliefProvider().getRefinedGrad(xz));
+    private final Interpolation interpolation = new Interpolation(
+            1.0F, xz -> FractalTerrainInstance.getReliefProvider().getRefinedGrad(xz));
     private final float threshold = 4;
 
-    @Inject( method = "test", at = @At("HEAD"))
+    @Inject(method = "test", at = @At("HEAD"))
     private void test(CallbackInfoReturnable<Boolean> cir) {
-        if(FractalTerrainInstance.exists()) {
-//            final MaterialRules.MaterialRuleContext.SteepSlopePredicate thisObject = (MaterialRules.MaterialRuleContext.SteepSlopePredicate) (Object) this;
-//            final int x = thisObject.context.blockX;
-//            final int z = thisObject.context.blockZ;
-//            return interpolation.interpolateBilinear(x,z) >= threshold;
+        if (FractalTerrainInstance.exists()) {
+            //            final MaterialRules.MaterialRuleContext.SteepSlopePredicate thisObject =
+            // (MaterialRules.MaterialRuleContext.SteepSlopePredicate) (Object) this;
+            //            final int x = thisObject.context.blockX;
+            //            final int z = thisObject.context.blockZ;
+            //            return interpolation.interpolateBilinear(x,z) >= threshold;
             // TODO: implement this
         }
     }
-
 }
