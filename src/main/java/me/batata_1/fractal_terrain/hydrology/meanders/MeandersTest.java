@@ -1,14 +1,13 @@
 package me.batata_1.fractal_terrain.hydrology.meanders;
 
 import me.batata_1.fractal_terrain.debug.Debug;
-import me.batata_1.fractal_terrain.math.QuadTree;
-import me.batata_1.fractal_terrain.math.QuadTreePoint;
+import me.batata_1.fractal_terrain.math.ds.QuadTree;
+import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.List;
 
 import static me.batata_1.fractal_terrain.hydrology.meanders.Meanders.catmullRomResample;
 

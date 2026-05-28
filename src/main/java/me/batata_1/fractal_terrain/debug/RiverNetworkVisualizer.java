@@ -2,8 +2,8 @@ package me.batata_1.fractal_terrain.debug;
 
 import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
 import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
-import me.batata_1.fractal_terrain.math.QuadTree;
-import me.batata_1.fractal_terrain.math.QuadTreePoint;
+import me.batata_1.fractal_terrain.math.ds.QuadTree;
+import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
 import me.batata_1.fractal_terrain.math.VectorOps;
 
 import javax.imageio.ImageIO;
@@ -16,7 +16,6 @@ import java.util.List;
 
 import static me.batata_1.fractal_terrain.debug.Debug.DEBUG_LOGGER;
 import static me.batata_1.fractal_terrain.hydrology.meanders.Meanders.catmullRomResample;
-import static me.batata_1.fractal_terrain.math.VectorOps.distance;
 
 public class RiverNetworkVisualizer {
 

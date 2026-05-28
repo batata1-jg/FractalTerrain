@@ -1,5 +1,6 @@
-package me.batata_1.fractal_terrain.math;
+package me.batata_1.fractal_terrain.math.ds;
 
+import me.batata_1.fractal_terrain.math.VectorOps;
 import oshi.annotation.concurrent.NotThreadSafe;
 
 import java.util.*;
@@ -14,6 +15,8 @@ public class QuadTree<T extends QuadTreePoint> {
     private static final int Z = 1;
 
     public static final class Node<T> {
+        // NAO COLOCA ISSO DENTRO DO NODE, VAI GASTAR MEMORIA DEMAIS.
+        // nao quero acessar cada elemento como um indice. quero acessar todos de uma so vez.
         public final Set<T> points = new HashSet<>();
         public final int[] child = new int[4];
         public final double[] p0;
@@ -90,6 +93,9 @@ public class QuadTree<T extends QuadTreePoint> {
         update(pt,cur.child[section]);
     }
 
+    private void delete(final T pt, final int id) {
+        final Node<T> cur = tree.get(id);
+    }
 
     // se so tem um elemento checar esse
     private ArrayList<T> query(final double[] b , final double[] d, final int id ) {

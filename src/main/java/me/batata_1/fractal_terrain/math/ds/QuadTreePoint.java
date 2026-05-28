@@ -1,4 +1,4 @@
-package me.batata_1.fractal_terrain.math;
+package me.batata_1.fractal_terrain.math.ds;
 
 import java.util.Arrays;
 import java.util.List;
@@ -27,10 +27,4 @@ public class QuadTreePoint {
         return ptCoords.size();
     }
 
-    @Override
-    public boolean equals(Object obj) {
-        if(obj==null) return false;
-        if(!(obj instanceof QuadTreePoint)) throw new IllegalArgumentException();
-        return ptCoords.equals(((QuadTreePoint) obj).ptCoords);
-    }
 }
