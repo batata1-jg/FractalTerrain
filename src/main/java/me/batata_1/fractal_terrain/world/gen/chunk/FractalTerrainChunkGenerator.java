@@ -11,7 +11,7 @@ import java.util.concurrent.Executor;
 import java.util.function.Supplier;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.debug.Debug;
-import me.batata_1.fractal_terrain.math.Spline;
+import me.batata_1.fractal_terrain.math.spline.Spline;
 import me.batata_1.fractal_terrain.world.biome.source.FractalTerrainBiomeSource;
 import net.minecraft.SharedConstants;
 import net.minecraft.block.BlockState;

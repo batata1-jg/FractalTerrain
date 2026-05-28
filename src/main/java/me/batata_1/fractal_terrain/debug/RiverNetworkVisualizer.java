@@ -15,7 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static me.batata_1.fractal_terrain.debug.Debug.DEBUG_LOGGER;
-import static me.batata_1.fractal_terrain.hydrology.meanders.Meanders.catmullRomResample;
+import static me.batata_1.fractal_terrain.math.spline.CatmullRomSpline.reSample;
 
 public class RiverNetworkVisualizer {
 
@@ -39,7 +39,7 @@ public class RiverNetworkVisualizer {
         var tree = new QuadTree<>(new double[]{-INF, -INF}, new double[]{INF, INF});
 
         for(Channel c : meanders.getChannels()) {
-            final ArrayList<double[]> resample = catmullRomResample(c.pts,samplingDist);
+            final ArrayList<double[]> resample = reSample(c.pts,samplingDist);
             for(double[] pt : resample) {
                 tree.insertPoint(new QuadTreePoint(pt));
             }

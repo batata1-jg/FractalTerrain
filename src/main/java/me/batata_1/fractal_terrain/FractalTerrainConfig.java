@@ -7,8 +7,9 @@ import java.nio.file.Path;
 import java.util.Properties;
 import net.fabricmc.loader.api.FabricLoader;
 
-public final class FractalTerrainConfig {
+public record FractalTerrainConfig() {
 
+    public static final int MAX_SPLINE_LENGTH = (int) 1e4;
     public static final int BINARY_SEARCH_MAX_STEPS = 20;
     public static final String DEFAULT_DEBUG_PATH = "run/debug";
     public static final boolean DEBUG = false;
@@ -32,8 +33,6 @@ public final class FractalTerrainConfig {
             loadOverrides(configPath);
         }
     }
-
-    private FractalTerrainConfig() {}
 
     /** Inference device: "cpu", "gpu", or "auto" (try GPU then fall back to CPU). */
     public static String inferenceDevice() {

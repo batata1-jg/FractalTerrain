@@ -6,7 +6,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 import me.batata_1.fractal_terrain.math.Blur;
 import me.batata_1.fractal_terrain.math.MaskedOps;
-import me.batata_1.fractal_terrain.math.Spline;
+import me.batata_1.fractal_terrain.math.spline.Spline;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
 import me.batata_1.fractal_terrain.registry.SettingsRegistry;
 import net.minecraft.block.BlockState;

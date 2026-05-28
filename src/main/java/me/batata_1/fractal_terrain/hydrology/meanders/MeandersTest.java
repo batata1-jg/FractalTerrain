@@ -9,7 +9,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.Collections;
 
-import static me.batata_1.fractal_terrain.hydrology.meanders.Meanders.catmullRomResample;
+import static me.batata_1.fractal_terrain.math.spline.CatmullRomSpline.reSample;
 
 public class MeandersTest {
 
@@ -51,17 +51,17 @@ public class MeandersTest {
                     1500.0 + 50.0 * Math.sin(2.0 * Math.PI * i / (N - 1))
             });
         }
-        var resp = catmullRomResample(pts,1);
+        var resp = reSample(pts,1);
         LOG.info("{}", resp);
     }
 
     private static void testMeanders() {
         // Flat 3000×3000 m terrain (all gradient zero → maximum migration everywhere)
-        int      gridSize      = 300;
+        int      gridSize      = 1000;
         double   metersPerCell = 10.0;
         double[] gradMag       = new double[gridSize * gridSize];
 
-        Meanders sim = new Meanders(gridSize, metersPerCell, gradMag, 42L);
+        Meanders sim = new Meanders(gridSize, metersPerCell, gradMag);
 
         // 41 points, x ∈ [100, 2100], z = 1500 + 50·sin(one full cycle)
         // Endpoints share the same z so chord = 2000 exactly.
@@ -74,7 +74,9 @@ public class MeandersTest {
             });
         }
         double width = 0.001;
-        sim.addChannel(pts, width);
+        double samplingDist = 10;
+        final ArrayList<double[]> resample = reSample(pts,samplingDist);
+        sim.addChannel(resample, width);
 
         double x0   = pts.get(0)[0],     z0   = pts.get(0)[1];
         double xEnd = pts.get(N - 1)[0], zEnd = pts.get(N - 1)[1];
@@ -85,7 +87,7 @@ public class MeandersTest {
 
         Debug.river.see(sim, "before");
 
-        sim.simulate(7);
+        sim.simulate(500);
 
         ArrayList<double[]> result = sim.getChannelPts(0);
         int    n      = result.size();

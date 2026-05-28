@@ -1,4 +1,4 @@
-package me.batata_1.fractal_terrain.math;
+package me.batata_1.fractal_terrain.math.spline;
 
 import java.util.Arrays;
 
