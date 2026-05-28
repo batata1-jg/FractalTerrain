@@ -1,10 +1,14 @@
 package me.batata_1.fractal_terrain.hydrology.meanders;
 
 import me.batata_1.fractal_terrain.debug.Debug;
+import me.batata_1.fractal_terrain.math.QuadTree;
+import me.batata_1.fractal_terrain.math.QuadTreePoint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 import static me.batata_1.fractal_terrain.hydrology.meanders.Meanders.catmullRomResample;
 
@@ -15,6 +19,7 @@ public class MeandersTest {
     public static void main(String[] args) {
         //testCatmullRomResample();
         testMeanders();
+        //quadTreeTest();
 
     }
 
@@ -27,9 +32,9 @@ public class MeandersTest {
                     1500.0 + 50.0 * Math.sin(2.0 * Math.PI * i / (N - 1))
             });
         }
-        double[] localRates = new double[pts.size()];
-        double[] migRates = new double[pts.size()];
-        return new Channel(1,1,pts,localRates,migRates);
+        ArrayList<Double> localRates = new ArrayList<>(Collections.nCopies(pts.size(), 0.0));
+        ArrayList<Double> migRates   = new ArrayList<>(Collections.nCopies(pts.size(), 0.0));
+        return new Channel(1, 1, pts, localRates, migRates);
     }
 
     private static void testMigrate(Meanders sim) {
@@ -61,7 +66,7 @@ public class MeandersTest {
 
         // 41 points, x ∈ [100, 2100], z = 1500 + 50·sin(one full cycle)
         // Endpoints share the same z so chord = 2000 exactly.
-        int                 N   = 41;
+        int                 N   = 80;
         ArrayList<double[]> pts = new ArrayList<>(N);
         for (int i = 0; i < N; i++) {
             pts.add(new double[]{
@@ -81,7 +86,7 @@ public class MeandersTest {
 
         Debug.river.see(sim, "before");
 
-        sim.simulate(10);
+        sim.simulate(7);
 
         ArrayList<double[]> result = sim.getChannelPts(0);
         int    n      = result.size();
@@ -121,6 +126,15 @@ public class MeandersTest {
 
         LOG.info("All invariants passed.");
     }
+
+    private static void quadTreeTest() {
+        QuadTree<QuadTreePoint> tree = new QuadTree<>(new double[]{-1,-1},new double[]{1,1});
+        tree.insertPoint(new QuadTreePoint(new double[]{0,0}));
+        tree.insertPoint(new QuadTreePoint(new double[]{0.0625,0.0625}));
+        var o = tree.getPointsInBox(new double[]{-0.5,-0.5},new double[]{0.5,0.5});
+        LOG.info("{}",o);
+    }
+
 
     private static double sinuosity(ArrayList<double[]> pts) {
         double arcLen = 0.0;

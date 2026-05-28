@@ -1,20 +1,20 @@
 package me.batata_1.fractal_terrain.hydrology.meanders;
 
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
+import me.batata_1.fractal_terrain.math.QuadTree;
+import me.batata_1.fractal_terrain.math.QuadTreePoint;
 import me.batata_1.fractal_terrain.math.VectorOps;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 
 import static me.batata_1.fractal_terrain.math.VectorOps.distance;
 
 public final class Meanders {
 
-
-
+    private static final double INF = 1e9;
     private static final double OMEGA           = -1.0;
     private static final double GAMMA           =  2.5;
     private static final double K               =  1.0;
@@ -47,8 +47,8 @@ public final class Meanders {
                 width,
                 Math.max(1.0, Math.pow(width / 18.8, 1.0 / 1.41)),  // Konsoer 2013
                 xzPts,
-                new double[n],
-                new double[n]
+                new ArrayList<>(Collections.nCopies(n, 0.0)),
+                new ArrayList<>(Collections.nCopies(n, 0.0))
         ));
     }
 
@@ -62,8 +62,8 @@ public final class Meanders {
             manageCutoffs(ch);
             ArrayList<double[]> resampled = catmullRomResample(ch.pts, SAMPLING_DIST);
             ch.pts        = resampled;
-            ch.localRates = new double[resampled.size()];
-            ch.migRates   = new double[resampled.size()];
+            ch.localRates = new ArrayList<>(Collections.nCopies(resampled.size(), 0.0));
+            ch.migRates   = new ArrayList<>(Collections.nCopies(resampled.size(), 0.0));
         }
     }
 
@@ -128,7 +128,7 @@ public final class Meanders {
 
     private static void computeLocalRates(Channel ch) {
         for (int i = 0; i < ch.pts.size(); i++) {
-            ch.localRates[i] = ch.width * curvature(ch.pts, i);
+            ch.localRates.set(i, ch.width * curvature(ch.pts, i));
         }
     }
 
@@ -146,18 +146,18 @@ public final class Meanders {
             for (int j = i; j >= Math.max(0, i - UPSTREAM_WINDOW); j--) {
                 if (j < i) cumDist += dist(ch.pts, j + 1, j);
                 double g = Math.exp(-alpha * cumDist);
-                sumR0 += ch.localRates[j] * g;
+                sumR0 += ch.localRates.get(j) * g;
                 sumG  += g;
             }
             if (sumG == 0.0) sumG = 1.0;
-            ch.migRates[i] = (OMEGA * ch.localRates[i] + GAMMA * sumR0 / sumG) * sinuos;
+            ch.migRates.set(i, (OMEGA * ch.localRates.get(i) + GAMMA * sumR0 / sumG) * sinuos);
         }
     }
 
     public void migrate(Channel ch) {
         int    n = ch.pts.size();
         double f = CHANNEL_FALLOFF;
-        LOG.info("before migration {}",ch.pts);
+      //  LOG.info("before migration {}",ch.pts);
         for (int i = 1; i < n - 1; i++) {
             double t  = i / (double)(n - 1);
             double wf;
@@ -178,39 +178,36 @@ public final class Meanders {
             double wt      = Math.max(0.0, 1.0 - gSample / MAX_SLOPE);
             wt = 1;
             double   w  = wf * wt;
-            final double rate = w * DT * ch.migRates[i];
+            final double rate = w * DT * ch.migRates.get(i);
             double[] newPt = VectorOps.add(ch.pts.get(i), VectorOps.scale(normal(ch.pts,i),-rate));
             //LOG.info("rate: {}, curmigrate: {} , w: {} , normal: {}",-rate,ch.migRates[i],w,normal(ch.pts,i));
             ch.pts.set(i,newPt);
         }
-        LOG.info("after migration {}",ch.pts);
+    //    LOG.info("after migration {}",ch.pts);
     }
 
+
+    public static class ChannelPt extends QuadTreePoint {
+
+        public final int id;
+
+        public ChannelPt(double[] pt,int id) {
+            super(pt);
+            this.id=id;
+        }
+    }
+
+    //Use quadTree for this later
+    //precisa implementar remove point pra dar certo
+    private static final QuadTree<ChannelPt> quadTree = new QuadTree<>(new double[]{-INF,-INF},new double[]{INF,INF});
     private static void manageCutoffs(Channel ch) {
-        double widthSq = ch.width * ch.width;
-        restart:
-        while (true) {
-            for (int j = 0; j < ch.pts.size() - 4; j++) {
-                for (int k = j + 4; k < ch.pts.size(); k++) {
-                    if (dist2(ch.pts, j, k) < widthSq) {
-                        // TODO: save pts[j..k] to oxbow list for future rendering
-                        int oldSize       = ch.pts.size();
-                        int remainingCount = oldSize - k;
-                        ch.pts.subList(j + 1, k).clear();
-                        int newN = ch.pts.size();
-                        double[] newLocal = new double[newN];
-                        System.arraycopy(ch.localRates, 0, newLocal, 0,     j + 1);
-                        System.arraycopy(ch.localRates, k, newLocal, j + 1, remainingCount);
-                        ch.localRates = newLocal;
-                        double[] newMig = new double[newN];
-                        System.arraycopy(ch.migRates,   0, newMig,   0,     j + 1);
-                        System.arraycopy(ch.migRates,   k, newMig,   j + 1, remainingCount);
-                        ch.migRates = newMig;
-                        continue restart;
-                    }
-                }
-            }
-            break;
+        quadTree.clear();
+        for(int id=0 ; id<ch.pts.size() ; id++) quadTree.insertPoint(new ChannelPt(ch.pts.get(id),id));
+        ArrayList<Integer> newPathIndexes = new ArrayList<>();
+        double[] width = new double[]{ch.width, ch.width};
+        for(int id=0 ; id<ch.pts.size() ; id++) {
+            double[] pt = ch.pts.get(id);
+            quadTree.getPointsInBox(VectorOps.sub(pt,width),VectorOps.add(pt,width));
         }
     }
 
@@ -253,8 +250,6 @@ public final class Meanders {
         return result;
     }
 
-
-    //TODO: isso esta errado
     // keep last point
     public static ArrayList<double[]> catmullRomResample(ArrayList<double[]> pts, double samplingDist) {
         final double maxT = pts.size()-1;
