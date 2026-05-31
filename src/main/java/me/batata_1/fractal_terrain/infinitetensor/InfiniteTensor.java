@@ -144,7 +144,6 @@ public abstract class InfiniteTensor {
             int[] hi = outputWindow.getHighestIntersection(range);
             if (storage == null) throw new IllegalStateException("storage was not initialized");
             iterateWindows(lo, hi, wi -> {
-                // TODO:aqui esta errado
                 if (!storage.inStorage(wi)) {
                     List<Integer> key = new ArrayList<>(wi.length);
                     for (int v : wi) key.add(v);

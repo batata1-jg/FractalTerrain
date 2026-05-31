@@ -70,7 +70,6 @@ public class TensorStorage {
         CACHE.clear();
     }
 
-    // TODO: implementar isso
     private static String NorP(int x) {
         if (x < 0) return "N";
         return "P";

@@ -138,6 +138,10 @@ public class QuadTree<T extends QuadTreePoint> {
         delete(pt,1);
     }
 
+    public boolean containsPoint(final T pt) {
+        return tree.get(1).points.contains(pt);
+    }
+
     public List<T> getPointsInBox(final double[] b , final double[] d) {
         if(d.length!=2||b.length!=2) throw new IllegalStateException();
         List<T> resp = query(new QuadTreeShape.QuadTreeBox(b,d),1);

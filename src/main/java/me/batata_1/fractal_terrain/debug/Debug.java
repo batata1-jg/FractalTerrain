@@ -4,8 +4,10 @@ import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
 import java.io.*;
 import java.nio.file.Path;
+import java.util.Arrays;
 import javax.imageio.ImageIO;
 
+import ai.onnxruntime.OnnxTensor;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 // import me.batata_1.fractalterrain.ml.tensorProviders.MapProvider;
@@ -22,9 +24,14 @@ public class Debug {
     public static final Logger DEBUG_LOGGER = getLogger(Debug.class);
     public static final TensorVisualizer tensor = new TensorVisualizer();
     public static final RiverNetworkVisualizer river = new RiverNetworkVisualizer(FractalTerrainConfig.DEFAULT_DEBUG_PATH);
+    public static final SplineVisualizer spline = new SplineVisualizer(FractalTerrainConfig.DEFAULT_DEBUG_PATH);
 
     public static Logger getLogger(Class<?> clazz) {
         return LoggerFactory.getLogger("fractal_terrain/" + clazz.toString());
+    }
+
+    public static void isNan(double[] t) {
+        for (double v : t) if (Double.isNaN(v)) throw new RuntimeException("this double[] is nan " + Arrays.toString(t));
     }
 
     public static void seeNoise(NoiseSampler sampler, String name, int x, int z, int size) throws IOException {

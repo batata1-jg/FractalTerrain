@@ -2,7 +2,7 @@ package me.batata_1.fractal_terrain.math;
 
 public class VectorOps {
 
-    public static double abs(double[] vec) {
+    public static double magnitude(double[] vec) {
         return Math.sqrt(dot(vec,vec));
     }
 
@@ -42,7 +42,7 @@ public class VectorOps {
         double len = 0;
         for (double v : vec) len += v * v;
         len = Math.sqrt(len);
-        if (len < 1e-12) throw new RuntimeException("cannot normalize zero vector");
+        if (len < 1e-12) return new double[vec.length];
         double[] resp = new double[vec.length];
         for (int i = 0; i < vec.length; i++) resp[i] = vec[i] / len;
         return resp;
@@ -58,6 +58,20 @@ public class VectorOps {
         if (scalar == 0) throw new RuntimeException("division by zero");
         double[] resp = new double[vec.length];
         for (int i = 0; i < vec.length; i++) resp[i] = vec[i] / scalar;
+        return resp;
+    }
+
+    public static double[] min(double[] vec1, double[] vec2) {
+        checkLengths(vec1, vec2);
+        double[] resp = new double[vec1.length];
+        for (int i = 0; i < vec1.length; i++) resp[i] = Math.min(vec1[i], vec2[i]);
+        return resp;
+    }
+
+    public static double[] max(double[] vec1, double[] vec2) {
+        checkLengths(vec1, vec2);
+        double[] resp = new double[vec1.length];
+        for (int i = 0; i < vec1.length; i++) resp[i] = Math.max(vec1[i], vec2[i]);
         return resp;
     }
 

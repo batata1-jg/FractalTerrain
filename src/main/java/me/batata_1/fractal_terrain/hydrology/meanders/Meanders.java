@@ -1,218 +1,272 @@
 package me.batata_1.fractal_terrain.hydrology.meanders;
 
+import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
-import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
 import me.batata_1.fractal_terrain.math.VectorOps;
-import me.batata_1.fractal_terrain.math.spline.CatmullRomSpline;
+import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.*;
 
+import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
+
 public final class Meanders {
 
+    // sampling dist e DT estao muito intimos
+    private static final double TWO_THIRDS = 2.0 / 3.0;
     private static final double INF = 1e9;
     private static final double OMEGA           = -1.0;
+    // aumenta pra aumentar a varian
     private static final double GAMMA           =  2.5;
-    private static final double K               =  1.0;
-    private static final double CF              =  0.011;
-    private static final double DT              =  50;  // ~109.5 days in seconds
-    private static final double MAX_SLOPE       =  1.0;
-    private static final double CHANNEL_FALLOFF =  0.05;
-    private static final double SAMPLING_DIST   =  10.0;
-    private static final int    UPSTREAM_WINDOW =  1500;
-    private static final Logger LOG = LoggerFactory.getLogger(Meanders.class);
 
+    private static final double K               =  0.0164; // aumentar esse faz curvar pra traz
+    private static final double FRICTION              =  0.011; // diminue a
+    private static final double DT              =  1;
+    // mudar pra 50m depois
+    public static final double DX =  1;
+    private static final double[] UNIT_VECTOR = new double[]{1,1};
+    private static final Logger LOG = getLogger(Meanders.class);
+
+    //this model does not remove junctions and channels that have dried out.
     private final int      gridSize;
-    private final double   metersPerCell;
     private final double[] gradMag;
+    private final QuadTree<Channel.ChannelPt> quadTree = new QuadTree<>(new double[]{-INF,-INF},new double[]{INF,INF});
+    private final ArrayList<Channel> channels = new ArrayList<>();
+    private final ArrayList<Junction> junctions = new ArrayList<>();
+    private final double cutOffThreshold;
+    private final double maxMigrationMagnetude;
 
-    private final List<Channel> channels = new ArrayList<>();
+    public record Junction(int[] parents, int child) {
 
-    public Meanders(int gridSize, double metersPerCell, double[] gradMag) {
+        public boolean isChild(int id) {
+                return id == child;
+        }
+
+        public boolean contains(int id) {
+                for (int i : parents) if (i == id) return true;
+                return isChild(id);
+        }
+
+    }
+
+    public Meanders(int gridSize, double[] gradMag) {
         this.gridSize      = gridSize;
-        this.metersPerCell = metersPerCell;
         this.gradMag       = gradMag;
+        cutOffThreshold = 1.5*DX*Math.max(Math.log(Math.sqrt(DT)),1)*Math.max(Math.log(FRICTION*10),1);
+        maxMigrationMagnetude = INF;
     }
 
-    public void addChannel(ArrayList<double[]> xzPts, double width) {
-        int n = xzPts.size();
-        channels.add(new Channel(
-                width,
-                Math.max(1.0, Math.pow(width / 18.8, 1.0 / 1.41)),  // Konsoer 2013
-                xzPts,
-                new ArrayList<>(Collections.nCopies(n, 0.0)),
-                new ArrayList<>(Collections.nCopies(n, 0.0))
-        ));
+    public int addChannel(ArrayList<double[]> xzPts, double width) {
+        final int id = channels.size();
+        channels.add(new Channel(width, xzPts, id));
+        junctions.add(null);
+        channels.getLast().reSample(DX);
+        return id;
     }
 
-    //TODO: change this in order for compute local rates and compute migration rates to be toghether with ch.localRates = new...
-    public void step() {
+    public void step(int i) {
+        LOG.info("step {}",i);
+        quadTree.clear();
         for (Channel ch : channels) {
-            computeLocalRates(ch);
-            computeMigrationRates(ch);
             migrate(ch);
             manageCutoffs(ch);
-            ArrayList<double[]> resampled = CatmullRomSpline.reSample(ch.pts, SAMPLING_DIST);
-            ch.pts        = resampled;
-            ch.localRates = new ArrayList<>(Collections.nCopies(resampled.size(), 0.0));
-            ch.migRates   = new ArrayList<>(Collections.nCopies(resampled.size(), 0.0));
+        }
+        manageCollisions();
+        ensureJunctionsConnected();
+        for(Channel ch : channels) {
+            try {
+                ch.reSample(DX);
+            } catch (IllegalStateException e) {
+                LOG.error("channel: {}",ch);
+                throw new RuntimeException();
+            }
+        }
+    }
+
+    private void ensureJunctionsConnected() {
+        for(final Junction j : junctions) if(j!=null) {
+            final double[] childStatingPoint = channels.get(j.child()).spline.points().getFirst();
+            for(final int id : j.parents()) {
+                final ArrayList<double[]> pts = channels.get(id).spline.points();
+                pts.set(pts.size()-1,childStatingPoint);
+            }
         }
     }
 
     public void simulate(int n) {
-        for (int i = 0; i < n; i++) step();
-    }
-
-    public int getChannelCount() {
-        return channels.size();
-    }
-
-    public int getChannelPointCount(int i) {
-        return channels.get(i).pts.size();
-    }
-
-    public ArrayList<double[]> getChannelPts(int i) {
-        Channel ch = channels.get(i);
-        ArrayList<double[]> copy = new ArrayList<>(ch.pts.size());
-        for (double[] pt : ch.pts) {
-            copy.add(new double[]{pt[0], pt[1]});
-        }
-        return copy;
+        for (int i = 1; i <= n; i++) step(i);
     }
 
     public int getGridSize() { return gridSize; }
-
-    public double getMetersPerCell() { return metersPerCell; }
-
-    public double getChannelWidth(int i) { return channels.get(i).width; }
 
     public void addConstraint(double cx, double cz, double radius, double effect) {
         // TODO: PointConstraint gradient influence
     }
 
-    private static void computeLocalRates(Channel ch) {
-        for (int i = 0; i < ch.pts.size(); i++) {
-            ch.localRates.set(i, ch.width * CatmullRomSpline.curvature(ch.pts, i));
+    private static double[] computeMigrationRates(Channel ch) {
+        final double sinuosity = ch.computeSinuosity();
+        final double[] localRates = ch.computeLocalRates();
+        Debug.isNan(localRates);
+        final double sigmaToTheMinus2over3 = Math.pow(sinuosity,-TWO_THIRDS);
+        final double alpha = 2*FRICTION / ch.depth;
+        final double expTerm = Math.exp(-alpha*DX);
+        double integralTerm=0;
+        final double[] migRates = new double[ch.spline.points().size()];
+        for(int i = 0; i<ch.spline.points().size() ; i++) {
+            integralTerm += localRates[i] * K;
+            final double migRate =
+                OMEGA * localRates[i] +
+                        //remove alpha
+                GAMMA * alpha * sigmaToTheMinus2over3 * integralTerm;
+            integralTerm *= expTerm;
+            migRates[i] = -localRates[i];
         }
+        Debug.isNan(migRates);
+       // LOG.info("mig rates: {}",migRates);
+        return migRates;
     }
 
-    private static void computeMigrationRates(Channel ch) {
-        int    n     = ch.pts.size();
-        double alpha = K * 2.0 * CF / ch.depth;
-
-        double arcLen = 0.0;
-        for (int i = 0; i < n - 1; i++) arcLen += VectorOps.distance(ch.pts.get(i),ch.pts.get(i+1));
-        double chord  = VectorOps.distance(ch.pts.getFirst(),ch.pts.get(n-1));
-        double sinuosity = Math.pow(arcLen / Math.max(chord, 1e-9), -2.0 / 3.0);
-
-        for (int i = 0; i < n; i++) {
-            double cumDist = 0.0, sumR0 = 0.0, sumG = 0.0;
-            for (int j = i; j >= Math.max(0, i - UPSTREAM_WINDOW); j--) {
-                if (j < i) cumDist += VectorOps.distance(ch.pts.get(j),ch.pts.get(j+1));
-                double g = Math.exp(-alpha * cumDist);
-                sumR0 += ch.localRates.get(j) * g;
-                sumG  += g;
-            }
-            if (sumG == 0.0) sumG = 1.0;
-            ch.migRates.set(i, (OMEGA * ch.localRates.get(i) + GAMMA * sumR0 / sumG) * sinuosity);
-        }
-    }
-
+    /**
+     *   Migrates points to new locations, simulating channel meandering.
+     *   Does not migrate the derivatives as well, only the points. It computes the derivatives later
+     *   assuming equal distance in parameter space of the spline. Thus providing an approximation.
+     */
     public void migrate(Channel ch) {
-        int    n = ch.pts.size();
-        double f = CHANNEL_FALLOFF;
-      //  LOG.info("before migration {}",ch.pts);
-        for (int i = 1; i < n - 1; i++) {
-            double t  = i / (double)(n - 1);
-            double wf;
-            if (t < f) {
-                double s = t / f;
-                wf = 3.0*s*s - 2.0*s*s*s;
-            } else if (t > 1.0 - f) {
-                double s = (1.0 - t) / f;
-                wf = 3.0*s*s - 2.0*s*s*s;
-            } else {
-                wf = 1.0;
-            }
-
-            // gy = row index (x-axis), gx = col index (z-axis) per id = x*size + z
-            double gy      = ch.pts.get(i)[0] / metersPerCell;
-            double gx      = ch.pts.get(i)[1] / metersPerCell;
-            double gSample = bilinearSample(gradMag, gridSize, gridSize, gy, gx);
-            double wt      = Math.max(0.0, 1.0 - gSample / MAX_SLOPE);
-            double   w  = wf * wt;
-            final double rate = w * DT * ch.migRates.get(i);
-            double[] newPt = VectorOps.add(ch.pts.get(i), VectorOps.scale(CatmullRomSpline.normal(ch.pts,i),-rate));
-            //LOG.info("rate: {}, curmigrate: {} , w: {} , normal: {}",-rate,ch.migRates[i],w,normal(ch.pts,i));
-            ch.pts.set(i,newPt);
+        final double[] migRates = computeMigrationRates(ch);
+        ArrayList<double[]> newPts = new ArrayList<>();
+        for (int i = 0; i <ch.spline.points().size(); i++) {
+            final double rate = Math.clamp(DT * migRates[i], -maxMigrationMagnetude, maxMigrationMagnetude);
+            final double[] migVector = VectorOps.scale(ch.spline.normal(i),-rate);
+            double[] newPt = VectorOps.add(ch.spline.points().get(i), migVector);
+            Debug.isNan(newPt);
+            newPts.add(newPt);
+            //LOG.info("rate: {}, migrate: {} , w: {} , normal: {}",-rate,ch.migRates[i],w,normal(ch.pts,i));
         }
-    //    LOG.info("after migration {}",ch.pts);
+        ch.spline = QuinticHermiteSpline.createCatmullRom(newPts);
     }
 
-    public static class ChannelPt extends QuadTreePoint {
-
-        public final int id;
-
-        public ChannelPt(double[] pt,int id) {
-            super(pt);
-            this.id=id;
-        }
-
-        @Override
-        public String toString() {
-            return "["+ptCoords.toString()+" "+id+"]";
-        }
+    private List<Channel.ChannelPt> getPtsCloseTo(final int index ,final Channel.ChannelPt[] pts) {
+        Channel ch = channels.get(pts[0].channelId);
+        final int id1 = Math.min(index+1,pts.length-1);
+        final int id0 = Math.max(index-1,0);
+        final double maxDist = Math.max(VectorOps.distance(pts[index].toArray(),pts[id0].toArray()),VectorOps.distance(pts[index].toArray(),pts[id1].toArray()));
+        return quadTree.getPointsInBox(
+                VectorOps.sub(pts[index].toArray(),VectorOps.scale(UNIT_VECTOR, ch.width)),
+                VectorOps.add(pts[index].toArray(),VectorOps.scale(UNIT_VECTOR, ch.width))
+        );
     }
 
-    private static final QuadTree<ChannelPt> quadTree = new QuadTree<>(new double[]{-INF,-INF},new double[]{INF,INF});
+    private List<Channel.ChannelPt> getPtsCloseTo(Channel.ChannelPt pt) {
+        return quadTree.getPointsInBox(
+                VectorOps.sub(pt.toArray(),VectorOps.scale(UNIT_VECTOR, channels.get(pt.channelId).width)),
+                VectorOps.add(pt.toArray(),VectorOps.scale(UNIT_VECTOR, channels.get(pt.channelId).width))
+        );
+    }
 
     private void manageCutoffs(Channel ch) {
-        quadTree.clear();
-        final ChannelPt[] pts = new ChannelPt[ch.pts.size()];
-        for(int id=0 ; id<ch.pts.size() ; id++) pts[id] = new ChannelPt(ch.pts.get(id),id);
-        for(ChannelPt pt : pts) quadTree.insertPoint(pt);
+        if(ch.spline.checkNaN()) {
+            throw new RuntimeException("cannot cut becuse spline is NaN");
+        }
+        insertChannel(ch);
         ArrayList<Integer> newPathIndexes = new ArrayList<>();
 
-        LOG.info("before cuttoff {}",ch.pts.size());
+       // LOG.info("before cuttoff {}",ch.spline.getMaxT());
         int maxListSize = 0;
-        for(int id=0 ; id<ch.pts.size() ; id++) {
+        for(int id = 0; id<ch.numPts()-1 ; id++) {
+            if(!quadTree.containsPoint(ch.pt(id))) continue;
             newPathIndexes.add(id);
-            double[] pt = ch.pts.get(id);
-            List<ChannelPt> ptList = quadTree.getPointsInBox(
-                    VectorOps.sub(pt,VectorOps.scale(new double[]{1,1},SAMPLING_DIST)),
-                    VectorOps.add(pt,VectorOps.scale(new double[]{1,1},SAMPLING_DIST))
-                    );
+            List<Channel.ChannelPt> ptList = getPtsCloseTo(ch.pt(id));
+            ptList.sort(null);
             maxListSize = Math.max(maxListSize, ptList.size());
-            int intersectionIndex=-1;
-            for(ChannelPt cpt : ptList) {
-                if(cpt.id<=id+1) continue;
-                intersectionIndex=cpt.id;
-                break;
+            for(Channel.ChannelPt cpt : ptList) {
+                if(cpt.index<=id+1||cpt.channelId!=ch.channelId) continue;
+                cutRiverSection(id,cpt.index,ch);
             }
-            if(intersectionIndex==-1) continue;
-            cutRiverSection(id,intersectionIndex,pts);
-            id = intersectionIndex;
         }
-        ArrayList<double[]> newPts = new ArrayList<>();
-        ArrayList<Double> newMigRates = new ArrayList<>();
-        ArrayList<Double> newLocalRates = new ArrayList<>();
-        for(int id : newPathIndexes) {
-            newPts.add(ch.pts.get(id));
-            newLocalRates.add(ch.localRates.get(id));
-            newMigRates.add(ch.migRates.get(id));
-        }
-        ch.pts = newPts;
-        LOG.info("after cuttoff {} list size:{}",ch.pts.size(),maxListSize);
-        ch.migRates = newMigRates;
-        ch.localRates = newLocalRates;
+        newPathIndexes.add(ch.numPts()-1);
+        ch.keepOnly(newPathIndexes);
+        //LOG.info("after cuttoff {} list size:{}",ch.spline.getMaxT(),maxListSize);
     }
 
-    private void cutRiverSection(int from, int to,ChannelPt[] pts) {
-        LOG.info("cutting from {} {}",from,to);
-        for(int i=from; i<to ; i++) {
-            quadTree.removePoint(pts[i]);
+//    for(Channel.ChannelPt closePt : closePts) if(closePt.channelId!=ch.channelId) {
+//        Channel collidedChannel = channels.get(closePt.channelId);
+//        //connected collision
+//        if(channelJunctions.get(ch.channelId)!=null)
+//            if (channelJunctions.get(ch.channelId).contains(closePt.channelId)) {
+//                Junction junction = channelJunctions.get(ch.channelId);
+//                // downstream collision or upstream with bigger channel:
+//                if (junction.isChild(closePt.channelId) || collidedChannel.width > ch.width) {
+//
+//                }
+//                // upstream collision with smaller channel:
+//            }
+//        //connected collision child collides with parent
+//        if(channelJunctions.get(collidedChannel.channelId)!=null)
+//            if (channelJunctions.get(collidedChannel.channelId).isChild(ch.channelId)) {
+//
+//            }
+//
+//        //disconnected collision
+//
+//        break breakPointChannelIteration;
+//    }
+    //TODO:rewrite this accumulate indexes to remove and new pts to add, make all of the changes after this;
+    private void manageCollisions() {
+        quadTree.clear();
+        final ArrayList<ArrayList<Integer>> removedIds = new ArrayList<>(channels.size());
+        for(Channel ch: channels) insertChannel(ch);
+        for(int chId = 0; chId <channels.size() ; chId++) {
+            final Channel ch = channels.get(chId);
+            for(int ptId = 0 ; ptId<ch.numPts() ; ptId++) if(quadTree.containsPoint(ch.pt(ptId))) {
+                List<Channel.ChannelPt> closePts = getPtsCloseTo(ch.pt(ptId));
+                closePts.sort(null);
+                for(Channel.ChannelPt close : closePts) if(close.channelId!=chId) {
+                    final int colId = close.channelId;
+                    final Channel collided = channels.get(colId);
+                    //connected collision
+                    if(junctions.get(chId)!=null)
+                        if (junctions.get(chId).contains(colId)) {
+                            Junction junction = junctions.get(chId);
+                            // downstream collision:
+                            // assumes there are only two parents
+                            if (junction.isChild(colId)) {
+                                ArrayList<Integer> removedFromCh = cutRiverSection(chId,ch.numPts(),ch);
+                                ch.add(close,collided);
+                                ArrayList<Integer> removedFromChild= cutRiverSection(0, close.index, collided);
+                                final int parentId = junction.parents[0]==chId?junction.parents[1]:junction.parents[0];
+                                final Channel parent = channels.get(parentId);
+
+                                addSection(removedFromChild,collided,parent);
+                            }
+                            // upstream collision with smaller channel:
+                        }
+                }
+            }
         }
+    }
+
+    /**
+     * adds all but the first element of the section to the channel. It appends from the last index of the channel
+     * */
+    private void addSection(ArrayList<Integer> section, Channel from, Channel to) {
+        for(int i=1 ; i< section.size() ; i++) to.add(section.get(i),from);
+    }
+
+    private void insertChannel(Channel ch) {
+        Channel.ChannelPt[] pts = ch.getChannelAsPts();
+        for(Channel.ChannelPt pt : pts) quadTree.insertPoint(pt);
+    }
+
+    /**
+     *  returns the indexes of the cut channel does not remove index {@code to}
+     * */
+    private ArrayList<Integer> cutRiverSection(int from, int to, Channel ch) {
+        final ArrayList<Integer> res = new ArrayList<>();
+        for(int i=from; i<to ; i++) {
+            res.add(i);
+            quadTree.removePoint(ch.pt(i));
+        }
+        return res;
     }
 
     // =========================================================================
@@ -233,5 +287,9 @@ public final class Meanders {
 
     public List<Channel> getChannels() {
         return channels;
+    }
+
+    public ArrayList<double[]> getChannelPts(int i) {
+        return channels.get(i).spline.points();
     }
 }

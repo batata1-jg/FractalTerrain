@@ -38,8 +38,6 @@ import net.minecraft.world.gen.chunk.*;
 import net.minecraft.world.gen.noise.NoiseConfig;
 import org.slf4j.Logger;
 
-// TODO: add compat , consertar biomes, reescrever isso
-
 public final class FractalTerrainChunkGenerator extends ChunkGenerator {
 
     private static final Logger LOG = Debug.getLogger(FractalTerrainChunkGenerator.class);
@@ -68,18 +66,13 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         this.biomeSource = biomeSource;
         this.settings = settings;
         this.populateNoiseStep = new PopulateNoiseStep(1.0F);
-        this.fluidLevelSampler =
-                Suppliers.memoize(() -> createFluidLevelSampler((ChunkGeneratorSettings) settings.value()));
-        // TODO: implementar isso direito ou ser mais inteligente e descobri qual dos caras la eu tenho q usar
-        // reliefLowFreqInterpolation = new Interpolation(1.0F * (1 << 6));
+        this.fluidLevelSampler = Suppliers.memoize(() -> createFluidLevelSampler(settings.value()));
     }
 
     private static AquiferSampler.FluidLevelSampler createFluidLevelSampler(ChunkGeneratorSettings settings) {
         AquiferSampler.FluidLevel fluidLevel = new AquiferSampler.FluidLevel(-54, Blocks.LAVA.getDefaultState());
         int i = settings.seaLevel();
         AquiferSampler.FluidLevel fluidLevel2 = new AquiferSampler.FluidLevel(i, settings.defaultFluid());
-        AquiferSampler.FluidLevel fluidLevel3 =
-                new AquiferSampler.FluidLevel(DimensionType.MIN_HEIGHT * 2, Blocks.AIR.getDefaultState());
         return (x, y, z) -> y < Math.min(-54, i) ? fluidLevel : fluidLevel2;
     }
 
