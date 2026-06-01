@@ -1,12 +1,15 @@
 package me.batata_1.fractal_terrain.hydrology.meanders;
 
 import me.batata_1.fractal_terrain.debug.Debug;
-import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import me.batata_1.fractal_terrain.math.VectorOps;
+import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 import org.slf4j.Logger;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
 
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
@@ -78,7 +81,7 @@ public final class Meanders {
             migrate(ch);
             manageCutoffs(ch);
         }
-        manageCollisions();
+      //  manageCollisions();
         ensureJunctionsConnected();
         for(Channel ch : channels) {
             try {
@@ -174,11 +177,12 @@ public final class Meanders {
         if(ch.spline.checkNaN()) {
             throw new RuntimeException("cannot cut becuse spline is NaN");
         }
+        quadTree.clear();
         insertChannel(ch);
         ArrayList<Integer> newPathIndexes = new ArrayList<>();
 
-       // LOG.info("before cuttoff {}",ch.spline.getMaxT());
         int maxListSize = 0;
+
         for(int id = 0; id<ch.numPts()-1 ; id++) {
             if(!quadTree.containsPoint(ch.pt(id))) continue;
             newPathIndexes.add(id);
@@ -187,36 +191,16 @@ public final class Meanders {
             maxListSize = Math.max(maxListSize, ptList.size());
             for(Channel.ChannelPt cpt : ptList) {
                 if(cpt.index<=id+1||cpt.channelId!=ch.channelId) continue;
-                cutRiverSection(id,cpt.index,ch);
+                LOG.info("cutting from {} to {}",id,cpt.index);
+              //  cutRiverSection(id,cpt.index,ch);
             }
         }
         newPathIndexes.add(ch.numPts()-1);
+        LOG.info("manage cutoffs new pts: {}",newPathIndexes);
         ch.keepOnly(newPathIndexes);
         //LOG.info("after cuttoff {} list size:{}",ch.spline.getMaxT(),maxListSize);
     }
 
-//    for(Channel.ChannelPt closePt : closePts) if(closePt.channelId!=ch.channelId) {
-//        Channel collidedChannel = channels.get(closePt.channelId);
-//        //connected collision
-//        if(channelJunctions.get(ch.channelId)!=null)
-//            if (channelJunctions.get(ch.channelId).contains(closePt.channelId)) {
-//                Junction junction = channelJunctions.get(ch.channelId);
-//                // downstream collision or upstream with bigger channel:
-//                if (junction.isChild(closePt.channelId) || collidedChannel.width > ch.width) {
-//
-//                }
-//                // upstream collision with smaller channel:
-//            }
-//        //connected collision child collides with parent
-//        if(channelJunctions.get(collidedChannel.channelId)!=null)
-//            if (channelJunctions.get(collidedChannel.channelId).isChild(ch.channelId)) {
-//
-//            }
-//
-//        //disconnected collision
-//
-//        break breakPointChannelIteration;
-//    }
     //TODO:rewrite this accumulate indexes to remove and new pts to add, make all of the changes after this;
     private void manageCollisions() {
         quadTree.clear();
@@ -316,7 +300,7 @@ public final class Meanders {
             }
         }
 
-        for(Channel ch : channels) ch.removeIndexes(removedIds.get(ch.channelId));
+       // for(Channel ch : channels) ch.removeIndexes(removedIds.get(ch.channelId));
 
     }
 
@@ -329,7 +313,12 @@ public final class Meanders {
 
     private void insertChannel(Channel ch) {
         Channel.ChannelPt[] pts = ch.getChannelAsPts();
-        for(Channel.ChannelPt pt : pts) quadTree.insertPoint(pt);
+        for(Channel.ChannelPt pt : pts) {
+            quadTree.insertPoint(pt);
+//            LOG.info("contem esse {} ? {}",pt,quadTree.containsPoint(pt));
+//            LOG.info("contem {} ? {}",ch.pt(pt.index),quadTree.containsPoint(ch.pt(pt.index)));
+        }
+      //  for(int id=0 ; id<ch.numPts()-1 ; id++) LOG.info("contem {} ? {}",ch.pt(id),quadTree.containsPoint(ch.pt(id)));
     }
 
     private void removeChannel(Channel ch) {

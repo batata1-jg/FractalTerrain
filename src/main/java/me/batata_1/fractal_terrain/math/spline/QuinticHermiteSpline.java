@@ -36,10 +36,11 @@ public record QuinticHermiteSpline(
             ddxy.add(VectorOps.scale(VectorOps.sub(dxy.get(i+1), dxy.get(i-1)),0.5));
         }
         ddxy.add(new double[2]);
-        LOG.info("dxy bounds[{} {}]", Arrays.toString(dxy.stream().max(Comparator.comparingDouble(VectorOps::magnitude)).get()),
-                Arrays.toString(dxy.stream().min(Comparator.comparingDouble(VectorOps::magnitude)).get()));
-        LOG.info("ddxy bounds[{} {}]", Arrays.toString(ddxy.stream().max(Comparator.comparingDouble(VectorOps::magnitude)).get()),
-                Arrays.toString(ddxy.stream().min(Comparator.comparingDouble(VectorOps::magnitude)).get()));
+//        LOG.info("dxy bounds[{} {}]", Arrays.toString(dxy.stream().max(Comparator.comparingDouble(VectorOps::magnitude)).get()),
+//                Arrays.toString(dxy.stream().min(Comparator.comparingDouble(VectorOps::magnitude)).get()));
+//        LOG.info("ddxy bounds[{} {}]", Arrays.toString(ddxy.stream().max(Comparator.comparingDouble(VectorOps::magnitude)).get()),
+//                Arrays.toString(ddxy.stream().min(Comparator.comparingDouble(VectorOps::magnitude)).get()));
+        LOG.info("creatingSpline size:{}",pt.size());
         return new QuinticHermiteSpline(pt,dxy,ddxy);
     }
 
@@ -48,7 +49,7 @@ public record QuinticHermiteSpline(
     }
 
     public double[] sample(double t) {
-        final int id = Math.min((int) Math.floor(t),points.size()-2);
+        final int id = Math.clamp((int) Math.floor(t),0,points.size()-2);
         final double[] p0 = points.get(id);
         final double[] p1 = points.get(id + 1);
         final double[] v0 = velocity.get(id);
@@ -85,11 +86,11 @@ public record QuinticHermiteSpline(
 
     public QuinticHermiteSpline reSample(double samplingDist) {
         if (this.checkNaN()) throw new IllegalStateException();
-
+        if(points.size()<2) throw new IllegalStateException("spline must have at least 2 points");
         ArrayList<Double> newT = new ArrayList<>();
         newT.add(0.0);
         for (int counter = 0; counter < MAX_SPLINE_LENGTH; counter++) {
-            newT.add(nextInSpline(newT.getLast(), 1.0));
+            newT.add(nextInSpline(newT.getLast(), samplingDist));
             if (newT.getLast() >= getMaxT()) {
                 newT.add(getMaxT());
                 return new QuinticHermiteSpline(

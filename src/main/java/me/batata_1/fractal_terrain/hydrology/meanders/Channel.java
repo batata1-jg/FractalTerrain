@@ -6,6 +6,8 @@ import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Objects;
 
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
@@ -124,6 +126,17 @@ public class Channel {
         @Override
         public String toString() {
             return "["+ptCoords.toString()+" "+ index +"]";
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if(!(obj instanceof ChannelPt comp)) return false;
+            return (this.channelId==comp.channelId)&&(this.index==comp.index)&&(this.ptCoords.equals(comp.ptCoords));
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(index,channelId,ptCoords);
         }
     }
 
