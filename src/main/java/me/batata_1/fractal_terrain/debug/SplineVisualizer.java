@@ -26,34 +26,38 @@ public class SplineVisualizer {
     }
 
     public void see(QuinticHermiteSpline spline, String name) {
-
+        final int beyond=0;
+        // lower => more resolution
+        final double resolution=0.125;
         double[] minVec = new double[]{INF,INF};
         double[] maxVec = new double[]{-INF,-INF};
 
-        for(double[] pt : spline.points()) {
-            minVec = VectorOps.min(minVec,pt);
-            maxVec = VectorOps.max(maxVec,pt);
+        for(int i=0 ; i<spline.getSize()+beyond;i++) {
+            minVec = VectorOps.min(minVec,spline.sample(i));
+            maxVec = VectorOps.max(maxVec,spline.sample(i));
         }
 
         double[] boxLen = VectorOps.sub(maxVec,minVec);
+        boxLen[0] = Math.min(boxLen[0]/resolution,4096);
+        boxLen[1] = Math.min(boxLen[1]/resolution,4096);
         long[] WH = Arrays.stream(boxLen).mapToLong(Math::round).toArray();
-        DEBUG_LOGGER.info("spline from {} -> to {} bounding boxlen = {}",minVec,maxVec,WH);
+        DEBUG_LOGGER.info("spline size:{} from {} -> to {} bounding boxlen = {}",spline.getSize(),minVec,maxVec,WH);
         double[] grid = new double[(int)(WH[0]*WH[1])];
 
         final double[] curPt = new double[2];
         final double detectDist= Meanders.DX;
         var tree = new QuadTree<>(new double[]{-INF, -INF}, new double[]{INF, INF});
 
-        for(double[] pt : spline.points()) tree.insertPoint(new QuadTreePoint(pt));
+        for(double i=0 ; i<spline.getSize()+beyond;i+=resolution) tree.insertPoint(new QuadTreePoint(spline.sample(i)));
 
         for(int x=0 ; x<(int)WH[0] ; x++) {
             for(int z=0 ; z<(int)WH[1]; z++) {
                 final int id =  x*(int)WH[1] + z;
-                curPt[0] = x + minVec[0];
-                curPt[1] = z + minVec[1];
+                curPt[0] = (x*resolution + minVec[0]);
+                curPt[1] = (z*resolution + minVec[1]);
                 List<double[]> pts = tree.getPointCoordsInBox(
-                        VectorOps.add(curPt,VectorOps.scale(new double[]{1,1},-detectDist)),
-                        VectorOps.add(curPt,VectorOps.scale(new double[]{1,1},detectDist))
+                        VectorOps.add(curPt,VectorOps.scale(new double[]{1*resolution,resolution},-detectDist)),
+                        VectorOps.add(curPt,VectorOps.scale(new double[]{resolution,resolution},detectDist))
                 );
                 if(!pts.isEmpty()) grid[id]=1;
             }

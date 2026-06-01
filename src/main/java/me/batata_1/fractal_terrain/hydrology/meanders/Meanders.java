@@ -64,6 +64,13 @@ public final class Meanders {
         return id;
     }
 
+    private int addChildChannel(ArrayList<double[]> xzPts, double width) {
+        final int id = channels.size();
+        channels.add(new Channel(width, xzPts, id));
+        junctions.add(null);
+        return id;
+    }
+
     public void step(int i) {
         LOG.info("step {}",i);
         quadTree.clear();
@@ -213,10 +220,15 @@ public final class Meanders {
     //TODO:rewrite this accumulate indexes to remove and new pts to add, make all of the changes after this;
     private void manageCollisions() {
         quadTree.clear();
-        final ArrayList<ArrayList<Integer>> removedIds = new ArrayList<>(channels.size());
-        for(Channel ch: channels) insertChannel(ch);
+        final HashMap<Integer,ArrayList<Integer>> removedIds = new HashMap<>();
+        for(Channel ch: channels) {
+            removedIds.put(ch.channelId,new ArrayList<>());
+            insertChannel(ch);
+        }
         for(int chId = 0; chId <channels.size() ; chId++) {
+            if(!removedIds.containsKey(chId)) removedIds.put(chId,new ArrayList<>());
             final Channel ch = channels.get(chId);
+            pointTraversal:
             for(int ptId = 0 ; ptId<ch.numPts() ; ptId++) if(quadTree.containsPoint(ch.pt(ptId))) {
                 List<Channel.ChannelPt> closePts = getPtsCloseTo(ch.pt(ptId));
                 closePts.sort(null);
@@ -224,25 +236,88 @@ public final class Meanders {
                     final int colId = close.channelId;
                     final Channel collided = channels.get(colId);
                     //connected collision
-                    if(junctions.get(chId)!=null)
+                    if (junctions.get(chId) != null) {
                         if (junctions.get(chId).contains(colId)) {
                             Junction junction = junctions.get(chId);
                             // downstream collision:
                             // assumes there are only two parents
                             if (junction.isChild(colId)) {
-                                ArrayList<Integer> removedFromCh = cutRiverSection(chId,ch.numPts(),ch);
-                                ch.add(close,collided);
-                                ArrayList<Integer> removedFromChild= cutRiverSection(0, close.index, collided);
-                                final int parentId = junction.parents[0]==chId?junction.parents[1]:junction.parents[0];
+                                ArrayList<Integer> removedFromCh = cutRiverSection(ptId, ch.numPts(), ch);
+                                removedIds.get(chId).addAll(removedFromCh);
+                                ch.add(close, collided);
+                                ArrayList<Integer> removedFromChild = cutRiverSection(0, close.index, collided);
+                                removedIds.get(colId).addAll(removedFromChild);
+                                final int parentId = junction.parents[0] == chId ? junction.parents[1] : junction.parents[0];
                                 final Channel parent = channels.get(parentId);
-
-                                addSection(removedFromChild,collided,parent);
+                                addSection(removedFromChild, collided, parent);
+                                parent.add(close, collided);
+                                break pointTraversal;
                             }
-                            // upstream collision with smaller channel:
+                            // upstream collision:
+                            ArrayList<Integer> removedFromCh = cutRiverSection(ptId, ch.numPts(), ch);
+                            removedIds.get(chId).addAll(removedFromCh);
+                            ArrayList<Integer> removedFromCollided = cutRiverSection(close.index, collided.numPts(), collided);
+                            removedIds.get(colId).addAll(removedFromCollided);
+                            if (ch.width >= collided.width) {
+                                collided.add(ptId, ch);
+                            } else {
+                                ch.add(close.index, collided);
+                            }
+                            final int childId = junction.child;
+                            final Channel child = channels.get(childId);
+                            removeChannel(child);
+                            if (ch.width >= collided.width) {
+                                for (int i = removedFromCh.size() - 1; i >= 0; i--)
+                                    child.addFront(removedFromCh.get(i), ch);
+                            } else {
+                                for (int i = removedFromCollided.size() - 1; i >= 0; i--)
+                                    child.addFront(removedFromCollided.get(i), collided);
+                            }
+                            insertChannel(child);
+                            break pointTraversal;
                         }
+                    }
+                    if (junctions.get(colId) != null) {
+                        if(junctions.get(colId).isChild(chId)) {
+                            Junction junction = junctions.get(colId);
+                            //ch is the child
+                            ArrayList<Integer> removedFromChild = cutRiverSection(0, ptId, ch);
+                            removedIds.get(chId).addAll(removedFromChild);
+                            ArrayList<Integer> removedFromCollided = cutRiverSection(close.index, collided.numPts(), collided);
+                            removedIds.get(colId).addAll(removedFromCollided);
+                            final int parentId = junction.parents[0] == colId ? junction.parents[1] : junction.parents[0];
+                            final Channel parent = channels.get(parentId);
+                            addSection(removedFromChild, ch, parent);
+                            parent.add(ptId, ch);
+                            break pointTraversal;
+                        }
+                    }
+
+                    //disconnected collision
+                    ArrayList<Integer> removedFromCh = cutRiverSection(ptId, ch.numPts(), ch);
+                    removedIds.get(chId).addAll(removedFromCh);
+                    ArrayList<Integer> removedFromCollided = cutRiverSection(close.index, collided.numPts(), collided);
+                    removedIds.get(colId).addAll(removedFromCollided);
+                    // add channels with previous tangents
+                    final int newId = addChildChannel(new ArrayList<>(),Math.sqrt(ch.width*ch.width+collided.width*collided.width));
+                    Junction newJunction = new Junction(new int[]{chId,colId},newId);
+                    junctions.set(chId,newJunction);
+                    junctions.set(colId,newJunction);
+                    junctions.add(null);
+                    if(ch.width>=collided.width) {
+                        channels.get(newId).add(ptId,ch);
+                        for(int id : removedFromCh) channels.get(newId).add(id,ch);
+                    } else {
+                        channels.get(newId).add(close.index,collided);
+                        for(int id : removedFromCollided) channels.get(newId).add(id,collided);
+                    }
+                    break pointTraversal;
                 }
             }
         }
+
+        for(Channel ch : channels) ch.removeIndexes(removedIds.get(ch.channelId));
+
     }
 
     /**
@@ -255,6 +330,11 @@ public final class Meanders {
     private void insertChannel(Channel ch) {
         Channel.ChannelPt[] pts = ch.getChannelAsPts();
         for(Channel.ChannelPt pt : pts) quadTree.insertPoint(pt);
+    }
+
+    private void removeChannel(Channel ch) {
+        Channel.ChannelPt[] pts = ch.getChannelAsPts();
+        for(Channel.ChannelPt pt : pts) quadTree.removePoint(pt);
     }
 
     /**

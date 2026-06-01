@@ -40,11 +40,10 @@ public class RiverNetworkVisualizer {
         for(Channel c : meanders.getChannels()) {
             DEBUG_LOGGER.info("channel {}",c.channelId);
 //            c.reSample(0.5);
-            double[][] migVec = meanders.getCurvatureVector(c);
             for(int i=0 ; i<c.spline.points().size() ; i++) {
                 double[] pt = c.spline.points().get(i);
                 tree.insertPoint(new QuadTreePoint(VectorOps.scale(pt,scale)));
-                insertPt(VectorOps.add(pt,migVec[i]),pointGrid,gridSize,scale);
+                insertPt(VectorOps.add(pt,VectorOps.scale(c.spline.normal(i),c.spline.curvature(i))),pointGrid,gridSize,scale);
                 insertPt(pt,pointGrid,gridSize,scale);
             }
         }

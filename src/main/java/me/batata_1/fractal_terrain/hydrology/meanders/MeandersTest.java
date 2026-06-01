@@ -3,7 +3,6 @@ package me.batata_1.fractal_terrain.hydrology.meanders;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
-import me.batata_1.fractal_terrain.math.spline.CatmullRomSpline;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

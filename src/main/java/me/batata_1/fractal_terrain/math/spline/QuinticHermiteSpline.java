@@ -3,10 +3,15 @@ package me.batata_1.fractal_terrain.math.spline;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.math.VectorOps;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.MAX_SPLINE_LENGTH;
+import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 import static me.batata_1.fractal_terrain.math.VectorOps.distance;
 
 public record QuinticHermiteSpline(
@@ -14,6 +19,9 @@ public record QuinticHermiteSpline(
         ArrayList<double[]> velocity,
         ArrayList<double[]> acceleration
     ) {
+
+
+    private static final Logger LOG = getLogger(QuinticHermiteSpline.class);
 
     public static QuinticHermiteSpline createCatmullRom(ArrayList<double[]> pt) {
         ArrayList<double[]> dxy = new ArrayList<>();
@@ -28,6 +36,10 @@ public record QuinticHermiteSpline(
             ddxy.add(VectorOps.scale(VectorOps.sub(dxy.get(i+1), dxy.get(i-1)),0.5));
         }
         ddxy.add(new double[2]);
+        LOG.info("dxy bounds[{} {}]", Arrays.toString(dxy.stream().max(Comparator.comparingDouble(VectorOps::magnitude)).get()),
+                Arrays.toString(dxy.stream().min(Comparator.comparingDouble(VectorOps::magnitude)).get()));
+        LOG.info("ddxy bounds[{} {}]", Arrays.toString(ddxy.stream().max(Comparator.comparingDouble(VectorOps::magnitude)).get()),
+                Arrays.toString(ddxy.stream().min(Comparator.comparingDouble(VectorOps::magnitude)).get()));
         return new QuinticHermiteSpline(pt,dxy,ddxy);
     }
 
@@ -36,8 +48,7 @@ public record QuinticHermiteSpline(
     }
 
     public double[] sample(double t) {
-        final int id = (int) Math.floor(t);
-        if (id == points.size() - 1) return points.getLast();
+        final int id = Math.min((int) Math.floor(t),points.size()-2);
         final double[] p0 = points.get(id);
         final double[] p1 = points.get(id + 1);
         final double[] v0 = velocity.get(id);
@@ -49,12 +60,12 @@ public record QuinticHermiteSpline(
         final double[] sample = new double[dim];
         for (int d = 0; d < dim; d++) {
             sample[d] =
-                    +p0[d]
-                            + v0[d] * u
-                            + (0.5 * a0[d]) * u * u
-                            + (10 * (p1[d] - p0[d]) - 2 * (2 * v1[d] + 3 * v0[d]) + 0.5 * (a1[d] - 3 * a0[d])) * u * u * u
-                            + (-15 * (p1[d] - p0[d]) + 7 * v1[d] + 8 * v0[d] - a1[d] + 1.5 * a0[d]) * u * u * u * u
-                            + (6 * (p1[d] - p0[d])) - 3 * (v1[d] + v0[d]) + 0.5 * (a1[d] - a0[d]) * u * u * u * u * u;
+                p0[d]
+                + v0[d] * u
+                + (0.5 * a0[d]) * u * u
+                + (10 * (p1[d] - p0[d]) - 2 * (2 * v1[d] + 3 * v0[d]) + 0.5 * (a1[d] - 3 * a0[d])) * u * u * u
+                + (-15 * (p1[d] - p0[d]) + 7 * v1[d] + 8 * v0[d] - a1[d] + 1.5 * a0[d]) * u * u * u * u
+                + ((6 * (p1[d] - p0[d])) - 3 * (v1[d] + v0[d]) + 0.5 * (a1[d] - a0[d])) * u * u * u * u * u;
         }
         return sample;
     }
@@ -65,7 +76,7 @@ public record QuinticHermiteSpline(
         double m;
         for (int step = 0; step <= FractalTerrainConfig.BINARY_SEARCH_MAX_STEPS; step++) {
             m = (p + q) / 2;
-            if (distance(sample(curT), sample(m)) <= dist) p = m;
+            if (distance(sample(curT), sample(m)) <= dist&&m<=getMaxT()) p = m;
             else q = m;
             if (p >= q) break;
         }
@@ -78,9 +89,9 @@ public record QuinticHermiteSpline(
         ArrayList<Double> newT = new ArrayList<>();
         newT.add(0.0);
         for (int counter = 0; counter < MAX_SPLINE_LENGTH; counter++) {
-            newT.add(nextInSpline(newT.getLast(), samplingDist));
+            newT.add(nextInSpline(newT.getLast(), 1.0));
             if (newT.getLast() >= getMaxT()) {
-                newT.set(newT.size() - 1, getMaxT());
+                newT.add(getMaxT());
                 return new QuinticHermiteSpline(
                         new ArrayList<>(newT.stream().map(this::sample).toList()),
                         new ArrayList<>(newT.stream().map(this::firstDerivative).toList()),
@@ -88,6 +99,14 @@ public record QuinticHermiteSpline(
                 );
             }
         }
+       // LOG.error("newT: {}", Arrays.toString(newT.toArray()));
+        LOG.error("sampled {}-{}",sample(newT.removeLast()),sample(newT.removeLast()));
+        final int samples = 40;
+        final double[][] doubles = new double[samples][2];
+        for(int i =0; i<samples ; i++) doubles[i] = sample(97.9+i*0.005);
+        LOG.error("spline after maxT: {}",Arrays.deepToString(doubles));
+        LOG.error("pt98:{} pt97:{}",points.get(98),points.get(97));
+        LOG.error("sample98:{} sample97:{}",sample(98),sample(97));
         Debug.spline.see(this, "defective_spline");
         throw new RuntimeException("exeded spline len");
     }
@@ -139,11 +158,11 @@ public record QuinticHermiteSpline(
         final double[] sample = new double[dim];
         for (int d = 0; d < dim; d++) {
             sample[d] =
-                    +v0[d]
-                            + (a0[d]) * u
-                            + 3 * (10 * (p1[d] - p0[d]) - 2 * (2 * v1[d] + 3 * v0[d]) + 0.5 * (a1[d] - 3 * a0[d])) * u * u
-                            + 4 * (-15 * (p1[d] - p0[d]) + 7 * v1[d] + 8 * v0[d] - a1[d] + 1.5 * a0[d]) * u * u * u
-                            + 5 * (6 * (p1[d] - p0[d])) - 3 * (v1[d] + v0[d]) + 0.5 * (a1[d] - a0[d]) * u * u * u * u;
+                    v0[d]
+                    + (a0[d]) * u
+                    + 3 * (10 * (p1[d] - p0[d]) - 2 * (2 * v1[d] + 3 * v0[d]) + 0.5 * (a1[d] - 3 * a0[d])) * u * u
+                    + 4 * (-15 * (p1[d] - p0[d]) + 7 * v1[d] + 8 * v0[d] - a1[d] + 1.5 * a0[d]) * u * u * u
+                    + 5 * (6*(p1[d] - p0[d]) - 3*(v1[d] + v0[d]) + 0.5*(a1[d] - a0[d])) * u * u * u * u;
         }
         return sample;
     }
@@ -162,10 +181,10 @@ public record QuinticHermiteSpline(
         final double[] sample = new double[dim];
         for (int d = 0; d < dim; d++) {
             sample[d] =
-                    +(a0[d])
-                            + (60 * (p1[d] - p0[d]) - 12 * (2 * v1[d] + 3 * v0[d]) + 3 * (a1[d] - 3 * a0[d])) * u
-                            + 12 * (-15 * (p1[d] - p0[d]) + 7 * v1[d] + 8 * v0[d] - a1[d] + 1.5 * a0[d]) * u * u
-                            + 20 * (6 * (p1[d] - p0[d])) - 3 * (v1[d] + v0[d]) + 0.5 * (a1[d] - a0[d]) * u * u * u;
+                    a0[d]
+                    + (60 * (p1[d] - p0[d]) - 12 * (2 * v1[d] + 3 * v0[d]) + 3 * (a1[d] - 3 * a0[d])) * u
+                    + 12 * (-15 * (p1[d] - p0[d]) + 7 * v1[d] + 8 * v0[d] - a1[d] + 1.5 * a0[d]) * u * u
+                    + 20 * (6 * (p1[d] - p0[d]) - 3 * (v1[d] + v0[d]) + 0.5 * (a1[d] - a0[d])) * u * u * u;
         }
         return sample;
     }

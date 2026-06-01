@@ -86,6 +86,31 @@ public class Channel {
         this.spline.acceleration().add(from.spline.acceleration().get(id));
     }
 
+    public void addFront(int id, Channel from) {
+        this.spline.points().addFirst(from.spline.points().get(id));
+        this.spline.velocity().addFirst(from.spline.velocity().get(id));
+        this.spline.acceleration().addFirst(from.spline.acceleration().get(id));
+    }
+
+    /**
+     * removes indexes from this list in the spline.
+     * does not assume there is no repetition
+     * */
+    public void removeIndexes(ArrayList<Integer> indexes) {
+        indexes.sort(null);
+        final ArrayList<Integer> indexesToAdd = new ArrayList<>();
+        for(int i=0 ; i<spline.getSize() ; i++) if(i==indexes.getFirst()) {
+            while(i==indexes.getFirst()) indexes.removeFirst();
+        } else {
+            indexesToAdd.add(i);
+        }
+        this.spline = new QuinticHermiteSpline(
+                new ArrayList<>(indexesToAdd.stream().map(id->spline.points().get(id)).toList()),
+                new ArrayList<>(indexesToAdd.stream().map(id->spline.velocity().get(id)).toList()),
+                new ArrayList<>(indexesToAdd.stream().map(id->spline.acceleration().get(id)).toList())
+        );
+    }
+
     public static class ChannelPt extends QuadTreePoint {
 
         public final int index,channelId;
