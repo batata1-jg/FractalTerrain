@@ -1,9 +1,8 @@
-package me.batata_1.fractal_terrain.world.gen.chunk;
+package me.batata_1.fractal_terrain.relief;
 
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import me.batata_1.fractal_terrain.noise.PhacelleNoiseSampler;
-import me.batata_1.fractal_terrain.world.gen.RockStrata;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 
@@ -51,6 +50,7 @@ public class PopulateNoiseStep {
 
     // shouldn't depend on getHeight
     public BlockState fillRocks(int x, int y, int z) {
+
         return rocks[0];
     }
 }

@@ -12,6 +12,7 @@ import java.util.function.Supplier;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.math.spline.Spline;
+import me.batata_1.fractal_terrain.relief.PopulateNoiseStep;
 import me.batata_1.fractal_terrain.world.biome.source.FractalTerrainBiomeSource;
 import net.minecraft.SharedConstants;
 import net.minecraft.block.BlockState;
@@ -29,7 +30,6 @@ import net.minecraft.world.Heightmap;
 import net.minecraft.world.biome.Biome;
 import net.minecraft.world.biome.source.BiomeAccess;
 import net.minecraft.world.chunk.Chunk;
-import net.minecraft.world.dimension.DimensionType;
 import net.minecraft.world.gen.GenerationStep;
 import net.minecraft.world.gen.HeightContext;
 import net.minecraft.world.gen.StructureAccessor;
@@ -202,8 +202,8 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
             LOG.info(" chunkNoise sampler of 0 ,0 : {}", chunkNoiseSampler);
             LOG.info(" chunkNoise sampler estiate H : {}", chunkNoiseSampler.estimateSurfaceHeight(0, 0));
         }
-        FractalTerrainInstance.getSurfaceBuilder()
-                .buildSurface(noiseConfig, biomeAccess, biomeRegistry, heightContext, chunk, chunkNoiseSampler);
+//        FractalTerrainInstance.getSurfaceBuilder()
+//                .buildSurface(noiseConfig, biomeAccess, biomeRegistry, heightContext, chunk, chunkNoiseSampler);
     }
 
     private ChunkNoiseSampler createChunkNoiseSampler(

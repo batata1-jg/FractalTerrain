@@ -35,6 +35,8 @@ public class PipelinePreprocessing {
             if ((--inDegree[viz]) == 0) isLeaf.add(viz);
             flow[viz] += flow[cur];
         }
+
+        for(int i=0 ; i<flow.length ; i++) flow[i] = (float) Math.sqrt(flow[i]);
         return flow;
     }
 

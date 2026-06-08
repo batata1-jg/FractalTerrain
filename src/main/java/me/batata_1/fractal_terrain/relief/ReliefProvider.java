@@ -1,4 +1,4 @@
-package me.batata_1.fractal_terrain.world.gen;
+package me.batata_1.fractal_terrain.relief;
 
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.*;
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
@@ -15,11 +15,10 @@ public class ReliefProvider {
 
     public ReliefProvider(String path) {
         final_tiles = new NonIntersectingInfiniteTensor(path + "/final_relief_tiles", new int[]{9,512,512}, key -> {
-            int x = key.get(X);
-            int z = key.get(Z);
-
-            FloatTensor final_slice = pipeline.getDecoderSlice(x, z);
-            float[] entries = new float[9 << 18];
+            final int x = key.get(X);
+            final int z = key.get(Z);
+            final FloatTensor final_slice = pipeline.getDecoderSlice(x, z);
+            final float[] entries = new float[9 << 18];
             //TODO: mover weight para canal 0
             for (int ch = 1; ch < 10; ch++) {
                 for (int px = 0; px < (1 << 18); px++) {
@@ -27,14 +26,11 @@ public class ReliefProvider {
                     entries[((ch-1) << 18) + px] = (w > 1e-6f) ? final_slice.data[(ch << 18) + px] / w : 0f;
                 }
             }
-            FloatTensor t = new FloatTensor(entries, new int[] {9, 512, 512});
-
+            final FloatTensor t = new FloatTensor(entries, new int[] {9, 512, 512});
             Debug.seeTile(t,x,z,"final");
             return t;
         });
     }
-
-
     // ch7 -> adj
     // ch8 -> flow
 

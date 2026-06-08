@@ -5,6 +5,7 @@ import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
 import me.batata_1.fractal_terrain.math.VectorOps;
+import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -39,11 +40,13 @@ public class RiverNetworkVisualizer {
 
         for(Channel c : meanders.getChannels()) {
             DEBUG_LOGGER.info("channel {}",c.channelId);
-//            c.reSample(0.5);
+          //  c.spline = QuinticHermiteSpline.createCatmullRom(c.spline.points());
+            var migVector = meanders.computedMigVector(c);
+           // c.reSample(0.5);
             for(int i=0 ; i<c.spline.points().size() ; i++) {
                 double[] pt = c.spline.points().get(i);
                 tree.insertPoint(new QuadTreePoint(VectorOps.scale(pt,scale)));
-                insertPt(VectorOps.add(pt,VectorOps.scale(c.spline.normal(i),c.spline.curvature(i))),pointGrid,gridSize,scale);
+                insertPt(migVector[i],pointGrid,gridSize,scale);
                 insertPt(pt,pointGrid,gridSize,scale);
             }
         }
@@ -88,11 +91,16 @@ public class RiverNetworkVisualizer {
     }
 
     private void insertPt(double[] pt, float[] pointGrid,int gridSize,float scale) {
-        if(pt[0]>gridSize*gridSize-1||pt[1]>gridSize*gridSize-1) {
+        if(pt[0]*scale>gridSize*gridSize-1||pt[1]*scale>gridSize*gridSize-1) {
             pointGrid[0] = 1;
             return;
         }
-        int id = Math.toIntExact(gridSize * Math.round(scale*pt[0]) + Math.round(scale*pt[1]));
+        int id;
+        try {
+            id=Math.toIntExact(gridSize * Math.round(scale*pt[0]) + Math.round(scale*pt[1]));
+        } catch( ArithmeticException e) {
+            id=0;
+        };
         int pointId = Math.clamp(id,0,gridSize*gridSize-1);
         pointGrid[pointId]=1;
     }

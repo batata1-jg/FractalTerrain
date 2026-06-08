@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import me.batata_1.fractal_terrain.infinitetensor.storage.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.storage.TensorStorage;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
 
@@ -198,7 +199,7 @@ public abstract class InfiniteTensor {
         storage.addOrOverwriteEntry(CompletableFuture.completedFuture(result), windowIndex);
     }
 
-    private void computeBatched(List<int[]> windowIndices) {
+    private void computeBatched(@NotNull List<int[]> windowIndices) {
         int from = 0;
         while (from < windowIndices.size()) {
             int to = Math.min(from + batchSize, windowIndices.size());
@@ -235,7 +236,7 @@ public abstract class InfiniteTensor {
         }
     }
 
-    private void validateOutputShape(FloatTensor result, int[] windowIndex) {
+    private void validateOutputShape(@NotNull FloatTensor result, int[] windowIndex) {
         int n = outputWindow.size.length;
         if (result.shape.length != n) {
             throw new IllegalStateException("Function for tensor '" + id + "' returned shape with "

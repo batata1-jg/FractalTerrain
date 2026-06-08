@@ -498,13 +498,14 @@ public final class WorldPipeline implements AutoCloseable {
         inputs[1] = new Object[] {"latents_init", latentSlice.data, new long[] {6, 64, 64}};
         inputs[2] = new Object[] {"tau", tau, new long[] {1}};
 
-        //        for (int px = 0; px < S * S; px++) result.data[px] = newSample[px] * ww[px];
-        //        System.arraycopy(ww, 0, result.data, S * S, S * S);
         // TODO: pesar as tiles de flow e adj
         final float[] data = fuzedModel.run(inputs);
-        // n funciona pq esse data esta pesado
         final float[] adj = computeDirection(Arrays.copyOfRange(data, 0, S * S), ww,S);
         final float[] flow = computeFlow(adj, S);
+        for (int px = 0; px < S * S; px++) {
+            adj[px] = adj[px] * ww[px];
+            flow[px] = flow[px] * ww[px];
+        }
         final float[] out = new float[S * S * DECODER_CHANNELS];
         System.arraycopy(data, 7 * S * S, out, 0, S * S);
         System.arraycopy(data, 0, out, S * S, 7 * S * S);

@@ -4,6 +4,7 @@ import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
+import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
@@ -26,7 +27,7 @@ public final class Meanders {
     private static final double FRICTION              =  0.011; // diminue a
     private static final double DT              =  1;
     // mudar pra 50m depois
-    public static final double DX =  1;
+    public static final double DX = 1.5;
     private static final double[] UNIT_VECTOR = new double[]{1,1};
     private static final Logger LOG = getLogger(Meanders.class);
 
@@ -78,18 +79,17 @@ public final class Meanders {
         LOG.info("step {}",i);
         quadTree.clear();
         for (Channel ch : channels) {
+            ch.reSample(DX);
+            ch.spline = QuinticHermiteSpline.createCatmullRom(ch.spline.points());
             migrate(ch);
+            ch.reSample(Math.sqrt(ch.width));
             manageCutoffs(ch);
         }
       //  manageCollisions();
         ensureJunctionsConnected();
         for(Channel ch : channels) {
-            try {
-                ch.reSample(DX);
-            } catch (IllegalStateException e) {
-                LOG.error("channel: {}",ch);
-                throw new RuntimeException();
-            }
+            ch.reSample(DX);
+            ch.spline = QuinticHermiteSpline.createCatmullRom(ch.spline.points());
         }
     }
 
@@ -127,12 +127,11 @@ public final class Meanders {
             final double migRate =
                 OMEGA * localRates[i] +
                         //remove alpha
-                GAMMA * alpha * sigmaToTheMinus2over3 * integralTerm;
+                GAMMA * alpha * integralTerm;
             integralTerm *= expTerm;
-            migRates[i] = -localRates[i];
+            migRates[i] = migRate*sigmaToTheMinus2over3;
         }
         Debug.isNan(migRates);
-       // LOG.info("mig rates: {}",migRates);
         return migRates;
     }
 
@@ -150,10 +149,24 @@ public final class Meanders {
             double[] newPt = VectorOps.add(ch.spline.points().get(i), migVector);
             Debug.isNan(newPt);
             newPts.add(newPt);
-            //LOG.info("rate: {}, migrate: {} , w: {} , normal: {}",-rate,ch.migRates[i],w,normal(ch.pts,i));
         }
         ch.spline = QuinticHermiteSpline.createCatmullRom(newPts);
     }
+
+    @TestOnly
+    public double[][] computedMigVector(Channel ch) {
+        final double[] migRates = computeMigrationRates(ch);
+        double[][] newPts = new double[ch.spline.getSize()][2];
+        for (int i = 0; i <ch.spline.points().size(); i++) {
+            final double rate = Math.clamp(DT * migRates[i], -maxMigrationMagnetude, maxMigrationMagnetude);
+            final double[] migVector = VectorOps.scale(ch.spline.normal(i),-rate);
+            double[] newPt = VectorOps.add(ch.spline.points().get(i), migVector);
+            Debug.isNan(newPt);
+            newPts[i]=newPt;
+        }
+        return newPts;
+    }
+
 
     private List<Channel.ChannelPt> getPtsCloseTo(final int index ,final Channel.ChannelPt[] pts) {
         Channel ch = channels.get(pts[0].channelId);
@@ -167,10 +180,13 @@ public final class Meanders {
     }
 
     private List<Channel.ChannelPt> getPtsCloseTo(Channel.ChannelPt pt) {
-        return quadTree.getPointsInBox(
-                VectorOps.sub(pt.toArray(),VectorOps.scale(UNIT_VECTOR, channels.get(pt.channelId).width)),
-                VectorOps.add(pt.toArray(),VectorOps.scale(UNIT_VECTOR, channels.get(pt.channelId).width))
-        );
+        return quadTree.getPointsInCircle(pt.toArray(),Math.sqrt(channels.get(pt.channelId).width));
+
+
+//        return quadTree.getPointsInBox(
+//                VectorOps.sub(pt.toArray(),VectorOps.scale(UNIT_VECTOR, channels.get(pt.channelId).width)),
+//                VectorOps.add(pt.toArray(),VectorOps.scale(UNIT_VECTOR, channels.get(pt.channelId).width))
+//        );
     }
 
     private void manageCutoffs(Channel ch) {
@@ -191,14 +207,11 @@ public final class Meanders {
             maxListSize = Math.max(maxListSize, ptList.size());
             for(Channel.ChannelPt cpt : ptList) {
                 if(cpt.index<=id+1||cpt.channelId!=ch.channelId) continue;
-                LOG.info("cutting from {} to {}",id,cpt.index);
-              //  cutRiverSection(id,cpt.index,ch);
+                cutRiverSection(id,cpt.index,ch);
             }
         }
         newPathIndexes.add(ch.numPts()-1);
-        LOG.info("manage cutoffs new pts: {}",newPathIndexes);
         ch.keepOnly(newPathIndexes);
-        //LOG.info("after cuttoff {} list size:{}",ch.spline.getMaxT(),maxListSize);
     }
 
     //TODO:rewrite this accumulate indexes to remove and new pts to add, make all of the changes after this;
@@ -315,10 +328,7 @@ public final class Meanders {
         Channel.ChannelPt[] pts = ch.getChannelAsPts();
         for(Channel.ChannelPt pt : pts) {
             quadTree.insertPoint(pt);
-//            LOG.info("contem esse {} ? {}",pt,quadTree.containsPoint(pt));
-//            LOG.info("contem {} ? {}",ch.pt(pt.index),quadTree.containsPoint(ch.pt(pt.index)));
         }
-      //  for(int id=0 ; id<ch.numPts()-1 ; id++) LOG.info("contem {} ? {}",ch.pt(id),quadTree.containsPoint(ch.pt(id)));
     }
 
     private void removeChannel(Channel ch) {
@@ -336,22 +346,6 @@ public final class Meanders {
             quadTree.removePoint(ch.pt(i));
         }
         return res;
-    }
-
-    // =========================================================================
-    // Helpers
-    // =========================================================================
-
-    private static double bilinearSample(double[] src, int H, int W, double gy, double gx) {
-        double y  = Math.clamp(gy, 0.0, H - 1.0);
-        double x  = Math.clamp(gx, 0.0, W - 1.0);
-        int    y0 = (int) y, y1 = Math.min(H - 1, y0 + 1);
-        int    x0 = (int) x, x1 = Math.min(W - 1, x0 + 1);
-        double wy = y - y0,  wx = x - x0;
-        return (1-wy)*(1-wx)*src[y0*W+x0]
-             + (1-wy)*wx    *src[y0*W+x1]
-             + wy    *(1-wx)*src[y1*W+x0]
-             + wy    *wx    *src[y1*W+x1];
     }
 
     public List<Channel> getChannels() {

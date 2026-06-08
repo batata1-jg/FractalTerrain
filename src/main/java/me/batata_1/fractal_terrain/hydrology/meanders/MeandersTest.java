@@ -51,7 +51,7 @@ public class MeandersTest {
                     200.0 + 5.0 * Math.sin(2.0 * Math.PI * i / (N - 1))
             });
         }
-        double width = 4;
+        double width = 10;
         sim.addChannel(pts, width);
         ArrayList<double[]> pts2 = new ArrayList<>(N);
         for (int i = 0; i < N; i++) {
@@ -71,7 +71,7 @@ public class MeandersTest {
 
         Debug.river.see(sim, "before");
 
-        sim.simulate(1);
+        sim.simulate(101);
 
         ArrayList<double[]> result = sim.getChannelPts(0);
         int    n      = result.size();

@@ -8,7 +8,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
 
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.MAX_SPLINE_LENGTH;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
@@ -36,10 +35,6 @@ public record QuinticHermiteSpline(
             ddxy.add(VectorOps.scale(VectorOps.sub(dxy.get(i+1), dxy.get(i-1)),0.5));
         }
         ddxy.add(new double[2]);
-//        LOG.info("dxy bounds[{} {}]", Arrays.toString(dxy.stream().max(Comparator.comparingDouble(VectorOps::magnitude)).get()),
-//                Arrays.toString(dxy.stream().min(Comparator.comparingDouble(VectorOps::magnitude)).get()));
-//        LOG.info("ddxy bounds[{} {}]", Arrays.toString(ddxy.stream().max(Comparator.comparingDouble(VectorOps::magnitude)).get()),
-//                Arrays.toString(ddxy.stream().min(Comparator.comparingDouble(VectorOps::magnitude)).get()));
         LOG.info("creatingSpline size:{}",pt.size());
         return new QuinticHermiteSpline(pt,dxy,ddxy);
     }
@@ -100,7 +95,6 @@ public record QuinticHermiteSpline(
                 );
             }
         }
-       // LOG.error("newT: {}", Arrays.toString(newT.toArray()));
         LOG.error("sampled {}-{}",sample(newT.removeLast()),sample(newT.removeLast()));
         final int samples = 40;
         final double[][] doubles = new double[samples][2];

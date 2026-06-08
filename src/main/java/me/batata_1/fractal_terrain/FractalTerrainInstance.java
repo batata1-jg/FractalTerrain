@@ -1,20 +1,19 @@
 package me.batata_1.fractal_terrain;
 
-import static me.batata_1.fractal_terrain.debug.Debug.debug;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
-import me.batata_1.fractal_terrain.infinitetensor.InfiniteTensor;
+import me.batata_1.fractal_terrain.hydrology.RiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.storage.TensorStorage;
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import me.batata_1.fractal_terrain.ml.pipeline.WorldPipeline;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
 import me.batata_1.fractal_terrain.terrablender.InitTerrablender;
 import me.batata_1.fractal_terrain.world.biome.BiomeProvider;
-import me.batata_1.fractal_terrain.world.gen.ReliefProvider;
+import me.batata_1.fractal_terrain.relief.ReliefProvider;
 import me.batata_1.fractal_terrain.world.gen.chunk.FractalTerrainChunkGenerator;
 import me.batata_1.fractal_terrain.world.gen.surfacebuilder.FractalTerrainSurfaceBuilder;
 import net.minecraft.block.Blocks;
@@ -46,6 +45,7 @@ public class FractalTerrainInstance {
     private final MinecraftServer curServer;
     private final ReliefProvider reliefSource;
     private final BiomeProvider biomeProvider;
+    private final RiverProvider riverProvider;
     private final FractalTerrainSurfaceBuilder surfaceBuilder;
     private final NoiseConfig noiseConfig;
 
@@ -54,6 +54,7 @@ public class FractalTerrainInstance {
         final Path worldPath = server.getSavePath(WorldSavePath.ROOT).normalize();
         this.reliefSource = new ReliefProvider(worldPath + "/fractal_terrain");
         this.biomeProvider = new BiomeProvider(worldPath + "/fractal_terrain");
+        this.riverProvider = new RiverProvider();
         final long seed = server.getSaveProperties().getGeneratorOptions().getSeed();
         final ServerWorld world = server.getOverworld();
         final DynamicRegistryManager dynamicRegistryManager = world.getRegistryManager();

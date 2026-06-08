@@ -1,4 +1,4 @@
-package me.batata_1.fractal_terrain.world.gen;
+package me.batata_1.fractal_terrain.relief;
 
 import com.mojang.serialization.Codec;
 import java.util.concurrent.CompletableFuture;

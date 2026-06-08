@@ -35,28 +35,18 @@ public interface QuadTreeShape {
 
         @Override
         public boolean notIntersect(double[] p0, double[] p1) {
-            double dx = Math.abs(center[0] - p0[0]);
-            double dy = Math.abs(center[1] - p0[1]);
-            double width = p1[0] - p0[0];
-            double height = p1[1] - p0[1];
-            if (dx > (width/2 + radius)) { return true; }
-            if (dy > (height/2 + radius)) { return true; }
-
-            if (dx <= (width/2)) { return false; }
-            if (dy <= (height/2)) { return false; }
-
-            double cornerDistance_sq = (dx - width/2)*(dy - height/2) +
-                    (dy - height/2)*(dy - height/2);
-
-            return !(cornerDistance_sq <= (radius*radius));
+            double cx = Math.clamp(center[0], p0[0], p1[0]);
+            double cy = Math.clamp(center[1], p0[1], p1[1]);
+            double dx = center[0] - cx;
+            double dy = center[1] - cy;
+            return dx * dx + dy * dy > radius * radius;
         }
 
         @Override
         public boolean contains(double[] p0, double[] p1) {
-            if(VectorOps.distanceSquared(p0,center) > radius*radius) return false;
-            if(VectorOps.distanceSquared(p1,center) > radius*radius) return false;
-            if(VectorOps.distanceSquared(new double[]{p0[0],p1[1]},center)> radius*radius) return false;
-            return VectorOps.distanceSquared(new double[]{p1[0],p0[1]},center) <= radius*radius;
+            double dx = Math.max(Math.abs(p0[0] - center[0]), Math.abs(p1[0] - center[0]));
+            double dy = Math.max(Math.abs(p0[1] - center[1]), Math.abs(p1[1] - center[1]));
+            return dx * dx + dy * dy <= radius * radius;
         }
     }
 
