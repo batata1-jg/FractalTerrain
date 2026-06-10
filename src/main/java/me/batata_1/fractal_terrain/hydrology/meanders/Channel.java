@@ -1,0 +1,139 @@
+package me.batata_1.fractal_terrain.hydrology.meanders;
+
+import me.batata_1.fractal_terrain.math.VectorOps;
+import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
+import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Objects;
+
+public class Channel {
+    public final double              width, depth;
+    public final int channelId;
+    public QuinticHermiteSpline spline;
+
+    Channel(double width, ArrayList<double[]> pts, int channelId) {
+        this.width      = width;
+        this.depth      = Math.max(1.0, Math.pow(width / 18.8, 1.0 / 1.41));
+        this.spline = QuinticHermiteSpline.createCatmullRom(pts);
+        this.channelId = channelId;
+    }
+
+    public double[] computeLocalRates() {
+        final double[] res = new double[spline.points().size()];
+        for (int t = 0; t <spline.points().size(); t++) {
+            res[t] = width * spline.curvature(t);
+        }
+        return res;
+    }
+
+    public double computeSinuosity() {
+        double f_x_dx = 0;
+        for(int t = 0; t <spline.points().size()-1 ; t++) f_x_dx += VectorOps.distance(spline.points().get(t), spline.points().get(t+1));
+        return f_x_dx / VectorOps.distance(spline.points().getFirst(), spline.points().getLast());
+    }
+
+    public int numPts() {
+        return spline.points().size();
+    }
+
+    public ChannelPt pt(int id) {
+        return new ChannelPt(spline.points().get(id),id,channelId);
+    }
+
+    public ChannelPt[] getChannelAsPts() {
+        final ChannelPt[] res = new ChannelPt[spline.points().size()];
+        for(int i=0 ; i<spline.points().size() ; i++) res[i] = new ChannelPt(spline.points().get(i),i,channelId);
+        return res;
+    }
+
+    public void reSample(double samplingDist) throws IllegalStateException{
+        this.spline = spline.reSample(samplingDist);
+    }
+
+    @Override
+    public String toString() {
+        return "Channel{id=" + channelId +
+                ", width=" + width +
+                ", depth=" + depth +
+                ", pts=" + (spline.points().size()) +
+                ", sinuosity=" + String.format("%.3f", computeSinuosity()) +
+                "}";
+    }
+
+    public void keepOnly(ArrayList<Integer> newPathIndexes) {
+        this.spline = spline.keepOnly(newPathIndexes);
+    }
+
+    /**
+     * Adds point from a channel to another channel. Keeps the tangents and curvatures of the other channel in the point.
+     * */
+    public void add(ChannelPt pt, Channel from) {
+        this.spline.points().add(pt.toArray());
+        this.spline.velocity().add(from.spline.velocity().get(pt.index));
+        this.spline.acceleration().add(from.spline.acceleration().get(pt.index));
+    }
+
+    /**
+     * Adds point from a channel to another channel. Keeps the tangents and curvatures of the other channel in the point.
+     * */
+    public void add(int id, Channel from) {
+        this.spline.points().add(from.spline.points().get(id));
+        this.spline.velocity().add(from.spline.velocity().get(id));
+        this.spline.acceleration().add(from.spline.acceleration().get(id));
+    }
+
+    public void addFront(int id, Channel from) {
+        this.spline.points().addFirst(from.spline.points().get(id));
+        this.spline.velocity().addFirst(from.spline.velocity().get(id));
+        this.spline.acceleration().addFirst(from.spline.acceleration().get(id));
+    }
+
+    /**
+     * removes indexes from this list in the spline.
+     * does not assume there is no repetition
+     * */
+    public void removeIndexes(ArrayList<Integer> indexes) {
+        indexes.sort(null);
+        final ArrayList<Integer> indexesToAdd = new ArrayList<>();
+        for(int i=0 ; i<spline.getSize() ; i++) if(i==indexes.getFirst()) {
+            while(i==indexes.getFirst()) indexes.removeFirst();
+        } else {
+            indexesToAdd.add(i);
+        }
+        this.spline = new QuinticHermiteSpline(
+                new ArrayList<>(indexesToAdd.stream().map(id->spline.points().get(id)).toList()),
+                new ArrayList<>(indexesToAdd.stream().map(id->spline.velocity().get(id)).toList()),
+                new ArrayList<>(indexesToAdd.stream().map(id->spline.acceleration().get(id)).toList())
+        );
+    }
+
+    public static class ChannelPt extends QuadTreePoint {
+
+        public final int index,channelId;
+
+        public ChannelPt(double[] pt, int id, int channelId) {
+            super(pt);
+            this.index = id;
+            this.channelId = channelId;
+        }
+
+        @Override
+        public String toString() {
+            return "["+ptCoords.toString()+" "+ index +"]";
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if(!(obj instanceof ChannelPt comp)) return false;
+            return (this.channelId==comp.channelId)&&(this.index==comp.index)&&(this.ptCoords.equals(comp.ptCoords));
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(index,channelId,ptCoords);
+        }
+    }
+
+}

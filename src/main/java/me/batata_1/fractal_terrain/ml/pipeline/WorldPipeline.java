@@ -4,9 +4,7 @@ import static me.batata_1.fractal_terrain.FractalTerrainConfig.DECODER_CHANNELS;
 import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.computeDirection;
 import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.computeFlow;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.infinitetensor.AdditiveInfiniteTensor;
@@ -57,8 +55,6 @@ public final class WorldPipeline implements AutoCloseable {
     static final int COARSE_POOLING = WorldPipelineModelConfig.coarsePooling();
     static final float[] COND_VALS; // log(COND_SNR / 8)
 
-    static final String DEFAULT_PATH;
-
     static {
         if (COARSE_POOLING != 1) {
             throw new IllegalStateException(
@@ -66,7 +62,6 @@ public final class WorldPipeline implements AutoCloseable {
         }
         COND_VALS = new float[COND_SNR.length];
         for (int i = 0; i < COND_SNR.length; i++) COND_VALS[i] = (float) Math.log(COND_SNR[i] / 8.0);
-        DEFAULT_PATH = FabricLoader.getInstance().getGameDir().normalize().toString();
     }
 
     // mp_concat scales for 6 tensors of sizes [16, 16, 4, 16, 5, 1] → 58 total
@@ -131,7 +126,7 @@ public final class WorldPipeline implements AutoCloseable {
 
     /** Lightweight seed change (Python change_seed): update seed and synthetic map, clear tile caches. Models stay loaded. */
     public synchronized void updateInstance(final long newSeed, final String newPath) {
-        if (newSeed == this.seed && coarse.getCurrentPath().equals(newPath)) return;
+        if (newSeed == this.seed && Objects.equals(coarse.getCurrentPath(), newPath)) return;
         updateInfiniteTensors(newPath);
         this.seed = newSeed;
         this.syntheticMapFactory = new SyntheticMapFactory(newSeed);
@@ -498,12 +493,14 @@ public final class WorldPipeline implements AutoCloseable {
         inputs[1] = new Object[] {"latents_init", latentSlice.data, new long[] {6, 64, 64}};
         inputs[2] = new Object[] {"tau", tau, new long[] {1}};
 
-        //        for (int px = 0; px < S * S; px++) result.data[px] = newSample[px] * ww[px];
-        //        System.arraycopy(ww, 0, result.data, S * S, S * S);
         // TODO: pesar as tiles de flow e adj
         final float[] data = fuzedModel.run(inputs);
-        final float[] adj = computeDirection(Arrays.copyOfRange(data, 0, S * S), S);
+        final float[] adj = computeDirection(Arrays.copyOfRange(data, 0, S * S), ww,S);
         final float[] flow = computeFlow(adj, S);
+        for (int px = 0; px < S * S; px++) {
+            adj[px] = adj[px] * ww[px];
+            flow[px] = flow[px] * ww[px];
+        }
         final float[] out = new float[S * S * DECODER_CHANNELS];
         System.arraycopy(data, 7 * S * S, out, 0, S * S);
         System.arraycopy(data, 0, out, S * S, 7 * S * S);
@@ -525,7 +522,7 @@ public final class WorldPipeline implements AutoCloseable {
     /**
      * Returns a coarse tensor slice with shape [7, ci1-ci0, cj1-cj0].
      * Coordinates are in coarse index units (1 unit = 256 native pixels).
-     * Channel 6 is the blend weight; channels 0–5 are weighted sums.
+     * me.batata_1.fractal_terrain.hydrology.meanders.Channel 6 is the blend weight; channels 0–5 are weighted sums.
      */
     public FloatTensor getCoarseSlice(int ci0, int cj0, int ci1, int cj1) {
         return coarse.getSlice(new int[] {0, ci0, cj0}, new int[] {7, ci1, cj1});
@@ -733,4 +730,7 @@ public final class WorldPipeline implements AutoCloseable {
         return residual;
     }
 
+    public InfiniteTensor getCoarse() {
+        return coarse;
+    }
 }

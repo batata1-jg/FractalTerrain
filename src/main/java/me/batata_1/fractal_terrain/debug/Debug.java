@@ -4,8 +4,10 @@ import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
 import java.io.*;
 import java.nio.file.Path;
+import java.util.Arrays;
 import javax.imageio.ImageIO;
 
+import ai.onnxruntime.OnnxTensor;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 // import me.batata_1.fractalterrain.ml.tensorProviders.MapProvider;
@@ -21,9 +23,15 @@ public class Debug {
 
     public static final Logger DEBUG_LOGGER = getLogger(Debug.class);
     public static final TensorVisualizer tensor = new TensorVisualizer();
+    public static final RiverNetworkVisualizer river = new RiverNetworkVisualizer(FractalTerrainConfig.DEFAULT_DEBUG_PATH);
+    public static final SplineVisualizer spline = new SplineVisualizer(FractalTerrainConfig.DEFAULT_DEBUG_PATH);
 
     public static Logger getLogger(Class<?> clazz) {
         return LoggerFactory.getLogger("fractal_terrain/" + clazz.toString());
+    }
+
+    public static void isNan(double[] t) {
+        for (double v : t) if (Double.isNaN(v)) throw new RuntimeException("this double[] is nan " + Arrays.toString(t));
     }
 
     public static void seeNoise(NoiseSampler sampler, String name, int x, int z, int size) throws IOException {
@@ -131,15 +139,15 @@ public class Debug {
     }
 
     public static void seeTile(FloatTensor tile, int x, int z, String name) {
-        if(FractalTerrainInstance.getServer()==null) throw new IllegalStateException("server is null");
-        Path basePath = FractalTerrainInstance.getServer().getSavePath(WorldSavePath.ROOT).normalize();
+        Path basePath = Path.of(FractalTerrainConfig.DEFAULT_DEBUG_PATH);
         DEBUG_LOGGER.info("{}",basePath);
         name = name + "_p" + x + "_" + z + "q_";
         new File(basePath.toString(), name).mkdirs();
         DEBUG_LOGGER.info("seeTile x={} z={} channels={} name={}", x, z, tile.getShape()[0], name);
         var onnxTile = tile.get();
         for (int ch = 0; ch < tile.getShape()[0]; ch++) {
-            tensor.see(onnxTile, name + "/ch_" + ch, false, ch);
+            tensor.see(onnxTile, name + "/ch_" + ch,basePath.toString(), false, ch);
+           // tensor.see(tile,name + "/ch_" + ch,basePath.toString());
         }
     }
 
@@ -157,9 +165,12 @@ public class Debug {
     }
 
     public static synchronized void debug() {
-        FloatTensor fl = FractalTerrainInstance.getDecoderStorage().getEntry(new int[]{0,-1,-1});
+        int x = -1;
+        int z = -1;
+        FractalTerrainInstance.pipeline.getDecoderSlice(x,z);
+        FloatTensor fl = FractalTerrainInstance.getDecoderStorage().getEntry(new int[]{0,x,z});
         DEBUG_LOGGER.info("debug {}",fl.shape);
-        seeTile(fl,-1,-1,"decoder_tile");
+        seeTile(fl,x,z,"decoder_tile");
     }
 
     public static void debugMixin(MaterialRules.MaterialRuleContext context) {

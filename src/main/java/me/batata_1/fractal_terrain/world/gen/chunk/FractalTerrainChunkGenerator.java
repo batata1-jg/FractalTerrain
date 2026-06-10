@@ -11,7 +11,8 @@ import java.util.concurrent.Executor;
 import java.util.function.Supplier;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.debug.Debug;
-import me.batata_1.fractal_terrain.math.Spline;
+import me.batata_1.fractal_terrain.math.spline.Spline;
+import me.batata_1.fractal_terrain.relief.PopulateNoiseStep;
 import me.batata_1.fractal_terrain.world.biome.source.FractalTerrainBiomeSource;
 import net.minecraft.SharedConstants;
 import net.minecraft.block.BlockState;
@@ -29,7 +30,6 @@ import net.minecraft.world.Heightmap;
 import net.minecraft.world.biome.Biome;
 import net.minecraft.world.biome.source.BiomeAccess;
 import net.minecraft.world.chunk.Chunk;
-import net.minecraft.world.dimension.DimensionType;
 import net.minecraft.world.gen.GenerationStep;
 import net.minecraft.world.gen.HeightContext;
 import net.minecraft.world.gen.StructureAccessor;
@@ -37,8 +37,6 @@ import net.minecraft.world.gen.StructureWeightSampler;
 import net.minecraft.world.gen.chunk.*;
 import net.minecraft.world.gen.noise.NoiseConfig;
 import org.slf4j.Logger;
-
-// TODO: add compat , consertar biomes, reescrever isso
 
 public final class FractalTerrainChunkGenerator extends ChunkGenerator {
 
@@ -68,18 +66,13 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         this.biomeSource = biomeSource;
         this.settings = settings;
         this.populateNoiseStep = new PopulateNoiseStep(1.0F);
-        this.fluidLevelSampler =
-                Suppliers.memoize(() -> createFluidLevelSampler((ChunkGeneratorSettings) settings.value()));
-        // TODO: implementar isso direito ou ser mais inteligente e descobri qual dos caras la eu tenho q usar
-        // reliefLowFreqInterpolation = new Interpolation(1.0F * (1 << 6));
+        this.fluidLevelSampler = Suppliers.memoize(() -> createFluidLevelSampler(settings.value()));
     }
 
     private static AquiferSampler.FluidLevelSampler createFluidLevelSampler(ChunkGeneratorSettings settings) {
         AquiferSampler.FluidLevel fluidLevel = new AquiferSampler.FluidLevel(-54, Blocks.LAVA.getDefaultState());
         int i = settings.seaLevel();
         AquiferSampler.FluidLevel fluidLevel2 = new AquiferSampler.FluidLevel(i, settings.defaultFluid());
-        AquiferSampler.FluidLevel fluidLevel3 =
-                new AquiferSampler.FluidLevel(DimensionType.MIN_HEIGHT * 2, Blocks.AIR.getDefaultState());
         return (x, y, z) -> y < Math.min(-54, i) ? fluidLevel : fluidLevel2;
     }
 
@@ -136,6 +129,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         final int startingZ = chunkPos.getStartZ();
         final int seaLevel = settings.value().seaLevel() - 1;
         final int bottom = settings.value().generationShapeConfig().minimumY();
+        populateNoiseStep.ensureTilesForChunk(startingX, startingZ);
         final int[] reliefBaseHeight = getBaseHeightArr(startingX, startingZ);
         final Heightmap oceanHeightmap = chunk.getHeightmap(Heightmap.Type.OCEAN_FLOOR_WG);
         final Heightmap surfaceHeightmap = chunk.getHeightmap(Heightmap.Type.WORLD_SURFACE_WG);
@@ -209,8 +203,8 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
             LOG.info(" chunkNoise sampler of 0 ,0 : {}", chunkNoiseSampler);
             LOG.info(" chunkNoise sampler estiate H : {}", chunkNoiseSampler.estimateSurfaceHeight(0, 0));
         }
-        FractalTerrainInstance.getSurfaceBuilder()
-                .buildSurface(noiseConfig, biomeAccess, biomeRegistry, heightContext, chunk, chunkNoiseSampler);
+//        FractalTerrainInstance.getSurfaceBuilder()
+//                .buildSurface(noiseConfig, biomeAccess, biomeRegistry, heightContext, chunk, chunkNoiseSampler);
     }
 
     private ChunkNoiseSampler createChunkNoiseSampler(

@@ -97,9 +97,6 @@ public final class PipelineModels implements AutoCloseable {
         InputStream stream = PipelineModels.class.getResourceAsStream("/assets/fractal_terrain/ml_util/fuzed.onnx");
         assert (stream != null);
         LOG.info("stream is {}", stream);
-        LOG.info(
-                "fabric {}",
-                FabricLoader.getInstance().getGameDir().resolve("/assets/fractal_terrain/ml_util/fuzed.onnx"));
         this.fuzedModel = new OnnxModel(stream, "fuzed", true);
     }
 

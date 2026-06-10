@@ -3,10 +3,6 @@ package me.batata_1.fractal_terrain.debug;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * Immutable snapshot of per-tensor cache statistics from a {@link me.batata_1.fractal_terrain.infinitetensor.MemoryTileStore}.
- * Obtain via {@code MemoryTileStore#takeSnapshot()}.
- */
 public final class MemoryProfiler {
 
     private MemoryProfiler() {}

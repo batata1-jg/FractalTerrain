@@ -65,12 +65,15 @@ public class TensorStorage {
         return PATH;
     }
 
+    public Set<List<Integer>> getCacheKeys() {
+        return CACHE.keySet();
+    }
+
     public synchronized void clear() {
         GENERATED_ENTRIES.clear();
         CACHE.clear();
     }
 
-    // TODO: implementar isso
     private static String NorP(int x) {
         if (x < 0) return "N";
         return "P";
@@ -195,7 +198,9 @@ public class TensorStorage {
     }
 
     // TODO:implement this
-    public void evictIfNeeded(long cacheLimitBytes) {}
+    public synchronized void evictIfNeeded(long cacheLimitBytes) {
+        //CACHE.remove()
+    }
 
     protected static List<Integer> toKey(int[] index) {
         return Arrays.stream(index).boxed().toList();
