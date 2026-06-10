@@ -7,7 +7,7 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.math.Blur;
-import me.batata_1.fractal_terrain.storage.FloatTensor;
+import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import org.slf4j.Logger;
 
 public class DifferenceOfGaussians {

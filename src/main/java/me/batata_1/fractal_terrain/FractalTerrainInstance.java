@@ -10,7 +10,7 @@ import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import me.batata_1.fractal_terrain.ml.pipeline.WorldPipeline;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
 import me.batata_1.fractal_terrain.relief.ReliefProvider;
-import me.batata_1.fractal_terrain.storage.FloatTensor;
+import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.storage.Storage;
 import me.batata_1.fractal_terrain.terrablender.InitTerrablender;
 import me.batata_1.fractal_terrain.world.biome.BiomeProvider;
@@ -96,7 +96,7 @@ public class FractalTerrainInstance {
         if (!exists()) return;
         getInstance().biomeProvider.getInfiniteTensor().clear();
         getInstance().reliefSource.getInfiniteTensor().clear();
-        getInstance().reliefSource.getDoG().getInfiniteTensor().clear();
+       // getInstance().reliefSource.getDoG().getInfiniteTensor().clear();
         instance = new CompletableFuture<>();
         LOG.info("fractal terrain instance closed");
     }

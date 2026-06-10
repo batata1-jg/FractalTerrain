@@ -4,7 +4,7 @@ import ai.onnxruntime.OnnxTensor;
 import java.io.ByteArrayOutputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import me.batata_1.fractal_terrain.storage.FloatTensor;
+import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 
 public class TiffConverter {
 

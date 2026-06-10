@@ -4,7 +4,7 @@ import com.google.common.base.Function;
 import java.io.File;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import me.batata_1.fractal_terrain.storage.FloatTensor;
+
 import me.batata_1.fractal_terrain.storage.Storage;
 
 public class NonIntersectingInfiniteTensor extends Storage<FloatTensor> {

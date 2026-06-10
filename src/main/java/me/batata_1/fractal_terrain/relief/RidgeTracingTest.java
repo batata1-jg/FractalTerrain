@@ -17,7 +17,7 @@ import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 import me.batata_1.fractal_terrain.ml.models.ModelAssetManager;
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;
-import me.batata_1.fractal_terrain.storage.FloatTensor;
+import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

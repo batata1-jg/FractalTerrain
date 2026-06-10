@@ -1,4 +1,4 @@
-package me.batata_1.fractal_terrain.storage;
+package me.batata_1.fractal_terrain.infinitetensor;
 
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
@@ -12,6 +12,8 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.nio.FloatBuffer;
 import java.util.Arrays;
+
+import me.batata_1.fractal_terrain.storage.Persistable;
 import org.slf4j.Logger;
 
 public class FloatTensor implements Persistable<FloatTensor> {

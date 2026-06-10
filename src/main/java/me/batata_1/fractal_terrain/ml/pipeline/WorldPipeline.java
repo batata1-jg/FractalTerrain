@@ -14,7 +14,7 @@ import me.batata_1.fractal_terrain.ml.models.ModelAssetManager;
 import me.batata_1.fractal_terrain.ml.models.OnnxModel;
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import me.batata_1.fractal_terrain.ml.tensorProviders.GaussianNoisePatch;
-import me.batata_1.fractal_terrain.storage.FloatTensor;
+import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -87,7 +87,7 @@ public final class WorldPipeline implements AutoCloseable {
     private volatile SyntheticMapFactory syntheticMapFactory;
     private volatile long seed;
     private volatile float[] tau = new float[] {1F};
-    private final long cacheLimitBytes = 100L * 1024 * 1024;
+    private final long cacheLimitBytes = 50L * 1024 * 1024;
 
     final AdditiveInfiniteTensor coarse;
     final AdditiveInfiniteTensor latents;

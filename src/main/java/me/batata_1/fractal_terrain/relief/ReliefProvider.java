@@ -3,9 +3,8 @@ package me.batata_1.fractal_terrain.relief;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.*;
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 
-import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
-import me.batata_1.fractal_terrain.storage.FloatTensor;
+import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 
 public class ReliefProvider {
 
@@ -32,7 +31,7 @@ public class ReliefProvider {
                 }
             }
             final FloatTensor t = new FloatTensor(entries, new int[] {9, 512, 512});
-            Debug.seeTile(t, x, z, "final");
+          //  Debug.seeTile(t, x, z, "final");
             return t;
         });
         this.dog = new DifferenceOfGaussians(path, DOG_SIGMA1, DOG_SIGMA2, DOG_THRESHOLD);
