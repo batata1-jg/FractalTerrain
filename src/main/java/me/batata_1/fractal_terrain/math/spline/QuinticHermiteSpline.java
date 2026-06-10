@@ -35,7 +35,7 @@ public record QuinticHermiteSpline(
             ddxy.add(VectorOps.scale(VectorOps.sub(dxy.get(i+1), dxy.get(i-1)),0.5));
         }
         ddxy.add(new double[2]);
-        LOG.info("creatingSpline size:{}",pt.size());
+      //  LOG.info("creatingSpline size:{}",pt.size());
         return new QuinticHermiteSpline(pt,dxy,ddxy);
     }
 

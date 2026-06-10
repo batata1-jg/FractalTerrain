@@ -36,11 +36,22 @@ public final class ModelAssetManager {
     private static final Logger LOG = LoggerFactory.getLogger(ModelAssetManager.class);
     private static final String MANIFEST_RESOURCE_PATH = "/model-assets-manifest.json";
     private static final long PROGRESS_LOG_THRESHOLD_BYTES = 100L * 1024L * 1024L;
-    private static final Path MODEL_DIRECTORY =
-            FabricLoader.getInstance().getGameDir().resolve("terrain-diffusion-models");
+    private static final Path MODEL_DIRECTORY;
     private static final AtomicBoolean READY = new AtomicBoolean(false);
     private static final Gson GSON = new Gson();
     private static final Type MANIFEST_TYPE = new TypeToken<ModelAssetManifest>() {}.getType();
+
+    static {
+        Path temp;
+        try {
+            temp = FabricLoader.getInstance().getGameDir().resolve("terrain-diffusion-models");
+        } catch (Exception e) {
+            LOG.info("resorting to \"run\" path because RidgeTracingTest is most likely running");
+            temp = (Path.of("run")).resolve("terrain-diffusion-models");
+            LOG.info("path is {}",temp);
+        }
+        MODEL_DIRECTORY = temp;
+    }
 
     private ModelAssetManager() {}
 

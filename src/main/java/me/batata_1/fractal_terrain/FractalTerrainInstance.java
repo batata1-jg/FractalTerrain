@@ -96,6 +96,7 @@ public class FractalTerrainInstance {
         if (!exists()) return;
         getInstance().biomeProvider.getInfiniteTensor().clear();
         getInstance().reliefSource.getInfiniteTensor().clear();
+        getInstance().reliefSource.getDoG().getInfiniteTensor().clear();
         instance = new CompletableFuture<>();
         LOG.info("fractal terrain instance closed");
     }

@@ -65,6 +65,10 @@ public class TensorStorage {
         return PATH;
     }
 
+    public Set<List<Integer>> getCacheKeys() {
+        return CACHE.keySet();
+    }
+
     public synchronized void clear() {
         GENERATED_ENTRIES.clear();
         CACHE.clear();

@@ -14,6 +14,11 @@ public class PopulateNoiseStep {
         Blocks.ANDESITE.getDefaultState(),
         Blocks.GRANITE.getDefaultState()
     };
+
+    private static final BlockState DEFAULT_ROCK = Blocks.STONE.getDefaultState();
+    private static final BlockState MARKER_ROCK = Blocks.BLUE_CONCRETE.getDefaultState();
+    private static final double MARKER_THRESHOLD = 0.8;
+
     private final Interpolation reliefInterpolation;
     private final Interpolation reliefGradInterpolation;
     private final Interpolation reliefGradXInterpolation;
@@ -22,6 +27,7 @@ public class PopulateNoiseStep {
     private final Interpolation reliefBlurredInterpolation;
     private final RockStrata strata;
     private final PhacelleNoiseSampler phacelleSampler;
+    private final me.batata_1.fractal_terrain.relief.GlobalFillRocksPredicate fillRocksPredicate;
 
     public PopulateNoiseStep(final float scale) {
         reliefInterpolation = new Interpolation(
@@ -38,6 +44,7 @@ public class PopulateNoiseStep {
                 scale, xz -> FractalTerrainInstance.getReliefProvider().getGradY(xz));
         strata = RockStrata.AngledPlaneStrata.create(9, 8, rocks);
         phacelleSampler = new PhacelleNoiseSampler(5, 32F);
+        fillRocksPredicate = FractalTerrainInstance.getReliefProvider().getFillRocksPredicate();
     }
 
     public int getHeight(final int x, final int z) {
@@ -48,9 +55,16 @@ public class PopulateNoiseStep {
         return (int) interpolatedRelief;
     }
 
-    // shouldn't depend on getHeight
-    public BlockState fillRocks(int x, int y, int z) {
+    public void ensureTilesForChunk(int chunkStartX, int chunkStartZ) {
+        fillRocksPredicate.ensureTilesForChunk(chunkStartX, chunkStartZ);
+    }
 
-        return rocks[0];
+    public BlockState fillRocks(int x, int y, int z) {
+        final double v = fillRocksPredicate.query((float) x, (float) z);
+        return toRock(v);
+    }
+
+    private static BlockState toRock(double v) {
+        return (v >= MARKER_THRESHOLD) ? MARKER_ROCK : DEFAULT_ROCK;
     }
 }

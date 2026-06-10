@@ -139,15 +139,15 @@ public class Debug {
     }
 
     public static void seeTile(FloatTensor tile, int x, int z, String name) {
-        if(FractalTerrainInstance.getServer()==null) throw new IllegalStateException("server is null");
-        Path basePath = FractalTerrainInstance.getServer().getSavePath(WorldSavePath.ROOT).normalize();
+        Path basePath = Path.of(FractalTerrainConfig.DEFAULT_DEBUG_PATH);
         DEBUG_LOGGER.info("{}",basePath);
         name = name + "_p" + x + "_" + z + "q_";
         new File(basePath.toString(), name).mkdirs();
         DEBUG_LOGGER.info("seeTile x={} z={} channels={} name={}", x, z, tile.getShape()[0], name);
         var onnxTile = tile.get();
         for (int ch = 0; ch < tile.getShape()[0]; ch++) {
-            tensor.see(onnxTile, name + "/ch_" + ch, false, ch);
+            tensor.see(onnxTile, name + "/ch_" + ch,basePath.toString(), false, ch);
+           // tensor.see(tile,name + "/ch_" + ch,basePath.toString());
         }
     }
 

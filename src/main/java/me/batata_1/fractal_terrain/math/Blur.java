@@ -15,6 +15,23 @@ public class Blur {
 
     private static final int[] d5 = {-2, -1, 0, 1, 2};
 
+    public static final double MAX_SIGMA = 4.0;
+    public static final int MAX_HALF = (int) Math.ceil(3.0 * MAX_SIGMA);
+    public static final double[] KERNEL;
+
+    static {
+        final int len = 2 * MAX_HALF + 1;
+        KERNEL = new double[len];
+        final double inv2s2 = 1.0 / (2.0 * MAX_SIGMA * MAX_SIGMA);
+        double sum = 0;
+        for (int i = 0; i < len; i++) {
+            double d = i - MAX_HALF;
+            KERNEL[i] = Math.exp(-d * d * inv2s2);
+            sum += KERNEL[i];
+        }
+        for (int i = 0; i < len; i++) KERNEL[i] /= sum;
+    }
+
     private final CompletableFuture<Function<double[], Double>> functionCompletableFuture = new CompletableFuture<>();
 
     public Blur() {}
@@ -42,4 +59,50 @@ public class Blur {
         }
     }
 
+    private static double[] kernelForSigma(double sigma) {
+        if (sigma > MAX_SIGMA) {
+            throw new IllegalArgumentException("sigma " + sigma + " exceeds MAX_SIGMA " + MAX_SIGMA);
+        }
+        final int half = (int) Math.ceil(3.0 * sigma);
+        final int len = 2 * half + 1;
+        final int start = MAX_HALF - half;
+        final double[] k = new double[len];
+        double sum = 0;
+        for (int i = 0; i < len; i++) {
+            k[i] = KERNEL[start + i];
+            sum += k[i];
+        }
+        for (int i = 0; i < len; i++) k[i] /= sum;
+        return k;
+    }
+
+    public static float[] gaussianSeparable(float[] src, int W, int H, double sigma) {
+        final double[] kern = kernelForSigma(sigma);
+        final int half = (kern.length - 1) / 2;
+
+        final float[] tmp = new float[W * H];
+        final float[] dst = new float[W * H];
+
+        for (int y = 0; y < H; y++) {
+            for (int x = 0; x < W; x++) {
+                double acc = 0;
+                for (int dx = -half; dx <= half; dx++) {
+                    int xx = Math.clamp(x + dx, 0, W - 1);
+                    acc += kern[dx + half] * src[y * W + xx];
+                }
+                tmp[y * W + x] = (float) acc;
+            }
+        }
+        for (int y = 0; y < H; y++) {
+            for (int x = 0; x < W; x++) {
+                double acc = 0;
+                for (int dy = -half; dy <= half; dy++) {
+                    int yy = Math.clamp(y + dy, 0, H - 1);
+                    acc += kern[dy + half] * tmp[yy * W + x];
+                }
+                dst[y * W + x] = (float) acc;
+            }
+        }
+        return dst;
+    }
 }

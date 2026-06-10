@@ -11,7 +11,14 @@ import me.batata_1.fractal_terrain.infinitetensor.storage.FloatTensor;
 
 public class ReliefProvider {
 
+    private static final double DOG_SIGMA1 = 1.0;
+    private static final double DOG_SIGMA2 = 2.0;
+    private static final double DOG_THRESHOLD = 0.0;
+    private static final double QUERY_FREQUENCY = 1.0;
+
     private final NonIntersectingInfiniteTensor final_tiles;
+    private final DifferenceOfGaussians dog;
+    private final GlobalFillRocksPredicate fillRocksPredicate;
 
     public ReliefProvider(String path) {
         final_tiles = new NonIntersectingInfiniteTensor(path + "/final_relief_tiles", new int[]{9,512,512}, key -> {
@@ -30,6 +37,16 @@ public class ReliefProvider {
             Debug.seeTile(t,x,z,"final");
             return t;
         });
+        this.dog = new DifferenceOfGaussians(path, DOG_SIGMA1, DOG_SIGMA2, DOG_THRESHOLD);
+        this.fillRocksPredicate = new GlobalFillRocksPredicate(dog, QUERY_FREQUENCY);
+    }
+
+    public DifferenceOfGaussians getDoG() {
+        return dog;
+    }
+
+    public GlobalFillRocksPredicate getFillRocksPredicate() {
+        return fillRocksPredicate;
     }
     // ch7 -> adj
     // ch8 -> flow

@@ -7,12 +7,9 @@ import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Path;
 import java.util.Arrays;
 import javax.imageio.ImageIO;
-import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.infinitetensor.storage.FloatTensor;
-import net.minecraft.util.WorldSavePath;
 
 public class TensorVisualizer {
 
@@ -33,15 +30,15 @@ public class TensorVisualizer {
         DEBUG_LOGGER.info("tensor {} has bounds [{},{}]", name, min, max);
     }
 
-    public void see(OnnxTensor op, String name, boolean seeAvg) {
-        see(op, name, seeAvg, 0);
+    public void see(OnnxTensor op, String name, String debugPath, boolean seeAvg) {
+        see(op, name, debugPath, seeAvg, 0);
     }
 
-    public void see(OnnxTensor op, String name) {
-        see(op, name, true, 0);
+    public void see(OnnxTensor op, String name, String debugPath) {
+        see(op, name, debugPath, true, 0);
     }
 
-    public void see(OnnxTensor op, String name, boolean seeAvg, int channel) {
+    public void see(OnnxTensor op, String name, String debugPath, boolean seeAvg, int channel) {
         FloatTensor tl;
         if (op.getInfo().getShape().length > 3) {
             int[] a = Arrays.stream(op.getInfo().getShape())
@@ -72,10 +69,9 @@ public class TensorVisualizer {
             }
         FloatTensor t = new FloatTensor(ftu, new int[] {tl.getShape()[1], tl.getShape()[2]});
 
-        Path path = FractalTerrainInstance.getServer()
-                .getSavePath(WorldSavePath.ROOT)
-                .normalize();
-        File outputFile = new File(path + "/" + name + ".png");
+        File dir = new File(debugPath);
+        dir.mkdirs();
+        File outputFile = new File(dir, name + ".png");
         DEBUG_LOGGER.info("O caminho eh: {} , ", outputFile.getPath());
         float max = -1000000;
         float min = 1000000;
@@ -106,6 +102,53 @@ public class TensorVisualizer {
             throw new RuntimeException(e);
         }
         System.out.println("end");
+    }
+
+    public void see(FloatTensor tl, String name, String debugPath) {
+        final int[] sh = tl.getShape();
+        final int H, W, ch;
+        if (sh.length == 3) {
+            ch = 0;
+            H = sh[1];
+            W = sh[2];
+        } else if (sh.length == 2) {
+            ch = -1;
+            H = sh[0];
+            W = sh[1];
+        } else {
+            throw new IllegalArgumentException("expected rank 2 or 3, got " + sh.length);
+        }
+
+        float max = -1e30f;
+        float min = 1e30f;
+        for (int i = 0; i < H; i++) {
+            for (int j = 0; j < W; j++) {
+                float v = (ch == -1) ? tl.entryAt(new int[]{i, j}) : tl.entryAt(new int[]{ch, i, j});
+                if (v > max) max = v;
+                if (v < min) min = v;
+            }
+        }
+        final float eps = 1e-5f;
+        final int[] arr = new int[H * W];
+        for (int i = 0; i < H; i++) {
+            for (int j = 0; j < W; j++) {
+                float v = (ch == -1) ? tl.entryAt(new int[]{i, j}) : tl.entryAt(new int[]{ch, i, j});
+                float vi = (v - min) / (max - min + eps);
+                arr[j + i * W] = (int) (255f * vi);
+            }
+        }
+        BufferedImage img = new BufferedImage(W, H, BufferedImage.TYPE_BYTE_GRAY);
+        WritableRaster raster = img.getRaster();
+        raster.setSamples(0, 0, W, H, 0, arr);
+        File dir = new File(debugPath);
+        dir.mkdirs();
+        File outputFile = new File(dir, name + ".png");
+        DEBUG_LOGGER.info("FloatTensor see -> {} (min={}, max={})", outputFile.getPath(), min, max);
+        try {
+            ImageIO.write(img, "png", outputFile);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public void see(OnnxTensor op, String path, int channel) {
