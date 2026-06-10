@@ -2,17 +2,16 @@ package me.batata_1.fractal_terrain.infinitetensor;
 
 import com.google.common.base.Function;
 import java.io.File;
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
-
 import me.batata_1.fractal_terrain.storage.Storage;
+import me.batata_1.fractal_terrain.storage.TileKey;
 
 public class NonIntersectingInfiniteTensor extends Storage<FloatTensor> {
 
     private final TensorWindow outWindow;
-    private final Function<List<Integer>, FloatTensor> entry_creating_function;
+    private final Function<TileKey, FloatTensor> entry_creating_function;
 
-    public NonIntersectingInfiniteTensor(String path, int[] shape, Function<List<Integer>, FloatTensor> f) {
+    public NonIntersectingInfiniteTensor(String path, int[] shape, Function<TileKey, FloatTensor> f) {
         super(path, shape.length, new FloatTensor(new int[] {1}));
         this.entry_creating_function = f;
         this.outWindow = new TensorWindow(shape);
@@ -25,7 +24,7 @@ public class NonIntersectingInfiniteTensor extends Storage<FloatTensor> {
      * whose disk loads are scheduled on that single-thread executor — running here would self-deadlock.
      */
     @Override
-    protected void loadInto(List<Integer> key, CompletableFuture<FloatTensor> promise) {
+    protected void loadInto(TileKey key, CompletableFuture<FloatTensor> promise) {
         // Disk-backed entry from a previous session: reuse the base async reload path.
         if (GENERATED_ENTRIES.contains(key) && new File(tilePath(key) + ".ser").exists()) {
             super.loadInto(key, promise);

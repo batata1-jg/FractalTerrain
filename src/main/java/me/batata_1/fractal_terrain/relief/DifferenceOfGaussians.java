@@ -5,9 +5,10 @@ import static me.batata_1.fractal_terrain.FractalTerrainConfig.Z;
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
+import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.math.Blur;
-import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
+import me.batata_1.fractal_terrain.storage.TileKey;
 import org.slf4j.Logger;
 
 public class DifferenceOfGaussians {
@@ -31,7 +32,7 @@ public class DifferenceOfGaussians {
                 path + "/dog_tensor", new int[] {1, COARSE_TILE_SIZE, COARSE_TILE_SIZE}, this::buildTile);
     }
 
-    protected FloatTensor buildTile(java.util.List<Integer> key) {
+    protected FloatTensor buildTile(TileKey key) {
         final int tx = key.get(X);
         final int tz = key.get(Z);
         final int S = COARSE_TILE_SIZE;

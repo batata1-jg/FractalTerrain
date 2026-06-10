@@ -2,10 +2,11 @@ package me.batata_1.fractal_terrain.infinitetensor;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
-
 import me.batata_1.fractal_terrain.storage.Storage;
+import me.batata_1.fractal_terrain.storage.TileKey;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
@@ -89,6 +90,11 @@ public abstract class InfiniteTensor {
         int[] lo = outputWindow.getLowestIntersection(pixelRange);
         int[] hi = outputWindow.getHighestIntersection(pixelRange);
         if (storage == null) throw new IllegalStateException("storage was not initialized");
+        // Reused across windows — iteration is sequential/single-threaded, and each is fully
+        // recomputed per window before use, so hoisting these out of the loop is safe.
+        final int[][] isect = new int[n][2];
+        final int[][] srcRegion = new int[n][2];
+        final int[][] dstRegion = new int[n][2];
         iterateWindows(lo, hi, windowIndex -> {
             final FloatTensor cached = storage.getEntry(windowIndex);
             // FloatTensor cached = storage.getCachedWindow(id, windowIndex);
@@ -97,15 +103,12 @@ public abstract class InfiniteTensor {
             final int[][] wBounds = outputWindow.getBounds(windowIndex);
 
             // Intersection of the window bounds with the requested pixel range.
-            final int[][] isect = new int[n][2];
             for (int d = 0; d < n; d++) {
                 isect[d][0] = Math.max(pixelRange[d][0], wBounds[d][0]);
                 isect[d][1] = Math.min(pixelRange[d][1], wBounds[d][1]);
                 if (isect[d][0] >= isect[d][1]) return; // no overlap
             }
 
-            final int[][] srcRegion = new int[n][2];
-            final int[][] dstRegion = new int[n][2];
             for (int d = 0; d < n; d++) {
                 srcRegion[d][0] = isect[d][0] - wBounds[d][0];
                 srcRegion[d][1] = isect[d][1] - wBounds[d][0];
@@ -139,22 +142,17 @@ public abstract class InfiniteTensor {
      * at least one range).
      */
     protected void ensureComputedRanges(List<int[][]> pixelRanges) {
-        Set<List<Integer>> pendingSet = new LinkedHashSet<>();
+        Set<TileKey> pendingSet = new LinkedHashSet<>();
         for (int[][] range : pixelRanges) {
             int[] lo = outputWindow.getLowestIntersection(range);
             int[] hi = outputWindow.getHighestIntersection(range);
             if (storage == null) throw new IllegalStateException("storage was not initialized");
             iterateWindows(lo, hi, wi -> {
-                if (!storage.inStorage(wi)) {
-                    List<Integer> key = new ArrayList<>(wi.length);
-                    for (int v : wi) key.add(v);
-                    pendingSet.add(key);
-                }
+                // TileKey defensively copies wi, so it is safe to capture from the reused buffer.
+                if (!storage.inStorage(wi)) pendingSet.add(new TileKey(wi));
             });
         }
-        List<int[]> pending = pendingSet.stream()
-                .map(k -> k.stream().mapToInt(Integer::intValue).toArray())
-                .collect(Collectors.toList());
+        List<int[]> pending = pendingSet.stream().map(TileKey::toIntArray).collect(Collectors.toList());
         if (pending.isEmpty()) return;
 
         // Dependencies get the exact list of pixel ranges (one per our pending window), not a union.
@@ -180,59 +178,97 @@ public abstract class InfiniteTensor {
     }
 
     private void computeSingle(int[] windowIndex) {
-        List<FloatTensor> args = new ArrayList<>(deps.length);
-        for (int i = 0; i < deps.length; i++) {
-            int[][] bounds = depWindows[i].getBounds(windowIndex);
-            int[] depStart = new int[bounds.length];
-            int[] depEnd = new int[bounds.length];
-            for (int d = 0; d < bounds.length; d++) {
-                depStart[d] = bounds[d][0];
-                depEnd[d] = bounds[d][1];
-            }
-            args.add(deps[i].getSlice(depStart, depEnd));
-        }
-        counter.getAndIncrement();
-        FloatTensor result = function.apply(windowIndex, args);
-        validateOutputShape(result, windowIndex);
-        // storage.cacheWindow(id, windowIndex, result);
         if (storage == null) throw new IllegalStateException("storage was not initialized");
-        storage.addOrOverwriteEntry(CompletableFuture.completedFuture(result), windowIndex);
+        // Single-flight: only the thread that wins the claim gathers deps and runs the model; racing
+        // threads await the winner's result instead of duplicating (expensive) inference.
+        storage.getOrCompute(windowIndex, () -> {
+            List<FloatTensor> args = new ArrayList<>(deps.length);
+            for (int i = 0; i < deps.length; i++) {
+                int[][] bounds = depWindows[i].getBounds(windowIndex);
+                int[] depStart = new int[bounds.length];
+                int[] depEnd = new int[bounds.length];
+                for (int d = 0; d < bounds.length; d++) {
+                    depStart[d] = bounds[d][0];
+                    depEnd[d] = bounds[d][1];
+                }
+                args.add(deps[i].getSlice(depStart, depEnd));
+            }
+            counter.getAndIncrement();
+            FloatTensor result = function.apply(windowIndex, args);
+            validateOutputShape(result, windowIndex);
+            return result;
+        });
     }
 
     private void computeBatched(@NotNull List<int[]> windowIndices) {
+        if (storage == null) throw new IllegalStateException("storage was not initialized");
         int from = 0;
         while (from < windowIndices.size()) {
             int to = Math.min(from + batchSize, windowIndices.size());
-            List<int[]> batch = windowIndices.subList(from, to);
-
-            // args.get(depIdx) → list of tensors for that dep, one per window
-            List<List<FloatTensor>> args = new ArrayList<>(deps.length);
-            for (int i = 0; i < deps.length; i++) {
-                List<FloatTensor> depArgs = new ArrayList<>(batch.size());
-                for (int[] windowIndex : batch) {
-                    int[][] bounds = depWindows[i].getBounds(windowIndex);
-                    int[] depStart = new int[bounds.length];
-                    int[] depEnd = new int[bounds.length];
-                    for (int d = 0; d < bounds.length; d++) {
-                        depStart[d] = bounds[d][0];
-                        depEnd[d] = bounds[d][1];
-                    }
-                    depArgs.add(deps[i].getSlice(depStart, depEnd));
-                }
-                args.add(depArgs);
-            }
-            counter.getAndIncrement();
-            List<FloatTensor> outputs = batchFunction.apply(batch, args);
-            if (storage == null) throw new IllegalStateException("storage was not initialized");
-            for (int k = 0; k < batch.size(); k++) {
-                FloatTensor result = outputs.get(k);
-                int[] windowIndex = batch.get(k);
-                validateOutputShape(result, windowIndex);
-                storage.addOrOverwriteEntry(CompletableFuture.completedFuture(result), windowIndex);
-                // storage.cacheWindow(id, windowIndex, result);
-            }
-
+            List<int[]> slice = windowIndices.subList(from, to);
             from = to;
+
+            // Single-flight per window: claim each, only run inference over the windows we win. Per-element
+            // results are independent, so a sub-batch of the won windows yields identical values.
+            List<int[]> won = new ArrayList<>(slice.size());
+            List<CompletableFuture<FloatTensor>> wonPromises = new ArrayList<>(slice.size());
+            List<CompletableFuture<FloatTensor>> lost = new ArrayList<>();
+            for (int[] wi : slice) {
+                CompletableFuture<FloatTensor> claim = storage.claimForCompute(wi);
+                if (claim != null) {
+                    won.add(wi);
+                    wonPromises.add(claim);
+                } else {
+                    CompletableFuture<FloatTensor> other = storage.peekFuture(wi);
+                    if (other != null) lost.add(other);
+                }
+            }
+
+            if (!won.isEmpty()) {
+                int fulfilled = 0;
+                try {
+                    // args.get(depIdx) → list of tensors for that dep, one per WON window
+                    List<List<FloatTensor>> args = new ArrayList<>(deps.length);
+                    for (int i = 0; i < deps.length; i++) {
+                        List<FloatTensor> depArgs = new ArrayList<>(won.size());
+                        for (int[] windowIndex : won) {
+                            int[][] bounds = depWindows[i].getBounds(windowIndex);
+                            int[] depStart = new int[bounds.length];
+                            int[] depEnd = new int[bounds.length];
+                            for (int d = 0; d < bounds.length; d++) {
+                                depStart[d] = bounds[d][0];
+                                depEnd[d] = bounds[d][1];
+                            }
+                            depArgs.add(deps[i].getSlice(depStart, depEnd));
+                        }
+                        args.add(depArgs);
+                    }
+                    counter.getAndIncrement();
+                    List<FloatTensor> outputs = batchFunction.apply(won, args);
+                    for (; fulfilled < won.size(); fulfilled++) {
+                        FloatTensor result = outputs.get(fulfilled);
+                        int[] windowIndex = won.get(fulfilled);
+                        validateOutputShape(result, windowIndex);
+                        storage.fulfillClaim(windowIndex, wonPromises.get(fulfilled), result);
+                    }
+                } catch (RuntimeException | Error t) {
+                    // Release the claims we never settled so the keys can be retried.
+                    for (int k = fulfilled; k < won.size(); k++) {
+                        storage.abandonClaim(won.get(k), wonPromises.get(k), t);
+                    }
+                    throw t;
+                }
+            }
+
+            // Windows other threads are computing: we settled our own claims FIRST, so awaiting here
+            // cannot deadlock (claim/await edges only point downstream in the dependency DAG).
+            for (CompletableFuture<FloatTensor> f : lost) {
+                try {
+                    f.get();
+                } catch (InterruptedException | ExecutionException e) {
+                    throw new RuntimeException(e);
+                }
+            }
         }
     }
 
@@ -266,6 +302,10 @@ public abstract class InfiniteTensor {
 
     /**
      * Iterate over all window index combinations in the inclusive range [lo, hi].
+     *
+     * <p><b>Contract:</b> the {@code int[]} handed to {@code action} is a single mutable buffer
+     * reused across iterations. Consumers must read it within the callback and must NOT retain a
+     * reference — copy it (e.g. via {@code TileKey}/{@code clone()}) if it must outlive the call.
      */
     static void iterateWindows(int[] lo, int[] hi, InfiniteTensor.WindowConsumer action) {
         int n = lo.length;
@@ -276,7 +316,8 @@ public abstract class InfiniteTensor {
 
         outer:
         while (true) {
-            action.accept(current.clone());
+            // TODO: see if this really does not break
+            action.accept(current);
 
             // Increment like a mixed-radix counter (last dim first).
             for (int d = n - 1; d >= 0; d--) {

@@ -1,10 +1,17 @@
 package me.batata_1.fractal_terrain.math.ds;
 
 import java.util.*;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import me.batata_1.fractal_terrain.math.VectorOps;
-import oshi.annotation.concurrent.NotThreadSafe;
 
-@NotThreadSafe
+/**
+ * 2-D spatial index. Concurrency contract: <b>multiple concurrent readers</b>
+ * ({@link #getPointsInBox}, {@link #getPointsInCircle}, {@link #getPointCoordsInBox},
+ * {@link #containsPoint}) are safe, guarded by the read side of a {@link ReentrantReadWriteLock};
+ * mutations ({@link #insertPoint}, {@link #removePoint}, {@link #clear}) take the exclusive write
+ * lock, so writes never run concurrently with each other or with reads. All recursion-local state
+ * is kept on the stack (no shared mutable fields), so readers do not interfere with one another.
+ */
 public class QuadTree<T extends QuadTreePoint> {
     private static final int PP = 0;
     private static final int PQ = 1;
@@ -49,6 +56,9 @@ public class QuadTree<T extends QuadTreePoint> {
 
     final List<Node<T>> tree = new ArrayList<>(8);
 
+    /** Guards {@link #tree}: many concurrent readers (queries) or one exclusive writer (mutations). */
+    private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+
     public QuadTree(double[] minXZ, double[] maxXZ) {
         this.minXZ = minXZ;
         this.maxXZ = maxXZ;
@@ -57,13 +67,17 @@ public class QuadTree<T extends QuadTreePoint> {
     }
 
     public void clear() {
-        for (Node<T> n : tree) n.clear();
-        tree.clear();
-        tree.add(new Node<>());
-        tree.add(new Node<>(minXZ, maxXZ, 0));
+        lock.writeLock().lock();
+        try {
+            for (Node<T> n : tree) n.clear();
+            tree.clear();
+            tree.add(new Node<>());
+            tree.add(new Node<>(minXZ, maxXZ, 0));
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
-    private double[] mutableMiddle;
     // every point should have its own square
     private void update(final T pt, final int id) {
         final Node<T> cur = tree.get(id);
@@ -72,27 +86,25 @@ public class QuadTree<T extends QuadTreePoint> {
             cur.points.add(pt);
             return;
         }
-        mutableMiddle = cur.getMidpoint();
+        final double[] middle = cur.getMidpoint();
         if (cur.points.size() == 1) {
             final T p = cur.points.stream().toList().getFirst();
-            final int section = findSection(p, mutableMiddle);
+            final int section = findSection(p, middle);
             if (cur.depth < MAX_TREE_DEPTH) {
                 if (cur.child[section] == 0)
                     cur.child[section] = createNode(
-                            getLowerBound(cur.p0, mutableMiddle, section),
-                            getUpperBound(mutableMiddle, cur.p1, section),
+                            getLowerBound(cur.p0, middle, section),
+                            getUpperBound(middle, cur.p1, section),
                             cur.depth + 1);
                 update(p, cur.child[section]);
             }
         }
-        final int section = findSection(pt, mutableMiddle);
+        final int section = findSection(pt, middle);
         cur.points.add(pt);
         if (cur.depth < MAX_TREE_DEPTH) {
             if (cur.child[section] == 0)
                 cur.child[section] = createNode(
-                        getLowerBound(cur.p0, mutableMiddle, section),
-                        getUpperBound(mutableMiddle, cur.p1, section),
-                        cur.depth + 1);
+                        getLowerBound(cur.p0, middle, section), getUpperBound(middle, cur.p1, section), cur.depth + 1);
             update(pt, cur.child[section]);
         }
     }
@@ -101,8 +113,8 @@ public class QuadTree<T extends QuadTreePoint> {
         if (id == 0) return;
         final Node<T> cur = tree.get(id);
         if (!cur.points.contains(pt)) return;
-        mutableMiddle = cur.getMidpoint();
-        final int section = findSection(pt, mutableMiddle);
+        final double[] middle = cur.getMidpoint();
+        final int section = findSection(pt, middle);
         delete(pt, cur.child[section]);
         cur.points.remove(pt);
     }
@@ -118,7 +130,6 @@ public class QuadTree<T extends QuadTreePoint> {
             var pt = ptList.getFirst();
             return shape.contains(pt) ? ptList : null;
         }
-        mutableMiddle = cur.getMidpoint();
         ArrayList<T> mergedPoints = null;
         for (int section : cur.child) {
             mergedPoints = merge(mergedPoints, query(shape, section));
@@ -128,37 +139,67 @@ public class QuadTree<T extends QuadTreePoint> {
 
     public void insertPoint(final T pt) {
         if (pt.size() != 2) throw new IllegalStateException();
-        update(pt, 1);
+        lock.writeLock().lock();
+        try {
+            update(pt, 1);
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     public void removePoint(final T pt) {
         if (pt.size() != 2) throw new IllegalStateException();
-        delete(pt, 1);
+        lock.writeLock().lock();
+        try {
+            delete(pt, 1);
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     public boolean containsPoint(final T pt) {
-        return tree.get(1).points.contains(pt);
+        lock.readLock().lock();
+        try {
+            return tree.get(1).points.contains(pt);
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public List<T> getPointsInBox(final double[] b, final double[] d) {
         if (d.length != 2 || b.length != 2) throw new IllegalStateException();
-        List<T> resp = query(new QuadTreeShape.QuadTreeBox(b, d), 1);
-        if (resp == null) return new ArrayList<>();
-        return resp;
+        lock.readLock().lock();
+        try {
+            List<T> resp = query(new QuadTreeShape.QuadTreeBox(b, d), 1);
+            if (resp == null) return new ArrayList<>();
+            return resp;
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public List<T> getPointsInCircle(final double[] pt, final double r) {
         if (pt.length != 2) throw new IllegalStateException();
-        List<T> resp = query(new QuadTreeShape.QuadTreeCircle(pt, r), 1);
-        if (resp == null) return new ArrayList<>();
-        return resp;
+        lock.readLock().lock();
+        try {
+            List<T> resp = query(new QuadTreeShape.QuadTreeCircle(pt, r), 1);
+            if (resp == null) return new ArrayList<>();
+            return resp;
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public List<double[]> getPointCoordsInBox(final double[] b, final double[] d) {
         if (d.length != 2 || b.length != 2) throw new IllegalStateException();
-        List<T> resp = query(new QuadTreeShape.QuadTreeBox(b, d), 1);
-        if (resp == null) return new ArrayList<>();
-        return resp.stream().map(QuadTreePoint::toArray).toList();
+        lock.readLock().lock();
+        try {
+            List<T> resp = query(new QuadTreeShape.QuadTreeBox(b, d), 1);
+            if (resp == null) return new ArrayList<>();
+            return resp.stream().map(QuadTreePoint::toArray).toList();
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     private int createNode(double[] p0, double[] p1, int depth) {

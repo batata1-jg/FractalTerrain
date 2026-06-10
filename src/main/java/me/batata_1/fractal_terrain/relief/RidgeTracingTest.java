@@ -12,12 +12,13 @@ import java.util.Set;
 import javax.imageio.ImageIO;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.debug.Debug;
+import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 import me.batata_1.fractal_terrain.ml.models.ModelAssetManager;
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;
-import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
+import me.batata_1.fractal_terrain.storage.TileKey;
 import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,9 +69,9 @@ public class RidgeTracingTest {
         final File dir = new File(COARSE_TENSOR_DEBUG_PATH);
         dir.mkdirs();
         final int S = DifferenceOfGaussians.COARSE_TILE_SIZE;
-        final Set<List<Integer>> keys = pipeline.getCoarse().getStorage().getCacheKeys();
+        final Set<TileKey> keys = pipeline.getCoarse().getStorage().getCacheKeys();
         LOG.info("dumpCoarseElevTiles: {} cached DoG tile(s) → {}", keys.size(), COARSE_TENSOR_DEBUG_PATH);
-        for (List<Integer> key : keys) {
+        for (TileKey key : keys) {
             final int tx = key.get(FractalTerrainConfig.X);
             final int tz = key.get(FractalTerrainConfig.Z);
             final float[] elev = new float[S * S];
