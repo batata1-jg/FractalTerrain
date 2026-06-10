@@ -5,6 +5,8 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+
+import me.batata_1.fractal_terrain.math.DifferenceOfGaussians;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
@@ -89,9 +91,7 @@ public class GlobalFillRocksPredicate {
         final double cz = z / BLOCK_TO_COARSE;
         final double[] center = {cx, cz};
         final List<QuadTreePoint> hits;
-        synchronized (treeLock) {
-            hits = tree.getPointsInCircle(center, QUERY_RADIUS_COARSE_PX);
-        }
+        hits = tree.getPointsInCircle(center, QUERY_RADIUS_COARSE_PX);
         if (hits.isEmpty()) return 0.0;
         double netAngle = 0;
         for (QuadTreePoint pt : hits) {

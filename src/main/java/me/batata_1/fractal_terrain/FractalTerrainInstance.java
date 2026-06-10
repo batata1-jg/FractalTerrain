@@ -7,7 +7,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
 import me.batata_1.fractal_terrain.hydrology.RiverProvider;
-import me.batata_1.fractal_terrain.infinitetensor.storage.TensorStorage;
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import me.batata_1.fractal_terrain.ml.pipeline.WorldPipeline;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
@@ -24,7 +23,6 @@ import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.WorldSavePath;
 import net.minecraft.world.dimension.DimensionOptions;
 import net.minecraft.world.gen.noise.NoiseConfig;
-import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 
 public class FractalTerrainInstance {
@@ -133,9 +131,5 @@ public class FractalTerrainInstance {
         return getInstance().noiseConfig;
     }
 
-    @TestOnly
-    public static TensorStorage getDecoderStorage() {
-        return pipeline.getDecoder().getStorage();
-    }
 
 }

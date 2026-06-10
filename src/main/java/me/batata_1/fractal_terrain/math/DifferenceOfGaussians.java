@@ -1,4 +1,4 @@
-package me.batata_1.fractal_terrain.relief;
+package me.batata_1.fractal_terrain.math;
 
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.X;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.Z;
@@ -7,7 +7,6 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
-import me.batata_1.fractal_terrain.math.Blur;
 import me.batata_1.fractal_terrain.storage.TileKey;
 import org.slf4j.Logger;
 

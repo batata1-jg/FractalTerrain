@@ -13,6 +13,7 @@ import javax.imageio.ImageIO;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
+import me.batata_1.fractal_terrain.math.DifferenceOfGaussians;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;

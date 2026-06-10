@@ -8,6 +8,4 @@ import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
 
 public class RiverProvider {
 
-    private final ConcurrentHashMap<List<Integer>, CompletableFuture<QuadTree<QuadTreePoint>>> CACHE =
-            new ConcurrentHashMap<>();
 }

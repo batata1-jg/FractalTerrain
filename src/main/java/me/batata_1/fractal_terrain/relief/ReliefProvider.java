@@ -5,6 +5,7 @@ import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
+import me.batata_1.fractal_terrain.math.DifferenceOfGaussians;
 
 public class ReliefProvider {
 
