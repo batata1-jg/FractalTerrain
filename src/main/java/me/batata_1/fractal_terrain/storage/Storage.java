@@ -69,6 +69,7 @@ public class Storage<T extends Persistable<T>> {
     private volatile Boolean payloadIsSerializable = null;
 
     public Storage(String path, int rank, T deserializationPrototype) {
+        LOG.info("creating storage {}",path);
         PATH = path;
         this.rank = rank;
         this.deserializationPrototype = deserializationPrototype;
