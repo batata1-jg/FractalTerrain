@@ -1,7 +1,6 @@
 package me.batata_1.fractal_terrain.infinitetensor;
 
 import java.util.List;
-import me.batata_1.fractal_terrain.infinitetensor.storage.FloatTensor;
 
 /**
  * Function that computes a window of an InfiniteTensor.

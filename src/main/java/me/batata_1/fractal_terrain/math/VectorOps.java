@@ -3,7 +3,7 @@ package me.batata_1.fractal_terrain.math;
 public class VectorOps {
 
     public static double magnitude(double[] vec) {
-        return Math.sqrt(dot(vec,vec));
+        return Math.sqrt(dot(vec, vec));
     }
 
     public static double distance(double[] vec1, double[] vec2) {
@@ -83,5 +83,4 @@ public class VectorOps {
     private static void checkLengths(double[] vec1, double[] vec2) {
         if (vec1.length != vec2.length) throw new RuntimeException("vectors with different lengths");
     }
-
 }

@@ -1,15 +1,25 @@
-package me.batata_1.fractal_terrain.infinitetensor.storage;
+package me.batata_1.fractal_terrain.infinitetensor;
 
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import ai.onnxruntime.OnnxTensor;
 import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtException;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.Arrays;
+import me.batata_1.fractal_terrain.storage.Persistable;
 import org.slf4j.Logger;
 
-public class FloatTensor {
+public class FloatTensor implements Persistable<FloatTensor> {
 
     public static final Logger LOG = getLogger(FloatTensor.class);
 
@@ -58,8 +68,65 @@ public class FloatTensor {
         return shape.length;
     }
 
+    @Override
     public long byteSize() {
         return (long) data.length * Float.BYTES;
+    }
+
+    /** Identifies the direct-binary tile format ("FTN1"); guards against stale legacy caches. */
+    private static final int MAGIC = 0x46544E31;
+
+    /**
+     * Serialize this tensor to {@code path + ".ser"} in a flat little-endian binary layout:
+     * {@code [magic, rank, shape..., dataLength, rawFloats...]}. Floats are bulk-written through a
+     * {@link ByteBuffer} — no intermediate {@code float[]} copy and no Java object-serialization
+     * overhead.
+     */
+    @Override
+    public void serialize(String path) throws IOException {
+        try (DataOutputStream out =
+                new DataOutputStream(new BufferedOutputStream(new FileOutputStream(path + ".ser")))) {
+            out.writeInt(MAGIC);
+            out.writeInt(shape.length);
+            for (int d : shape) out.writeInt(d);
+            out.writeInt(data.length);
+            final byte[] bytes = new byte[data.length * Float.BYTES];
+            ByteBuffer.wrap(bytes)
+                    .order(ByteOrder.LITTLE_ENDIAN)
+                    .asFloatBuffer()
+                    .put(data);
+            out.write(bytes);
+        }
+    }
+
+    /**
+     * Read a tensor previously written by {@link #serialize(String)} from {@code path + ".ser"}.
+     * Returns a fresh {@code FloatTensor}; the receiver is only a prototype and is not read. Reads
+     * straight into the final {@code float[]} — no intermediate copy. A mismatched {@link #MAGIC}
+     * (e.g. a legacy {@code ObjectOutputStream} tile) fails loudly so the cache can be regenerated.
+     */
+    @Override
+    public FloatTensor deserialize(String path) throws IOException {
+        try (DataInputStream in = new DataInputStream(new BufferedInputStream(new FileInputStream(path + ".ser")))) {
+            final int magic = in.readInt();
+            if (magic != MAGIC) {
+                throw new IOException("incompatible FloatTensor tile format in " + path + ".ser (expected 0x"
+                        + Integer.toHexString(MAGIC) + ", got 0x" + Integer.toHexString(magic)
+                        + "); delete the fractal_terrain tile cache to regenerate");
+            }
+            final int sl = in.readInt();
+            final int[] shape = new int[sl];
+            for (int i = 0; i < sl; i++) shape[i] = in.readInt();
+            final int el = in.readInt();
+            final byte[] bytes = new byte[el * Float.BYTES];
+            in.readFully(bytes);
+            final float[] entries = new float[el];
+            ByteBuffer.wrap(bytes)
+                    .order(ByteOrder.LITTLE_ENDIAN)
+                    .asFloatBuffer()
+                    .get(entries);
+            return new FloatTensor(entries, shape);
+        }
     }
 
     /**

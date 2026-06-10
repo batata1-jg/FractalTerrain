@@ -1,9 +1,8 @@
 package me.batata_1.fractal_terrain.math.ds;
 
-import org.jetbrains.annotations.NotNull;
-
 import java.util.Arrays;
 import java.util.List;
+import org.jetbrains.annotations.NotNull;
 
 public class QuadTreePoint implements Comparable<QuadTreePoint> {
 
@@ -18,7 +17,7 @@ public class QuadTreePoint implements Comparable<QuadTreePoint> {
     }
 
     public double[] toArray() {
-        return ptCoords.stream().mapToDouble(o->o).toArray();
+        return ptCoords.stream().mapToDouble(o -> o).toArray();
     }
 
     public double get(int x) {
@@ -31,10 +30,10 @@ public class QuadTreePoint implements Comparable<QuadTreePoint> {
 
     @Override
     public int compareTo(@NotNull QuadTreePoint pt) {
-        if(pt.size()!=this.size()) throw new IllegalArgumentException("points must match rank");
-        for(int i=0 ; i<this.size() ; i++) {
-            if(pt.get(i)<this.get(i)) return 1;
-            if(pt.get(i)>this.get(i)) return -1;
+        if (pt.size() != this.size()) throw new IllegalArgumentException("points must match rank");
+        for (int i = 0; i < this.size(); i++) {
+            if (pt.get(i) < this.get(i)) return 1;
+            if (pt.get(i) > this.get(i)) return -1;
         }
         return 0;
     }

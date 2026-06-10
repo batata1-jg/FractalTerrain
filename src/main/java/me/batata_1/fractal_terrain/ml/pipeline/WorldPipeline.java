@@ -8,14 +8,13 @@ import java.util.*;
 import java.util.stream.Collectors;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.infinitetensor.AdditiveInfiniteTensor;
+import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.InfiniteTensor;
 import me.batata_1.fractal_terrain.infinitetensor.TensorWindow;
-import me.batata_1.fractal_terrain.infinitetensor.storage.FloatTensor;
 import me.batata_1.fractal_terrain.ml.models.ModelAssetManager;
 import me.batata_1.fractal_terrain.ml.models.OnnxModel;
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import me.batata_1.fractal_terrain.ml.tensorProviders.GaussianNoisePatch;
-import net.fabricmc.loader.api.FabricLoader;
 import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -88,7 +87,19 @@ public final class WorldPipeline implements AutoCloseable {
     private volatile SyntheticMapFactory syntheticMapFactory;
     private volatile long seed;
     private volatile float[] tau = new float[] {1F};
-    private final long cacheLimitBytes = 100L * 1024 * 1024;
+    private final long cacheLimitBytes = 50L * 1024 * 1024;
+
+    /**
+     * Per-thread reusable coarse model input (11 channels). Fully overwritten on every use, so it is
+     * safe to reuse across the 20 diffusion steps of a tile and across tiles on the same worker
+     * thread — replacing a 180 KB allocation per step (~3.6 MB/tile of pure churn).
+     */
+    private final ThreadLocal<float[]> coarseInputScratch =
+            ThreadLocal.withInitial(() -> new float[11 * COARSE_TILE_SIZE * COARSE_TILE_SIZE]);
+
+    /** Per-thread reusable decoder model input (5 channels); fully overwritten on each decoder tile. */
+    private final ThreadLocal<float[]> decoderInputScratch =
+            ThreadLocal.withInitial(() -> new float[5 * DECODER_TILE_SIZE * DECODER_TILE_SIZE]);
 
     final AdditiveInfiniteTensor coarse;
     final AdditiveInfiniteTensor latents;
@@ -217,14 +228,15 @@ public final class WorldPipeline implements AutoCloseable {
                 j1,
                 i1 + S,
                 j1 + S);
+        // Reused across all 20 steps. The conditioning half (channels 6..10 = condMixed) is constant
+        // across steps, so copy it once; only the scaledIn half is refreshed per step.
+        final float[] xIn = coarseInputScratch.get();
+        System.arraycopy(condMixed, 0, xIn, 6 * S * S, 5 * S * S);
         for (int step = 0; step < 20; step++) {
             float sigma = sched.sigmas[step];
             float cnoise = EDMScheduler.trigflowPreconditionNoise(sigma);
             float[] scaledIn = EDMScheduler.preconditionInputs(sample, sigma);
-
-            float[] xIn = new float[11 * S * S];
             System.arraycopy(scaledIn, 0, xIn, 0, 6 * S * S);
-            System.arraycopy(condMixed, 0, xIn, 6 * S * S, 5 * S * S);
 
             float[] modelOut =
                     coarseModel.runModel(xIn, new long[] {1, 11, S, S}, new float[] {cnoise}, condInputs, condShapes);
@@ -464,8 +476,9 @@ public final class WorldPipeline implements AutoCloseable {
         float[] xT = new float[S * S];
         for (int k = 0; k < S * S; k++) xT[k] = sinT * noise[k] * SIGMA_DATA; // sample=0
 
-        // model_in = concat([xT/sigma_data (1,S,S), upsampled (4,S,S)]) → (5,S,S)
-        float[] modelIn = new float[5 * S * S];
+        // model_in = concat([xT/sigma_data (1,S,S), upsampled (4,S,S)]) → (5,S,S).
+        // Reuse the per-thread scratch buffer; fully overwritten below.
+        final float[] modelIn = decoderInputScratch.get();
         for (int k = 0; k < S * S; k++) modelIn[k] = xT[k] / SIGMA_DATA;
         System.arraycopy(upsampled, 0, modelIn, S * S, 4 * S * S);
 
@@ -495,7 +508,7 @@ public final class WorldPipeline implements AutoCloseable {
 
         // TODO: pesar as tiles de flow e adj
         final float[] data = fuzedModel.run(inputs);
-        final float[] adj = computeDirection(Arrays.copyOfRange(data, 0, S * S), ww,S);
+        final float[] adj = computeDirection(Arrays.copyOfRange(data, 0, S * S), ww, S);
         final float[] flow = computeFlow(adj, S);
         for (int px = 0; px < S * S; px++) {
             adj[px] = adj[px] * ww[px];

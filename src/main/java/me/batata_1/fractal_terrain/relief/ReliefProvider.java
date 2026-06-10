@@ -3,11 +3,8 @@ package me.batata_1.fractal_terrain.relief;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.*;
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 
-// import me.batata_1.fractalterrain.ml.tensorProviders.GaussianNoisePatchProvider;
-import me.batata_1.fractal_terrain.debug.Debug;
-// import me.batata_1.fractalterrain.world.ContinentalScaleMapProvider;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
-import me.batata_1.fractal_terrain.infinitetensor.storage.FloatTensor;
+import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 
 public class ReliefProvider {
 
@@ -21,20 +18,20 @@ public class ReliefProvider {
     private final GlobalFillRocksPredicate fillRocksPredicate;
 
     public ReliefProvider(String path) {
-        final_tiles = new NonIntersectingInfiniteTensor(path + "/final_relief_tiles", new int[]{9,512,512}, key -> {
+        final_tiles = new NonIntersectingInfiniteTensor(path + "/final_relief_tiles", new int[] {9, 512, 512}, key -> {
             final int x = key.get(X);
             final int z = key.get(Z);
             final FloatTensor final_slice = pipeline.getDecoderSlice(x, z);
             final float[] entries = new float[9 << 18];
-            //TODO: mover weight para canal 0
+            // TODO: mover weight para canal 0
             for (int ch = 1; ch < 10; ch++) {
                 for (int px = 0; px < (1 << 18); px++) {
                     final float w = final_slice.data[px];
-                    entries[((ch-1) << 18) + px] = (w > 1e-6f) ? final_slice.data[(ch << 18) + px] / w : 0f;
+                    entries[((ch - 1) << 18) + px] = (w > 1e-6f) ? final_slice.data[(ch << 18) + px] / w : 0f;
                 }
             }
             final FloatTensor t = new FloatTensor(entries, new int[] {9, 512, 512});
-            Debug.seeTile(t,x,z,"final");
+          //  Debug.seeTile(t, x, z, "final");
             return t;
         });
         this.dog = new DifferenceOfGaussians(path, DOG_SIGMA1, DOG_SIGMA2, DOG_THRESHOLD);
@@ -61,7 +58,7 @@ public class ReliefProvider {
     }
 
     public Float getElev(int[] xz) {
-        return get_entry(xz,0);
+        return get_entry(xz, 0);
     }
 
     public Float getRefinedGrad(final int[] xz) {

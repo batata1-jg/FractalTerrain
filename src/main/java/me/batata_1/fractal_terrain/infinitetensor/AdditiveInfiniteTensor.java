@@ -1,7 +1,5 @@
 package me.batata_1.fractal_terrain.infinitetensor;
 
-import me.batata_1.fractal_terrain.infinitetensor.storage.FloatTensor;
-
 public class AdditiveInfiniteTensor extends InfiniteTensor {
 
     public AdditiveInfiniteTensor(

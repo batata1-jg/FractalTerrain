@@ -1,5 +1,7 @@
 package me.batata_1.fractal_terrain.relief;
 
+import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
+
 import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
 import java.io.File;
@@ -10,17 +12,16 @@ import java.util.Set;
 import javax.imageio.ImageIO;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.debug.Debug;
-import me.batata_1.fractal_terrain.infinitetensor.storage.FloatTensor;
+import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 import me.batata_1.fractal_terrain.ml.models.ModelAssetManager;
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;
+import me.batata_1.fractal_terrain.storage.TileKey;
 import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 
 @TestOnly
 public class RidgeTracingTest {
@@ -51,15 +52,15 @@ public class RidgeTracingTest {
                 new DifferenceOfGaussians(DEBUG_PATH + "/dog_cache", SIGMA1, SIGMA2, THRESHOLD);
         final GlobalFillRocksPredicate predicate = new GlobalFillRocksPredicate(dog, FREQUENCY);
 
-      //  dumpDogHeatmap(dog, "ridge_dog");
-      //  dumpMask(dog, "ridge_mask");
-     //   dumpSkeletonAndPolylines(dog, predicate, "ridge_skeleton", "ridge_splines_all");
+        //  dumpDogHeatmap(dog, "ridge_dog");
+        //  dumpMask(dog, "ridge_mask");
+        //   dumpSkeletonAndPolylines(dog, predicate, "ridge_skeleton", "ridge_splines_all");
 
         dumpSingleSampleQuery(dog, "ridge_query_single_point");
 
-       // seedQuadTreeForWindow(predicate);
-      //  dumpQueryField(predicate, "ridge_query");
-      //  dumpCoarseElevTiles();
+        // seedQuadTreeForWindow(predicate);
+        //  dumpQueryField(predicate, "ridge_query");
+        //  dumpCoarseElevTiles();
 
         LOG.info("RidgeTracingTest done. See {}", DEBUG_PATH);
     }
@@ -68,9 +69,9 @@ public class RidgeTracingTest {
         final File dir = new File(COARSE_TENSOR_DEBUG_PATH);
         dir.mkdirs();
         final int S = DifferenceOfGaussians.COARSE_TILE_SIZE;
-        final Set<List<Integer>> keys = pipeline.getCoarse().getStorage().getCacheKeys();
+        final Set<TileKey> keys = pipeline.getCoarse().getStorage().getCacheKeys();
         LOG.info("dumpCoarseElevTiles: {} cached DoG tile(s) → {}", keys.size(), COARSE_TENSOR_DEBUG_PATH);
-        for (List<Integer> key : keys) {
+        for (TileKey key : keys) {
             final int tx = key.get(FractalTerrainConfig.X);
             final int tz = key.get(FractalTerrainConfig.Z);
             final float[] elev = new float[S * S];
@@ -117,8 +118,8 @@ public class RidgeTracingTest {
         final float[] data = new float[IMG_PX * IMG_PX];
         for (int dcx = 0; dcx < WINDOW_COARSE_PX; dcx++) {
             for (int dcz = 0; dcz < WINDOW_COARSE_PX; dcz++) {
-                final float v = dog.getInfiniteTensor()
-                        .getValue(new int[] {0, WINDOW_ORIGIN_CX + dcx, WINDOW_ORIGIN_CZ + dcz});
+                final float v =
+                        dog.getInfiniteTensor().getValue(new int[] {0, WINDOW_ORIGIN_CX + dcx, WINDOW_ORIGIN_CZ + dcz});
                 splatCoarsePx(data, dcx, dcz, v);
             }
         }
@@ -137,10 +138,8 @@ public class RidgeTracingTest {
     }
 
     private static void dumpSkeletonAndPolylines(
-            DifferenceOfGaussians dog,
-            GlobalFillRocksPredicate predicate,
-            String skelName,
-            String overlayName) throws IOException {
+            DifferenceOfGaussians dog, GlobalFillRocksPredicate predicate, String skelName, String overlayName)
+            throws IOException {
         final int Sc = DifferenceOfGaussians.COARSE_TILE_SIZE;
         final int txMin = Math.floorDiv(WINDOW_ORIGIN_CX, Sc);
         final int txMax = Math.floorDiv(WINDOW_ORIGIN_CX + WINDOW_COARSE_PX - 1, Sc);
@@ -148,8 +147,7 @@ public class RidgeTracingTest {
         final int tzMax = Math.floorDiv(WINDOW_ORIGIN_CZ + WINDOW_COARSE_PX - 1, Sc);
 
         final float[] skelGrid = new float[IMG_PX * IMG_PX];
-        final QuadTree<QuadTreePoint> overlayTree = new QuadTree<>(
-                new double[] {-1e9, -1e9}, new double[] {1e9, 1e9});
+        final QuadTree<QuadTreePoint> overlayTree = new QuadTree<>(new double[] {-1e9, -1e9}, new double[] {1e9, 1e9});
 
         int splineCounter = 0;
         for (int tx = txMin; tx <= txMax; tx++) {
@@ -181,19 +179,17 @@ public class RidgeTracingTest {
                     }
                     try {
                         final QuinticHermiteSpline spline = QuinticHermiteSpline.createCatmullRom(globalPts);
-                        final QuinticHermiteSpline resampled =
-                                spline.reSample(GlobalFillRocksPredicate.DX_COARSE_PX);
+                        final QuinticHermiteSpline resampled = spline.reSample(GlobalFillRocksPredicate.DX_COARSE_PX);
 
-                        final ArrayList<double[]> scaled = new ArrayList<>(resampled.points().size());
+                        final ArrayList<double[]> scaled =
+                                new ArrayList<>(resampled.points().size());
                         for (double[] pt : resampled.points()) {
                             scaled.add(new double[] {
-                                    (pt[0] - WINDOW_ORIGIN_CX) * PIXEL_SCALE,
-                                    (pt[1] - WINDOW_ORIGIN_CZ) * PIXEL_SCALE
+                                (pt[0] - WINDOW_ORIGIN_CX) * PIXEL_SCALE, (pt[1] - WINDOW_ORIGIN_CZ) * PIXEL_SCALE
                             });
                         }
                         if (scaled.size() >= GlobalFillRocksPredicate.MIN_POLYLINE_LEN) {
-                            final QuinticHermiteSpline scaledSpline =
-                                    QuinticHermiteSpline.createCatmullRom(scaled);
+                            final QuinticHermiteSpline scaledSpline = QuinticHermiteSpline.createCatmullRom(scaled);
                             Debug.spline.debugPath = DEBUG_PATH;
                             Debug.spline.see(scaledSpline, "ridge_spline_" + splineCounter);
                             splineCounter++;
@@ -276,7 +272,7 @@ public class RidgeTracingTest {
     private static void dumpSingleSampleQuery(DifferenceOfGaussians dog, String name) {
         final GlobalFillRocksPredicate freshPredicate = new GlobalFillRocksPredicate(dog, FREQUENCY);
         freshPredicate.insertPoint(0.0, 0.0);
-        freshPredicate.insertPoint(32.0,32.0);
+        freshPredicate.insertPoint(32.0, 32.0);
         dumpQueryField(freshPredicate, name);
     }
 
@@ -285,12 +281,10 @@ public class RidgeTracingTest {
         for (int dcx = 0; dcx < WINDOW_COARSE_PX; dcx++) {
             for (int dcz = 0; dcz < WINDOW_COARSE_PX; dcz++) {
                 final float v = (float) predicate.query(
-                        (float) ((WINDOW_ORIGIN_CX + dcx) * 1280),
-                        (float) ((WINDOW_ORIGIN_CZ + dcz) * 1280));
+                        (float) ((WINDOW_ORIGIN_CX + dcx) * 1280), (float) ((WINDOW_ORIGIN_CZ + dcz) * 1280));
                 splatCoarsePx(data, dcx, dcz, v);
             }
         }
         Debug.tensor.see(new FloatTensor(new int[] {IMG_PX, IMG_PX}, data), name, DEBUG_PATH);
     }
-
 }
