@@ -44,7 +44,6 @@ public class PopulateNoiseStep {
                 scale, xz -> FractalTerrainInstance.getReliefProvider().getGradY(xz));
         strata = RockStrata.AngledPlaneStrata.create(9, 8, rocks);
         phacelleSampler = new PhacelleNoiseSampler(5, 32F);
-       // fillRocksPredicate = FractalTerrainInstance.getReliefProvider().getFillRocksPredicate();
     }
 
     public int getHeight(final int x, final int z) {
@@ -60,8 +59,8 @@ public class PopulateNoiseStep {
     }
 
     public BlockState fillRocks(int x, int y, int z) {
-//        final double v = fillRocksPredicate.query((float) x, (float) z);
-//        return toRock(v);
+       // final double v = fillRocksPredicate.query((float) x, (float) z);
+       // return toRock(v);
         return DEFAULT_ROCK;
     }
 
