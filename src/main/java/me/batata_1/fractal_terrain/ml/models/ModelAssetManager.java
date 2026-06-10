@@ -48,7 +48,7 @@ public final class ModelAssetManager {
         } catch (Exception e) {
             LOG.info("resorting to \"run\" path because RidgeTracingTest is most likely running");
             temp = (Path.of("run")).resolve("terrain-diffusion-models");
-            LOG.info("path is {}",temp);
+            LOG.info("path is {}", temp);
         }
         MODEL_DIRECTORY = temp;
     }

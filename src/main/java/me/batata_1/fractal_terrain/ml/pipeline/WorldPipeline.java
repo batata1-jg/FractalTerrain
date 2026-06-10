@@ -10,12 +10,11 @@ import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.infinitetensor.AdditiveInfiniteTensor;
 import me.batata_1.fractal_terrain.infinitetensor.InfiniteTensor;
 import me.batata_1.fractal_terrain.infinitetensor.TensorWindow;
-import me.batata_1.fractal_terrain.infinitetensor.storage.FloatTensor;
 import me.batata_1.fractal_terrain.ml.models.ModelAssetManager;
 import me.batata_1.fractal_terrain.ml.models.OnnxModel;
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import me.batata_1.fractal_terrain.ml.tensorProviders.GaussianNoisePatch;
-import net.fabricmc.loader.api.FabricLoader;
+import me.batata_1.fractal_terrain.storage.FloatTensor;
 import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -495,7 +494,7 @@ public final class WorldPipeline implements AutoCloseable {
 
         // TODO: pesar as tiles de flow e adj
         final float[] data = fuzedModel.run(inputs);
-        final float[] adj = computeDirection(Arrays.copyOfRange(data, 0, S * S), ww,S);
+        final float[] adj = computeDirection(Arrays.copyOfRange(data, 0, S * S), ww, S);
         final float[] flow = computeFlow(adj, S);
         for (int px = 0; px < S * S; px++) {
             adj[px] = adj[px] * ww[px];

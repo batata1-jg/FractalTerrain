@@ -1,64 +1,44 @@
 package me.batata_1.fractal_terrain.infinitetensor;
 
-import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
-
 import com.google.common.base.Function;
 import java.io.File;
-import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import me.batata_1.fractal_terrain.infinitetensor.storage.FloatTensor;
-import me.batata_1.fractal_terrain.infinitetensor.storage.TensorStorage;
-import org.slf4j.Logger;
+import me.batata_1.fractal_terrain.storage.FloatTensor;
+import me.batata_1.fractal_terrain.storage.Storage;
 
-public class NonIntersectingInfiniteTensor extends TensorStorage {
-
-    private static final Logger LOG = getLogger(NonIntersectingInfiniteTensor.class);
+public class NonIntersectingInfiniteTensor extends Storage<FloatTensor> {
 
     private final TensorWindow outWindow;
     private final Function<List<Integer>, FloatTensor> entry_creating_function;
 
     public NonIntersectingInfiniteTensor(String path, int[] shape, Function<List<Integer>, FloatTensor> f) {
-        super(path, shape.length);
+        super(path, shape.length, new FloatTensor(new int[] {1}));
         this.entry_creating_function = f;
         this.outWindow = new TensorWindow(shape);
     }
 
-    protected synchronized CompletableFuture<FloatTensor> fetchEntry(List<Integer> key) {
-        if (CACHE.containsKey(key)) return CACHE.get(key);
-        if (GENERATED_ENTRIES.contains(key)) {
-            final CompletableFuture<FloatTensor> ct = CompletableFuture.supplyAsync(
-                    () -> {
-                        final File file = new File(getEntryDir() + "/" + giveNameToKey(key) + ".ser");
-                        if (!file.exists()) {
-                            LOG.error("file {}, aka: {} not exist", file.getAbsolutePath(), key);
-                            throw new RuntimeException();
-                        }
-                        try {
-                            return deserialize(getEntryDir() + "/" + giveNameToKey(key));
-                        } catch (IOException | ClassNotFoundException e) {
-                            throw new RuntimeException(e);
-                        }
-                    },
-                    INFERENCE_EXECUTOR);
-            CACHE.put(key, ct);
-            return CACHE.get(key);
+    /**
+     * Unlike the base storage, a miss here is recoverable: the entry is (re)computed from
+     * {@code entry_creating_function} and persisted/recorded. The compute runs on the CALLING thread
+     * (not {@link #INFERENCE_EXECUTOR}) because the creating function transitively reads other tiles
+     * whose disk loads are scheduled on that single-thread executor — running here would self-deadlock.
+     */
+    @Override
+    protected void loadInto(List<Integer> key, CompletableFuture<FloatTensor> promise) {
+        // Disk-backed entry from a previous session: reuse the base async reload path.
+        if (GENERATED_ENTRIES.contains(key) && new File(tilePath(key) + ".ser").exists()) {
+            super.loadInto(key, promise);
+            return;
         }
-        addOrOverwriteEntry(CompletableFuture.completedFuture(entry_creating_function.apply(key)), key);
-        return CACHE.get(key);
-    }
-
-    protected synchronized void addOrOverwriteEntry(CompletableFuture<FloatTensor> t, final List<Integer> key) {
-        final CompletableFuture<FloatTensor> ct = t.thenApply(entry -> {
-            try {
-                serialize(getEntryDir() + "/" + giveNameToKey(key), entry);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-            return entry;
-        });
-        GENERATED_ENTRIES.add(key);
-        CACHE.put(key, ct);
+        try {
+            final FloatTensor entry = entry_creating_function.apply(key);
+            persistAndRecord(key, entry);
+            promise.complete(entry);
+        } catch (Throwable ex) {
+            CACHE.remove(key, promise);
+            promise.completeExceptionally(ex);
+        }
     }
 
     public float getValue(final int[] coords) {

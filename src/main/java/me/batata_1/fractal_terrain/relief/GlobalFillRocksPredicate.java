@@ -1,5 +1,7 @@
 package me.batata_1.fractal_terrain.relief;
 
+import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -8,9 +10,6 @@ import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 public class GlobalFillRocksPredicate {
 
@@ -49,9 +48,9 @@ public class GlobalFillRocksPredicate {
     }
 
     public void ensureTilesForChunk(int chunkStartX, int chunkStartZ) {
-        final double minCx = chunkStartX        / BLOCK_TO_COARSE - QUERY_RADIUS_COARSE_PX;
+        final double minCx = chunkStartX / BLOCK_TO_COARSE - QUERY_RADIUS_COARSE_PX;
         final double maxCx = (chunkStartX + 15) / BLOCK_TO_COARSE + QUERY_RADIUS_COARSE_PX;
-        final double minCz = chunkStartZ        / BLOCK_TO_COARSE - QUERY_RADIUS_COARSE_PX;
+        final double minCz = chunkStartZ / BLOCK_TO_COARSE - QUERY_RADIUS_COARSE_PX;
         final double maxCz = (chunkStartZ + 15) / BLOCK_TO_COARSE + QUERY_RADIUS_COARSE_PX;
         final int tx0 = (int) Math.floor(minCx / TILE_COARSE_PX);
         final int tx1 = (int) Math.floor(maxCx / TILE_COARSE_PX);
@@ -74,14 +73,14 @@ public class GlobalFillRocksPredicate {
     }
 
     private double distancePenaltyFn(double x, double dist) {
-        x = x/Math.PI - 0.5;
+        x = x / Math.PI - 0.5;
         final double flX = x - Math.floor(x);
         final double clX = Math.ceil(x) - x;
         double fl = Math.floor(x);
-        if( (int)(fl) % 2 == 0) {
-            return Math.PI*(fl-Math.pow(clX,dist)+1.5);
+        if ((int) (fl) % 2 == 0) {
+            return Math.PI * (fl - Math.pow(clX, dist) + 1.5);
         }
-        return Math.PI*(fl+Math.pow(flX,dist)+0.5);
+        return Math.PI * (fl + Math.pow(flX, dist) + 0.5);
     }
 
     /** x, z are Minecraft block coords. Converts to coarse-px before querying the tree. */
@@ -101,7 +100,7 @@ public class GlobalFillRocksPredicate {
             final double theta = Math.atan2(cx - xp, cz - zp);
             netAngle += theta;
         }
-        return Math.sin(netAngle*frequency);
+        return Math.sin(netAngle * frequency);
     }
 
     private void doPlaceRidgesTile(int tx, int tz) {
@@ -118,7 +117,7 @@ public class GlobalFillRocksPredicate {
 
         final boolean[][] skel = zhangSuen(mask);
         final List<List<int[]>> polylines = tracePolylines(skel);
-        LOG.info("doPlaceTile [{} {}] numPolulines = {}",tx,tz,polylines.size());
+        LOG.info("doPlaceTile [{} {}] numPolulines = {}", tx, tz, polylines.size());
         final List<double[]> allSamples = new ArrayList<>();
         for (List<int[]> line : polylines) {
             if (line.size() < MIN_POLYLINE_LEN) continue;
@@ -183,29 +182,34 @@ public class GlobalFillRocksPredicate {
     }
 
     private static boolean shouldRemove(boolean[][] img, int i, int j, boolean subpass1) {
-        final boolean north     = img[i - 1][j];
+        final boolean north = img[i - 1][j];
         final boolean northEast = img[i - 1][j + 1];
-        final boolean east      = img[i][j + 1];
+        final boolean east = img[i][j + 1];
         final boolean southEast = img[i + 1][j + 1];
-        final boolean south     = img[i + 1][j];
+        final boolean south = img[i + 1][j];
         final boolean southWest = img[i + 1][j - 1];
-        final boolean west      = img[i][j - 1];
+        final boolean west = img[i][j - 1];
         final boolean northWest = img[i - 1][j - 1];
 
-        final int liveNeighborCount =
-                (north ? 1 : 0) + (northEast ? 1 : 0) + (east ? 1 : 0) + (southEast ? 1 : 0)
-                        + (south ? 1 : 0) + (southWest ? 1 : 0) + (west ? 1 : 0) + (northWest ? 1 : 0);
+        final int liveNeighborCount = (north ? 1 : 0)
+                + (northEast ? 1 : 0)
+                + (east ? 1 : 0)
+                + (southEast ? 1 : 0)
+                + (south ? 1 : 0)
+                + (southWest ? 1 : 0)
+                + (west ? 1 : 0)
+                + (northWest ? 1 : 0);
         if (liveNeighborCount < 2 || liveNeighborCount > 6) return false;
 
         int zeroToOneTransitions = 0;
-        if (!north     && northEast) zeroToOneTransitions++;
-        if (!northEast && east)      zeroToOneTransitions++;
-        if (!east      && southEast) zeroToOneTransitions++;
-        if (!southEast && south)     zeroToOneTransitions++;
-        if (!south     && southWest) zeroToOneTransitions++;
-        if (!southWest && west)      zeroToOneTransitions++;
-        if (!west      && northWest) zeroToOneTransitions++;
-        if (!northWest && north)     zeroToOneTransitions++;
+        if (!north && northEast) zeroToOneTransitions++;
+        if (!northEast && east) zeroToOneTransitions++;
+        if (!east && southEast) zeroToOneTransitions++;
+        if (!southEast && south) zeroToOneTransitions++;
+        if (!south && southWest) zeroToOneTransitions++;
+        if (!southWest && west) zeroToOneTransitions++;
+        if (!west && northWest) zeroToOneTransitions++;
+        if (!northWest && north) zeroToOneTransitions++;
         if (zeroToOneTransitions != 1) return false;
 
         if (subpass1) {

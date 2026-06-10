@@ -1,15 +1,20 @@
-package me.batata_1.fractal_terrain.infinitetensor.storage;
+package me.batata_1.fractal_terrain.storage;
 
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import ai.onnxruntime.OnnxTensor;
 import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtException;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.nio.FloatBuffer;
 import java.util.Arrays;
 import org.slf4j.Logger;
 
-public class FloatTensor {
+public class FloatTensor implements Persistable<FloatTensor> {
 
     public static final Logger LOG = getLogger(FloatTensor.class);
 
@@ -58,8 +63,46 @@ public class FloatTensor {
         return shape.length;
     }
 
+    @Override
     public long byteSize() {
         return (long) data.length * Float.BYTES;
+    }
+
+    /**
+     * Serialize this tensor to {@code path + ".ser"} as a single {@code float[]} blob laid out as
+     * {@code [data..., shape..., dataLength]}.
+     */
+    @Override
+    public void serialize(String path) throws IOException {
+        final int el = data.length;
+        final int sl = shape.length;
+        final float[] arr = new float[el + sl + 1];
+        System.arraycopy(data, 0, arr, 0, el);
+        for (int i = el; i < (el + sl); i++) arr[i] = (float) shape[i - el];
+        arr[el + sl] = (float) el;
+        try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(path + ".ser"))) {
+            out.writeObject(arr);
+        }
+    }
+
+    /**
+     * Read a tensor previously written by {@link #serialize(String)} from {@code path + ".ser"}.
+     * Returns a fresh {@code FloatTensor}; the receiver is only a prototype and is not read.
+     */
+    @Override
+    public FloatTensor deserialize(String path) throws IOException, ClassNotFoundException {
+        final float[] arr;
+        try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(path + ".ser"))) {
+            arr = (float[]) in.readObject();
+        }
+        final int slAddEl = arr.length - 1;
+        final int el = (int) arr[slAddEl];
+        final int sl = slAddEl - el;
+        final float[] entries = new float[el];
+        System.arraycopy(arr, 0, entries, 0, el);
+        final int[] shape = new int[sl];
+        for (int i = el; i < el + sl; i++) shape[i - el] = (int) arr[i];
+        return new FloatTensor(entries, shape);
     }
 
     /**

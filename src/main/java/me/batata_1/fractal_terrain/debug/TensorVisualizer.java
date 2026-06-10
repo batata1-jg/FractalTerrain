@@ -9,7 +9,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import javax.imageio.ImageIO;
-import me.batata_1.fractal_terrain.infinitetensor.storage.FloatTensor;
+import me.batata_1.fractal_terrain.storage.FloatTensor;
 
 public class TensorVisualizer {
 
@@ -77,8 +77,8 @@ public class TensorVisualizer {
         float min = 1000000;
         for (int i = 0; i < t.getShape()[0]; i++)
             for (int j = 0; j < t.getShape()[1]; j++) {
-                max = Math.max(max, t.entryAt(new int[]{i,j}));
-                min = Math.min(min, t.entryAt(new int[]{i,j}));
+                max = Math.max(max, t.entryAt(new int[] {i, j}));
+                min = Math.min(min, t.entryAt(new int[] {i, j}));
             }
         DEBUG_LOGGER.info(" bounds of amplitude min are [{},{}] for {}", min, max, name);
         final float eps = 1e-5F;
@@ -86,7 +86,7 @@ public class TensorVisualizer {
         for (int i = 0; i < t.getShape()[0]; i++) {
             for (int j = 0; j < t.getShape()[1]; j++) {
 
-                float vi = (t.entryAt(new int[]{i,j}) - min) / (max - min + eps);
+                float vi = (t.entryAt(new int[] {i, j}) - min) / (max - min + eps);
                 int v = (int) (255F * vi);
 
                 arr[(int) (j + i * t.getShape()[0])] = v;
@@ -123,7 +123,7 @@ public class TensorVisualizer {
         float min = 1e30f;
         for (int i = 0; i < H; i++) {
             for (int j = 0; j < W; j++) {
-                float v = (ch == -1) ? tl.entryAt(new int[]{i, j}) : tl.entryAt(new int[]{ch, i, j});
+                float v = (ch == -1) ? tl.entryAt(new int[] {i, j}) : tl.entryAt(new int[] {ch, i, j});
                 if (v > max) max = v;
                 if (v < min) min = v;
             }
@@ -132,7 +132,7 @@ public class TensorVisualizer {
         final int[] arr = new int[H * W];
         for (int i = 0; i < H; i++) {
             for (int j = 0; j < W; j++) {
-                float v = (ch == -1) ? tl.entryAt(new int[]{i, j}) : tl.entryAt(new int[]{ch, i, j});
+                float v = (ch == -1) ? tl.entryAt(new int[] {i, j}) : tl.entryAt(new int[] {ch, i, j});
                 float vi = (v - min) / (max - min + eps);
                 arr[j + i * W] = (int) (255f * vi);
             }
@@ -162,7 +162,7 @@ public class TensorVisualizer {
             tl = new FloatTensor(op);
         } else {
             tl = new FloatTensor(op.getFloatBuffer().array(), new int[] {
-                    1, (int) op.getInfo().getShape()[0], (int) op.getInfo().getShape()[1]
+                1, (int) op.getInfo().getShape()[0], (int) op.getInfo().getShape()[1]
             });
         }
 
@@ -172,9 +172,8 @@ public class TensorVisualizer {
         printBounds(tl.get(), "cur seen tensor has bounds");
         for (int i = 0; i < tl.getShape()[1]; i++)
             for (int j = 0; j < tl.getShape()[2]; j++) {
-                ftu[(int) (j + tl.getShape()[1] * i)] = tl.entryAt(new int[]{channel, i, j});
+                ftu[(int) (j + tl.getShape()[1] * i)] = tl.entryAt(new int[] {channel, i, j});
                 continue;
-
             }
         FloatTensor t = new FloatTensor(ftu, new int[] {tl.getShape()[1], tl.getShape()[2]});
 
@@ -184,8 +183,8 @@ public class TensorVisualizer {
         float min = 1000000;
         for (int i = 0; i < t.getShape()[0]; i++)
             for (int j = 0; j < t.getShape()[1]; j++) {
-                max = Math.max(max, t.entryAt(new int[]{i,j}));
-                min = Math.min(min, t.entryAt(new int[]{i,j}));
+                max = Math.max(max, t.entryAt(new int[] {i, j}));
+                min = Math.min(min, t.entryAt(new int[] {i, j}));
             }
         DEBUG_LOGGER.info(" bounds of amplitude min are [{},{}] for {}", min, max, path);
         final float eps = 1e-5F;
@@ -193,7 +192,7 @@ public class TensorVisualizer {
         for (int i = 0; i < t.getShape()[0]; i++) {
             for (int j = 0; j < t.getShape()[1]; j++) {
 
-                float vi = (t.entryAt(new int[]{i,j}) - min) / (max - min + eps);
+                float vi = (t.entryAt(new int[] {i, j}) - min) / (max - min + eps);
                 int v = (int) (255F * vi);
 
                 arr[(int) (j + i * t.getShape()[0])] = v;

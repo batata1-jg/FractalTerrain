@@ -203,8 +203,9 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
             LOG.info(" chunkNoise sampler of 0 ,0 : {}", chunkNoiseSampler);
             LOG.info(" chunkNoise sampler estiate H : {}", chunkNoiseSampler.estimateSurfaceHeight(0, 0));
         }
-//        FractalTerrainInstance.getSurfaceBuilder()
-//                .buildSurface(noiseConfig, biomeAccess, biomeRegistry, heightContext, chunk, chunkNoiseSampler);
+        //        FractalTerrainInstance.getSurfaceBuilder()
+        //                .buildSurface(noiseConfig, biomeAccess, biomeRegistry, heightContext, chunk,
+        // chunkNoiseSampler);
     }
 
     private ChunkNoiseSampler createChunkNoiseSampler(

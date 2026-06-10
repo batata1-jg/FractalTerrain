@@ -4,8 +4,8 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
-import me.batata_1.fractal_terrain.infinitetensor.storage.FloatTensor;
-import me.batata_1.fractal_terrain.infinitetensor.storage.TensorStorage;
+import me.batata_1.fractal_terrain.storage.FloatTensor;
+import me.batata_1.fractal_terrain.storage.Storage;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
@@ -36,7 +36,7 @@ public abstract class InfiniteTensor {
     protected final TensorWindow[] depWindows;
 
     /** Owning storage — used for cache reads/writes and dependency resolution. */
-    protected volatile TensorStorage storage;
+    protected volatile Storage<FloatTensor> storage;
 
     protected volatile AtomicLong counter = new AtomicLong(0);
 
@@ -300,7 +300,7 @@ public abstract class InfiniteTensor {
     public synchronized void updatePath(String newPath) {
         if (Objects.equals(getCurrentPath(), newPath + "/" + id)) return;
         if (storage != null) storage.clear();
-        storage = new TensorStorage(newPath + "/" + id, outputWindow.ndim());
+        storage = new Storage<>(newPath + "/" + id, outputWindow.ndim(), new FloatTensor(new int[] {1}));
         for (InfiniteTensor dependent : deps) dependent.updatePath(newPath);
     }
 
@@ -310,7 +310,7 @@ public abstract class InfiniteTensor {
     }
 
     @TestOnly
-    public TensorStorage getStorage() {
+    public Storage<FloatTensor> getStorage() {
         return storage;
     }
 }

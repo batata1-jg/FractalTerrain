@@ -21,5 +21,4 @@ public class Gradients {
     private static double singleGradY(float x, int i, int j) {
         return x * kernel_y[i][j];
     }
-
 }

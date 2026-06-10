@@ -6,14 +6,12 @@ import java.io.*;
 import java.nio.file.Path;
 import java.util.Arrays;
 import javax.imageio.ImageIO;
-
-import ai.onnxruntime.OnnxTensor;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 // import me.batata_1.fractalterrain.ml.tensorProviders.MapProvider;
-import me.batata_1.fractal_terrain.infinitetensor.storage.FloatTensor;
 import me.batata_1.fractal_terrain.noise.NoiseSampler;
 import me.batata_1.fractal_terrain.noise.PhacelleNoiseSampler;
+import me.batata_1.fractal_terrain.storage.FloatTensor;
 import net.minecraft.util.WorldSavePath;
 import net.minecraft.world.gen.surfacebuilder.MaterialRules;
 import org.slf4j.Logger;
@@ -23,7 +21,8 @@ public class Debug {
 
     public static final Logger DEBUG_LOGGER = getLogger(Debug.class);
     public static final TensorVisualizer tensor = new TensorVisualizer();
-    public static final RiverNetworkVisualizer river = new RiverNetworkVisualizer(FractalTerrainConfig.DEFAULT_DEBUG_PATH);
+    public static final RiverNetworkVisualizer river =
+            new RiverNetworkVisualizer(FractalTerrainConfig.DEFAULT_DEBUG_PATH);
     public static final SplineVisualizer spline = new SplineVisualizer(FractalTerrainConfig.DEFAULT_DEBUG_PATH);
 
     public static Logger getLogger(Class<?> clazz) {
@@ -31,7 +30,8 @@ public class Debug {
     }
 
     public static void isNan(double[] t) {
-        for (double v : t) if (Double.isNaN(v)) throw new RuntimeException("this double[] is nan " + Arrays.toString(t));
+        for (double v : t)
+            if (Double.isNaN(v)) throw new RuntimeException("this double[] is nan " + Arrays.toString(t));
     }
 
     public static void seeNoise(NoiseSampler sampler, String name, int x, int z, int size) throws IOException {
@@ -140,14 +140,14 @@ public class Debug {
 
     public static void seeTile(FloatTensor tile, int x, int z, String name) {
         Path basePath = Path.of(FractalTerrainConfig.DEFAULT_DEBUG_PATH);
-        DEBUG_LOGGER.info("{}",basePath);
+        DEBUG_LOGGER.info("{}", basePath);
         name = name + "_p" + x + "_" + z + "q_";
         new File(basePath.toString(), name).mkdirs();
         DEBUG_LOGGER.info("seeTile x={} z={} channels={} name={}", x, z, tile.getShape()[0], name);
         var onnxTile = tile.get();
         for (int ch = 0; ch < tile.getShape()[0]; ch++) {
-            tensor.see(onnxTile, name + "/ch_" + ch,basePath.toString(), false, ch);
-           // tensor.see(tile,name + "/ch_" + ch,basePath.toString());
+            tensor.see(onnxTile, name + "/ch_" + ch, basePath.toString(), false, ch);
+            // tensor.see(tile,name + "/ch_" + ch,basePath.toString());
         }
     }
 
@@ -167,10 +167,10 @@ public class Debug {
     public static synchronized void debug() {
         int x = -1;
         int z = -1;
-        FractalTerrainInstance.pipeline.getDecoderSlice(x,z);
-        FloatTensor fl = FractalTerrainInstance.getDecoderStorage().getEntry(new int[]{0,x,z});
-        DEBUG_LOGGER.info("debug {}",fl.shape);
-        seeTile(fl,x,z,"decoder_tile");
+        FractalTerrainInstance.pipeline.getDecoderSlice(x, z);
+        FloatTensor fl = FractalTerrainInstance.getDecoderStorage().getEntry(new int[] {0, x, z});
+        DEBUG_LOGGER.info("debug {}", fl.shape);
+        seeTile(fl, x, z, "decoder_tile");
     }
 
     public static void debugMixin(MaterialRules.MaterialRuleContext context) {
@@ -190,7 +190,7 @@ public class Debug {
     }
 
     public static void debugCalls(int[] wi, String name) {
-        if(!FractalTerrainConfig.DEBUG) return;
+        if (!FractalTerrainConfig.DEBUG) return;
         DEBUG_LOGGER.info("{} is creating {}", name, wi);
     }
 }

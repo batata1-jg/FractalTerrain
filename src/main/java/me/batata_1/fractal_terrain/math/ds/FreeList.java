@@ -1,10 +1,9 @@
 package me.batata_1.fractal_terrain.math.ds;
 
-import org.jetbrains.annotations.NotNull;
-
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Slot-stable pool: insert() returns a persistent index, remove() recycles that slot.
@@ -16,9 +15,9 @@ public class FreeList<T> implements Iterable<T> {
     private static final int DEFAULT_CAPACITY = 16;
 
     private Object[] data;
-    private int[]    nextFree;   // free-chain; NONE when slot is occupied
+    private int[] nextFree; // free-chain; NONE when slot is occupied
     private boolean[] occupied;
-    private int freeHead;        // first free slot, or NONE when full
+    private int freeHead; // first free slot, or NONE when full
     private int size;
     private int capacity;
 
@@ -28,7 +27,7 @@ public class FreeList<T> implements Iterable<T> {
 
     public FreeList(int initialCapacity) {
         capacity = Math.max(initialCapacity, 1);
-        data     = new Object[capacity];
+        data = new Object[capacity];
         nextFree = new int[capacity];
         occupied = new boolean[capacity];
         buildFreeChain(0, capacity);
@@ -42,9 +41,9 @@ public class FreeList<T> implements Iterable<T> {
     /** Inserts {@code item} into the next free slot and returns its stable index. */
     public int insert(T item) {
         if (freeHead == NONE) grow();
-        int idx  = freeHead;
+        int idx = freeHead;
         freeHead = nextFree[idx];
-        data[idx]     = item;
+        data[idx] = item;
         occupied[idx] = true;
         nextFree[idx] = NONE;
         size++;
@@ -54,10 +53,10 @@ public class FreeList<T> implements Iterable<T> {
     /** Removes the element at {@code index}. The slot is immediately available for reuse. */
     public void remove(int index) {
         requireOccupied(index);
-        data[index]     = null;
+        data[index] = null;
         occupied[index] = false;
         nextFree[index] = freeHead;
-        freeHead        = index;
+        freeHead = index;
         size--;
     }
 
@@ -83,12 +82,18 @@ public class FreeList<T> implements Iterable<T> {
     }
 
     /** Number of occupied slots. */
-    public int size() { return size; }
+    public int size() {
+        return size;
+    }
 
     /** Total allocated capacity including free slots. */
-    public int capacity() { return capacity; }
+    public int capacity() {
+        return capacity;
+    }
 
-    public boolean isEmpty() { return size == 0; }
+    public boolean isEmpty() {
+        return size == 0;
+    }
 
     // -------------------------------------------------------------------------
     // Bulk operations
@@ -100,7 +105,7 @@ public class FreeList<T> implements Iterable<T> {
         Arrays.fill(occupied, false);
         buildFreeChain(0, capacity);
         freeHead = 0;
-        size     = 0;
+        size = 0;
     }
 
     // -------------------------------------------------------------------------
@@ -116,14 +121,16 @@ public class FreeList<T> implements Iterable<T> {
         private int cursor = firstOccupied(0);
 
         @Override
-        public boolean hasNext() { return cursor < capacity; }
+        public boolean hasNext() {
+            return cursor < capacity;
+        }
 
         @Override
         @SuppressWarnings("unchecked")
         public T next() {
             if (!hasNext()) throw new NoSuchElementException();
             T value = (T) data[cursor];
-            cursor  = firstOccupied(cursor + 1);
+            cursor = firstOccupied(cursor + 1);
             return value;
         }
     }
@@ -137,7 +144,9 @@ public class FreeList<T> implements Iterable<T> {
             private int cursor = firstOccupied(0);
 
             @Override
-            public boolean hasNext() { return cursor < capacity; }
+            public boolean hasNext() {
+                return cursor < capacity;
+            }
 
             @Override
             @SuppressWarnings("unchecked")
@@ -163,7 +172,7 @@ public class FreeList<T> implements Iterable<T> {
 
     private void grow() {
         int newCap = capacity * 2;
-        data     = Arrays.copyOf(data,     newCap);
+        data = Arrays.copyOf(data, newCap);
         nextFree = Arrays.copyOf(nextFree, newCap);
         occupied = Arrays.copyOf(occupied, newCap);
         buildFreeChain(capacity, newCap);
@@ -180,7 +189,6 @@ public class FreeList<T> implements Iterable<T> {
     private void requireOccupied(int index) {
         if (index < 0 || index >= capacity)
             throw new IndexOutOfBoundsException("index " + index + " out of range [0, " + capacity + ")");
-        if (!occupied[index])
-            throw new IllegalArgumentException("slot " + index + " is not occupied");
+        if (!occupied[index]) throw new IllegalArgumentException("slot " + index + " is not occupied");
     }
 }

@@ -11,7 +11,7 @@ public class PipelinePreprocessing {
     private static final int[] dz = {1, 1, -1, -1, -1, 1, 0, 0};
 
     public static int neighbor(float adj) {
-        for (int i = 0; i < 8; i++) if ((((int) adj) & (1 << i))!=0) return i;
+        for (int i = 0; i < 8; i++) if ((((int) adj) & (1 << i)) != 0) return i;
         return -1;
     }
 
@@ -36,11 +36,11 @@ public class PipelinePreprocessing {
             flow[viz] += flow[cur];
         }
 
-        for(int i=0 ; i<flow.length ; i++) flow[i] = (float) Math.sqrt(flow[i]);
+        for (int i = 0; i < flow.length; i++) flow[i] = (float) Math.sqrt(flow[i]);
         return flow;
     }
 
-    public static float[] computeDirection(final float[] elev, final float[] ww,final int size) {
+    public static float[] computeDirection(final float[] elev, final float[] ww, final int size) {
         final float[] adj = new float[size * size];
         float curSlope;
         int curDirection;
@@ -55,8 +55,8 @@ public class PipelinePreprocessing {
                     if ((x == (size - 1) && dx[i] == 1) || (z == (size - 1) && dz[i] == 1)) continue;
                     final int did = size * (x + dx[i]) + z + dz[i];
                     final float visElev = (ww[did] > 1e-6f) ? (elev[did] / ww[did]) : 0f;
-                    final float visSlope = (visElev - idElev) / ((i<4)?1.4142f:1f);
-                    if (visSlope>=curSlope) continue;
+                    final float visSlope = (visElev - idElev) / ((i < 4) ? 1.4142f : 1f);
+                    if (visSlope >= curSlope) continue;
                     curSlope = visSlope;
                     curDirection = 1 << i;
                 }

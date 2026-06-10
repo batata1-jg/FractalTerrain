@@ -5,15 +5,15 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-
 import me.batata_1.fractal_terrain.hydrology.RiverProvider;
-import me.batata_1.fractal_terrain.infinitetensor.storage.TensorStorage;
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import me.batata_1.fractal_terrain.ml.pipeline.WorldPipeline;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
+import me.batata_1.fractal_terrain.relief.ReliefProvider;
+import me.batata_1.fractal_terrain.storage.FloatTensor;
+import me.batata_1.fractal_terrain.storage.Storage;
 import me.batata_1.fractal_terrain.terrablender.InitTerrablender;
 import me.batata_1.fractal_terrain.world.biome.BiomeProvider;
-import me.batata_1.fractal_terrain.relief.ReliefProvider;
 import me.batata_1.fractal_terrain.world.gen.chunk.FractalTerrainChunkGenerator;
 import me.batata_1.fractal_terrain.world.gen.surfacebuilder.FractalTerrainSurfaceBuilder;
 import net.minecraft.block.Blocks;
@@ -134,8 +134,7 @@ public class FractalTerrainInstance {
     }
 
     @TestOnly
-    public static TensorStorage getDecoderStorage() {
+    public static Storage<FloatTensor> getDecoderStorage() {
         return pipeline.getDecoder().getStorage();
     }
-
 }
