@@ -55,12 +55,11 @@ public class Channel {
 
     @Override
     public String toString() {
-        return "Channel{id=" + channelId +
-                ", width=" + width +
-                ", depth=" + depth +
-                ", pts=" + (spline.points().size()) +
-                ", sinuosity=" + String.format("%.3f", computeSinuosity()) +
-                "}";
+        return "Channel{id=" + channelId + ", width="
+                + width + ", depth="
+                + depth + ", pts="
+                + (spline.points().size()) + ", sinuosity="
+                + String.format("%.3f", computeSinuosity()) + "}";
     }
 
     public void keepOnly(ArrayList<Integer> newPathIndexes) {
@@ -105,10 +104,14 @@ public class Channel {
                 indexesToAdd.add(i);
             }
         this.spline = new QuinticHermiteSpline(
-                new ArrayList<>(indexesToAdd.stream().map(id->spline.points().get(id)).toList()),
-                new ArrayList<>(indexesToAdd.stream().map(id->spline.velocity().get(id)).toList()),
-                new ArrayList<>(indexesToAdd.stream().map(id->spline.acceleration().get(id)).toList())
-        );
+                new ArrayList<>(
+                        indexesToAdd.stream().map(id -> spline.points().get(id)).toList()),
+                new ArrayList<>(indexesToAdd.stream()
+                        .map(id -> spline.velocity().get(id))
+                        .toList()),
+                new ArrayList<>(indexesToAdd.stream()
+                        .map(id -> spline.acceleration().get(id))
+                        .toList()));
     }
 
     public static class ChannelPt extends QuadTreePoint {

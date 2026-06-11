@@ -3,6 +3,7 @@ package me.batata_1.fractal_terrain.math.ds;
 import java.util.*;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import me.batata_1.fractal_terrain.math.VectorOps;
+import me.batata_1.fractal_terrain.storage.Persistable;
 
 /**
  * 2-D spatial index. Concurrency contract: <b>multiple concurrent readers</b>
@@ -12,7 +13,7 @@ import me.batata_1.fractal_terrain.math.VectorOps;
  * lock, so writes never run concurrently with each other or with reads. All recursion-local state
  * is kept on the stack (no shared mutable fields), so readers do not interfere with one another.
  */
-public class QuadTree<T extends QuadTreePoint> {
+public class QuadTree<T extends QuadTreePoint> implements Persistable<QuadTree<T>> {
     private static final int PP = 0;
     private static final int PQ = 1;
     private static final int QP = 2;
@@ -75,6 +76,26 @@ public class QuadTree<T extends QuadTreePoint> {
             tree.add(new Node<>(minXZ, maxXZ, 0));
         } finally {
             lock.writeLock().unlock();
+        }
+    }
+
+    /**
+     * Approximate in-memory footprint, used by {@link Storage}'s byte-budget eviction. Estimated
+     * from node count and the total point count (the root node at index 1 holds every inserted
+     * point). {@code serialize}/{@code deserialize} are intentionally left as the throwing defaults,
+     * so a {@code QuadTree}-backed {@code Storage} is cache-only (tiles are never written to disk).
+     */
+    @Override
+    public long byteSize() {
+        final long bytesPerNode = 120; // child[4] + 2 double[2] + Set overhead, rough
+        final long bytesPerPoint = 48; // QuadTreePoint: 2 boxed doubles + list overhead, rough
+        lock.readLock().lock();
+        try {
+            final long nodeCount = tree.size();
+            final long pointCount = tree.size() > 1 ? tree.get(1).points.size() : 0;
+            return nodeCount * bytesPerNode + pointCount * bytesPerPoint;
+        } finally {
+            lock.readLock().unlock();
         }
     }
 

@@ -316,7 +316,6 @@ public abstract class InfiniteTensor {
 
         outer:
         while (true) {
-            // TODO: see if this really does not break
             action.accept(current);
 
             // Increment like a mixed-radix counter (last dim first).

@@ -5,14 +5,12 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-
 import me.batata_1.fractal_terrain.hydrology.RiverProvider;
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import me.batata_1.fractal_terrain.ml.pipeline.WorldPipeline;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
-import me.batata_1.fractal_terrain.terrablender.InitTerrablender;
-import me.batata_1.fractal_terrain.world.biome.BiomeProvider;
 import me.batata_1.fractal_terrain.relief.ReliefProvider;
+import me.batata_1.fractal_terrain.world.biome.BiomeProvider;
 import me.batata_1.fractal_terrain.world.gen.chunk.FractalTerrainChunkGenerator;
 import me.batata_1.fractal_terrain.world.gen.surfacebuilder.FractalTerrainSurfaceBuilder;
 import net.minecraft.block.Blocks;
@@ -66,12 +64,6 @@ public class FractalTerrainInstance {
         OctaveSimplexNoiseSampler.init(seed);
         // LOG.info("chunk Generator settings: {}", chunkGenerator.getSettings().value());
         DynamicRegistryManager registryAccess = server.getRegistryManager();
-        InitTerrablender.initializeBlenderBiomes(
-                registryAccess,
-                DimensionOptions.OVERWORLD,
-                chunkGenerator.getSettings().value(),
-                chunkGenerator.getBiomeSource(),
-                seed);
         surfaceBuilder = new FractalTerrainSurfaceBuilder(
                 this.noiseConfig,
                 Blocks.STONE.getDefaultState(),
@@ -94,7 +86,7 @@ public class FractalTerrainInstance {
         if (!exists()) return;
         getInstance().biomeProvider.getInfiniteTensor().clear();
         getInstance().reliefSource.getInfiniteTensor().clear();
-     //   getInstance().reliefSource.getDoG().getInfiniteTensor().clear();
+        //   getInstance().reliefSource.getDoG().getInfiniteTensor().clear();
         instance = new CompletableFuture<>();
         LOG.info("fractal terrain instance closed");
     }
@@ -130,6 +122,4 @@ public class FractalTerrainInstance {
     public static NoiseConfig getNoiseConfig() {
         return getInstance().noiseConfig;
     }
-
-
 }

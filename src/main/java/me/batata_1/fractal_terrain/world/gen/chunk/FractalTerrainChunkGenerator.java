@@ -129,7 +129,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         final int startingZ = chunkPos.getStartZ();
         final int seaLevel = settings.value().seaLevel() - 1;
         final int bottom = settings.value().generationShapeConfig().minimumY();
-      //  populateNoiseStep.ensureTilesForChunk(startingX, startingZ);
+        //  populateNoiseStep.ensureTilesForChunk(startingX, startingZ);
         final int[] reliefBaseHeight = getBaseHeightArr(startingX, startingZ);
         final Heightmap oceanHeightmap = chunk.getHeightmap(Heightmap.Type.OCEAN_FLOOR_WG);
         final Heightmap surfaceHeightmap = chunk.getHeightmap(Heightmap.Type.WORLD_SURFACE_WG);
@@ -203,8 +203,9 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
             LOG.info(" chunkNoise sampler of 0 ,0 : {}", chunkNoiseSampler);
             LOG.info(" chunkNoise sampler estiate H : {}", chunkNoiseSampler.estimateSurfaceHeight(0, 0));
         }
-//        FractalTerrainInstance.getSurfaceBuilder()
-//                .buildSurface(noiseConfig, biomeAccess, biomeRegistry, heightContext, chunk, chunkNoiseSampler);
+        //        FractalTerrainInstance.getSurfaceBuilder()
+        //                .buildSurface(noiseConfig, biomeAccess, biomeRegistry, heightContext, chunk,
+        // chunkNoiseSampler);
     }
 
     private ChunkNoiseSampler createChunkNoiseSampler(

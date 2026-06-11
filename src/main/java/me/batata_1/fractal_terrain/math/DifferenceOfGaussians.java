@@ -26,9 +26,36 @@ public class DifferenceOfGaussians {
         this.sigma1 = sigma1;
         this.sigma2 = sigma2;
         this.threshold = threshold;
-        this.pad = (int) Math.ceil(3.0 * Math.max(sigma1, sigma2));
+        this.pad = padFor(sigma1, sigma2);
         this.DoGTensor = new NonIntersectingInfiniteTensor(
                 path + "/dog_tensor", new int[] {1, COARSE_TILE_SIZE, COARSE_TILE_SIZE}, this::buildTile);
+    }
+
+    /**
+     * Halo width (in pixels) a Difference-of-Gaussians needs on every side so the cropped result
+     * is free of border artifacts: {@code ceil(3 * max(sigma1, sigma2))}. Single source of the pad
+     * size — used by the constructor and by downstream pipelines (e.g. {@code GlobalRiverProvider})
+     * that size their own padded slices so the cropped output lands on the requested tile size.
+     */
+    public static int padFor(double sigma1, double sigma2) {
+        return (int) Math.ceil(3.0 * Math.max(sigma1, sigma2));
+    }
+
+    /**
+     * Stateless Difference-of-Gaussians core: blurs the (square) input at both sigmas and returns
+     * {@code gaussian(sigma1) - gaussian(sigma2)}. The result keeps the SAME size/padding as the
+     * input — no normalization, clamping, or cropping is applied (the caller supplies a ready-to-blur
+     * array and removes any padding later). Intended for pipelines that use the DoG as an intermediate
+     * step. The input is assumed square ({@code width == height == sqrt(img.length)}).
+     */
+    public static float[] run(float[] img,int W , int H, double sigma1, double sigma2) {
+        final float[] lowSigmaBlur = Blur.gaussianSeparable(img, W, H, sigma1);
+        final float[] highSigmaBlur = Blur.gaussianSeparable(img, W, H, sigma2);
+        final float[] differenceOfGaussians = new float[img.length];
+        for (int px = 0; px < img.length; px++) {
+            differenceOfGaussians[px] = lowSigmaBlur[px] - highSigmaBlur[px];
+        }
+        return differenceOfGaussians;
     }
 
     protected FloatTensor buildTile(TileKey key) {
@@ -53,10 +80,7 @@ public class DifferenceOfGaussians {
             elev[px] = clamped;
         }
 
-        final float[] g1 = Blur.gaussianSeparable(elev, cW, cH, sigma1);
-        final float[] g2 = Blur.gaussianSeparable(elev, cW, cH, sigma2);
-        final float[] dogPad = new float[N];
-        for (int i = 0; i < N; i++) dogPad[i] = g1[i] - g2[i];
+        final float[] dogPad = run(elev,cW,cH, sigma1, sigma2);
         final float[] dog = new float[S * S];
         for (int row = 0; row < S; row++) {
             System.arraycopy(dogPad, (row + pad) * cW + pad, dog, row * S, S);

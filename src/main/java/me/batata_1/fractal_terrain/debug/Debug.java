@@ -9,9 +9,9 @@ import javax.imageio.ImageIO;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 // import me.batata_1.fractalterrain.ml.tensorProviders.MapProvider;
+import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.noise.NoiseSampler;
 import me.batata_1.fractal_terrain.noise.PhacelleNoiseSampler;
-import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import net.minecraft.util.WorldSavePath;
 import net.minecraft.world.gen.surfacebuilder.MaterialRules;
 import org.slf4j.Logger;
@@ -165,12 +165,12 @@ public class Debug {
     }
 
     public static synchronized void debug() {
-//        int x = -1;
-//        int z = -1;
-//        FractalTerrainInstance.pipeline.getDecoderSlice(x, z);
-//        FloatTensor fl = FractalTerrainInstance.getDecoderStorage().getEntry(new int[] {0, x, z});
-//        DEBUG_LOGGER.info("debug {}", fl.shape);
-//        seeTile(fl, x, z, "decoder_tile");
+        //        int x = -1;
+        //        int z = -1;
+        //        FractalTerrainInstance.pipeline.getDecoderSlice(x, z);
+        //        FloatTensor fl = FractalTerrainInstance.getDecoderStorage().getEntry(new int[] {0, x, z});
+        //        DEBUG_LOGGER.info("debug {}", fl.shape);
+        //        seeTile(fl, x, z, "decoder_tile");
     }
 
     public static void debugMixin(MaterialRules.MaterialRuleContext context) {

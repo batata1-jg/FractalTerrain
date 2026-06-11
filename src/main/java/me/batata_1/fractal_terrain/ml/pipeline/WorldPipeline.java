@@ -500,13 +500,11 @@ public final class WorldPipeline implements AutoCloseable {
         }
 
         // post proessing
-        // TODO: implement d-8 algorithim inside fuzed
         Object[][] inputs = new Object[3][3];
         inputs[0] = new Object[] {"residual_init", newSample, new long[] {1, 512, 512}};
         inputs[1] = new Object[] {"latents_init", latentSlice.data, new long[] {6, 64, 64}};
         inputs[2] = new Object[] {"tau", tau, new long[] {1}};
 
-        // TODO: pesar as tiles de flow e adj
         final float[] data = fuzedModel.run(inputs);
         final float[] adj = computeDirection(Arrays.copyOfRange(data, 0, S * S), ww, S);
         final float[] flow = computeFlow(adj, S);

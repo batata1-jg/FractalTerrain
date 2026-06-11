@@ -59,8 +59,8 @@ public class PopulateNoiseStep {
     }
 
     public BlockState fillRocks(int x, int y, int z) {
-       // final double v = fillRocksPredicate.query((float) x, (float) z);
-       // return toRock(v);
+        // final double v = fillRocksPredicate.query((float) x, (float) z);
+        // return toRock(v);
         return DEFAULT_ROCK;
     }
 

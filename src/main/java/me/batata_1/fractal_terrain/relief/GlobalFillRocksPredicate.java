@@ -5,11 +5,10 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
-
+import me.batata_1.fractal_terrain.hydrology.Skeletonizer;
 import me.batata_1.fractal_terrain.math.DifferenceOfGaussians;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
-import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 
@@ -26,12 +25,10 @@ public class GlobalFillRocksPredicate {
 
     private static final double BLOCK_TO_COARSE = 256.0 * 5.0;
 
-    private static final int[] NEIGH_DI = {-1, -1, 0, 1, 1, 1, 0, -1};
-    private static final int[] NEIGH_DJ = {0, 1, 1, 1, 0, -1, -1, -1};
-
     private final QuadTree<QuadTreePoint> tree;
     private final DifferenceOfGaussians dog;
     private final double frequency;
+    private final Skeletonizer skeletonizer = new Skeletonizer(MIN_POLYLINE_LEN, DX_COARSE_PX);
     private final ConcurrentHashMap<List<Integer>, Boolean> placedTiles = new ConcurrentHashMap<>();
     private final Object treeLock = new Object();
 
@@ -115,22 +112,12 @@ public class GlobalFillRocksPredicate {
             }
         }
 
-        final boolean[][] skel = zhangSuen(mask);
-        final List<List<int[]>> polylines = tracePolylines(skel);
-        LOG.info("doPlaceTile [{} {}] numPolulines = {}", tx, tz, polylines.size());
+        final var splines = skeletonizer.trace(mask);
+        LOG.info("doPlaceTile [{} {}] numSplines = {}", tx, tz, splines.size());
         final List<double[]> allSamples = new ArrayList<>();
-        for (List<int[]> line : polylines) {
-            if (line.size() < MIN_POLYLINE_LEN) continue;
-            final ArrayList<double[]> globalPts = new ArrayList<>(line.size());
-            for (int[] p : line) {
-                globalPts.add(new double[] {cx0 + p[0], cz0 + p[1]});
-            }
-            try {
-                final QuinticHermiteSpline spline = QuinticHermiteSpline.createCatmullRom(globalPts);
-                final QuinticHermiteSpline resampled = spline.reSample(DX_COARSE_PX);
-                allSamples.addAll(resampled.points());
-            } catch (RuntimeException e) {
-                // Degenerate spline (e.g., MAX_SPLINE_LENGTH exceeded). Skip this polyline.
+        for (var spline : splines) {
+            for (double[] pt : spline.points()) {
+                allSamples.add(new double[] {cx0 + pt[0], cz0 + pt[1]});
             }
         }
 
@@ -140,178 +127,5 @@ public class GlobalFillRocksPredicate {
                 tree.insertPoint(new QuadTreePoint(pt));
             }
         }
-    }
-
-    static boolean[][] zhangSuen(boolean[][] input) {
-        final int H = input.length;
-        final int W = input[0].length;
-        final boolean[][] img = new boolean[H][W];
-        for (int i = 0; i < H; i++) System.arraycopy(input[i], 0, img[i], 0, W);
-
-        final List<int[]> toRemove = new ArrayList<>();
-        boolean changed = true;
-        while (changed) {
-            changed = false;
-            toRemove.clear();
-            for (int i = 1; i < H - 1; i++) {
-                for (int j = 1; j < W - 1; j++) {
-                    if (img[i][j] && shouldRemove(img, i, j, true)) {
-                        toRemove.add(new int[] {i, j});
-                    }
-                }
-            }
-            if (!toRemove.isEmpty()) {
-                for (int[] p : toRemove) img[p[0]][p[1]] = false;
-                changed = true;
-            }
-
-            toRemove.clear();
-            for (int i = 1; i < H - 1; i++) {
-                for (int j = 1; j < W - 1; j++) {
-                    if (img[i][j] && shouldRemove(img, i, j, false)) {
-                        toRemove.add(new int[] {i, j});
-                    }
-                }
-            }
-            if (!toRemove.isEmpty()) {
-                for (int[] p : toRemove) img[p[0]][p[1]] = false;
-                changed = true;
-            }
-        }
-        return img;
-    }
-
-    private static boolean shouldRemove(boolean[][] img, int i, int j, boolean subpass1) {
-        final boolean north = img[i - 1][j];
-        final boolean northEast = img[i - 1][j + 1];
-        final boolean east = img[i][j + 1];
-        final boolean southEast = img[i + 1][j + 1];
-        final boolean south = img[i + 1][j];
-        final boolean southWest = img[i + 1][j - 1];
-        final boolean west = img[i][j - 1];
-        final boolean northWest = img[i - 1][j - 1];
-
-        final int liveNeighborCount = (north ? 1 : 0)
-                + (northEast ? 1 : 0)
-                + (east ? 1 : 0)
-                + (southEast ? 1 : 0)
-                + (south ? 1 : 0)
-                + (southWest ? 1 : 0)
-                + (west ? 1 : 0)
-                + (northWest ? 1 : 0);
-        if (liveNeighborCount < 2 || liveNeighborCount > 6) return false;
-
-        int zeroToOneTransitions = 0;
-        if (!north && northEast) zeroToOneTransitions++;
-        if (!northEast && east) zeroToOneTransitions++;
-        if (!east && southEast) zeroToOneTransitions++;
-        if (!southEast && south) zeroToOneTransitions++;
-        if (!south && southWest) zeroToOneTransitions++;
-        if (!southWest && west) zeroToOneTransitions++;
-        if (!west && northWest) zeroToOneTransitions++;
-        if (!northWest && north) zeroToOneTransitions++;
-        if (zeroToOneTransitions != 1) return false;
-
-        if (subpass1) {
-            return !(north && east && south) && !(east && south && west);
-        } else {
-            return !(north && east && west) && !(north && south && west);
-        }
-    }
-
-    static List<List<int[]>> tracePolylines(boolean[][] skel) {
-        final int H = skel.length;
-        final int W = skel[0].length;
-        final int[][] n8 = new int[H][W];
-        for (int i = 0; i < H; i++) {
-            for (int j = 0; j < W; j++) {
-                if (!skel[i][j]) continue;
-                int cnt = 0;
-                for (int k = 0; k < 8; k++) {
-                    final int ni = i + NEIGH_DI[k];
-                    final int nj = j + NEIGH_DJ[k];
-                    if (ni >= 0 && ni < H && nj >= 0 && nj < W && skel[ni][nj]) cnt++;
-                }
-                n8[i][j] = cnt;
-            }
-        }
-
-        final boolean[][] visited = new boolean[H][W];
-        final List<List<int[]>> polylines = new ArrayList<>();
-
-        final List<int[]> nodes = new ArrayList<>();
-        for (int i = 0; i < H; i++) {
-            for (int j = 0; j < W; j++) {
-                if (skel[i][j] && (n8[i][j] == 1 || n8[i][j] >= 3)) {
-                    nodes.add(new int[] {i, j});
-                }
-            }
-        }
-
-        for (int[] node : nodes) {
-            for (int k = 0; k < 8; k++) {
-                final int ni = node[0] + NEIGH_DI[k];
-                final int nj = node[1] + NEIGH_DJ[k];
-                if (ni < 0 || ni >= H || nj < 0 || nj >= W) continue;
-                if (!skel[ni][nj] || visited[ni][nj]) continue;
-
-                final List<int[]> line = new ArrayList<>();
-                line.add(new int[] {node[0], node[1]});
-                int ci = ni, cj = nj;
-                while (true) {
-                    line.add(new int[] {ci, cj});
-                    visited[ci][cj] = true;
-                    if (n8[ci][cj] != 2) break;
-                    int nextI = -1, nextJ = -1;
-                    for (int m = 0; m < 8; m++) {
-                        final int ti = ci + NEIGH_DI[m];
-                        final int tj = cj + NEIGH_DJ[m];
-                        if (ti < 0 || ti >= H || tj < 0 || tj >= W) continue;
-                        if (!skel[ti][tj]) continue;
-                        if (visited[ti][tj]) continue;
-                        if (ti == node[0] && tj == node[1]) continue;
-                        nextI = ti;
-                        nextJ = tj;
-                        break;
-                    }
-                    if (nextI < 0) break;
-                    ci = nextI;
-                    cj = nextJ;
-                }
-                polylines.add(line);
-            }
-        }
-
-        for (int i = 0; i < H; i++) {
-            for (int j = 0; j < W; j++) {
-                if (!skel[i][j] || visited[i][j]) continue;
-                if (n8[i][j] != 2) continue;
-                final List<int[]> loop = new ArrayList<>();
-                loop.add(new int[] {i, j});
-                visited[i][j] = true;
-                int ci = i, cj = j;
-                while (true) {
-                    int nextI = -1, nextJ = -1;
-                    for (int m = 0; m < 8; m++) {
-                        final int ti = ci + NEIGH_DI[m];
-                        final int tj = cj + NEIGH_DJ[m];
-                        if (ti < 0 || ti >= H || tj < 0 || tj >= W) continue;
-                        if (!skel[ti][tj]) continue;
-                        if (visited[ti][tj]) continue;
-                        nextI = ti;
-                        nextJ = tj;
-                        break;
-                    }
-                    if (nextI < 0) break;
-                    loop.add(new int[] {nextI, nextJ});
-                    visited[nextI][nextJ] = true;
-                    ci = nextI;
-                    cj = nextJ;
-                }
-                loop.add(new int[] {i, j});
-                polylines.add(loop);
-            }
-        }
-        return polylines;
     }
 }

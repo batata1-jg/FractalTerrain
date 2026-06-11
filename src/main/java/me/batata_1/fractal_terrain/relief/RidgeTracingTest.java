@@ -12,6 +12,7 @@ import java.util.Set;
 import javax.imageio.ImageIO;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.debug.Debug;
+import me.batata_1.fractal_terrain.hydrology.Skeletonizer;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.math.DifferenceOfGaussians;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
@@ -159,7 +160,7 @@ public class RidgeTracingTest {
                         mask[di][dj] = dog.getThresholded(tx * Sc + di, tz * Sc + dj);
                     }
                 }
-                final boolean[][] skel = GlobalFillRocksPredicate.zhangSuen(mask);
+                final boolean[][] skel = Skeletonizer.zhangSuen(mask);
 
                 for (int di = 0; di < Sc; di++) {
                     for (int dj = 0; dj < Sc; dj++) {
@@ -171,7 +172,7 @@ public class RidgeTracingTest {
                     }
                 }
 
-                final List<List<int[]>> polylines = GlobalFillRocksPredicate.tracePolylines(skel);
+                final List<List<int[]>> polylines = Skeletonizer.tracePolylines(skel);
                 for (List<int[]> line : polylines) {
                     if (line.size() < GlobalFillRocksPredicate.MIN_POLYLINE_LEN) continue;
                     final ArrayList<double[]> globalPts = new ArrayList<>(line.size());

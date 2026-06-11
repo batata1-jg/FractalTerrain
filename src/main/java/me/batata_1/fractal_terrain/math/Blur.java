@@ -105,4 +105,13 @@ public class Blur {
         }
         return dst;
     }
+
+    /**
+     * Halo width (in pixels) a Blur needs on every side so the cropped result
+     * is free of border artifacts: {@code ceil(3 * sigma)}.
+     */
+    public static int padFor(double sigma) {
+        return (int) Math.ceil(3.0 * sigma);
+    }
+
 }
