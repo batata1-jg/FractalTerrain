@@ -37,8 +37,6 @@ public class GlobalRiverProvider {
   //  private static final double SIGMA2 = 2.0;
     /** Ridge mask: DoG ≥ +RIDGE_THRESHOLD. */
     private static final double RIDGE_THRESHOLD = 0.0;
-    /** Valley mask: DoG ≤ −VALLEY_THRESHOLD. */
-    private static final double VALLEY_THRESHOLD = 0.0;
     /**
      * Field mask: normalized field ≥ FIELD_THRESHOLD marks a (uniformly thin) field line. After the
      * fwidth pass the sin <em>peaks</em> (the lines, cf. the old {@code sin ≥ 0.8}) become large
@@ -204,7 +202,7 @@ public class GlobalRiverProvider {
         final boolean[][] mask = new boolean[paddedSide][paddedSide];
         for (int di = 0; di < paddedSide; di++) {
             for (int dj = 0; dj < paddedSide; dj++) {
-                mask[di][dj] = paddedDog[di * paddedSide + dj] <= -VALLEY_THRESHOLD;
+                mask[di][dj] = paddedDog[di * paddedSide + dj] <= 0;
             }
         }
         return mask;
