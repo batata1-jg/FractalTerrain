@@ -15,15 +15,13 @@ public class ReliefProvider {
     private static final double QUERY_FREQUENCY = 1.0;
 
     private final NonIntersectingInfiniteTensor final_tiles;
-    private final DifferenceOfGaussians dog;
-    private final GlobalFillRocksPredicate fillRocksPredicate;
 
     public ReliefProvider(String path) {
-        final_tiles = new NonIntersectingInfiniteTensor(path + "/final_relief_tiles", new int[] {9, 512, 512}, key -> {
+        final_tiles = new NonIntersectingInfiniteTensor(path + "/final_relief_tiles", new int[] {RELIEF_CHANNELS, 512, 512}, key -> {
             final int x = key.get(X);
             final int z = key.get(Z);
             final FloatTensor final_slice = pipeline.getDecoderSlice(x, z);
-            final float[] entries = new float[9 << 18];
+            final float[] entries = new float[RELIEF_CHANNELS << 18];
             // TODO: mover weight para canal 0
             for (int ch = 1; ch < 10; ch++) {
                 for (int px = 0; px < (1 << 18); px++) {
@@ -31,20 +29,12 @@ public class ReliefProvider {
                     entries[((ch - 1) << 18) + px] = (w > 1e-6f) ? final_slice.data[(ch << 18) + px] / w : 0f;
                 }
             }
-            final FloatTensor t = new FloatTensor(entries, new int[] {9, 512, 512});
+
+
+            final FloatTensor t = new FloatTensor(entries, new int[] {RELIEF_CHANNELS, 512, 512});
             //  Debug.seeTile(t, x, z, "final");
             return t;
         });
-        this.dog = new DifferenceOfGaussians(path, DOG_SIGMA1, DOG_SIGMA2, DOG_THRESHOLD);
-        this.fillRocksPredicate = new GlobalFillRocksPredicate(dog, QUERY_FREQUENCY);
-    }
-
-    public DifferenceOfGaussians getDoG() {
-        return dog;
-    }
-
-    public GlobalFillRocksPredicate getFillRocksPredicate() {
-        return fillRocksPredicate;
     }
     // ch7 -> adj
     // ch8 -> flow

@@ -75,7 +75,7 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
     @Override
     public void addDebugInfo(@NotNull List<String> info, @NotNull BlockPos pos, Climate.@NotNull Sampler noiseSampler) {
         final Climate.Sampler sampler = FractalTerrainInstance.getBiomeProvider().sampler;
-        super.addDebugInfo(info, pos, noiseSampler);
+        super.addDebugInfo(info, pos, sampler);
         int i = QuartPos.fromBlock(pos.getX());
         int j = QuartPos.fromBlock(pos.getY());
         int k = QuartPos.fromBlock(pos.getZ());

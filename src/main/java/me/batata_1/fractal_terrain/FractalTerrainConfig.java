@@ -17,6 +17,7 @@ public record FractalTerrainConfig() {
     public static final int X = 1;
     public static final int Z = 2;
     public static final int DECODER_CHANNELS = 10;
+    public static final int RELIEF_CHANNELS = 9;
     private static final String FILE_NAME = "terrain-diffusion-mc.properties";
     private static final String RESOURCE_PATH = "/" + FILE_NAME;
     private static final Properties PROPERTIES = new Properties();

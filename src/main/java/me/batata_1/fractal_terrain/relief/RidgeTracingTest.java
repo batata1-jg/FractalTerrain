@@ -71,7 +71,7 @@ public class RidgeTracingTest {
         final File dir = new File(COARSE_TENSOR_DEBUG_PATH);
         dir.mkdirs();
         final int S = DifferenceOfGaussians.COARSE_TILE_SIZE;
-        final Set<TileKey> keys = pipeline.getCoarse().getStorage().getCacheKeys();
+        final Set<TileKey> keys = pipeline.getCoarse().getStorage().getCachedKeys();
         LOG.info("dumpCoarseElevTiles: {} cached DoG tile(s) → {}", keys.size(), COARSE_TENSOR_DEBUG_PATH);
         for (TileKey key : keys) {
             final int tx = key.get(FractalTerrainConfig.X);

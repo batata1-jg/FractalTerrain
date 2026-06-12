@@ -177,17 +177,17 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
 
     @Override
     public void buildSurface(@NotNull WorldGenRegion region, @NotNull StructureManager structures, @NotNull RandomState noiseConfig, ChunkAccess chunk) {
-        if (!SharedConstants.debugVoidTerrain(chunk.getPos())) {
-            WorldGenerationContext heightContext = new WorldGenerationContext(this, region);
-            this.buildSurface(
-                    chunk,
-                    heightContext,
-                    noiseConfig,
-                    structures,
-                    region.getBiomeManager(),
-                    region.registryAccess().registryOrThrow(Registries.BIOME),
-                    Blender.of(region));
-        }
+//        if (!SharedConstants.debugVoidTerrain(chunk.getPos())) {
+//            WorldGenerationContext heightContext = new WorldGenerationContext(this, region);
+//            this.buildSurface(
+//                    chunk,
+//                    heightContext,
+//                    noiseConfig,
+//                    structures,
+//                    region.getBiomeManager(),
+//                    region.registryAccess().registryOrThrow(Registries.BIOME),
+//                    Blender.of(region));
+//        }
     }
 
     @VisibleForTesting
@@ -223,6 +223,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
 
     @Override
     public void applyBiomeDecoration(@NotNull WorldGenLevel worldGenLevel, @NotNull ChunkAccess chunkAccess, @NotNull StructureManager structureManager) {
+        if(true) return;
         ChunkPos chunkPos = chunkAccess.getPos();
       //  if(chunkPos.x!=(-499>>4)||chunkPos.z!=(428>>4)) return;
 

@@ -5,19 +5,25 @@ import java.awt.image.WritableRaster;
 import java.io.*;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.Set;
 import java.util.stream.Stream;
 import javax.imageio.ImageIO;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 // import me.batata_1.fractalterrain.ml.tensorProviders.MapProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
+import me.batata_1.fractal_terrain.math.DifferenceOfGaussians;
 import me.batata_1.fractal_terrain.noise.NoiseSampler;
 import me.batata_1.fractal_terrain.noise.PhacelleNoiseSampler;
-import net.minecraft.core.BlockPos;
+import me.batata_1.fractal_terrain.storage.Persistable;
+import me.batata_1.fractal_terrain.storage.Storage;
+import me.batata_1.fractal_terrain.storage.TileKey;
 import net.minecraft.world.level.levelgen.SurfaceRules;
 import net.minecraft.world.level.storage.LevelResource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 
 public class Debug {
 
@@ -167,13 +173,36 @@ public class Debug {
     }
 
     public static synchronized void debug() {
-        //        int x = -1;
-        //        int z = -1;
-        //        FractalTerrainInstance.pipeline.getDecoderSlice(x, z);
-        //        FloatTensor fl = FractalTerrainInstance.getDecoderStorage().getEntry(new int[] {0, x, z});
-        //        DEBUG_LOGGER.info("debug {}", fl.shape);
-        //        seeTile(fl, x, z, "decoder_tile");
+        dumpStorage(pipeline.getCoarse().getStorage(),"precip");
     }
+
+    public static <T extends Persistable<T>> void dumpStorage(Storage<T> storage,String name1) {
+        final String debugPath = FractalTerrainConfig.DEFAULT_DEBUG_PATH + "/"+name1;
+        final File dir = new File(debugPath);
+        dir.mkdirs();
+        final int S = DifferenceOfGaussians.COARSE_TILE_SIZE;
+        final Set<TileKey> keys = storage.getGeneratedKeys();
+        DEBUG_LOGGER.info("dumpStorage: {} → {}", keys.size(), debugPath);
+        for (TileKey key : keys) {
+            final int tx = key.get(FractalTerrainConfig.X);
+            final int tz = key.get(FractalTerrainConfig.Z);
+            final float[] elev = new float[S * S];
+            final FloatTensor rawTl = (FloatTensor) storage.getEntry(key);
+            for (int i = 0; i < S; i++) {
+                for (int j = 0; j < S; j++) {
+                    final double w = rawTl.entryAt(new int[] {6, i, j});
+                    // 2 == precip
+                    final double et = w <= 1e-6 ? 0 : rawTl.entryAt(new int[] {2, i, j}) / w;
+                    final double e = Math.max(0.0, et);
+                    elev[i * S + j] = (float) (e);
+                }
+            }
+            final FloatTensor tile = new FloatTensor(new int[] {S, S}, elev);
+            final String name = "tx" + tx + "_tz" + tz;
+            Debug.tensor.see(tile, name, debugPath);
+        }
+    }
+
 
     public static void debugMixin(SurfaceRules.Context context) {
         SurfaceRules.ConditionSource condition = SurfaceRules.abovePreliminarySurface();

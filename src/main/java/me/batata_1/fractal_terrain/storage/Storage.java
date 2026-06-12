@@ -83,8 +83,12 @@ public class Storage<T extends Persistable<T>> {
         return PATH;
     }
 
-    public Set<TileKey> getCacheKeys() {
+    public Set<TileKey> getCachedKeys() {
         return CACHE.keySet();
+    }
+
+    public Set<TileKey> getGeneratedKeys() {
+        return GENERATED_ENTRIES;
     }
 
     public void clear() {

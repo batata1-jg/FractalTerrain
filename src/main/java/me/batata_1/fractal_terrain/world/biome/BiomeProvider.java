@@ -39,7 +39,7 @@ public class BiomeProvider {
 
             FloatTensor t = new FloatTensor(biomeVariables, new int[] {5, 512, 512});
 
-            Debug.seeTileTiff(t, x, z, "final_biomes");
+            Debug.seeTile(t, x, z, "final_biomes");
             return t;
         });
         // T H C E D W SpawnTarget
