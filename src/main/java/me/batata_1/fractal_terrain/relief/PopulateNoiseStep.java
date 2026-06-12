@@ -3,20 +3,20 @@ package me.batata_1.fractal_terrain.relief;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import me.batata_1.fractal_terrain.noise.PhacelleNoiseSampler;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 
 public class PopulateNoiseStep {
 
     private static final BlockState[] rocks = new BlockState[] {
-        Blocks.STONE.getDefaultState(),
-        Blocks.DIORITE.getDefaultState(),
-        Blocks.ANDESITE.getDefaultState(),
-        Blocks.GRANITE.getDefaultState()
+        Blocks.STONE.defaultBlockState(),
+        Blocks.DIORITE.defaultBlockState(),
+        Blocks.ANDESITE.defaultBlockState(),
+        Blocks.GRANITE.defaultBlockState()
     };
 
-    private static final BlockState DEFAULT_ROCK = Blocks.STONE.getDefaultState();
-    private static final BlockState MARKER_ROCK = Blocks.BLUE_CONCRETE.getDefaultState();
+    private static final BlockState DEFAULT_ROCK = Blocks.STONE.defaultBlockState();
+    private static final BlockState MARKER_ROCK = Blocks.BLUE_CONCRETE.defaultBlockState();
     private static final double MARKER_THRESHOLD = 0.8;
 
     private final Interpolation reliefInterpolation;
@@ -51,7 +51,7 @@ public class PopulateNoiseStep {
         final double interpolatedRelief = reliefInterpolation.interpolateSmoothStep(x, z);
         final double interpolatedGrad = reliefGradInterpolation.interpolateSmoothStep(x, z);
         final double strata = this.strata.sample(x, z, interpolatedRelief, interpolatedGrad, interpolatedBlurredRelief);
-        return (int) interpolatedRelief;
+        return (int) interpolatedRelief -1;
     }
 
     public void ensureTilesForChunk(int chunkStartX, int chunkStartZ) {

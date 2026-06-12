@@ -16,7 +16,7 @@ public class ClimateVariableTransform {
         SNOW_NOISE = makeFnl(12345, 1f / 500f, 3, 2f, 0.5f);
         SNOW_NOISE_FINE = makeFnl(54321, 1f / 128f, 2, 2f, 0.5f);
         CONTINENTAL_NOISE = makeFnl(24567, 1f / 128f, 2, 2f, 0.5f);
-        WEIRDENSS_NOISE = makeFnl(5467, 1f / 8f, 5, 2f, 0.5f);
+        WEIRDENSS_NOISE = makeFnl(5467, 1f / 32f, 5, 2f, 0.5f);
     }
 
     public ClimateVariableTransform() {}
@@ -72,7 +72,7 @@ public class ClimateVariableTransform {
                 snowNoise[idx] = 3.0f * snc + 2.0f * snf;
 
                 float cnf = CONTINENTAL_NOISE.GetNoise(nx, ny);
-                continentNoise[idx] = 0.07f * cnf;
+                continentNoise[idx] = 0.02f * cnf;
                 weirdnessNoise[idx] = WEIRDENSS_NOISE.GetNoise(nx, ny);
             }
         }
@@ -169,7 +169,7 @@ public class ClimateVariableTransform {
                 float rescaledElev = elevVal / 8000f;
 
                 if (elevVal < 0) {
-                    continentalness = Math.clamp(rescaledElev, -1.05F, -0.11F) + continentNoise[idx];
+                    continentalness = Math.clamp(elevVal/89.4f, -1.05F, -0.11F) + continentNoise[idx];
                 } else {
                     float tStdCont;
                     float hStdCont;

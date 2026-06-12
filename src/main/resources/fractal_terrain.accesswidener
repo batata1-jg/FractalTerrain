@@ -1,21 +1,21 @@
-accessWidener v2 named
+accessWidener	v2	named
 
+accessible	method	net/minecraft/world/level/biome/MultiNoiseBiomeSource	<init>	(Lcom/mojang/datafixers/util/Either;)V
+accessible	method	net/minecraft/world/level/biome/MultiNoiseBiomeSource	parameters	()Lnet/minecraft/world/level/biome/Climate$ParameterList;
 
-accessible method net/minecraft/world/biome/source/MultiNoiseBiomeSource <init> (Lcom/mojang/datafixers/util/Either;)V
-accessible method net/minecraft/world/biome/source/MultiNoiseBiomeSource getBiomeEntries ()Lnet/minecraft/world/biome/source/util/MultiNoiseUtil$Entries;
+accessible	method	net/minecraft/world/level/levelgen/SurfaceRules$Context	updateXZ	(II)V
+accessible	method	net/minecraft/world/level/levelgen/SurfaceRules$Context	updateY	(IIIIII)V
+accessible	class	net/minecraft/world/level/levelgen/SurfaceRules$Context$SteepMaterialCondition
+accessible	field	net/minecraft/world/level/levelgen/SurfaceRules$LazyCondition	context	Lnet/minecraft/world/level/levelgen/SurfaceRules$Context;
+accessible	class	net/minecraft/world/level/levelgen/SurfaceRules$Condition
+accessible	class	net/minecraft/world/level/levelgen/SurfaceRules$LazyYCondition
+accessible	field	net/minecraft/world/level/levelgen/SurfaceRules$Context	blockX	I
+accessible	field	net/minecraft/world/level/levelgen/SurfaceRules$Context	blockZ	I
+accessible	class	net/minecraft/world/level/levelgen/SurfaceRules$SurfaceRule
 
-accessible method net/minecraft/world/gen/surfacebuilder/MaterialRules$MaterialRuleContext initHorizontalContext (II)V
-accessible method net/minecraft/world/gen/surfacebuilder/MaterialRules$MaterialRuleContext initVerticalContext (IIIIII)V
+accessible	field	net/minecraft/world/level/levelgen/RandomState	random	Lnet/minecraft/world/level/levelgen/PositionalRandomFactory;
+accessible	method	net/minecraft/world/level/biome/OverworldBiomeBuilder	addBiomes	(Ljava/util/function/Consumer;)V
 
-accessible class net/minecraft/world/gen/surfacebuilder/MaterialRules$MaterialRuleContext$SteepSlopePredicate
-accessible field net/minecraft/world/gen/surfacebuilder/MaterialRules$LazyAbstractPredicate context Lnet/minecraft/world/gen/surfacebuilder/MaterialRules$MaterialRuleContext;
-
-accessible class net/minecraft/world/gen/surfacebuilder/MaterialRules$BooleanSupplier
-accessible class net/minecraft/world/gen/surfacebuilder/MaterialRules$FullLazyAbstractPredicate
-accessible field net/minecraft/world/gen/surfacebuilder/MaterialRules$MaterialRuleContext blockX I
-accessible field net/minecraft/world/gen/surfacebuilder/MaterialRules$MaterialRuleContext blockZ I
-accessible class net/minecraft/world/gen/surfacebuilder/MaterialRules$BlockStateRule
-
-accessible field net/minecraft/world/gen/noise/NoiseConfig randomDeriver Lnet/minecraft/util/math/random/RandomSplitter;
-
-accessible method net/minecraft/world/biome/source/util/VanillaBiomeParameters writeOverworldBiomeParameters (Ljava/util/function/Consumer;)V
+accessible field net/minecraft/world/level/chunk/ChunkGenerator featuresPerStep Ljava/util/function/Supplier;
+accessible field net/minecraft/world/level/chunk/ChunkGenerator generationSettingsGetter Ljava/util/function/Function;
+accessible method net/minecraft/world/level/chunk/ChunkGenerator getWritableArea (Lnet/minecraft/world/level/chunk/ChunkAccess;)Lnet/minecraft/world/level/levelgen/structure/BoundingBox;

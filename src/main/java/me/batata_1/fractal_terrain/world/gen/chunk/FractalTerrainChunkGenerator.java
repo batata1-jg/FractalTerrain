@@ -4,64 +4,67 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Suppliers;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-import java.util.Arrays;
-import java.util.List;
+
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+
+import it.unimi.dsi.fastutil.ints.IntArraySet;
+import it.unimi.dsi.fastutil.ints.IntSet;
+import it.unimi.dsi.fastutil.objects.ObjectArraySet;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.math.spline.Spline;
 import me.batata_1.fractal_terrain.relief.PopulateNoiseStep;
 import me.batata_1.fractal_terrain.world.biome.source.FractalTerrainBiomeSource;
-import net.minecraft.SharedConstants;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.registry.Registry;
-import net.minecraft.registry.RegistryKeys;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.util.Util;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.world.ChunkRegion;
-import net.minecraft.world.HeightLimitView;
-import net.minecraft.world.Heightmap;
-import net.minecraft.world.biome.Biome;
-import net.minecraft.world.biome.source.BiomeAccess;
-import net.minecraft.world.chunk.Chunk;
-import net.minecraft.world.gen.GenerationStep;
-import net.minecraft.world.gen.HeightContext;
-import net.minecraft.world.gen.StructureAccessor;
-import net.minecraft.world.gen.StructureWeightSampler;
-import net.minecraft.world.gen.chunk.*;
-import net.minecraft.world.gen.noise.NoiseConfig;
+import net.minecraft.*;
+import net.minecraft.core.*;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.server.level.WorldGenRegion;
+import net.minecraft.util.Mth;
+import net.minecraft.world.level.*;
+import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.BiomeManager;
+import net.minecraft.world.level.biome.FeatureSorter;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.world.level.chunk.PalettedContainerRO;
+import net.minecraft.world.level.levelgen.*;
+import net.minecraft.world.level.levelgen.blending.Blender;
+import net.minecraft.world.level.levelgen.placement.PlacedFeature;
+import net.minecraft.world.level.levelgen.structure.Structure;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
 public final class FractalTerrainChunkGenerator extends ChunkGenerator {
 
     private static final Logger LOG = Debug.getLogger(FractalTerrainChunkGenerator.class);
-    private static final BlockState AIR = Blocks.AIR.getDefaultState();
-    private static final BlockState WATER = Blocks.WATER.getDefaultState();
-    private static final BlockState DEFAUT = Blocks.STONE.getDefaultState();
+    private static final BlockState AIR = Blocks.AIR.defaultBlockState();
+    private static final BlockState WATER = Blocks.WATER.defaultBlockState();
+    private static final BlockState DEFAUT = Blocks.STONE.defaultBlockState();
 
-    private final RegistryEntry<ChunkGeneratorSettings> settings;
+    private final Holder<NoiseGeneratorSettings> settings;
     private final FractalTerrainBiomeSource biomeSource;
     private final PopulateNoiseStep populateNoiseStep;
-    private final Supplier<AquiferSampler.FluidLevelSampler> fluidLevelSampler;
+    private final Supplier<Aquifer.FluidPicker> fluidLevelSampler;
 
     public static final Codec<FractalTerrainChunkGenerator> CODEC =
             RecordCodecBuilder.create(instance -> instance.group(
                             FractalTerrainBiomeSource.CODEC // Use your biome source's CODEC
                                     .fieldOf("biome_source")
                                     .forGetter(FractalTerrainChunkGenerator::getBiomeSource),
-                            ChunkGeneratorSettings.REGISTRY_CODEC
+                            NoiseGeneratorSettings.CODEC
                                     .fieldOf("settings")
                                     .forGetter(FractalTerrainChunkGenerator::getSettings))
                     .apply(instance, FractalTerrainChunkGenerator::new));
 
     public FractalTerrainChunkGenerator(
-            FractalTerrainBiomeSource biomeSource, RegistryEntry<ChunkGeneratorSettings> settings) {
+            FractalTerrainBiomeSource biomeSource, Holder<NoiseGeneratorSettings> settings) {
         super(biomeSource);
         this.biomeSource = biomeSource;
         this.settings = settings;
@@ -69,23 +72,23 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         this.fluidLevelSampler = Suppliers.memoize(() -> createFluidLevelSampler(settings.value()));
     }
 
-    private static AquiferSampler.FluidLevelSampler createFluidLevelSampler(ChunkGeneratorSettings settings) {
-        AquiferSampler.FluidLevel fluidLevel = new AquiferSampler.FluidLevel(-54, Blocks.LAVA.getDefaultState());
+    private static Aquifer.FluidPicker createFluidLevelSampler(NoiseGeneratorSettings settings) {
+        Aquifer.FluidStatus fluidLevel = new Aquifer.FluidStatus(-54, Blocks.LAVA.defaultBlockState());
         int i = settings.seaLevel();
-        AquiferSampler.FluidLevel fluidLevel2 = new AquiferSampler.FluidLevel(i, settings.defaultFluid());
+        Aquifer.FluidStatus fluidLevel2 = new Aquifer.FluidStatus(i, settings.defaultFluid());
         return (x, y, z) -> y < Math.min(-54, i) ? fluidLevel : fluidLevel2;
     }
 
     @Override
-    protected Codec<? extends ChunkGenerator> getCodec() {
+    protected @NotNull Codec<? extends ChunkGenerator> codec() {
         return CODEC;
     }
 
-    public RegistryEntry<ChunkGeneratorSettings> getSettings() {
+    public Holder<NoiseGeneratorSettings> getSettings() {
         return settings;
     }
 
-    public FractalTerrainBiomeSource getBiomeSource() {
+    public @NotNull FractalTerrainBiomeSource getBiomeSource() {
         return biomeSource;
     }
 
@@ -99,7 +102,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
             for (int dz = 0; dz < 16; dz++) {
                 heights[(dx << 4) + dz] = Math.max(
                                 populateNoiseStep.getHeight(startX + dx, startZ + dz),
-                                settings.value().generationShapeConfig().minimumY())
+                                settings.value().noiseSettings().minY())
                         + seaLevel;
             }
         }
@@ -107,33 +110,33 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
     }
 
     @Override
-    public CompletableFuture<Chunk> populateNoise(
-            Executor executor,
-            Blender blender,
-            NoiseConfig noiseConfig,
-            StructureAccessor structureAccessor,
-            Chunk chunk) {
-        GenerationShapeConfig generationShapeConfig =
-                this.settings.value().generationShapeConfig().trimHeight(chunk.getHeightLimitView());
-        int k = MathHelper.floorDiv(generationShapeConfig.height(), generationShapeConfig.verticalSize());
+    public @NotNull CompletableFuture<ChunkAccess> fillFromNoise(
+            @NotNull Executor executor,
+            @NotNull Blender blender,
+            @NotNull RandomState noiseConfig,
+            @NotNull StructureManager structureAccessor,
+            ChunkAccess chunk) {
+        NoiseSettings generationShapeConfig =
+                this.settings.value().noiseSettings().clampToHeightAccessor(chunk.getHeightAccessorForGeneration());
+        int k = Mth.floorDiv(generationShapeConfig.height(), generationShapeConfig.noiseSizeVertical());
         if (k <= 0) {
             return CompletableFuture.completedFuture(chunk);
         }
         return CompletableFuture.supplyAsync(
-                Util.debugSupplier(() -> this.populateNoise(chunk), () -> "fractal_terrain_chunk_generator"), executor);
+                Util.name(() -> this.populateNoise(chunk), () -> "fractal_terrain_chunk_generator"), executor);
     }
 
-    private Chunk populateNoise(final Chunk chunk) {
+    private ChunkAccess populateNoise(final ChunkAccess chunk) {
         final ChunkPos chunkPos = chunk.getPos();
-        final int startingX = chunkPos.getStartX();
-        final int startingZ = chunkPos.getStartZ();
+        final int startingX = chunkPos.getMinBlockX();
+        final int startingZ = chunkPos.getMinBlockZ();
         final int seaLevel = settings.value().seaLevel() - 1;
-        final int bottom = settings.value().generationShapeConfig().minimumY();
+        final int bottom = settings.value().noiseSettings().minY();
         //  populateNoiseStep.ensureTilesForChunk(startingX, startingZ);
         final int[] reliefBaseHeight = getBaseHeightArr(startingX, startingZ);
-        final Heightmap oceanHeightmap = chunk.getHeightmap(Heightmap.Type.OCEAN_FLOOR_WG);
-        final Heightmap surfaceHeightmap = chunk.getHeightmap(Heightmap.Type.WORLD_SURFACE_WG);
-        final BlockPos.Mutable mutable = new BlockPos.Mutable();
+        final Heightmap oceanHeightmap = chunk.getOrCreateHeightmapUnprimed(Heightmap.Types.OCEAN_FLOOR_WG);
+        final Heightmap surfaceHeightmap = chunk.getOrCreateHeightmapUnprimed(Heightmap.Types.WORLD_SURFACE_WG);
+        final BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
         for (int dx = 0; dx < 16; dx++) {
             for (int dz = 0; dz < 16; dz++) {
                 final int xx = startingX + dx;
@@ -152,10 +155,10 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
                     }
 
                     chunk.setBlockState(mutable, state, false);
-                    surfaceHeightmap.trackUpdate(xx & 0xF, y, zz & 0xF, state);
-                    oceanHeightmap.trackUpdate(xx & 0xF, y, zz & 0xF, state);
+                    surfaceHeightmap.update(xx & 0xF, y, zz & 0xF, state);
+                    oceanHeightmap.update(xx & 0xF, y, zz & 0xF, state);
                     mutable.set(xx, y, zz);
-                    chunk.markBlockForPostProcessing(mutable);
+                    chunk.markPosForPostprocessing(mutable);
                 }
             }
         }
@@ -163,68 +166,178 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
     }
 
     @Override
-    public void carve(
-            ChunkRegion chunkRegion,
+    public void applyCarvers(
+            @NotNull WorldGenRegion chunkRegion,
             long seed,
-            NoiseConfig noiseConfig,
-            BiomeAccess biomeAccess,
-            StructureAccessor structureAccessor,
-            Chunk chunk,
-            GenerationStep.Carver carverStep) {}
+            @NotNull RandomState noiseConfig,
+            @NotNull BiomeManager biomeAccess,
+            @NotNull StructureManager structureAccessor,
+            @NotNull ChunkAccess chunk,
+            GenerationStep.@NotNull Carving carverStep) {}
 
     @Override
-    public void buildSurface(ChunkRegion region, StructureAccessor structures, NoiseConfig noiseConfig, Chunk chunk) {
-        if (!SharedConstants.isOutsideGenerationArea(chunk.getPos())) {
-            HeightContext heightContext = new HeightContext(this, region);
+    public void buildSurface(@NotNull WorldGenRegion region, @NotNull StructureManager structures, @NotNull RandomState noiseConfig, ChunkAccess chunk) {
+        if (!SharedConstants.debugVoidTerrain(chunk.getPos())) {
+            WorldGenerationContext heightContext = new WorldGenerationContext(this, region);
             this.buildSurface(
                     chunk,
                     heightContext,
                     noiseConfig,
                     structures,
-                    region.getBiomeAccess(),
-                    region.getRegistryManager().get(RegistryKeys.BIOME),
-                    Blender.getBlender(region));
+                    region.getBiomeManager(),
+                    region.registryAccess().registryOrThrow(Registries.BIOME),
+                    Blender.of(region));
         }
     }
 
     @VisibleForTesting
     public void buildSurface(
-            Chunk chunk,
-            HeightContext heightContext,
-            NoiseConfig noiseConfig,
-            StructureAccessor structureAccessor,
-            BiomeAccess biomeAccess,
+            ChunkAccess chunk,
+            WorldGenerationContext heightContext,
+            RandomState noiseConfig,
+            StructureManager structureAccessor,
+            BiomeManager biomeAccess,
             Registry<Biome> biomeRegistry,
             Blender blender) {
-        ChunkNoiseSampler chunkNoiseSampler =
-                chunk.getOrCreateChunkNoiseSampler((chunkx) -> this.createChunkNoiseSampler(
+        NoiseChunk chunkNoiseSampler =
+                chunk.getOrCreateNoiseChunk((chunkx) -> this.createChunkNoiseSampler(
                         chunkx, structureAccessor, blender, FractalTerrainInstance.getNoiseConfig()));
         if (chunk.getPos().z == 0 && chunk.getPos().x == 0) {
             LOG.info(" chunkNoise sampler of 0 ,0 : {}", chunkNoiseSampler);
-            LOG.info(" chunkNoise sampler estiate H : {}", chunkNoiseSampler.estimateSurfaceHeight(0, 0));
+            LOG.info(" chunkNoise sampler estiate H : {}", chunkNoiseSampler.preliminarySurfaceLevel(0, 0));
         }
-        //        FractalTerrainInstance.getSurfaceBuilder()
-        //                .buildSurface(noiseConfig, biomeAccess, biomeRegistry, heightContext, chunk,
-        // chunkNoiseSampler);
+        FractalTerrainInstance.getSurfaceBuilder()
+                .buildSurface(noiseConfig, biomeAccess, biomeRegistry, heightContext, chunk, chunkNoiseSampler);
     }
 
-    private ChunkNoiseSampler createChunkNoiseSampler(
-            Chunk chunk, StructureAccessor world, Blender blender, NoiseConfig noiseConfig) {
-        return ChunkNoiseSampler.create(
+    private NoiseChunk createChunkNoiseSampler(
+            ChunkAccess chunk, StructureManager world, Blender blender, RandomState noiseConfig) {
+        return NoiseChunk.forChunk(
                 chunk,
                 noiseConfig,
-                StructureWeightSampler.createStructureWeightSampler(world, chunk.getPos()),
+                Beardifier.forStructuresInChunk(world, chunk.getPos()),
                 this.settings.value(),
                 this.fluidLevelSampler.get(),
                 blender);
     }
 
     @Override
-    public void populateEntities(ChunkRegion region) {}
+    public void applyBiomeDecoration(@NotNull WorldGenLevel worldGenLevel, @NotNull ChunkAccess chunkAccess, @NotNull StructureManager structureManager) {
+        ChunkPos chunkPos = chunkAccess.getPos();
+      //  if(chunkPos.x!=(-499>>4)||chunkPos.z!=(428>>4)) return;
+
+        SectionPos sectionPos = SectionPos.of(chunkPos, worldGenLevel.getMinSection());
+        BlockPos blockPos = sectionPos.origin();
+        Registry<Structure> structureRegistry = worldGenLevel.registryAccess().registryOrThrow(Registries.STRUCTURE);
+        Map<Integer,List<Structure>> indexedCollectedStructures = structureRegistry.stream().collect(Collectors.groupingBy((structurex) -> structurex.step().ordinal()));
+        List<FeatureSorter.StepFeatureData> featuresSteps = this.featuresPerStep.get();
+        WorldgenRandom worldgenRandom = new WorldgenRandom(new XoroshiroRandomSource(RandomSupport.generateUniqueSeed()));
+        long decorationSeed = worldgenRandom.setDecorationSeed(worldGenLevel.getSeed(), blockPos.getX(), blockPos.getZ());
+        Set<Holder<Biome>> set = new ObjectArraySet<>();
+        ChunkPos.rangeClosed(sectionPos.chunk(), 1).forEach((chunkPosx) -> {
+            ChunkAccess chunkAccessFromPos = worldGenLevel.getChunk(chunkPosx.x, chunkPosx.z);
+
+            for(LevelChunkSection levelChunkSection : chunkAccessFromPos.getSections()) {
+                PalettedContainerRO<Holder<Biome>> biomeContainer = levelChunkSection.getBiomes();
+                Objects.requireNonNull(set);
+                biomeContainer.getAll(set::add);
+            }
+
+        });
+        set.retainAll(this.biomeSource.possibleBiomes());
+        int numFeatureSteps = featuresSteps.size();
+
+        try {
+            Registry<PlacedFeature> placedFeatureRegistry = worldGenLevel.registryAccess().registryOrThrow(Registries.PLACED_FEATURE);
+            int clampedNumFeatureSteps = Math.max(GenerationStep.Decoration.values().length, numFeatureSteps);
+
+            for(int step = 0; step < clampedNumFeatureSteps; ++step) {
+                int structureLocalSeed = 0;
+
+                //structure generation
+                if (structureManager.shouldGenerateStructures()) {
+                    for(Structure structure : indexedCollectedStructures.getOrDefault(step, Collections.emptyList())) {
+                        worldgenRandom.setFeatureSeed(decorationSeed, structureLocalSeed, step);
+                        Supplier<String> supplier = () -> {
+                            Optional<String> structureKey = structureRegistry.getResourceKey(structure).map(Object::toString);
+                            Objects.requireNonNull(structure);
+                            return (String) structureKey.orElseGet(structure::toString);
+                        };
+
+                        try {
+                            worldGenLevel.setCurrentlyGenerating(supplier);
+                            structureManager.startsForStructure(sectionPos, structure).forEach((structureStart) -> structureStart.placeInChunk(worldGenLevel, structureManager, this, worldgenRandom, getWritableArea(chunkAccess), chunkPos));
+                        } catch (Exception exception) {
+                            CrashReport crashReport = CrashReport.forThrowable(exception, "Feature placement");
+                            CrashReportCategory var10000 = crashReport.addCategory("Feature");
+                            Objects.requireNonNull(supplier);
+                            var10000.setDetail("Description", supplier::get);
+                            throw new ReportedException(crashReport);
+                        }
+
+                        ++structureLocalSeed;
+                    }
+                }
+
+                // indexes less than
+                if (step < numFeatureSteps) {
+                    IntSet featureIndexesSet = new IntArraySet();
+                    // for this step, creates a set with all the possible features in this step from all the biomes
+                    for(Holder<Biome> holder : set) {
+                        List<HolderSet<PlacedFeature>> biomeFeatureSteps = (this.generationSettingsGetter.apply(holder)).features();
+                        if (step < biomeFeatureSteps.size()) {
+                            // features in that step
+                            HolderSet<PlacedFeature> holderSet = biomeFeatureSteps.get(step);
+                            FeatureSorter.StepFeatureData stepFeatureData = featuresSteps.get(step);
+                            holderSet.stream().map(Holder::value).forEach((placedFeaturex) -> featureIndexesSet.add(stepFeatureData.indexMapping().applyAsInt(placedFeaturex)));
+                        }
+                    }
+
+                    int numFeatures = featureIndexesSet.size();
+                    int[] featureIndexes = featureIndexesSet.toIntArray();
+                    Arrays.sort(featureIndexes);
+                    FeatureSorter.StepFeatureData features = featuresSteps.get(step);
+
+                    for(int i = 0; i < numFeatures; ++i) {
+                        int featureId = featureIndexes[i];
+                        PlacedFeature placedFeature = features.features().get(featureId);
+
+                        Supplier<String> featureSupplier = () -> {
+                            Optional<String> featureKey = placedFeatureRegistry.getResourceKey(placedFeature).map(Object::toString);
+                            Objects.requireNonNull(placedFeature);
+                            return (String) featureKey.orElseGet(placedFeature::toString);
+                        };
+                        worldgenRandom.setFeatureSeed(decorationSeed, featureId, step);
+
+                        try {
+                            worldGenLevel.setCurrentlyGenerating(featureSupplier);
+                            placedFeature.placeWithBiomeCheck(worldGenLevel, this, worldgenRandom, blockPos);
+                        } catch (Exception exception2) {
+                            CrashReport crashReport2 = CrashReport.forThrowable(exception2, "Feature placement");
+                            CrashReportCategory var43 = crashReport2.addCategory("Feature");
+                            Objects.requireNonNull(featureSupplier);
+                            var43.setDetail("Description", featureSupplier::get);
+                            throw new ReportedException(crashReport2);
+                        }
+                    }
+                }
+            }
+
+            worldGenLevel.setCurrentlyGenerating(null);
+        } catch (Exception e) {
+            CrashReport crashReport = CrashReport.forThrowable(e, "Biome decoration");
+            crashReport.addCategory("Generation").setDetail("CenterX", chunkPos.x).setDetail("CenterZ", chunkPos.z).setDetail("Seed", decorationSeed);
+            throw new ReportedException(crashReport);
+        }
+
+    }
 
     @Override
-    public int getWorldHeight() {
-        return settings.value().generationShapeConfig().height();
+    public void spawnOriginalMobs(@NotNull WorldGenRegion region) {}
+
+    @Override
+    public int getGenDepth() {
+        return settings.value().noiseSettings().height();
     }
 
     @Override
@@ -233,30 +346,30 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
     }
 
     @Override
-    public int getMinimumY() {
-        return settings.value().generationShapeConfig().minimumY();
+    public int getMinY() {
+        return settings.value().noiseSettings().minY();
     }
 
     @Override
-    public int getHeight(int x, int z, Heightmap.Type heightmap, HeightLimitView world, NoiseConfig noiseConfig) {
+    public int getBaseHeight(int x, int z, Heightmap.@NotNull Types heightmap, @NotNull LevelHeightAccessor world, @NotNull RandomState noiseConfig) {
         return Math.max(
                 populateNoiseStep.getHeight(x, z),
-                settings.value().generationShapeConfig().minimumY());
+                settings.value().noiseSettings().minY());
     }
 
     @Override
-    public VerticalBlockSample getColumnSample(int x, int z, HeightLimitView world, NoiseConfig noiseConfig) {
+    public @NotNull NoiseColumn getBaseColumn(int x, int z, @NotNull LevelHeightAccessor world, @NotNull RandomState noiseConfig) {
         BlockState[] blockStates =
                 // can be negative
                 new BlockState
                         [Math.max(
                                         populateNoiseStep.getHeight(x, z),
-                                        settings.value().generationShapeConfig().minimumY())
-                                - settings.value().generationShapeConfig().minimumY()];
+                                        settings.value().noiseSettings().minY())
+                                - settings.value().noiseSettings().minY()];
         Arrays.fill(blockStates, DEFAUT);
-        return new VerticalBlockSample(settings.value().generationShapeConfig().minimumY(), blockStates);
+        return new NoiseColumn(settings.value().noiseSettings().minY(), blockStates);
     }
 
     @Override
-    public void getDebugHudText(List<String> text, NoiseConfig noiseConfig, BlockPos pos) {}
+    public void addDebugScreenInfo(@NotNull List<String> text, @NotNull RandomState noiseConfig, @NotNull BlockPos pos) {}
 }

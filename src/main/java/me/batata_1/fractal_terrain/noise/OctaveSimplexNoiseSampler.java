@@ -1,14 +1,14 @@
 package me.batata_1.fractal_terrain.noise;
 
 import java.util.function.Function;
-import net.minecraft.util.math.noise.SimplexNoiseSampler;
-import net.minecraft.util.math.random.Random;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.levelgen.synth.SimplexNoise;
 import org.jetbrains.annotations.Nullable;
 
 public class OctaveSimplexNoiseSampler extends NoiseSampler {
 
     private final int numOctaves;
-    private SimplexNoiseSampler sampler = null;
+    private SimplexNoise sampler = null;
     private final double[] amplitudes;
     private final double[] periods;
     private final double norm;
@@ -44,7 +44,7 @@ public class OctaveSimplexNoiseSampler extends NoiseSampler {
 
     @Override
     public synchronized void initSampler(long seed) {
-        sampler = new SimplexNoiseSampler(Random.create(seed + seedOffset));
+        sampler = new SimplexNoise(RandomSource.create(seed + seedOffset));
         INIT_SET.remove(this);
     }
 
@@ -53,7 +53,7 @@ public class OctaveSimplexNoiseSampler extends NoiseSampler {
     public float sample(Number x, Number z) {
         double resp = 0;
         for (int i = 0; i < numOctaves; i++) {
-            resp += sampler.sample(x.doubleValue() / periods[i] + i, z.doubleValue() / periods[i] + i) * amplitudes[i];
+            resp += sampler.getValue(x.doubleValue() / periods[i] + i, z.doubleValue() / periods[i] + i) * amplitudes[i];
         }
         return (float) (resp / norm);
     }

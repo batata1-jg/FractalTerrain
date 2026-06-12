@@ -5,6 +5,7 @@ import java.awt.image.WritableRaster;
 import java.io.*;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.stream.Stream;
 import javax.imageio.ImageIO;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
@@ -12,8 +13,9 @@ import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.noise.NoiseSampler;
 import me.batata_1.fractal_terrain.noise.PhacelleNoiseSampler;
-import net.minecraft.util.WorldSavePath;
-import net.minecraft.world.gen.surfacebuilder.MaterialRules;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.levelgen.SurfaceRules;
+import net.minecraft.world.level.storage.LevelResource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,9 +39,9 @@ public class Debug {
     public static void seeNoise(NoiseSampler sampler, String name, int x, int z, int size) throws IOException {
 
         Path path = FractalTerrainInstance.getServer()
-                .getSavePath(WorldSavePath.ROOT)
+                .getWorldPath(LevelResource.ROOT)
                 .normalize();
-        sampler.initSampler(FractalTerrainInstance.getServer().getOverworld().getSeed());
+        sampler.initSampler(FractalTerrainInstance.getServer().overworld().getSeed());
         File outputFile = new File(path + "/" + name + ".png");
         DEBUG_LOGGER.info("O caminho eh: {} , ", outputFile.getPath());
         float max = -1000000;
@@ -71,10 +73,10 @@ public class Debug {
     public static void seePhacelleNormal(float freq, String name, int x, int z, int size) throws IOException {
 
         Path path = FractalTerrainInstance.getServer()
-                .getSavePath(WorldSavePath.ROOT)
+                .getWorldPath(LevelResource.ROOT)
                 .normalize();
         PhacelleNoiseSampler sampler = new PhacelleNoiseSampler(1, freq);
-        sampler.initSampler(FractalTerrainInstance.getServer().getOverworld().getSeed());
+        sampler.initSampler(FractalTerrainInstance.getServer().overworld().getSeed());
         File outputFile = new File(path + "/" + name + ".png");
         DEBUG_LOGGER.info("O caminho eh: {} , ", outputFile.getPath());
         float max = -1000000;
@@ -106,10 +108,10 @@ public class Debug {
     public static void seePhacelle(float freq, String name, FloatTensor t, int size) throws IOException {
 
         Path path = FractalTerrainInstance.getServer()
-                .getSavePath(WorldSavePath.ROOT)
+                .getWorldPath(LevelResource.ROOT)
                 .normalize();
         PhacelleNoiseSampler sampler = new PhacelleNoiseSampler(1, freq);
-        sampler.initSampler(FractalTerrainInstance.getServer().getOverworld().getSeed());
+        sampler.initSampler(FractalTerrainInstance.getServer().overworld().getSeed());
         File outputFile = new File(path + "/" + name + ".png");
         DEBUG_LOGGER.info("O caminho eh: {} , ", outputFile.getPath());
         float max = -1000000;
@@ -153,7 +155,7 @@ public class Debug {
 
     public static void seeTileTiff(FloatTensor tile, int x, int z, String name) {
         Path basePath = FractalTerrainInstance.getServer()
-                .getSavePath(WorldSavePath.ROOT)
+                .getWorldPath(LevelResource.ROOT)
                 .normalize();
         name = name + "_p" + x + "_" + z + "q_";
         new File(basePath.toString(), name).mkdirs();
@@ -173,24 +175,29 @@ public class Debug {
         //        seeTile(fl, x, z, "decoder_tile");
     }
 
-    public static void debugMixin(MaterialRules.MaterialRuleContext context) {
-        MaterialRules.MaterialCondition condition = MaterialRules.surface();
-        DEBUG_LOGGER.info(" contidio: {} <- true", condition.apply(context).get());
+    public static void debugMixin(SurfaceRules.Context context) {
+        SurfaceRules.ConditionSource condition = SurfaceRules.abovePreliminarySurface();
+        DEBUG_LOGGER.info(" contidio: {} <- true", condition.apply(context).test());
     }
 
     public static void debugSurfaceBuilder(
-            int x, int y, int surface_h, int z, MaterialRules.MaterialRuleContext materialRuleContext) {
+            int x, int y, int surface_h, int z, SurfaceRules.Context materialRuleContext) {
         if (x == 0 && z == 0 && y == surface_h) {
             DEBUG_LOGGER.info(" surface_h = {} , coords {} {}", y, x, z);
-            MaterialRules.MaterialCondition condition = MaterialRules.surface();
+            SurfaceRules.ConditionSource condition = SurfaceRules.abovePreliminarySurface();
             DEBUG_LOGGER.info(
                     " contidion: {} <- true",
-                    condition.apply(materialRuleContext).get());
+                    condition.apply(materialRuleContext).test());
         }
     }
 
     public static void debugCalls(int[] wi, String name) {
         if (!FractalTerrainConfig.DEBUG) return;
         DEBUG_LOGGER.info("{} is creating {}", name, wi);
+    }
+
+    public static <T> void printStream(Stream<T> stream, String name) {
+        DEBUG_LOGGER.info("{}:",name);
+        stream.peek(e->DEBUG_LOGGER.info(" {}",e));
     }
 }

@@ -1,7 +1,7 @@
 package me.batata_1.fractal_terrain.noise;
 
 import com.google.common.hash.Hashing;
-import net.minecraft.util.math.random.Random;
+import net.minecraft.util.RandomSource;
 
 public class VoronoiNoiseSampler extends NoiseSampler {
 
@@ -27,7 +27,7 @@ public class VoronoiNoiseSampler extends NoiseSampler {
     }
 
     protected float distPoint(final double x, final double z, final int i, final int j) {
-        final Random r = Random.create(getHash(new long[] {i, j}, seed));
+        final RandomSource r = RandomSource.create(getHash(new long[] {i, j}, seed));
         final double x0 = r.nextDouble();
         final double z0 = r.nextDouble();
         if (x0 > 1 || 0 > x0) throw new RuntimeException("xo out of bounds");

@@ -9,8 +9,8 @@ import me.batata_1.fractal_terrain.math.MaskedOps;
 import me.batata_1.fractal_terrain.math.spline.Spline;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
 import me.batata_1.fractal_terrain.registry.SettingsRegistry;
-import net.minecraft.block.BlockState;
-import net.minecraft.util.math.random.Random;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.block.state.BlockState;
 
 public abstract class RockStrata {
 
@@ -85,7 +85,7 @@ public abstract class RockStrata {
                 return Math.tan(phi) * (Math.sin(theta) * doubles[0] + Math.cos(theta) * doubles[1]);
             });
             blur.setF(doubles -> transform(new double[] {doubles[0], doubles[1]}, doubles[2]));
-            final Random r = Random.create(seed);
+            final RandomSource r = RandomSource.create(seed);
             final BlockState[] layerBlockStates = new BlockState[1 << 8];
             for (int i = 0; i < layerBlockStates.length; i++) {
                 layerBlockStates[i] = strataMaterial[Math.abs(r.nextInt() % strataMaterial.length)];

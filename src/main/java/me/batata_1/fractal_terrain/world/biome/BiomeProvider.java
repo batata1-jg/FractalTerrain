@@ -10,16 +10,16 @@ import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.math.Interpolation;
-import net.minecraft.util.dynamic.CodecHolder;
-import net.minecraft.world.biome.source.util.MultiNoiseUtil;
-import net.minecraft.world.gen.densityfunction.DensityFunction;
-import net.minecraft.world.gen.densityfunction.DensityFunctionTypes;
+import net.minecraft.util.KeyDispatchDataCodec;
+import net.minecraft.world.level.biome.Climate;
+import net.minecraft.world.level.levelgen.DensityFunction;
+import net.minecraft.world.level.levelgen.DensityFunctions;
 import org.jetbrains.annotations.NotNull;
 
 public class BiomeProvider {
 
     private final NonIntersectingInfiniteTensor final_tiles;
-    public final MultiNoiseUtil.MultiNoiseSampler sampler;
+    public final Climate.Sampler sampler;
 
     public BiomeProvider(String path) {
         final_tiles = new NonIntersectingInfiniteTensor(path + "/final_biome_tiles", new int[] {5, 512, 512}, key -> {
@@ -44,12 +44,12 @@ public class BiomeProvider {
         });
         // T H C E D W SpawnTarget
         final float scale = 1;
-        sampler = new MultiNoiseUtil.MultiNoiseSampler(
+        sampler = new Climate.Sampler(
                 new BiomeProviderDensity(scale, 2),
                 new BiomeProviderDensity(scale, 3),
                 new BiomeProviderDensity(scale, 0),
                 new BiomeProviderDensity(scale, 1),
-                DensityFunctionTypes.yClampedGradient(-64, 63, -1, 0),
+                DensityFunctions.yClampedGradient(-64, 63, -1, 0),
                 new BiomeProviderDensity(scale, 4),
                 List.of());
     }
@@ -58,7 +58,7 @@ public class BiomeProvider {
         return final_tiles;
     }
 
-    private static class BiomeProviderDensity implements DensityFunction.Base {
+    private static class BiomeProviderDensity implements DensityFunction.SimpleFunction {
 
         private final Interpolation interpolation;
 
@@ -70,11 +70,11 @@ public class BiomeProvider {
         }
 
         @Override
-        public void fill(double[] densities, @NotNull EachApplier applier) {
+        public void fillArray(double[] densities, @NotNull ContextProvider applier) {
             if (densities.length == 0) return;
 
             for (int i = 0; i < densities.length; i++) {
-                final NoisePos pos = applier.at(i);
+                final FunctionContext pos = applier.forIndex(i);
                 final int x = pos.blockX();
                 final int z = pos.blockZ();
                 densities[i] = interpolation.interpolateBilinear(x, z);
@@ -82,7 +82,7 @@ public class BiomeProvider {
         }
 
         @Override
-        public double sample(NoisePos pos) {
+        public double compute(FunctionContext pos) {
             return interpolation.interpolateBilinear(pos.blockX(), pos.blockZ());
         }
 
@@ -97,7 +97,7 @@ public class BiomeProvider {
         }
 
         @Override
-        public CodecHolder<? extends DensityFunction> getCodecHolder() {
+        public KeyDispatchDataCodec<? extends DensityFunction> codec() {
             return null;
         }
     }

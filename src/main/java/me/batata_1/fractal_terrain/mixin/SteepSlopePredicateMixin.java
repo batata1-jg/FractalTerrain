@@ -3,14 +3,14 @@ package me.batata_1.fractal_terrain.mixin;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.math.Interpolation;
-import net.minecraft.world.gen.surfacebuilder.MaterialRules;
+import net.minecraft.world.level.levelgen.SurfaceRules;
 import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-@Mixin(MaterialRules.MaterialRuleContext.SteepSlopePredicate.class)
+@Mixin(SurfaceRules.Context.SteepMaterialCondition.class)
 public abstract class SteepSlopePredicateMixin {
 
     private static final Logger LOG = Debug.getLogger(SteepSlopePredicateMixin.class);
@@ -18,7 +18,7 @@ public abstract class SteepSlopePredicateMixin {
             1.0F, xz -> FractalTerrainInstance.getReliefProvider().getRefinedGrad(xz));
     private final float threshold = 4;
 
-    @Inject(method = "test", at = @At("HEAD"))
+    @Inject(method = "compute", at = @At("HEAD"))
     private void test(CallbackInfoReturnable<Boolean> cir) {
         if (FractalTerrainInstance.exists()) {
             //            final MaterialRules.MaterialRuleContext.SteepSlopePredicate thisObject =

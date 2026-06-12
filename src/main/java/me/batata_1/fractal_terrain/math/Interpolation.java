@@ -1,7 +1,7 @@
 package me.batata_1.fractal_terrain.math;
 
 import java.util.function.Function;
-import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.Mth;
 
 public class Interpolation {
 
@@ -46,6 +46,6 @@ public class Interpolation {
         final double deltaX = x - Math.floor(x);
         final double deltaZ = z - Math.floor(z);
 
-        return MathHelper.lerp2(step.apply(deltaX), step.apply(deltaZ), nodes[0], nodes[1], nodes[2], nodes[3]);
+        return Mth.lerp2(step.apply(deltaX), step.apply(deltaZ), nodes[0], nodes[1], nodes[2], nodes[3]);
     }
 }

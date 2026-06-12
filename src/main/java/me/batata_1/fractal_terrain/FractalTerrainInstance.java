@@ -11,16 +11,16 @@ import me.batata_1.fractal_terrain.ml.pipeline.WorldPipeline;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
 import me.batata_1.fractal_terrain.relief.ReliefProvider;
 import me.batata_1.fractal_terrain.world.biome.BiomeProvider;
+import me.batata_1.fractal_terrain.world.features.VegetationController;
 import me.batata_1.fractal_terrain.world.gen.chunk.FractalTerrainChunkGenerator;
 import me.batata_1.fractal_terrain.world.gen.surfacebuilder.FractalTerrainSurfaceBuilder;
-import net.minecraft.block.Blocks;
-import net.minecraft.registry.DynamicRegistryManager;
-import net.minecraft.registry.RegistryKeys;
+import net.minecraft.core.RegistryAccess;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.WorldSavePath;
-import net.minecraft.world.dimension.DimensionOptions;
-import net.minecraft.world.gen.noise.NoiseConfig;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.levelgen.RandomState;
+import net.minecraft.world.level.storage.LevelResource;
 import org.slf4j.Logger;
 
 public class FractalTerrainInstance {
@@ -43,32 +43,32 @@ public class FractalTerrainInstance {
     private final BiomeProvider biomeProvider;
     private final RiverProvider riverProvider;
     private final FractalTerrainSurfaceBuilder surfaceBuilder;
-    private final NoiseConfig noiseConfig;
+    private final RandomState noiseConfig;
 
     private FractalTerrainInstance(MinecraftServer server) {
         this.curServer = server;
-        final Path worldPath = server.getSavePath(WorldSavePath.ROOT).normalize();
+        final Path worldPath = server.getWorldPath(LevelResource.ROOT).normalize();
         this.reliefSource = new ReliefProvider(worldPath + "/fractal_terrain");
         this.biomeProvider = new BiomeProvider(worldPath + "/fractal_terrain");
         this.riverProvider = new RiverProvider();
-        final long seed = server.getSaveProperties().getGeneratorOptions().getSeed();
-        final ServerWorld world = server.getOverworld();
-        final DynamicRegistryManager dynamicRegistryManager = world.getRegistryManager();
+        final long seed = server.getWorldData().worldGenOptions().seed();
+        final ServerLevel world = server.overworld();
+        final RegistryAccess dynamicRegistryManager = world.registryAccess();
         final FractalTerrainChunkGenerator chunkGenerator =
-                (FractalTerrainChunkGenerator) world.getChunkManager().getChunkGenerator();
-        this.noiseConfig = NoiseConfig.create(
+                (FractalTerrainChunkGenerator) world.getChunkSource().getGenerator();
+        this.noiseConfig = RandomState.create(
                 chunkGenerator.getSettings().value(),
-                dynamicRegistryManager.getWrapperOrThrow(RegistryKeys.NOISE_PARAMETERS),
+                dynamicRegistryManager.lookupOrThrow(Registries.NOISE),
                 seed);
         pipeline.updateInstance(seed, worldPath + "/fractal_terrain");
         OctaveSimplexNoiseSampler.init(seed);
         // LOG.info("chunk Generator settings: {}", chunkGenerator.getSettings().value());
-        DynamicRegistryManager registryAccess = server.getRegistryManager();
+        RegistryAccess registryAccess = server.registryAccess();
         surfaceBuilder = new FractalTerrainSurfaceBuilder(
                 this.noiseConfig,
-                Blocks.STONE.getDefaultState(),
+                Blocks.STONE.defaultBlockState(),
                 63,
-                this.noiseConfig.randomDeriver,
+                this.noiseConfig.random,
                 chunkGenerator.getSettings().value().surfaceRule());
 
         LOG.info("fractal terrain instance created");
@@ -119,7 +119,8 @@ public class FractalTerrainInstance {
         return instance.isDone();
     }
 
-    public static NoiseConfig getNoiseConfig() {
+    public static RandomState getNoiseConfig() {
         return getInstance().noiseConfig;
     }
+
 }

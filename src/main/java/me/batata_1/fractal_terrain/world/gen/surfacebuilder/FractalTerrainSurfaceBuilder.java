@@ -5,30 +5,30 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 import java.util.Objects;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.mixin.MaterialRuleContextAccessor;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.registry.Registry;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.util.math.noise.DoublePerlinNoiseSampler;
-import net.minecraft.util.math.random.RandomSplitter;
-import net.minecraft.world.HeightLimitView;
-import net.minecraft.world.Heightmap;
-import net.minecraft.world.biome.Biome;
-import net.minecraft.world.biome.source.BiomeAccess;
-import net.minecraft.world.chunk.Chunk;
-import net.minecraft.world.dimension.DimensionType;
-import net.minecraft.world.gen.HeightContext;
-import net.minecraft.world.gen.chunk.BlockColumn;
-import net.minecraft.world.gen.chunk.ChunkNoiseSampler;
-import net.minecraft.world.gen.noise.NoiseConfig;
-import net.minecraft.world.gen.noise.NoiseParametersKeys;
-import net.minecraft.world.gen.surfacebuilder.MaterialRules;
-import net.minecraft.world.gen.surfacebuilder.SurfaceBuilder;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.core.Registry;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.LevelHeightAccessor;
+import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.BiomeManager;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.BlockColumn;
+import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.dimension.DimensionType;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.levelgen.NoiseChunk;
+import net.minecraft.world.level.levelgen.Noises;
+import net.minecraft.world.level.levelgen.PositionalRandomFactory;
+import net.minecraft.world.level.levelgen.RandomState;
+import net.minecraft.world.level.levelgen.SurfaceRules;
+import net.minecraft.world.level.levelgen.SurfaceSystem;
+import net.minecraft.world.level.levelgen.WorldGenerationContext;
+import net.minecraft.world.level.levelgen.synth.NormalNoise;
 import org.slf4j.Logger;
 
-public class FractalTerrainSurfaceBuilder extends SurfaceBuilder {
+public class FractalTerrainSurfaceBuilder extends SurfaceSystem {
 
     private static final Logger LOG = getLogger(FractalTerrainSurfaceBuilder.class);
 
@@ -43,52 +43,52 @@ public class FractalTerrainSurfaceBuilder extends SurfaceBuilder {
     private static final BlockState SNOW_BLOCK;
 
     static {
-        WHITE_TERRACOTTA = Blocks.WHITE_TERRACOTTA.getDefaultState();
-        ORANGE_TERRACOTTA = Blocks.ORANGE_TERRACOTTA.getDefaultState();
-        TERRACOTTA = Blocks.TERRACOTTA.getDefaultState();
-        YELLOW_TERRACOTTA = Blocks.YELLOW_TERRACOTTA.getDefaultState();
-        BROWN_TERRACOTTA = Blocks.BROWN_TERRACOTTA.getDefaultState();
-        RED_TERRACOTTA = Blocks.RED_TERRACOTTA.getDefaultState();
-        LIGHT_GRAY_TERRACOTTA = Blocks.LIGHT_GRAY_TERRACOTTA.getDefaultState();
-        PACKED_ICE = Blocks.PACKED_ICE.getDefaultState();
-        SNOW_BLOCK = Blocks.SNOW_BLOCK.getDefaultState();
+        WHITE_TERRACOTTA = Blocks.WHITE_TERRACOTTA.defaultBlockState();
+        ORANGE_TERRACOTTA = Blocks.ORANGE_TERRACOTTA.defaultBlockState();
+        TERRACOTTA = Blocks.TERRACOTTA.defaultBlockState();
+        YELLOW_TERRACOTTA = Blocks.YELLOW_TERRACOTTA.defaultBlockState();
+        BROWN_TERRACOTTA = Blocks.BROWN_TERRACOTTA.defaultBlockState();
+        RED_TERRACOTTA = Blocks.RED_TERRACOTTA.defaultBlockState();
+        LIGHT_GRAY_TERRACOTTA = Blocks.LIGHT_GRAY_TERRACOTTA.defaultBlockState();
+        PACKED_ICE = Blocks.PACKED_ICE.defaultBlockState();
+        SNOW_BLOCK = Blocks.SNOW_BLOCK.defaultBlockState();
     }
 
     private final BlockState defaultState;
     private final int seaLevel;
     //  private final BlockState[] terracottaBands;
-    private final DoublePerlinNoiseSampler terracottaBandsOffsetNoise;
-    private final DoublePerlinNoiseSampler badlandsPillarNoise;
-    private final DoublePerlinNoiseSampler badlandsPillarRoofNoise;
-    private final DoublePerlinNoiseSampler badlandsSurfaceNoise;
-    private final DoublePerlinNoiseSampler icebergPillarNoise;
-    private final DoublePerlinNoiseSampler icebergPillarRoofNoise;
-    private final DoublePerlinNoiseSampler icebergSurfaceNoise;
-    private final RandomSplitter randomDeriver;
-    private final DoublePerlinNoiseSampler surfaceNoise;
-    private final DoublePerlinNoiseSampler surfaceSecondaryNoise;
-    private final MaterialRules.MaterialRule surfaceRules;
+    private final NormalNoise terracottaBandsOffsetNoise;
+    private final NormalNoise badlandsPillarNoise;
+    private final NormalNoise badlandsPillarRoofNoise;
+    private final NormalNoise badlandsSurfaceNoise;
+    private final NormalNoise icebergPillarNoise;
+    private final NormalNoise icebergPillarRoofNoise;
+    private final NormalNoise icebergSurfaceNoise;
+    private final PositionalRandomFactory randomDeriver;
+    private final NormalNoise surfaceNoise;
+    private final NormalNoise surfaceSecondaryNoise;
+    private final SurfaceRules.RuleSource surfaceRules;
 
     public FractalTerrainSurfaceBuilder(
-            NoiseConfig noiseConfig,
+            RandomState noiseConfig,
             BlockState defaultState,
             int seaLevel,
-            RandomSplitter randomDeriver,
-            MaterialRules.MaterialRule surfaceRules) {
+            PositionalRandomFactory randomDeriver,
+            SurfaceRules.RuleSource surfaceRules) {
         super(noiseConfig, defaultState, seaLevel, randomDeriver);
         this.defaultState = defaultState;
         this.seaLevel = seaLevel;
         this.randomDeriver = randomDeriver;
-        this.terracottaBandsOffsetNoise = noiseConfig.getOrCreateSampler(NoiseParametersKeys.CLAY_BANDS_OFFSET);
+        this.terracottaBandsOffsetNoise = noiseConfig.getOrCreateNoise(Noises.CLAY_BANDS_OFFSET);
         //   this.terracottaBands = createTerracottaBands(randomDeriver.split(new Identifier("clay_bands")));
-        this.surfaceNoise = noiseConfig.getOrCreateSampler(NoiseParametersKeys.SURFACE);
-        this.surfaceSecondaryNoise = noiseConfig.getOrCreateSampler(NoiseParametersKeys.SURFACE_SECONDARY);
-        this.badlandsPillarNoise = noiseConfig.getOrCreateSampler(NoiseParametersKeys.BADLANDS_PILLAR);
-        this.badlandsPillarRoofNoise = noiseConfig.getOrCreateSampler(NoiseParametersKeys.BADLANDS_PILLAR_ROOF);
-        this.badlandsSurfaceNoise = noiseConfig.getOrCreateSampler(NoiseParametersKeys.BADLANDS_SURFACE);
-        this.icebergPillarNoise = noiseConfig.getOrCreateSampler(NoiseParametersKeys.ICEBERG_PILLAR);
-        this.icebergPillarRoofNoise = noiseConfig.getOrCreateSampler(NoiseParametersKeys.ICEBERG_PILLAR_ROOF);
-        this.icebergSurfaceNoise = noiseConfig.getOrCreateSampler(NoiseParametersKeys.ICEBERG_SURFACE);
+        this.surfaceNoise = noiseConfig.getOrCreateNoise(Noises.SURFACE);
+        this.surfaceSecondaryNoise = noiseConfig.getOrCreateNoise(Noises.SURFACE_SECONDARY);
+        this.badlandsPillarNoise = noiseConfig.getOrCreateNoise(Noises.BADLANDS_PILLAR);
+        this.badlandsPillarRoofNoise = noiseConfig.getOrCreateNoise(Noises.BADLANDS_PILLAR_ROOF);
+        this.badlandsSurfaceNoise = noiseConfig.getOrCreateNoise(Noises.BADLANDS_SURFACE);
+        this.icebergPillarNoise = noiseConfig.getOrCreateNoise(Noises.ICEBERG_PILLAR);
+        this.icebergPillarRoofNoise = noiseConfig.getOrCreateNoise(Noises.ICEBERG_PILLAR_ROOF);
+        this.icebergSurfaceNoise = noiseConfig.getOrCreateNoise(Noises.ICEBERG_SURFACE);
         // LOG.info("surface rules: {}" , surfaceRules);
         this.surfaceRules = surfaceRules;
     }
@@ -104,8 +104,8 @@ public class FractalTerrainSurfaceBuilder extends SurfaceBuilder {
         return 0;
     }
 
-    static final BlockState GRASS_BLOCK = Blocks.GRASS_BLOCK.getDefaultState();
-    static final BlockState DIRT = Blocks.DIRT.getDefaultState();
+    static final BlockState GRASS_BLOCK = Blocks.GRASS_BLOCK.defaultBlockState();
+    static final BlockState DIRT = Blocks.DIRT.defaultBlockState();
 
     private BlockState sedimentStrata(int x, int z, int distFromSurface, int surfaceHeight) {
         if (distFromSurface == surfaceHeight) return GRASS_BLOCK;
@@ -113,7 +113,7 @@ public class FractalTerrainSurfaceBuilder extends SurfaceBuilder {
     }
 
     private void buildSurface(
-            final int x, final int z, final Chunk chunk, final int dx, final int dz, final int[] reliefBaseHeight) {
+            final int x, final int z, final ChunkAccess chunk, final int dx, final int dz, final int[] reliefBaseHeight) {
         final int surfaceHeight = reliefBaseHeight[((dx << 4) + dz)];
         final int sedimentLayerDepth = sedimentDepth(x, z, 10, -1, 4);
         for (int i = 0; i <= sedimentLayerDepth; i++) {
@@ -129,20 +129,20 @@ public class FractalTerrainSurfaceBuilder extends SurfaceBuilder {
     }
 
     private static final BlockState[] terrainGradient = {
-        Blocks.OBSIDIAN.getDefaultState(),
-        Blocks.BLACKSTONE.getDefaultState(),
-        Blocks.POLISHED_BLACKSTONE.getDefaultState(),
-        Blocks.SMOOTH_BASALT.getDefaultState(),
-        Blocks.COBBLED_DEEPSLATE.getDefaultState(),
-        Blocks.CYAN_TERRACOTTA.getDefaultState(),
-        Blocks.DEEPSLATE.getDefaultState(),
-        Blocks.TUFF.getDefaultState(),
-        Blocks.COBBLESTONE.getDefaultState(),
-        Blocks.STONE.getDefaultState(),
-        Blocks.ANDESITE.getDefaultState(),
-        Blocks.DIORITE.getDefaultState(),
-        Blocks.CALCITE.getDefaultState(),
-        Blocks.SNOW_BLOCK.getDefaultState()
+        Blocks.OBSIDIAN.defaultBlockState(),
+        Blocks.BLACKSTONE.defaultBlockState(),
+        Blocks.POLISHED_BLACKSTONE.defaultBlockState(),
+        Blocks.SMOOTH_BASALT.defaultBlockState(),
+        Blocks.COBBLED_DEEPSLATE.defaultBlockState(),
+        Blocks.CYAN_TERRACOTTA.defaultBlockState(),
+        Blocks.DEEPSLATE.defaultBlockState(),
+        Blocks.TUFF.defaultBlockState(),
+        Blocks.COBBLESTONE.defaultBlockState(),
+        Blocks.STONE.defaultBlockState(),
+        Blocks.ANDESITE.defaultBlockState(),
+        Blocks.DIORITE.defaultBlockState(),
+        Blocks.CALCITE.defaultBlockState(),
+        Blocks.SNOW_BLOCK.defaultBlockState()
     };
 
     public BlockState applyTerrainGradient(final int x, final int z) {
@@ -154,12 +154,12 @@ public class FractalTerrainSurfaceBuilder extends SurfaceBuilder {
     }
 
     public void buildSurface(
-            NoiseConfig noiseConfig,
-            BiomeAccess biomeAccess,
+            RandomState noiseConfig,
+            BiomeManager biomeAccess,
             Registry<Biome> biomeRegistry,
-            HeightContext heightContext,
-            final Chunk chunk,
-            ChunkNoiseSampler chunkNoiseSampler) {
+            WorldGenerationContext heightContext,
+            final ChunkAccess chunk,
+            NoiseChunk chunkNoiseSampler) {
         //        LOG.info("ta rodando isso?");
         this.buildSurface(
                 noiseConfig, biomeAccess, biomeRegistry, false, heightContext, chunk, chunkNoiseSampler, surfaceRules);
@@ -174,29 +174,29 @@ public class FractalTerrainSurfaceBuilder extends SurfaceBuilder {
 
     public static class SurfaceBuilderBlockCollum implements BlockColumn {
 
-        private final Chunk chunk;
-        private final BlockPos.Mutable mutable;
+        private final ChunkAccess chunk;
+        private final BlockPos.MutableBlockPos mutable;
         private final ChunkPos chunkPos;
 
-        public SurfaceBuilderBlockCollum(Chunk chunk, BlockPos.Mutable mutable, ChunkPos chunkPos) {
+        public SurfaceBuilderBlockCollum(ChunkAccess chunk, BlockPos.MutableBlockPos mutable, ChunkPos chunkPos) {
             this.chunk = chunk;
             this.mutable = mutable;
             this.chunkPos = chunkPos;
         }
 
         @Override
-        public void setState(int y, BlockState state) {
-            HeightLimitView heightLimitView = chunk.getHeightLimitView();
-            if (y >= heightLimitView.getBottomY() && y < heightLimitView.getTopY()) {
+        public void setBlock(int y, BlockState state) {
+            LevelHeightAccessor heightLimitView = chunk.getHeightAccessorForGeneration();
+            if (y >= heightLimitView.getMinBuildHeight() && y < heightLimitView.getMaxBuildHeight()) {
                 chunk.setBlockState(mutable.setY(y), state, false);
                 if (!state.getFluidState().isEmpty()) {
-                    chunk.markBlockForPostProcessing(mutable);
+                    chunk.markPosForPostprocessing(mutable);
                 }
             }
         }
 
         @Override
-        public BlockState getState(int y) {
+        public BlockState getBlock(int y) {
             return chunk.getBlockState(mutable.setY(y));
         }
 
@@ -206,25 +206,25 @@ public class FractalTerrainSurfaceBuilder extends SurfaceBuilder {
     }
 
     public void buildSurface(
-            NoiseConfig noiseConfig,
-            BiomeAccess biomeAccess,
+            RandomState noiseConfig,
+            BiomeManager biomeAccess,
             Registry<Biome> biomeRegistry,
             boolean useLegacyRandom,
-            HeightContext heightContext,
-            final Chunk chunk,
-            ChunkNoiseSampler chunkNoiseSampler,
-            MaterialRules.MaterialRule materialRule) {
-        final BlockPos.Mutable mutable = new BlockPos.Mutable();
+            WorldGenerationContext heightContext,
+            final ChunkAccess chunk,
+            NoiseChunk chunkNoiseSampler,
+            SurfaceRules.RuleSource materialRule) {
+        final BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
         final ChunkPos chunkPos = chunk.getPos();
-        int startX = chunkPos.getStartX();
-        int startZ = chunkPos.getStartZ();
+        int startX = chunkPos.getMinBlockX();
+        int startZ = chunkPos.getMinBlockZ();
         BlockColumn blockColumn = new SurfaceBuilderBlockCollum(chunk, mutable, chunkPos);
         Objects.requireNonNull(biomeAccess);
-        MaterialRules.MaterialRuleContext materialRuleContext = MaterialRuleContextAccessor.createMaterialRuleContext(
+        SurfaceRules.Context materialRuleContext = MaterialRuleContextAccessor.createMaterialRuleContext(
                 this, noiseConfig, chunk, chunkNoiseSampler, biomeAccess::getBiome, biomeRegistry, heightContext);
-        MaterialRules.BlockStateRule blockStateRule =
-                (MaterialRules.BlockStateRule) materialRule.apply(materialRuleContext);
-        BlockPos.Mutable mutable2 = new BlockPos.Mutable();
+        SurfaceRules.SurfaceRule blockStateRule =
+                (SurfaceRules.SurfaceRule) materialRule.apply(materialRuleContext);
+        BlockPos.MutableBlockPos mutable2 = new BlockPos.MutableBlockPos();
 
         // Debug.debugMixin(materialRuleContext);
 
@@ -232,20 +232,20 @@ public class FractalTerrainSurfaceBuilder extends SurfaceBuilder {
             for (int dz = 0; dz < 16; ++dz) {
                 final int x = startX + dx;
                 final int z = startZ + dz;
-                final int surface_height = chunk.sampleHeightmap(Heightmap.Type.WORLD_SURFACE_WG, dx, dz) + 1;
+                final int surface_height = chunk.getHeight(Heightmap.Types.WORLD_SURFACE_WG, dx, dz) + 1;
                 mutable.setX(x).setZ(z);
-                RegistryEntry<Biome> registryEntry = biomeAccess.getBiome(mutable2.set(x, 0, z));
+                Holder<Biome> registryEntry = biomeAccess.getBiome(mutable2.set(x, 0, z));
                 //                if (registryEntry.matchesKey(BiomeKeys.ERODED_BADLANDS)) {
                 //                    this.placeBadlandsPillar(blockColumn, xx, n, o, chunk);
                 //                }
-                materialRuleContext.initHorizontalContext(x, z);
+                materialRuleContext.updateXZ(x, z);
                 int stoneDepthAbove = 0;
                 int fluid_height = Integer.MIN_VALUE;
                 int s = Integer.MAX_VALUE;
-                int bottomY = chunk.getBottomY();
+                int bottomY = chunk.getMinBuildHeight();
 
                 for (int y = surface_height; y >= bottomY; --y) {
-                    BlockState blockState = blockColumn.getState(y);
+                    BlockState blockState = blockColumn.getBlock(y);
                     if (blockState.isAir()) {
                         stoneDepthAbove = 0;
                         fluid_height = Integer.MIN_VALUE;
@@ -255,11 +255,11 @@ public class FractalTerrainSurfaceBuilder extends SurfaceBuilder {
                         }
                     } else {
                         if (s >= y) {
-                            s = DimensionType.field_35479;
+                            s = DimensionType.WAY_BELOW_MIN_Y;
 
                             for (int v = y - 1; v >= bottomY - 1; --v) {
-                                BlockState blockState2 = blockColumn.getState(v);
-                                if (!this.isDefaultBlock(blockState2)) {
+                                BlockState blockState2 = blockColumn.getBlock(v);
+                                if (!this.isStone(blockState2)) {
                                     s = v + 1;
                                     break;
                                 }
@@ -268,12 +268,12 @@ public class FractalTerrainSurfaceBuilder extends SurfaceBuilder {
 
                         ++stoneDepthAbove;
                         final int stoneDepthBellow = y - s + 1;
-                        materialRuleContext.initVerticalContext(
+                        materialRuleContext.updateY(
                                 stoneDepthAbove, stoneDepthBellow, fluid_height, x, y, z);
                         if (blockState == this.defaultState) {
                             BlockState blockState2 = blockStateRule.tryApply(x, y, z);
                             if (blockState2 != null) {
-                                blockColumn.setState(y, blockState2);
+                                blockColumn.setBlock(y, blockState2);
                             }
                         }
                     }
@@ -290,19 +290,19 @@ public class FractalTerrainSurfaceBuilder extends SurfaceBuilder {
         }
     }
 
-    protected int sampleRunDepth(int blockX, int blockZ) {
-        double d = this.surfaceNoise.sample(blockX, 0.0F, blockZ);
+    protected int getSurfaceDepth(int blockX, int blockZ) {
+        double d = this.surfaceNoise.getValue(blockX, 0.0F, blockZ);
         return (int) (d * (double) 2.75F
                 + (double) 3.0F
-                + this.randomDeriver.split(blockX, 0, blockZ).nextDouble() * (double) 0.25F);
+                + this.randomDeriver.at(blockX, 0, blockZ).nextDouble() * (double) 0.25F);
     }
 
-    protected double sampleSecondaryDepth(int blockX, int blockZ) {
-        return this.surfaceSecondaryNoise.sample((double) blockX, (double) 0.0F, (double) blockZ);
+    protected double getSurfaceSecondary(int blockX, int blockZ) {
+        return this.surfaceSecondaryNoise.getValue((double) blockX, (double) 0.0F, (double) blockZ);
     }
 
     // nem ar nem agua / lava
-    private boolean isDefaultBlock(BlockState state) {
+    private boolean isStone(BlockState state) {
         return !state.isAir() && state.getFluidState().isEmpty();
     }
 }
