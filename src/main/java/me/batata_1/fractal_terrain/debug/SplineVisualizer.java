@@ -39,7 +39,10 @@ public class SplineVisualizer {
         double[] boxLen = VectorOps.sub(maxVec, minVec);
         boxLen[0] = Math.min(boxLen[0] / resolution, 4096);
         boxLen[1] = Math.min(boxLen[1] / resolution, 4096);
-        long[] WH = Arrays.stream(boxLen).mapToLong(Math::round).toArray();
+        // Clamp to >= 1: a straight (axis-aligned) spline has zero extent on one axis, which would
+        // otherwise make BufferedImage throw "w and h must be > 0".
+        long[] WH =
+                Arrays.stream(boxLen).mapToLong(v -> Math.max(Math.round(v), 1)).toArray();
         DEBUG_LOGGER.info("spline size:{} from {} -> to {} bounding boxlen = {}", spline.getSize(), minVec, maxVec, WH);
         double[] grid = new double[(int) (WH[0] * WH[1])];
 

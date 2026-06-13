@@ -9,6 +9,7 @@ import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
+import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 import me.batata_1.fractal_terrain.ml.models.ModelAssetManager;
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import org.jetbrains.annotations.TestOnly;
@@ -70,6 +71,21 @@ public class GlobalRiverTest {
                 paddedSide,
                 paddedSide,
                 prefix + "10_final_tree");
+
+        // Per-spline visualizations: confirm valley contours look like region borders and the
+        // ridge/field splines are well-formed.
+//        seeSplines(stages.ridgeSplines, prefix + "ridge_spline_");
+//        seeSplines(stages.valleySplines, prefix + "valley_spline_");
+//        seeSplines(stages.fieldSplines, prefix + "field_spline_");
+    }
+
+    /** Render each spline to its own PNG via {@link Debug#spline} (auto-bounds, frame-agnostic). */
+    private static void seeSplines(List<QuinticHermiteSpline> splines, String prefix) {
+        Debug.spline.debugPath = DEBUG_PATH;
+        int n = 0;
+        for (QuinticHermiteSpline spline : splines) {
+            Debug.spline.see(spline, prefix + (n++));
+        }
     }
 
     private static void seeFloat(float[] data, int width, int height, String name) {

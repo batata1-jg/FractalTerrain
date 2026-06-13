@@ -5,13 +5,14 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+
+import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.RiverProvider;
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import me.batata_1.fractal_terrain.ml.pipeline.WorldPipeline;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
 import me.batata_1.fractal_terrain.relief.ReliefProvider;
 import me.batata_1.fractal_terrain.world.biome.BiomeProvider;
-import me.batata_1.fractal_terrain.world.features.VegetationController;
 import me.batata_1.fractal_terrain.world.gen.chunk.FractalTerrainChunkGenerator;
 import me.batata_1.fractal_terrain.world.gen.surfacebuilder.FractalTerrainSurfaceBuilder;
 import net.minecraft.core.RegistryAccess;
@@ -41,7 +42,7 @@ public class FractalTerrainInstance {
     private final MinecraftServer curServer;
     private final ReliefProvider reliefSource;
     private final BiomeProvider biomeProvider;
-    private final RiverProvider riverProvider;
+    private final GlobalRiverProvider globalRiverProvider;
     private final FractalTerrainSurfaceBuilder surfaceBuilder;
     private final RandomState noiseConfig;
 
@@ -50,16 +51,14 @@ public class FractalTerrainInstance {
         final Path worldPath = server.getWorldPath(LevelResource.ROOT).normalize();
         this.reliefSource = new ReliefProvider(worldPath + "/fractal_terrain");
         this.biomeProvider = new BiomeProvider(worldPath + "/fractal_terrain");
-        this.riverProvider = new RiverProvider();
+        this.globalRiverProvider = new GlobalRiverProvider( null);
         final long seed = server.getWorldData().worldGenOptions().seed();
         final ServerLevel world = server.overworld();
         final RegistryAccess dynamicRegistryManager = world.registryAccess();
         final FractalTerrainChunkGenerator chunkGenerator =
                 (FractalTerrainChunkGenerator) world.getChunkSource().getGenerator();
         this.noiseConfig = RandomState.create(
-                chunkGenerator.getSettings().value(),
-                dynamicRegistryManager.lookupOrThrow(Registries.NOISE),
-                seed);
+                chunkGenerator.getSettings().value(), dynamicRegistryManager.lookupOrThrow(Registries.NOISE), seed);
         pipeline.updateInstance(seed, worldPath + "/fractal_terrain");
         OctaveSimplexNoiseSampler.init(seed);
         // LOG.info("chunk Generator settings: {}", chunkGenerator.getSettings().value());
@@ -86,7 +85,7 @@ public class FractalTerrainInstance {
         if (!exists()) return;
         getInstance().biomeProvider.getInfiniteTensor().clear();
         getInstance().reliefSource.getInfiniteTensor().clear();
-        //   getInstance().reliefSource.getDoG().getInfiniteTensor().clear();
+        getInstance().globalRiverProvider.getInfiniteQuadTree().clear();
         instance = new CompletableFuture<>();
         LOG.info("fractal terrain instance closed");
     }
@@ -123,4 +122,7 @@ public class FractalTerrainInstance {
         return getInstance().noiseConfig;
     }
 
+    public static GlobalRiverProvider getGlobalRiverProvider() {
+        return getInstance().globalRiverProvider;
+    }
 }

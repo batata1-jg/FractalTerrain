@@ -1,8 +1,5 @@
 package me.batata_1.fractal_terrain.world.biome;
 
-import me.batata_1.fractal_terrain.FractalTerrainConfig;
-import me.batata_1.fractal_terrain.debug.Debug;
-import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.math.spline.Spline;
 import me.batata_1.fractal_terrain.noise.FastNoiseLite;
 
@@ -36,10 +33,13 @@ public class ClimateVariableTransform {
         return fnl;
     }
 
-
     // 0->no erosion 1->high erosion
-    private static final Spline erosionSpline = new Spline(new float[]{0,1},new float[]{-0.9f,0.775f},new float[]{0,0});
-    private static final Spline temperatureSpline = new Spline(new float[]{-20,0,8.5f,16,23,32},new float[]{-0.8f,-0.45f,-0.3f,0.025f,0.375f,0.775f},new float[]{0,0,0,0,0,0});
+    private static final Spline erosionSpline =
+            new Spline(new float[] {0, 1}, new float[] {-0.9f, 0.775f}, new float[] {0, 0});
+    private static final Spline temperatureSpline = new Spline(
+            new float[] {-20, 0, 8.5f, 16, 23, 32},
+            new float[] {-0.8f, -0.45f, -0.3f, 0.025f, 0.375f, 0.775f},
+            new float[] {0, 0, 0, 0, 0, 0});
     // continentalness erosion temperature vegetation weirdness<-(PV)
     public static float[] transform(
             int x0, int z0, float[] elev, float[] grad, float[] lowFreqGrad, float[] climate, float[] res) {
@@ -57,7 +57,8 @@ public class ClimateVariableTransform {
         float[] continentNoise = new float[1 << 18];
         float[] weirdnessNoise = new float[1 << 18];
 
-     //   Debug.tensor.see(new FloatTensor(climate,new int[]{4,512,512}),2,"precip", FractalTerrainConfig.DEFAULT_DEBUG_PATH);
+        //   Debug.tensor.see(new FloatTensor(climate,new int[]{4,512,512}),2,"precip",
+        // FractalTerrainConfig.DEFAULT_DEBUG_PATH);
 
         for (int r = 0; r < (1 << 9); r++) {
             for (int c = 0; c < (1 << 9); c++) {
@@ -161,13 +162,13 @@ public class ClimateVariableTransform {
                 float rescaledElev = elevVal / 2000f;
 
                 if (elevVal < 0) {
-                    rescaledElev = elevVal/89.4f;
+                    rescaledElev = elevVal / 89.4f;
                     continentalness = Math.clamp(rescaledElev, -1.04F, -0.11F) + continentNoise[idx];
-                   // if(rescaledElev<)
+                    // if(rescaledElev<)
                 } else {
                     float tStdCont;
                     float hStdCont;
-                    float eCont = Math.max(rescaledElev, 0) -0.2f;
+                    float eCont = Math.max(rescaledElev, 0) - 0.2f;
                     if (tStd < 3) tStdCont = -0.15F;
                     else if (tStd < 5) tStdCont = -0.04F;
                     else if (tStd < 10) tStdCont = 0.165F;
@@ -183,24 +184,27 @@ public class ClimateVariableTransform {
                 float slopeLowFreq = lowFreqGrad[idx];
                 float normPrecip = precip / 2000F;
                 double gradCompression = -1;
-                float gradInfluence = Math.clamp(Math.abs(rescaledElev),0,1);
-                float resMag = Math.abs(residual/15f);
-                float lowE = (float) Math.pow(Math.abs(slopeLowFreq)+1,gradCompression);
-                float slopeE = (float) Math.pow(Math.abs(slope)+1,gradCompression);
-                float resE = (float) Math.pow(Math.abs(residual*2f)+1,gradCompression);
+                float gradInfluence = Math.clamp(Math.abs(rescaledElev), 0, 1);
+                float resMag = Math.abs(residual / 15f);
+                float lowE = (float) Math.pow(Math.abs(slopeLowFreq) + 1, gradCompression);
+                float slopeE = (float) Math.pow(Math.abs(slope) + 1, gradCompression);
+                float resE = (float) Math.pow(Math.abs(residual * 2f) + 1, gradCompression);
                 lowE = erosionSpline.sample(lowE);
                 slopeE = erosionSpline.sample(slopeE);
                 float resENorm = erosionSpline.sample(resE);
                 float eE = -Math.max(rescaledElev, 0);
-                float veryFlatFactor = (slopeLowFreq>10||resMag>0.4) ? 0 : Math.clamp(normPrecip+0.2f,0,1)*resE;
-                float heightFactor = (elevVal<475) ? 0 : (0.2f-rescaledElev)*(1 + 2*Math.min(resMag,1));
+                float veryFlatFactor =
+                        (slopeLowFreq > 10 || resMag > 0.4) ? 0 : Math.clamp(normPrecip + 0.2f, 0, 1) * resE;
+                float heightFactor = (elevVal < 475) ? 0 : (0.2f - rescaledElev) * (1 + 2 * Math.min(resMag, 1));
 
-                erosion = gradInfluence*(0.5f*lowE + 0.3f*resENorm + 0.2f*slopeE + heightFactor) + (1-gradInfluence)*eE + veryFlatFactor;
+                erosion = gradInfluence * (0.5f * lowE + 0.3f * resENorm + 0.2f * slopeE + heightFactor)
+                        + (1 - gradInfluence) * eE
+                        + veryFlatFactor;
 
                 float tT = 0;
                 float tStdT = (tStd / 20F) * 0.1F;
                 if (cool || cold || frozen) tStdT = -tStdT;
-                if (hot&&precip<1000) {
+                if (hot && precip < 1000) {
                     tT = 0.775F;
                 } else {
                     // if it is very humid, then jungle
@@ -211,12 +215,12 @@ public class ClimateVariableTransform {
                 if (cool) tT = -0.3F;
                 if (cold) tT = -0.45F;
                 if (frozen) tT = -0.8F;
-                float elevationFactor = 0.03f*0.0325f*Math.max(0,elevVal);
+                float elevationFactor = 0.03f * 0.0325f * Math.max(0, elevVal);
                 float normTemp = temperatureSpline.sample(temp);
 
-                temperature = 0.5f*tT + 0.5f*normTemp - elevationFactor + tStdT + (tempNoise[idx] / 0.6F) * 0.02F;
+                temperature = 0.5f * tT + 0.5f * normTemp - elevationFactor + tStdT + (tempNoise[idx] / 0.6F) * 0.02F;
 
-                float precipV = 0.65f*normPrecip - 0.675f*(1.0f - normPrecip);
+                float precipV = 0.65f * normPrecip - 0.675f * (1.0f - normPrecip);
                 float treeV = 0;
                 if (barren) treeV = -0.675F;
                 if (treesSparse) treeV = -0.225F;
@@ -224,12 +228,11 @@ public class ClimateVariableTransform {
                     treeV = 2.5F * effTreeMoisture - 1.25F;
                 }
 
-
-                //add temperature penalty (less extreme temerature -> more humid)
+                // add temperature penalty (less extreme temerature -> more humid)
                 float temperatureGain = 0;
-                if(!frozen&&!hot) temperatureGain = 0.07f;
-                vegetation = 0.3F * precipV + 0.7F * treeV + temperatureGain + Math.clamp(0.6f-tStd,0,0.45f);
-                float resW = 0.333f*(1 + Math.clamp(residual / 8F, -1, 1));
+                if (!frozen && !hot) temperatureGain = 0.07f;
+                vegetation = 0.3F * precipV + 0.7F * treeV + temperatureGain + Math.clamp(0.6f - tStd, 0, 0.45f);
+                float resW = 0.333f * (1 + Math.clamp(residual / 8F, -1, 1));
                 float wNoise = Math.signum(weirdnessNoise[idx]);
                 weirdness = resW * wNoise;
 
@@ -252,9 +255,7 @@ public class ClimateVariableTransform {
             float x = (5f - temp) / amplitude;
             if (x <= -1f) growingSeason = 365f;
             else if (x >= 1f) growingSeason = 0f;
-            else
-                growingSeason =
-                        365f * (0.5f - (float) Math.asin(Math.clamp(x, -1f, 1f)) / (float) Math.PI);
+            else growingSeason = 365f * (0.5f - (float) Math.asin(Math.clamp(x, -1f, 1f)) / (float) Math.PI);
         }
         return growingSeason;
     }

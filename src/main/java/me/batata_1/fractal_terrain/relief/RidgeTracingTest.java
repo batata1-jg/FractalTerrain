@@ -12,7 +12,7 @@ import java.util.Set;
 import javax.imageio.ImageIO;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.debug.Debug;
-import me.batata_1.fractal_terrain.hydrology.Skeletonizer;
+import me.batata_1.fractal_terrain.math.Skeletonizer;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.math.DifferenceOfGaussians;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;

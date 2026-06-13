@@ -1,4 +1,4 @@
-package me.batata_1.fractal_terrain.hydrology;
+package me.batata_1.fractal_terrain.math;
 
 import java.util.ArrayList;
 import java.util.List;

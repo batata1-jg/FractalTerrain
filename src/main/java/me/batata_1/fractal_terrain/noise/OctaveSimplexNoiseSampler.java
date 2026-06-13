@@ -53,7 +53,8 @@ public class OctaveSimplexNoiseSampler extends NoiseSampler {
     public float sample(Number x, Number z) {
         double resp = 0;
         for (int i = 0; i < numOctaves; i++) {
-            resp += sampler.getValue(x.doubleValue() / periods[i] + i, z.doubleValue() / periods[i] + i) * amplitudes[i];
+            resp += sampler.getValue(x.doubleValue() / periods[i] + i, z.doubleValue() / periods[i] + i)
+                    * amplitudes[i];
         }
         return (float) (resp / norm);
     }

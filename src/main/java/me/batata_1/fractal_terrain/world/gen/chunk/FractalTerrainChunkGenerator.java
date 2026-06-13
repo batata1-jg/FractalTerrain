@@ -4,16 +4,14 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Suppliers;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-
+import it.unimi.dsi.fastutil.ints.IntArraySet;
+import it.unimi.dsi.fastutil.ints.IntSet;
+import it.unimi.dsi.fastutil.objects.ObjectArraySet;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
-
-import it.unimi.dsi.fastutil.ints.IntArraySet;
-import it.unimi.dsi.fastutil.ints.IntSet;
-import it.unimi.dsi.fastutil.objects.ObjectArraySet;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.math.spline.Spline;
@@ -152,6 +150,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
                         state = WATER;
                     } else {
                         state = populateNoiseStep.fillRocks(xx, y, zz);
+                        state = populateNoiseStep.placeRiver(state,xx,reliefHeight-y,zz);
                     }
 
                     chunk.setBlockState(mutable, state, false);
@@ -176,18 +175,22 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
             GenerationStep.@NotNull Carving carverStep) {}
 
     @Override
-    public void buildSurface(@NotNull WorldGenRegion region, @NotNull StructureManager structures, @NotNull RandomState noiseConfig, ChunkAccess chunk) {
-//        if (!SharedConstants.debugVoidTerrain(chunk.getPos())) {
-//            WorldGenerationContext heightContext = new WorldGenerationContext(this, region);
-//            this.buildSurface(
-//                    chunk,
-//                    heightContext,
-//                    noiseConfig,
-//                    structures,
-//                    region.getBiomeManager(),
-//                    region.registryAccess().registryOrThrow(Registries.BIOME),
-//                    Blender.of(region));
-//        }
+    public void buildSurface(
+            @NotNull WorldGenRegion region,
+            @NotNull StructureManager structures,
+            @NotNull RandomState noiseConfig,
+            ChunkAccess chunk) {
+        //        if (!SharedConstants.debugVoidTerrain(chunk.getPos())) {
+        //            WorldGenerationContext heightContext = new WorldGenerationContext(this, region);
+        //            this.buildSurface(
+        //                    chunk,
+        //                    heightContext,
+        //                    noiseConfig,
+        //                    structures,
+        //                    region.getBiomeManager(),
+        //                    region.registryAccess().registryOrThrow(Registries.BIOME),
+        //                    Blender.of(region));
+        //        }
     }
 
     @VisibleForTesting
@@ -199,9 +202,8 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
             BiomeManager biomeAccess,
             Registry<Biome> biomeRegistry,
             Blender blender) {
-        NoiseChunk chunkNoiseSampler =
-                chunk.getOrCreateNoiseChunk((chunkx) -> this.createChunkNoiseSampler(
-                        chunkx, structureAccessor, blender, FractalTerrainInstance.getNoiseConfig()));
+        NoiseChunk chunkNoiseSampler = chunk.getOrCreateNoiseChunk((chunkx) -> this.createChunkNoiseSampler(
+                chunkx, structureAccessor, blender, FractalTerrainInstance.getNoiseConfig()));
         if (chunk.getPos().z == 0 && chunk.getPos().x == 0) {
             LOG.info(" chunkNoise sampler of 0 ,0 : {}", chunkNoiseSampler);
             LOG.info(" chunkNoise sampler estiate H : {}", chunkNoiseSampler.preliminarySurfaceLevel(0, 0));
@@ -222,52 +224,67 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
     }
 
     @Override
-    public void applyBiomeDecoration(@NotNull WorldGenLevel worldGenLevel, @NotNull ChunkAccess chunkAccess, @NotNull StructureManager structureManager) {
-        if(true) return;
+    public void applyBiomeDecoration(
+            @NotNull WorldGenLevel worldGenLevel,
+            @NotNull ChunkAccess chunkAccess,
+            @NotNull StructureManager structureManager) {
+        if (true) return;
         ChunkPos chunkPos = chunkAccess.getPos();
-      //  if(chunkPos.x!=(-499>>4)||chunkPos.z!=(428>>4)) return;
+        //  if(chunkPos.x!=(-499>>4)||chunkPos.z!=(428>>4)) return;
 
         SectionPos sectionPos = SectionPos.of(chunkPos, worldGenLevel.getMinSection());
         BlockPos blockPos = sectionPos.origin();
         Registry<Structure> structureRegistry = worldGenLevel.registryAccess().registryOrThrow(Registries.STRUCTURE);
-        Map<Integer,List<Structure>> indexedCollectedStructures = structureRegistry.stream().collect(Collectors.groupingBy((structurex) -> structurex.step().ordinal()));
+        Map<Integer, List<Structure>> indexedCollectedStructures = structureRegistry.stream()
+                .collect(Collectors.groupingBy((structurex) -> structurex.step().ordinal()));
         List<FeatureSorter.StepFeatureData> featuresSteps = this.featuresPerStep.get();
-        WorldgenRandom worldgenRandom = new WorldgenRandom(new XoroshiroRandomSource(RandomSupport.generateUniqueSeed()));
-        long decorationSeed = worldgenRandom.setDecorationSeed(worldGenLevel.getSeed(), blockPos.getX(), blockPos.getZ());
+        WorldgenRandom worldgenRandom =
+                new WorldgenRandom(new XoroshiroRandomSource(RandomSupport.generateUniqueSeed()));
+        long decorationSeed =
+                worldgenRandom.setDecorationSeed(worldGenLevel.getSeed(), blockPos.getX(), blockPos.getZ());
         Set<Holder<Biome>> set = new ObjectArraySet<>();
         ChunkPos.rangeClosed(sectionPos.chunk(), 1).forEach((chunkPosx) -> {
             ChunkAccess chunkAccessFromPos = worldGenLevel.getChunk(chunkPosx.x, chunkPosx.z);
 
-            for(LevelChunkSection levelChunkSection : chunkAccessFromPos.getSections()) {
+            for (LevelChunkSection levelChunkSection : chunkAccessFromPos.getSections()) {
                 PalettedContainerRO<Holder<Biome>> biomeContainer = levelChunkSection.getBiomes();
                 Objects.requireNonNull(set);
                 biomeContainer.getAll(set::add);
             }
-
         });
         set.retainAll(this.biomeSource.possibleBiomes());
         int numFeatureSteps = featuresSteps.size();
 
         try {
-            Registry<PlacedFeature> placedFeatureRegistry = worldGenLevel.registryAccess().registryOrThrow(Registries.PLACED_FEATURE);
+            Registry<PlacedFeature> placedFeatureRegistry =
+                    worldGenLevel.registryAccess().registryOrThrow(Registries.PLACED_FEATURE);
             int clampedNumFeatureSteps = Math.max(GenerationStep.Decoration.values().length, numFeatureSteps);
 
-            for(int step = 0; step < clampedNumFeatureSteps; ++step) {
+            for (int step = 0; step < clampedNumFeatureSteps; ++step) {
                 int structureLocalSeed = 0;
 
-                //structure generation
+                // structure generation
                 if (structureManager.shouldGenerateStructures()) {
-                    for(Structure structure : indexedCollectedStructures.getOrDefault(step, Collections.emptyList())) {
+                    for (Structure structure : indexedCollectedStructures.getOrDefault(step, Collections.emptyList())) {
                         worldgenRandom.setFeatureSeed(decorationSeed, structureLocalSeed, step);
                         Supplier<String> supplier = () -> {
-                            Optional<String> structureKey = structureRegistry.getResourceKey(structure).map(Object::toString);
+                            Optional<String> structureKey =
+                                    structureRegistry.getResourceKey(structure).map(Object::toString);
                             Objects.requireNonNull(structure);
                             return (String) structureKey.orElseGet(structure::toString);
                         };
 
                         try {
                             worldGenLevel.setCurrentlyGenerating(supplier);
-                            structureManager.startsForStructure(sectionPos, structure).forEach((structureStart) -> structureStart.placeInChunk(worldGenLevel, structureManager, this, worldgenRandom, getWritableArea(chunkAccess), chunkPos));
+                            structureManager
+                                    .startsForStructure(sectionPos, structure)
+                                    .forEach((structureStart) -> structureStart.placeInChunk(
+                                            worldGenLevel,
+                                            structureManager,
+                                            this,
+                                            worldgenRandom,
+                                            getWritableArea(chunkAccess),
+                                            chunkPos));
                         } catch (Exception exception) {
                             CrashReport crashReport = CrashReport.forThrowable(exception, "Feature placement");
                             CrashReportCategory var10000 = crashReport.addCategory("Feature");
@@ -284,13 +301,17 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
                 if (step < numFeatureSteps) {
                     IntSet featureIndexesSet = new IntArraySet();
                     // for this step, creates a set with all the possible features in this step from all the biomes
-                    for(Holder<Biome> holder : set) {
-                        List<HolderSet<PlacedFeature>> biomeFeatureSteps = (this.generationSettingsGetter.apply(holder)).features();
+                    for (Holder<Biome> holder : set) {
+                        List<HolderSet<PlacedFeature>> biomeFeatureSteps =
+                                (this.generationSettingsGetter.apply(holder)).features();
                         if (step < biomeFeatureSteps.size()) {
                             // features in that step
                             HolderSet<PlacedFeature> holderSet = biomeFeatureSteps.get(step);
                             FeatureSorter.StepFeatureData stepFeatureData = featuresSteps.get(step);
-                            holderSet.stream().map(Holder::value).forEach((placedFeaturex) -> featureIndexesSet.add(stepFeatureData.indexMapping().applyAsInt(placedFeaturex)));
+                            holderSet.stream()
+                                    .map(Holder::value)
+                                    .forEach((placedFeaturex) -> featureIndexesSet.add(
+                                            stepFeatureData.indexMapping().applyAsInt(placedFeaturex)));
                         }
                     }
 
@@ -299,12 +320,14 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
                     Arrays.sort(featureIndexes);
                     FeatureSorter.StepFeatureData features = featuresSteps.get(step);
 
-                    for(int i = 0; i < numFeatures; ++i) {
+                    for (int i = 0; i < numFeatures; ++i) {
                         int featureId = featureIndexes[i];
                         PlacedFeature placedFeature = features.features().get(featureId);
 
                         Supplier<String> featureSupplier = () -> {
-                            Optional<String> featureKey = placedFeatureRegistry.getResourceKey(placedFeature).map(Object::toString);
+                            Optional<String> featureKey = placedFeatureRegistry
+                                    .getResourceKey(placedFeature)
+                                    .map(Object::toString);
                             Objects.requireNonNull(placedFeature);
                             return (String) featureKey.orElseGet(placedFeature::toString);
                         };
@@ -327,10 +350,13 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
             worldGenLevel.setCurrentlyGenerating(null);
         } catch (Exception e) {
             CrashReport crashReport = CrashReport.forThrowable(e, "Biome decoration");
-            crashReport.addCategory("Generation").setDetail("CenterX", chunkPos.x).setDetail("CenterZ", chunkPos.z).setDetail("Seed", decorationSeed);
+            crashReport
+                    .addCategory("Generation")
+                    .setDetail("CenterX", chunkPos.x)
+                    .setDetail("CenterZ", chunkPos.z)
+                    .setDetail("Seed", decorationSeed);
             throw new ReportedException(crashReport);
         }
-
     }
 
     @Override
@@ -352,14 +378,20 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
     }
 
     @Override
-    public int getBaseHeight(int x, int z, Heightmap.@NotNull Types heightmap, @NotNull LevelHeightAccessor world, @NotNull RandomState noiseConfig) {
+    public int getBaseHeight(
+            int x,
+            int z,
+            Heightmap.@NotNull Types heightmap,
+            @NotNull LevelHeightAccessor world,
+            @NotNull RandomState noiseConfig) {
         return Math.max(
                 populateNoiseStep.getHeight(x, z),
                 settings.value().noiseSettings().minY());
     }
 
     @Override
-    public @NotNull NoiseColumn getBaseColumn(int x, int z, @NotNull LevelHeightAccessor world, @NotNull RandomState noiseConfig) {
+    public @NotNull NoiseColumn getBaseColumn(
+            int x, int z, @NotNull LevelHeightAccessor world, @NotNull RandomState noiseConfig) {
         BlockState[] blockStates =
                 // can be negative
                 new BlockState
@@ -372,5 +404,6 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
     }
 
     @Override
-    public void addDebugScreenInfo(@NotNull List<String> text, @NotNull RandomState noiseConfig, @NotNull BlockPos pos) {}
+    public void addDebugScreenInfo(
+            @NotNull List<String> text, @NotNull RandomState noiseConfig, @NotNull BlockPos pos) {}
 }

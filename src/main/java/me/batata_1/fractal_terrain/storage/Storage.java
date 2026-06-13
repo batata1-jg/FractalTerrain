@@ -25,7 +25,9 @@ import org.slf4j.Logger;
  * <p>Payloads implement {@link Persistable}. When a payload's {@link Persistable#serialize} /
  * {@link Persistable#deserialize} are real, entries are persisted under {@link #PATH} and survive
  * eviction (re-read on demand); when they throw {@link UnsupportedOperationException}, the
- * {@code Storage} is <em>cache-only</em> and evicted entries are forgotten entirely.
+ * {@code Storage} is <em>cache-only</em> and evicted entries are forgotten entirely. Passing a
+ * {@code null} path to the constructor also forces <em>cache-only</em> behaviour: nothing touches the
+ * filesystem and entries are never persisted regardless of the payload's serialize support.
  *
  * <p><b>Concurrency:</b> the read path ({@link #getEntry}) is lock-free for cache hits and uses
  * single-flight {@link ConcurrentHashMap#computeIfAbsent} on a miss, so any number of reader
@@ -68,7 +70,11 @@ public class Storage<T extends Persistable<T>> {
     /** Serialize capability for this Storage: TRUE = disk-backed, FALSE = cache-only, null = unknown. */
     private volatile Boolean payloadIsSerializable = null;
 
-    public Storage(String path, int rank, T deserializationPrototype) {
+    /**
+     * @param path persistence directory, or {@code null} for a cache-only Storage that never persists
+     *     and never touches the filesystem.
+     */
+    public Storage(@Nullable String path, int rank, T deserializationPrototype) {
         PATH = path;
         this.rank = rank;
         this.deserializationPrototype = deserializationPrototype;
@@ -142,6 +148,11 @@ public class Storage<T extends Persistable<T>> {
     }
 
     private void bootstrap() {
+        if (PATH == null) {
+            // No path supplied: cache-only Storage. Never touch the filesystem and never persist.
+            payloadIsSerializable = Boolean.FALSE;
+            return;
+        }
         File file = new File(getEntryDir());
         if (!file.exists()) if (file.mkdirs()) LOG.info("created tile dir in: {}", getEntryDir());
         String[] createdTiles = file.list();
@@ -291,13 +302,18 @@ public class Storage<T extends Persistable<T>> {
      */
     protected T persistAndRecord(TileKey key, T entry) {
         GENERATED_ENTRIES.add(key);
-        try {
-            entry.serialize(tilePath(key));
-            payloadIsSerializable = Boolean.TRUE;
-        } catch (UnsupportedOperationException e) {
-            payloadIsSerializable = Boolean.FALSE; // cache-only payload — skip disk
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        if (PATH == null) {
+            // Cache-only Storage (no path): never persist, just account the size below.
+            payloadIsSerializable = Boolean.FALSE;
+        } else {
+            try {
+                entry.serialize(tilePath(key));
+                payloadIsSerializable = Boolean.TRUE;
+            } catch (UnsupportedOperationException e) {
+                payloadIsSerializable = Boolean.FALSE; // cache-only payload — skip disk
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         }
         recordCachedEntry(key, entry.byteSize());
         return entry;

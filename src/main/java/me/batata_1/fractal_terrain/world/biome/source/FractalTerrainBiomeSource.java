@@ -28,13 +28,10 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
     public static final MapCodec<Climate.ParameterList<Holder<Biome>>> CUSTOM_CODEC;
     private static final MapCodec<Holder<MultiNoiseBiomeSourceParameterList>> PRESET_CODEC;
     public static final Codec<FractalTerrainBiomeSource> CODEC;
-    private final Either<
-                    Climate.ParameterList<Holder<Biome>>, Holder<MultiNoiseBiomeSourceParameterList>>
-            biomeEntries;
+    private final Either<Climate.ParameterList<Holder<Biome>>, Holder<MultiNoiseBiomeSourceParameterList>> biomeEntries;
 
     private FractalTerrainBiomeSource(
-            Either<Climate.ParameterList<Holder<Biome>>, Holder<MultiNoiseBiomeSourceParameterList>>
-                    biomeEntries) {
+            Either<Climate.ParameterList<Holder<Biome>>, Holder<MultiNoiseBiomeSourceParameterList>> biomeEntries) {
         super(biomeEntries);
         this.biomeEntries = biomeEntries;
     }
@@ -58,16 +55,17 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
         return new FractalTerrainBiomeSource(Either.left(biomeEntries));
     }
 
-    public static FractalTerrainBiomeSource createFromPreset(@NotNull Holder<MultiNoiseBiomeSourceParameterList> biomeEntries) {
+    public static FractalTerrainBiomeSource createFromPreset(
+            @NotNull Holder<MultiNoiseBiomeSourceParameterList> biomeEntries) {
         return new FractalTerrainBiomeSource(Either.right(biomeEntries));
     }
 
     @Override
     public @NotNull Holder<Biome> getNoiseBiome(int x, int y, int z, Climate.@NotNull Sampler noise) {
-     //   Climate.TargetPoint t = new Climate.TargetPoint(0,0,0,0,0,0);
+        //   Climate.TargetPoint t = new Climate.TargetPoint(0,0,0,0,0,0);
         // LOG.debug("getBiome({}, {}, {}, {})", x, y, z, noise);
         //        throw new RuntimeException("Not implemented");
-      //  return this.getNoiseBiome(t);
+        //  return this.getNoiseBiome(t);
         return this.getNoiseBiome(
                 FractalTerrainInstance.getBiomeProvider().sampler.sample(x, y, z));
     }
@@ -107,8 +105,7 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
         for (int i = 0; i < parameters().values().size(); i++) {
             if (predicate.test(parameters().values().get(i).getSecond())) {
                 return Pair.of(
-                        new BlockPos(0, 0, 0),
-                        parameters().values().get(i).getSecond());
+                        new BlockPos(0, 0, 0), parameters().values().get(i).getSecond());
             }
         }
 
@@ -129,8 +126,7 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
         for (int i = 0; i < parameters().values().size(); i++) {
             if (predicate.test(parameters().values().get(i).getSecond())) {
                 return Pair.of(
-                        new BlockPos(0, 0, 0),
-                        parameters().values().get(i).getSecond());
+                        new BlockPos(0, 0, 0), parameters().values().get(i).getSecond());
             }
         }
 
@@ -140,9 +136,8 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
     static {
         BIOME_CODEC = Biome.CODEC.fieldOf("biome");
         CUSTOM_CODEC = Climate.ParameterList.codec(BIOME_CODEC).fieldOf("biomes");
-        PRESET_CODEC = MultiNoiseBiomeSourceParameterList.CODEC
-                .fieldOf("preset")
-                .withLifecycle(Lifecycle.stable());
+        PRESET_CODEC =
+                MultiNoiseBiomeSourceParameterList.CODEC.fieldOf("preset").withLifecycle(Lifecycle.stable());
         CODEC = Codec.mapEither(CUSTOM_CODEC, PRESET_CODEC)
                 .xmap(FractalTerrainBiomeSource::new, (FractalTerrainBiomeSource biomeSource) -> biomeSource
                         .biomeEntries)

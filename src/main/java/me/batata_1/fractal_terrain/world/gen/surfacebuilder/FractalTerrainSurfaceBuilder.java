@@ -113,7 +113,12 @@ public class FractalTerrainSurfaceBuilder extends SurfaceSystem {
     }
 
     private void buildSurface(
-            final int x, final int z, final ChunkAccess chunk, final int dx, final int dz, final int[] reliefBaseHeight) {
+            final int x,
+            final int z,
+            final ChunkAccess chunk,
+            final int dx,
+            final int dz,
+            final int[] reliefBaseHeight) {
         final int surfaceHeight = reliefBaseHeight[((dx << 4) + dz)];
         final int sedimentLayerDepth = sedimentDepth(x, z, 10, -1, 4);
         for (int i = 0; i <= sedimentLayerDepth; i++) {
@@ -222,8 +227,7 @@ public class FractalTerrainSurfaceBuilder extends SurfaceSystem {
         Objects.requireNonNull(biomeAccess);
         SurfaceRules.Context materialRuleContext = MaterialRuleContextAccessor.createMaterialRuleContext(
                 this, noiseConfig, chunk, chunkNoiseSampler, biomeAccess::getBiome, biomeRegistry, heightContext);
-        SurfaceRules.SurfaceRule blockStateRule =
-                (SurfaceRules.SurfaceRule) materialRule.apply(materialRuleContext);
+        SurfaceRules.SurfaceRule blockStateRule = (SurfaceRules.SurfaceRule) materialRule.apply(materialRuleContext);
         BlockPos.MutableBlockPos mutable2 = new BlockPos.MutableBlockPos();
 
         // Debug.debugMixin(materialRuleContext);
@@ -268,8 +272,7 @@ public class FractalTerrainSurfaceBuilder extends SurfaceSystem {
 
                         ++stoneDepthAbove;
                         final int stoneDepthBellow = y - s + 1;
-                        materialRuleContext.updateY(
-                                stoneDepthAbove, stoneDepthBellow, fluid_height, x, y, z);
+                        materialRuleContext.updateY(stoneDepthAbove, stoneDepthBellow, fluid_height, x, y, z);
                         if (blockState == this.defaultState) {
                             BlockState blockState2 = blockStateRule.tryApply(x, y, z);
                             if (blockState2 != null) {

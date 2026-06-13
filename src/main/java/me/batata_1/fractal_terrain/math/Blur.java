@@ -113,5 +113,4 @@ public class Blur {
     public static int padFor(double sigma) {
         return (int) Math.ceil(3.0 * sigma);
     }
-
 }

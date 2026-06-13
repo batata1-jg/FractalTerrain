@@ -48,7 +48,7 @@ public class DifferenceOfGaussians {
      * array and removes any padding later). Intended for pipelines that use the DoG as an intermediate
      * step. The input is assumed square ({@code width == height == sqrt(img.length)}).
      */
-    public static float[] run(float[] img,int W , int H, double sigma1, double sigma2) {
+    public static float[] run(float[] img, int W, int H, double sigma1, double sigma2) {
         final float[] lowSigmaBlur = Blur.gaussianSeparable(img, W, H, sigma1);
         final float[] highSigmaBlur = Blur.gaussianSeparable(img, W, H, sigma2);
         final float[] differenceOfGaussians = new float[img.length];
@@ -80,7 +80,7 @@ public class DifferenceOfGaussians {
             elev[px] = clamped;
         }
 
-        final float[] dogPad = run(elev,cW,cH, sigma1, sigma2);
+        final float[] dogPad = run(elev, cW, cH, sigma1, sigma2);
         final float[] dog = new float[S * S];
         for (int row = 0; row < S; row++) {
             System.arraycopy(dogPad, (row + pad) * cW + pad, dog, row * S, S);

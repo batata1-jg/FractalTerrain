@@ -47,15 +47,15 @@ public class PopulateNoiseStep {
     }
 
     public int getHeight(final int x, final int z) {
-        final double interpolatedBlurredRelief = reliefBlurredInterpolation.interpolateBilinear(x, z);
+     //   final double interpolatedBlurredRelief = reliefBlurredInterpolation.interpolateBilinear(x, z);
         final double interpolatedRelief = reliefInterpolation.interpolateSmoothStep(x, z);
-        final double interpolatedGrad = reliefGradInterpolation.interpolateSmoothStep(x, z);
-        final double strata = this.strata.sample(x, z, interpolatedRelief, interpolatedGrad, interpolatedBlurredRelief);
-        return (int) interpolatedRelief -1;
+      //  final double interpolatedGrad = reliefGradInterpolation.interpolateSmoothStep(x, z);
+      //  final double strata = this.strata.sample(x, z, interpolatedRelief, interpolatedGrad, interpolatedBlurredRelief);
+        return (int) interpolatedRelief - 1;
     }
 
-    public void ensureTilesForChunk(int chunkStartX, int chunkStartZ) {
-        fillRocksPredicate.ensureTilesForChunk(chunkStartX, chunkStartZ);
+    private static BlockState toRock(double v) {
+        return (v >= MARKER_THRESHOLD) ? MARKER_ROCK : DEFAULT_ROCK;
     }
 
     public BlockState fillRocks(int x, int y, int z) {
@@ -64,7 +64,9 @@ public class PopulateNoiseStep {
         return DEFAULT_ROCK;
     }
 
-    private static BlockState toRock(double v) {
-        return (v >= MARKER_THRESHOLD) ? MARKER_ROCK : DEFAULT_ROCK;
+    public BlockState placeRiver(BlockState state, int xx, int distFromSurface, int zz) {
+        if(distFromSurface!=0) return state;
+        if(FractalTerrainInstance.getGlobalRiverProvider().query(0.2*xx, 0.2*zz ).isEmpty()) return state;
+        return MARKER_ROCK;
     }
 }

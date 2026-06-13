@@ -5,7 +5,6 @@ import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
-import me.batata_1.fractal_terrain.math.DifferenceOfGaussians;
 
 public class ReliefProvider {
 
@@ -17,24 +16,24 @@ public class ReliefProvider {
     private final NonIntersectingInfiniteTensor final_tiles;
 
     public ReliefProvider(String path) {
-        final_tiles = new NonIntersectingInfiniteTensor(path + "/final_relief_tiles", new int[] {RELIEF_CHANNELS, 512, 512}, key -> {
-            final int x = key.get(X);
-            final int z = key.get(Z);
-            final FloatTensor final_slice = pipeline.getDecoderSlice(x, z);
-            final float[] entries = new float[RELIEF_CHANNELS << 18];
-            // TODO: mover weight para canal 0
-            for (int ch = 1; ch < 10; ch++) {
-                for (int px = 0; px < (1 << 18); px++) {
-                    final float w = final_slice.data[px];
-                    entries[((ch - 1) << 18) + px] = (w > 1e-6f) ? final_slice.data[(ch << 18) + px] / w : 0f;
-                }
-            }
+        final_tiles = new NonIntersectingInfiniteTensor(
+                path + "/final_relief_tiles", new int[] {RELIEF_CHANNELS, 512, 512}, key -> {
+                    final int x = key.get(X);
+                    final int z = key.get(Z);
+                    final FloatTensor final_slice = pipeline.getDecoderSlice(x, z);
+                    final float[] entries = new float[RELIEF_CHANNELS << 18];
+                    // TODO: mover weight para canal 0
+                    for (int ch = 1; ch < 10; ch++) {
+                        for (int px = 0; px < (1 << 18); px++) {
+                            final float w = final_slice.data[px];
+                            entries[((ch - 1) << 18) + px] = (w > 1e-6f) ? final_slice.data[(ch << 18) + px] / w : 0f;
+                        }
+                    }
 
-
-            final FloatTensor t = new FloatTensor(entries, new int[] {RELIEF_CHANNELS, 512, 512});
-            //  Debug.seeTile(t, x, z, "final");
-            return t;
-        });
+                    final FloatTensor t = new FloatTensor(entries, new int[] {RELIEF_CHANNELS, 512, 512});
+                    //  Debug.seeTile(t, x, z, "final");
+                    return t;
+                });
     }
     // ch7 -> adj
     // ch8 -> flow

@@ -1,5 +1,7 @@
 package me.batata_1.fractal_terrain.debug;
 
+import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
+
 import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
 import java.io.*;
@@ -22,8 +24,6 @@ import net.minecraft.world.level.levelgen.SurfaceRules;
 import net.minecraft.world.level.storage.LevelResource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 
 public class Debug {
 
@@ -173,11 +173,11 @@ public class Debug {
     }
 
     public static synchronized void debug() {
-        dumpStorage(pipeline.getCoarse().getStorage(),"precip");
+        dumpStorage(pipeline.getCoarse().getStorage(), "precip");
     }
 
-    public static <T extends Persistable<T>> void dumpStorage(Storage<T> storage,String name1) {
-        final String debugPath = FractalTerrainConfig.DEFAULT_DEBUG_PATH + "/"+name1;
+    public static <T extends Persistable<T>> void dumpStorage(Storage<T> storage, String name1) {
+        final String debugPath = FractalTerrainConfig.DEFAULT_DEBUG_PATH + "/" + name1;
         final File dir = new File(debugPath);
         dir.mkdirs();
         final int S = DifferenceOfGaussians.COARSE_TILE_SIZE;
@@ -203,7 +203,6 @@ public class Debug {
         }
     }
 
-
     public static void debugMixin(SurfaceRules.Context context) {
         SurfaceRules.ConditionSource condition = SurfaceRules.abovePreliminarySurface();
         DEBUG_LOGGER.info(" contidio: {} <- true", condition.apply(context).test());
@@ -226,7 +225,7 @@ public class Debug {
     }
 
     public static <T> void printStream(Stream<T> stream, String name) {
-        DEBUG_LOGGER.info("{}:",name);
-        stream.peek(e->DEBUG_LOGGER.info(" {}",e));
+        DEBUG_LOGGER.info("{}:", name);
+        stream.peek(e -> DEBUG_LOGGER.info(" {}", e));
     }
 }

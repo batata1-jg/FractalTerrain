@@ -9,6 +9,8 @@ import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteQuadTree;
 import me.batata_1.fractal_terrain.math.Blur;
 import me.batata_1.fractal_terrain.math.DifferenceOfGaussians;
+import me.batata_1.fractal_terrain.math.MarchingSquares;
+import me.batata_1.fractal_terrain.math.Skeletonizer;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
@@ -34,7 +36,7 @@ public class GlobalRiverProvider {
 
     // ---- Tuning knobs (edit here during testing) ----------------------------
     private static final double SIGMA1 = 0.5;
-  //  private static final double SIGMA2 = 2.0;
+    //  private static final double SIGMA2 = 2.0;
     /** Ridge mask: DoG ≥ +RIDGE_THRESHOLD. */
     private static final double RIDGE_THRESHOLD = 0.0;
     /**
@@ -44,7 +46,7 @@ public class GlobalRiverProvider {
      */
     private static final double FIELD_THRESHOLD = 4.0;
     /** Arc-length resample spacing for the first (ridge/valley) skeleton pass. */
-    private static final double DX1 = 8.0;
+    private static final double DX1 = 2.0;
     /** Arc-length resample spacing for the second (field) skeleton pass. */
     private static final double DX2 = 2.0;
 
@@ -54,7 +56,7 @@ public class GlobalRiverProvider {
     private static final int MIN_POLYLINE_LEN = 4;
 
     /** Radius used by {@link #query} on the final per-tile tree. */
-    public static final double FINAL_QUERY_RADIUS = 16.0;
+    public static final double FINAL_QUERY_RADIUS = DX2;
 
     // ---- Derived geometry ---------------------------------------------------
     private static final int TILE_SIZE = DifferenceOfGaussians.COARSE_TILE_SIZE; // 64
@@ -63,8 +65,12 @@ public class GlobalRiverProvider {
     private final double fieldResolution = 1.0 / FieldLinePlacer.UPSAMPLE;
 
     private final Skeletonizer maskSkeletonizer = new Skeletonizer(MIN_POLYLINE_LEN, DX1);
+    /** Valley regions are represented by their border (contour), so trace it with marching squares. */
+    private final MarchingSquares valleyTracer = new MarchingSquares(MIN_POLYLINE_LEN, DX1);
+
     private final Skeletonizer fieldSkeletonizer = new Skeletonizer(MIN_POLYLINE_LEN, DX2);
-    private final FieldLinePlacer placer = new FieldLinePlacer(paddedSide, paddedSide, fieldResolution, QUERY_RADIUS, LINE_THICKNESS, FREQUENCY);
+    private final FieldLinePlacer placer =
+            new FieldLinePlacer(paddedSide, paddedSide, fieldResolution, QUERY_RADIUS, LINE_THICKNESS, FREQUENCY);
     /** Reused, cleared per tile so we don't reallocate the intermediate trees each compute. */
     private final ThreadLocal<QuadTree<QuadTreePoint>> ridgeScratch = ThreadLocal.withInitial(this::newLocalTree);
 
@@ -74,7 +80,7 @@ public class GlobalRiverProvider {
 
     public GlobalRiverProvider(String path) {
         this.globalRiverTile = new NonIntersectingInfiniteQuadTree<>(
-                path + "/global_river_tiles", new int[] {TILE_SIZE, TILE_SIZE}, this::buildRiverTile);
+                path , new int[] {TILE_SIZE, TILE_SIZE}, this::buildRiverTile);
     }
 
     public NonIntersectingInfiniteQuadTree<QuadTreePoint> getInfiniteQuadTree() {
@@ -83,7 +89,7 @@ public class GlobalRiverProvider {
 
     /** River points within {@link #FINAL_QUERY_RADIUS} of {@code (cx, cz)} (global coarse-px). */
     public List<QuadTreePoint> query(double cx, double cz) {
-        return globalRiverTile.query(cx, cz, FINAL_QUERY_RADIUS);
+        return globalRiverTile.query(cx / 256.0, cz / 256.0, FINAL_QUERY_RADIUS);
     }
 
     // -------------------------------------------------------------------------
@@ -108,7 +114,11 @@ public class GlobalRiverProvider {
      * into it (for the debug harness). Returns the final per-tile river tree (global coarse-px).
      */
     private QuadTree<QuadTreePoint> computeTile(
-            int tx, int tz, QuadTree<QuadTreePoint> ridgeTree, QuadTree<QuadTreePoint> valleyTree, @Nullable Stages stages) {
+            int tx,
+            int tz,
+            QuadTree<QuadTreePoint> ridgeTree,
+            QuadTree<QuadTreePoint> valleyTree,
+            @Nullable Stages stages) {
         final int tileOriginCx = tx * TILE_SIZE;
         final int tileOriginCz = tz * TILE_SIZE;
 
@@ -118,31 +128,33 @@ public class GlobalRiverProvider {
         // 2. padded Difference-of-Gaussians
         // final float[] paddedBlur = DifferenceOfGaussians.run(paddedElevation, paddedSide,paddedSide,SIGMA1, SIGMA2);
 
-        final float[] paddedBlur = Blur.gaussianSeparable(paddedElevation,paddedSide,paddedSide,SIGMA1);
+        final float[] paddedBlur = Blur.gaussianSeparable(paddedElevation, paddedSide, paddedSide, SIGMA1);
 
         // 3. ridge / valley masks
         final boolean[][] ridgeMask = ridgeMask(paddedBlur);
         final boolean[][] valleyMask = valleyMask(paddedBlur);
 
-        // 4-5. skeletonize masks → splines → insert points into the (padded-local) trees
-        insertLocalSplinePoints(ridgeTree, maskSkeletonizer.trace(ridgeMask));
+        // 4-5. trace masks → splines → insert points into the (padded-local) trees. Ridges use the
+        // skeleton (medial axis); valleys use the region border via marching squares.
+        final List<QuinticHermiteSpline> ridgeSplines = maskSkeletonizer.trace(ridgeMask);
+        final List<QuinticHermiteSpline> valleySplines = valleyTracer.trace(valleyMask);
+        insertLocalSplinePoints(ridgeTree, ridgeSplines);
+        insertLocalSplinePoints(valleyTree, valleySplines);
 
-
-        //marching squares
-        insertLocalSplinePoints(valleyTree, maskSkeletonizer.trace(valleyMask));
-
-        // 6. field-line placement at higher resolution
+        // 6. field-line placement at higher resolution, then drop lines over negative elevation.
         final int fieldW = placer.outputWidth();
         final int fieldH = placer.outputHeight();
         final float[] fieldRaw = placer.applyRaw(ridgeTree, valleyTree);
         final float[] fieldNorm = FieldLinePlacer.normalizeByFwidth(fieldRaw, fieldW, fieldH);
+        maskFieldByElevation(fieldNorm, fieldW, fieldH, paddedElevation);
 
         // 7. threshold the field into a mask
         final boolean[][] fieldMask = fieldMask(fieldNorm, fieldW, fieldH);
 
         // 8-9. skeletonize the field, transform back to global coarse-px, insert into the final tree
+        final List<QuinticHermiteSpline> fieldSplines = fieldSkeletonizer.trace(fieldMask);
         final QuadTree<QuadTreePoint> finalTree = newFinalTree(tileOriginCx, tileOriginCz);
-        for (QuinticHermiteSpline spline : fieldSkeletonizer.trace(fieldMask)) {
+        for (QuinticHermiteSpline spline : fieldSplines) {
             for (double[] fieldPoint : spline.points()) {
                 final double globalX = tileOriginCx - pad + fieldPoint[0] * fieldResolution;
                 final double globalZ = tileOriginCz - pad + fieldPoint[1] * fieldResolution;
@@ -159,6 +171,9 @@ public class GlobalRiverProvider {
             stages.paddedBlur = paddedBlur;
             stages.ridgeMask = ridgeMask;
             stages.valleyMask = valleyMask;
+            stages.ridgeSplines = ridgeSplines;
+            stages.valleySplines = valleySplines;
+            stages.fieldSplines = fieldSplines;
             stages.ridgeTree = ridgeTree;
             stages.valleyTree = valleyTree;
             stages.fieldWidth = fieldW;
@@ -206,6 +221,24 @@ public class GlobalRiverProvider {
             }
         }
         return mask;
+    }
+
+    /**
+     * Zero every field cell whose underlying coarse elevation is negative, so no river/field line is
+     * traced over below-sea-level terrain. The field grid is {@link FieldLinePlacer#UPSAMPLE}× the
+     * padded elevation per axis, so cell {@code (row, col)} maps to elevation pixel
+     * {@code (row*fieldResolution, col*fieldResolution)}.
+     */
+    private void maskFieldByElevation(float[] field, int fieldW, int fieldH, float[] paddedElevation) {
+        for (int row = 0; row < fieldH; row++) {
+            final int di = Math.min((int) (row * fieldResolution), paddedSide - 1);
+            for (int col = 0; col < fieldW; col++) {
+                final int dj = Math.min((int) (col * fieldResolution), paddedSide - 1);
+                if (paddedElevation[di * paddedSide + dj] < 0f) {
+                    field[row * fieldW + col] = 0f;
+                }
+            }
+        }
     }
 
     private static boolean[][] fieldMask(float[] field, int fieldW, int fieldH) {
@@ -260,6 +293,9 @@ public class GlobalRiverProvider {
         public float[] paddedBlur;
         public boolean[][] ridgeMask;
         public boolean[][] valleyMask;
+        public List<QuinticHermiteSpline> ridgeSplines;
+        public List<QuinticHermiteSpline> valleySplines;
+        public List<QuinticHermiteSpline> fieldSplines;
         public QuadTree<QuadTreePoint> ridgeTree;
         public QuadTree<QuadTreePoint> valleyTree;
         public int fieldWidth;
