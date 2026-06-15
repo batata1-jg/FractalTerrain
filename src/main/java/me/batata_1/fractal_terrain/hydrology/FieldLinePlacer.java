@@ -88,12 +88,12 @@ public class FieldLinePlacer {
 
                 double netAngle = 0.0;
                 for (QuadTreePoint ridge : ridgeHits) {
-                    netAngle += Math.atan2(sampleX - ridge.get(0), sampleZ - ridge.get(1));
+                    netAngle += frequency*Math.atan2(sampleX - ridge.get(0), sampleZ - ridge.get(1));
                 }
                 for (QuadTreePoint valley : valleyHits) {
                     netAngle -= Math.atan2(sampleX - valley.get(0), sampleZ - valley.get(1));
                 }
-                rawField[row * outW + col] = (float) Math.sin(netAngle * frequency);
+                rawField[row * outW + col] = (float) Math.sin(netAngle);
             }
         }
         return rawField;

@@ -3,6 +3,7 @@ package me.batata_1.fractal_terrain.hydrology;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.X;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.Z;
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
+import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import java.util.List;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
@@ -17,6 +18,8 @@ import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 import me.batata_1.fractal_terrain.storage.TileKey;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Orchestrates the tiled river/ridge network. Each tile is built by chaining:
@@ -44,13 +47,13 @@ public class GlobalRiverProvider {
      * fwidth pass the sin <em>peaks</em> (the lines, cf. the old {@code sin ≥ 0.8}) become large
      * values, while flat no-hit regions and zero-crossings stay near 0 — so we threshold HIGH.
      */
-    private static final double FIELD_THRESHOLD = 4.0;
+    private static final double FIELD_THRESHOLD = 0.0;
     /** Arc-length resample spacing for the first (ridge/valley) skeleton pass. */
-    private static final double DX1 = 2.0;
+    private static final double DX1 = 4;
     /** Arc-length resample spacing for the second (field) skeleton pass. */
-    private static final double DX2 = 2.0;
+    private static final double DX2 = 0.25;
 
-    private static final double FREQUENCY = 1.0;
+    private static final double FREQUENCY = 4;
     private static final double QUERY_RADIUS = 1024.0;
     private static final double LINE_THICKNESS = 1.0;
     private static final int MIN_POLYLINE_LEN = 4;
@@ -58,8 +61,10 @@ public class GlobalRiverProvider {
     /** Radius used by {@link #query} on the final per-tile tree. */
     public static final double FINAL_QUERY_RADIUS = DX2;
 
+
+    private static final Logger LOG = getLogger(GlobalRiverProvider.class);
     // ---- Derived geometry ---------------------------------------------------
-    private static final int TILE_SIZE = DifferenceOfGaussians.COARSE_TILE_SIZE; // 64
+    private static final int TILE_SIZE = 64;
     private final int pad = Blur.padFor(SIGMA1);
     private final int paddedSide = TILE_SIZE + 2 * pad;
     private final double fieldResolution = 1.0 / FieldLinePlacer.UPSAMPLE;
@@ -79,8 +84,8 @@ public class GlobalRiverProvider {
     private final NonIntersectingInfiniteQuadTree<QuadTreePoint> globalRiverTile;
 
     public GlobalRiverProvider(String path) {
-        this.globalRiverTile = new NonIntersectingInfiniteQuadTree<>(
-                path , new int[] {TILE_SIZE, TILE_SIZE}, this::buildRiverTile);
+        this.globalRiverTile =
+                new NonIntersectingInfiniteQuadTree<>(path, new int[] {1,TILE_SIZE, TILE_SIZE}, this::buildRiverTile);
     }
 
     public NonIntersectingInfiniteQuadTree<QuadTreePoint> getInfiniteQuadTree() {
@@ -145,11 +150,11 @@ public class GlobalRiverProvider {
         final int fieldW = placer.outputWidth();
         final int fieldH = placer.outputHeight();
         final float[] fieldRaw = placer.applyRaw(ridgeTree, valleyTree);
+        maskFieldByElevation(fieldRaw, fieldW, fieldH, paddedElevation);
         final float[] fieldNorm = FieldLinePlacer.normalizeByFwidth(fieldRaw, fieldW, fieldH);
-        maskFieldByElevation(fieldNorm, fieldW, fieldH, paddedElevation);
 
         // 7. threshold the field into a mask
-        final boolean[][] fieldMask = fieldMask(fieldNorm, fieldW, fieldH);
+        final boolean[][] fieldMask = fieldMask(fieldRaw, fieldW, fieldH);
 
         // 8-9. skeletonize the field, transform back to global coarse-px, insert into the final tree
         final List<QuinticHermiteSpline> fieldSplines = fieldSkeletonizer.trace(fieldMask);
@@ -161,7 +166,7 @@ public class GlobalRiverProvider {
                 finalTree.insertPoint(new QuadTreePoint(new double[] {globalX, globalZ}));
             }
         }
-
+        LOG.info("tile quadTreeSize {}",finalTree.numPoints());
         if (stages != null) {
             stages.paddedSide = paddedSide;
             stages.pad = pad;

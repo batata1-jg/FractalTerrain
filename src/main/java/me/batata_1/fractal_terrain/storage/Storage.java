@@ -13,8 +13,6 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.function.Supplier;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -40,12 +38,6 @@ import org.slf4j.Logger;
 public class Storage<T extends Persistable<T>> {
 
     private static final Logger LOG = getLogger(Storage.class);
-
-    protected static final ExecutorService INFERENCE_EXECUTOR = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "terrain-diffusion-inference");
-        t.setDaemon(true);
-        return t;
-    });
 
     protected final ConcurrentHashMap<TileKey, CompletableFuture<T>> CACHE = new ConcurrentHashMap<>(16, 0.75f);
 
@@ -76,6 +68,7 @@ public class Storage<T extends Persistable<T>> {
      */
     public Storage(@Nullable String path, int rank, T deserializationPrototype) {
         PATH = path;
+
         this.rank = rank;
         this.deserializationPrototype = deserializationPrototype;
         bootstrap();
@@ -254,45 +247,45 @@ public class Storage<T extends Persistable<T>> {
         final CompletableFuture<T> promise = new CompletableFuture<>();
         final CompletableFuture<T> prev = CACHE.putIfAbsent(key, promise);
         if (prev != null) return prev; // another thread is already loading this key
-        loadInto(key, promise);
+        try {
+            loadInto(key, promise);
+        } catch (Throwable ex) {
+            // Terminal failure: the entry could neither be loaded nor (for subclasses) recomputed.
+            // Drop our claim so the key can be retried, and surface the cause to all awaiters.
+            LOG.error("failed to load tile {} of path {}", key, getPath(), ex);
+            CACHE.remove(key, promise);
+            promise.completeExceptionally(ex);
+        }
         return promise;
     }
 
     /**
-     * Populate the freshly-installed {@code promise} for an uncached {@code key}. The base
-     * implementation can only reload a disk-backed entry (asynchronously on {@link #INFERENCE_EXECUTOR});
-     * subclasses (e.g. {@code NonIntersectingInfiniteTensor}) override this to recompute on demand.
-     * On failure the promise's mapping is removed so the key can be retried.
+     * Populate the freshly-installed {@code promise} for an uncached {@code key} by reading the
+     * persisted entry from disk. Runs synchronously on the calling thread. Throws
+     * {@link EntryNotLoadableException} whenever it cannot produce the entry — cache-only storage
+     * (null path or non-serializable payload), an unpersisted key, a missing tile file, or a
+     * deserialization failure. Subclasses (e.g. {@code NonIntersectingInfiniteTensor}) override this
+     * to catch that signal and recompute the entry on demand.
      */
-    protected void loadInto(TileKey key, CompletableFuture<T> promise) {
-        if (!(GENERATED_ENTRIES.contains(key) && !Boolean.FALSE.equals(payloadIsSerializable))) {
-            LOG.error(
-                    "tile index = {} of path {} not in storage (GENERATED_ENTRIES={}, CACHE={})",
-                    key,
-                    getPath(),
-                    GENERATED_ENTRIES.contains(key),
-                    CACHE.containsKey(key));
-            printCurrentEntrySet();
-            printEntryMapHash();
-            CACHE.remove(key, promise);
-            promise.completeExceptionally(new RuntimeException("tile " + key + " not in storage"));
-            return;
+    protected void loadInto(TileKey key, CompletableFuture<T> promise) throws EntryNotLoadableException {
+        if (PATH == null || Boolean.FALSE.equals(payloadIsSerializable)) {
+            // Cache-only Storage (null path or non-serializable payload): nothing persisted to load.
+            throw new EntryNotLoadableException("cache-only storage has no persistent entry for " + key);
         }
-        INFERENCE_EXECUTOR.execute(() -> {
-            try {
-                final File file = new File(tilePath(key) + ".ser");
-                if (!file.exists()) {
-                    LOG.error("file {}, aka: {} not exist", file.getAbsolutePath(), key);
-                    throw new RuntimeException("missing tile file for " + key);
-                }
-                final T entry = deserializationPrototype.deserialize(tilePath(key));
-                recordCachedEntry(key, entry.byteSize());
-                promise.complete(entry);
-            } catch (Throwable ex) {
-                CACHE.remove(key, promise);
-                promise.completeExceptionally(ex);
-            }
-        });
+        if (!GENERATED_ENTRIES.contains(key)) {
+            throw new EntryNotLoadableException("tile " + key + " not in storage");
+        }
+        final File file = new File(tilePath(key) + ".ser");
+        if (!file.exists()) {
+            throw new EntryNotLoadableException("missing tile file " + file.getAbsolutePath() + " for " + key);
+        }
+        try {
+            final T entry = deserializationPrototype.deserialize(tilePath(key));
+            recordCachedEntry(key, entry.byteSize());
+            promise.complete(entry);
+        } catch (IOException | ClassNotFoundException e) {
+            throw new EntryNotLoadableException("failed to deserialize tile " + key, e);
+        }
     }
 
     /**

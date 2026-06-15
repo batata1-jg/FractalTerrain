@@ -36,9 +36,9 @@ public class GlobalRiverTest {
         cleanDir(DEBUG_PATH);
         ModelAssetManager.ensureAssetsReady();
         PipelineModels.load();
-        pipeline.updateInstance(0, DEBUG_PATH);
+        pipeline.updateInstance(420, DEBUG_PATH);
 
-        final GlobalRiverProvider provider = new GlobalRiverProvider(DEBUG_PATH);
+        final GlobalRiverProvider provider = new GlobalRiverProvider(null);
 
         for (int[] tile : TILES) {
             dumpTile(provider, tile[0], tile[1]);
@@ -74,9 +74,9 @@ public class GlobalRiverTest {
 
         // Per-spline visualizations: confirm valley contours look like region borders and the
         // ridge/field splines are well-formed.
-//        seeSplines(stages.ridgeSplines, prefix + "ridge_spline_");
-//        seeSplines(stages.valleySplines, prefix + "valley_spline_");
-//        seeSplines(stages.fieldSplines, prefix + "field_spline_");
+        //        seeSplines(stages.ridgeSplines, prefix + "ridge_spline_");
+        //        seeSplines(stages.valleySplines, prefix + "valley_spline_");
+        //        seeSplines(stages.fieldSplines, prefix + "field_spline_");
     }
 
     /** Render each spline to its own PNG via {@link Debug#spline} (auto-bounds, frame-agnostic). */

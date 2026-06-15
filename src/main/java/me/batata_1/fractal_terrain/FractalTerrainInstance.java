@@ -5,9 +5,7 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
-import me.batata_1.fractal_terrain.hydrology.RiverProvider;
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import me.batata_1.fractal_terrain.ml.pipeline.WorldPipeline;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
@@ -51,7 +49,7 @@ public class FractalTerrainInstance {
         final Path worldPath = server.getWorldPath(LevelResource.ROOT).normalize();
         this.reliefSource = new ReliefProvider(worldPath + "/fractal_terrain");
         this.biomeProvider = new BiomeProvider(worldPath + "/fractal_terrain");
-        this.globalRiverProvider = new GlobalRiverProvider( null);
+        this.globalRiverProvider = new GlobalRiverProvider(null);
         final long seed = server.getWorldData().worldGenOptions().seed();
         final ServerLevel world = server.overworld();
         final RegistryAccess dynamicRegistryManager = world.registryAccess();

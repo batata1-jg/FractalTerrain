@@ -1,8 +1,8 @@
 package me.batata_1.fractal_terrain.infinitetensor;
 
 import com.google.common.base.Function;
-import java.io.File;
 import java.util.concurrent.CompletableFuture;
+import me.batata_1.fractal_terrain.storage.EntryNotLoadableException;
 import me.batata_1.fractal_terrain.storage.Storage;
 import me.batata_1.fractal_terrain.storage.TileKey;
 
@@ -18,25 +18,21 @@ public class NonIntersectingInfiniteTensor extends Storage<FloatTensor> {
     }
 
     /**
-     * Unlike the base storage, a miss here is recoverable: the entry is (re)computed from
-     * {@code entry_creating_function} and persisted/recorded. The compute runs on the CALLING thread
-     * (not {@link #INFERENCE_EXECUTOR}) because the creating function transitively reads other tiles
-     * whose disk loads are scheduled on that single-thread executor — running here would self-deadlock.
+     * Unlike the base storage, a miss here is recoverable. First try the base disk-reload path; if it
+     * cannot produce the entry (cache-only, unpersisted, or a corrupt/missing file — signalled by
+     * {@link EntryNotLoadableException}), (re)compute it from {@code entry_creating_function} and
+     * persist/record it. Both the disk load and the compute run synchronously on the CALLING thread,
+     * so a creating function that transitively reads other tiles simply recurses on the call stack.
+     * Cleanup of a failed claim (e.g. if the compute itself throws) is handled by {@code fetchEntry}.
      */
     @Override
     protected void loadInto(TileKey key, CompletableFuture<FloatTensor> promise) {
-        // Disk-backed entry from a previous session: reuse the base async reload path.
-        if (GENERATED_ENTRIES.contains(key) && new File(tilePath(key) + ".ser").exists()) {
-            super.loadInto(key, promise);
-            return;
-        }
         try {
+            super.loadInto(key, promise);
+        } catch (EntryNotLoadableException miss) {
             final FloatTensor entry = entry_creating_function.apply(key);
             persistAndRecord(key, entry);
             promise.complete(entry);
-        } catch (Throwable ex) {
-            CACHE.remove(key, promise);
-            promise.completeExceptionally(ex);
         }
     }
 

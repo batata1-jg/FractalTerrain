@@ -150,7 +150,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
                         state = WATER;
                     } else {
                         state = populateNoiseStep.fillRocks(xx, y, zz);
-                        state = populateNoiseStep.placeRiver(state,xx,reliefHeight-y,zz);
+                        state = populateNoiseStep.placeRiver(state, xx, reliefHeight - y, zz);
                     }
 
                     chunk.setBlockState(mutable, state, false);

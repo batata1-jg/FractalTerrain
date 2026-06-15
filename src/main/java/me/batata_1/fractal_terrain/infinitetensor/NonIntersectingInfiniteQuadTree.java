@@ -1,11 +1,11 @@
 package me.batata_1.fractal_terrain.infinitetensor;
 
 import com.google.common.base.Function;
-import java.io.File;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
+import me.batata_1.fractal_terrain.storage.EntryNotLoadableException;
 import me.batata_1.fractal_terrain.storage.Storage;
 import me.batata_1.fractal_terrain.storage.TileKey;
 
@@ -32,24 +32,19 @@ public class NonIntersectingInfiniteQuadTree<T extends QuadTreePoint> extends St
     }
 
     /**
-     * Like {@link NonIntersectingInfiniteTensor#loadInto}: a miss is recovered by recomputing the
-     * tile from {@code entryCreatingFunction} on the CALLING thread (the function transitively reads
-     * other tiles whose disk loads run on the single-thread executor, so computing here avoids a
-     * self-deadlock). Cache-only tiles are never reloaded from disk.
+     * Like {@link NonIntersectingInfiniteTensor#loadInto}: try the base disk-reload path first, and
+     * when it cannot produce the entry (signalled by {@link EntryNotLoadableException} — the common
+     * case here, since this store is cache-only) recompute the tile from {@code entryCreatingFunction}
+     * on the CALLING thread. Cleanup of a failed claim is handled by {@code fetchEntry}.
      */
     @Override
     protected void loadInto(TileKey key, CompletableFuture<QuadTree<T>> promise) {
-        if (GENERATED_ENTRIES.contains(key) && new File(tilePath(key) + ".ser").exists()) {
-            super.loadInto(key, promise);
-            return;
-        }
         try {
+            super.loadInto(key, promise);
+        } catch (EntryNotLoadableException miss) {
             final QuadTree<T> entry = entryCreatingFunction.apply(key);
             persistAndRecord(key, entry);
             promise.complete(entry);
-        } catch (Throwable ex) {
-            CACHE.remove(key, promise);
-            promise.completeExceptionally(ex);
         }
     }
 
@@ -61,7 +56,7 @@ public class NonIntersectingInfiniteQuadTree<T extends QuadTreePoint> extends St
      * never looks beyond the requested window.
      */
     public List<T> query(double queryX, double queryZ, double radius) {
-        final int[] coords = {(int) Math.floor(queryX), (int) Math.floor(queryZ)};
+        final int[] coords = {0,(int) Math.floor(queryX), (int) Math.floor(queryZ)};
         final int[] tileIndex = outWindow.getSinglePixelIntersection(coords);
         final QuadTree<T> tile = getEntry(tileIndex);
 

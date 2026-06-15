@@ -5,6 +5,10 @@ import me.batata_1.fractal_terrain.math.Interpolation;
 import me.batata_1.fractal_terrain.noise.PhacelleNoiseSampler;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 public class PopulateNoiseStep {
 
@@ -18,6 +22,7 @@ public class PopulateNoiseStep {
     private static final BlockState DEFAULT_ROCK = Blocks.STONE.defaultBlockState();
     private static final BlockState MARKER_ROCK = Blocks.BLUE_CONCRETE.defaultBlockState();
     private static final double MARKER_THRESHOLD = 0.8;
+    private static final Logger LOG = getLogger(PopulateNoiseStep.class);
 
     private final Interpolation reliefInterpolation;
     private final Interpolation reliefGradInterpolation;
@@ -27,7 +32,6 @@ public class PopulateNoiseStep {
     private final Interpolation reliefBlurredInterpolation;
     private final RockStrata strata;
     private final PhacelleNoiseSampler phacelleSampler;
-    private GlobalFillRocksPredicate fillRocksPredicate;
 
     public PopulateNoiseStep(final float scale) {
         reliefInterpolation = new Interpolation(
@@ -47,10 +51,11 @@ public class PopulateNoiseStep {
     }
 
     public int getHeight(final int x, final int z) {
-     //   final double interpolatedBlurredRelief = reliefBlurredInterpolation.interpolateBilinear(x, z);
+        //   final double interpolatedBlurredRelief = reliefBlurredInterpolation.interpolateBilinear(x, z);
         final double interpolatedRelief = reliefInterpolation.interpolateSmoothStep(x, z);
-      //  final double interpolatedGrad = reliefGradInterpolation.interpolateSmoothStep(x, z);
-      //  final double strata = this.strata.sample(x, z, interpolatedRelief, interpolatedGrad, interpolatedBlurredRelief);
+        //  final double interpolatedGrad = reliefGradInterpolation.interpolateSmoothStep(x, z);
+        //  final double strata = this.strata.sample(x, z, interpolatedRelief, interpolatedGrad,
+        // interpolatedBlurredRelief);
         return (int) interpolatedRelief - 1;
     }
 
@@ -65,8 +70,11 @@ public class PopulateNoiseStep {
     }
 
     public BlockState placeRiver(BlockState state, int xx, int distFromSurface, int zz) {
-        if(distFromSurface!=0) return state;
-        if(FractalTerrainInstance.getGlobalRiverProvider().query(0.2*xx, 0.2*zz ).isEmpty()) return state;
+        if (distFromSurface != 0) return state;
+      //  LOG.info("reaches here");
+        if (FractalTerrainInstance.getGlobalRiverProvider()
+                .query(0.2 * xx, 0.2 * zz)
+                .isEmpty()) return state;
         return MARKER_ROCK;
     }
 }

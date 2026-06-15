@@ -67,6 +67,10 @@ public class QuadTree<T extends QuadTreePoint> implements Persistable<QuadTree<T
         tree.add(new Node<>(minXZ, maxXZ, 0));
     }
 
+    public int numPoints() {
+        return tree.get(1).points.size();
+    }
+
     public void clear() {
         lock.writeLock().lock();
         try {
