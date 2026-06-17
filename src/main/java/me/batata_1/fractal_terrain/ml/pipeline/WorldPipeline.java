@@ -1,8 +1,6 @@
 package me.batata_1.fractal_terrain.ml.pipeline;
 
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.DECODER_CHANNELS;
-import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.computeDirection;
-import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.computeFlow;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -506,17 +504,9 @@ public final class WorldPipeline implements AutoCloseable {
         inputs[2] = new Object[] {"tau", tau, new long[] {1}};
 
         final float[] data = fuzedModel.run(inputs);
-        final float[] adj = computeDirection(Arrays.copyOfRange(data, 0, S * S), ww, S);
-        final float[] flow = computeFlow(adj, S);
-        for (int px = 0; px < S * S; px++) {
-            adj[px] = adj[px] * ww[px];
-            flow[px] = flow[px] * ww[px];
-        }
         final float[] out = new float[S * S * DECODER_CHANNELS];
         System.arraycopy(data, 7 * S * S, out, 0, S * S);
         System.arraycopy(data, 0, out, S * S, 7 * S * S);
-        System.arraycopy(adj, 0, out, 8 * S * S, S * S);
-        System.arraycopy(flow, 0, out, 9 * S * S, S * S);
 
         return new FloatTensor(new int[] {DECODER_CHANNELS, S, S}, out);
     }
@@ -539,9 +529,13 @@ public final class WorldPipeline implements AutoCloseable {
         return coarse.getSlice(new int[] {0, ci0, cj0}, new int[] {7, ci1, cj1});
     }
 
-    public FloatTensor getDecoderSlice(int x, int z) {
-        return residual.getSlice(
-                new int[] {0, x << 9, z << 9}, new int[] {DECODER_CHANNELS, (x + 1) << 9, (z + 1) << 9});
+    /**
+     * Returns a decoder (residual) tensor slice with shape [DECODER_CHANNELS, i1-i0, j1-j0].
+     * Coordinates are in native pixel units. Mirrors {@link #getCoarseSlice}: callers pass explicit
+     * pixel bounds so they can request a padded/halo crop rather than an exact 512×512 tile.
+     */
+    public FloatTensor getDecoderSlice(int i0, int j0, int i1, int j1) {
+        return residual.getSlice(new int[] {0, i0, j0}, new int[] {DECODER_CHANNELS, i1, j1});
     }
 
     public float[] getClimate(int x, int z, float[] elevFlat) {

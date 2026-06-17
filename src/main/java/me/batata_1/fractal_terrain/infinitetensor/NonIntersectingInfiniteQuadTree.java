@@ -56,15 +56,17 @@ public class NonIntersectingInfiniteQuadTree<T extends QuadTreePoint> extends St
      * never looks beyond the requested window.
      */
     public List<T> query(double queryX, double queryZ, double radius) {
-        final int[] coords = {0,(int) Math.floor(queryX), (int) Math.floor(queryZ)};
+        final int[] coords = {0, (int) Math.floor(queryX), (int) Math.floor(queryZ)};
         final int[] tileIndex = outWindow.getSinglePixelIntersection(coords);
         final QuadTree<T> tile = getEntry(tileIndex);
 
+        // Shape is {1, size, size}: dim 0 is a dummy leading axis, X is dim 1 and Z is dim 2 (matching
+        // the {0, x, z} coords above), so the spatial crop reads windowBounds[1] and windowBounds[2].
         final int[][] windowBounds = outWindow.getBounds(tileIndex);
-        final double windowMinX = windowBounds[0][0];
-        final double windowMaxX = windowBounds[0][1];
-        final double windowMinZ = windowBounds[1][0];
-        final double windowMaxZ = windowBounds[1][1];
+        final double windowMinX = windowBounds[1][0];
+        final double windowMaxX = windowBounds[1][1];
+        final double windowMinZ = windowBounds[2][0];
+        final double windowMaxZ = windowBounds[2][1];
 
         final List<T> hits = tile.getPointsInCircle(new double[] {queryX, queryZ}, radius);
         hits.removeIf(point -> point.get(0) < windowMinX
@@ -76,7 +78,7 @@ public class NonIntersectingInfiniteQuadTree<T extends QuadTreePoint> extends St
 
     /** The (re)computed {@link QuadTree} for the tile owning {@code (queryX, queryZ)}. */
     public QuadTree<T> getTile(double queryX, double queryZ) {
-        final int[] coords = {(int) Math.floor(queryX), (int) Math.floor(queryZ)};
+        final int[] coords = {0, (int) Math.floor(queryX), (int) Math.floor(queryZ)};
         return getEntry(outWindow.getSinglePixelIntersection(coords));
     }
 }

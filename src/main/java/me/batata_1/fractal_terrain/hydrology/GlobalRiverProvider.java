@@ -1,289 +1,441 @@
 package me.batata_1.fractal_terrain.hydrology;
 
+import static me.batata_1.fractal_terrain.FractalTerrainConfig.GLOBAL_RIVER_CHANNELS;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.X;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.Z;
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
-import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
+import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.NEIGHBOR_OFFSET_X;
+import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.NEIGHBOR_OFFSET_Z;
+import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.OPPOSITE_DIRECTION;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
-import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteQuadTree;
-import me.batata_1.fractal_terrain.math.Blur;
-import me.batata_1.fractal_terrain.math.DifferenceOfGaussians;
+import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.math.MarchingSquares;
 import me.batata_1.fractal_terrain.math.Skeletonizer;
+import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
-import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 import me.batata_1.fractal_terrain.storage.TileKey;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
- * Orchestrates the tiled river/ridge network. Each tile is built by chaining:
- * coarse elevation → Difference-of-Gaussians → ridge/valley thresholding → {@link Skeletonizer}
- * (pass 1) → ridge/valley point trees → {@link FieldLinePlacer} → field thresholding →
- * {@link Skeletonizer} (pass 2) → final per-tile {@link QuadTree} (global coarse-px).
+ * Builds the large-scale ("global") river network off the coarse elevation map, one 64×64 coarse-px
+ * tile at a time. Each tile is emitted as a {@code [GLOBAL_RIVER_CHANNELS=2, 64, 64]}
+ * {@link FloatTensor} (cache-only, since the backing {@link NonIntersectingInfiniteTensor} is built
+ * with a {@code null} path in production):
  *
- * <p>This class is the single place that holds the tuning literals (so they can be edited during
- * testing); every helper it builds receives those values through its constructor. Final river tiles
- * are cached in a {@link NonIntersectingInfiniteQuadTree} (cache-only).
+ * <ul>
+ *   <li><b>channel 0</b> — a packed arrow bitfield per pixel (see the bit layout below), stored as a
+ *       float (integers below 2^24 are represented exactly).
+ *   <li><b>channel 1</b> — the river width at that pixel (0 on non-river pixels).
+ * </ul>
  *
- * <p>The "crop to 64×64" at the end is symbolic: final points may physically land in the padded
- * halo, but {@link NonIntersectingInfiniteQuadTree#query} only ever returns points inside the
- * owning tile's logical 64×64 window.
+ * <p>Arrow bitfield (channel 0), using the D8 ordering of {@link PipelinePreprocessing}. Only the
+ * <b>downstream</b> (outgoing) direction is stored — upstream/tributary arrows are derived on demand
+ * by scanning a pixel's neighbours (see {@link #ingoingMask(int, int)}), which stays consistent across
+ * tile borders and naturally represents the multiple upstream branches at a confluence:
+ * <pre>
+ *   bits  0..7 : outgoing direction mask — which neighbour the river leaves TOWARD
+ *   bit   8    : source — this pixel is a ridge seed (river origin)
+ *   bit   9    : coast  — this pixel is a river terminus on the coastline
+ *   bit   10   : sink   — this pixel was a local minimum that triggered a reroute to the coast
+ * </pre>
+ *
+ * <p>Per-tile pipeline: padded coarse elevation → threshold (upper/lower masks on the RAW elevation)
+ * → isolate (an elevation ramp toward the tile border, applied only to a descent-gradient copy) →
+ * ridge mask ({@link Skeletonizer#thin}) + coast mask ({@link MarchingSquares#borderMask}) →
+ * per-source steepest-descent D8 walk recording outgoing bits (a sink reroutes to the nearest coast
+ * point) → width from a flow-accumulation proxy → packed result tile. Thresholding before the ramp
+ * keeps the coast classification anchored to real elevation, while the ramp confines steepest-descent
+ * flow inward so rivers do not spill across tile borders.
  */
 public class GlobalRiverProvider {
 
     // ---- Tuning knobs (edit here during testing) ----------------------------
-    private static final double SIGMA1 = 0.5;
-    //  private static final double SIGMA2 = 2.0;
-    /** Ridge mask: DoG ≥ +RIDGE_THRESHOLD. */
-    private static final double RIDGE_THRESHOLD = 0.0;
-    /**
-     * Field mask: normalized field ≥ FIELD_THRESHOLD marks a (uniformly thin) field line. After the
-     * fwidth pass the sin <em>peaks</em> (the lines, cf. the old {@code sin ≥ 0.8}) become large
-     * values, while flat no-hit regions and zero-crossings stay near 0 — so we threshold HIGH.
-     */
-    private static final double FIELD_THRESHOLD = 0.0;
-    /** Arc-length resample spacing for the first (ridge/valley) skeleton pass. */
-    private static final double DX1 = 4;
-    /** Arc-length resample spacing for the second (field) skeleton pass. */
-    private static final double DX2 = 0.25;
+    /** Upper (ridge) region: pixels with normalized elevation ≥ this become river sources. */
+    private static final float RIDGE_THRESHOLD = 10f;
+    /** Lower (coast) region: pixels with normalized elevation ≤ this form the coastline. */
+    private static final float COAST_THRESHOLD = 0f;
+    /** Halo width (coarse px) over which the isolate ramp rises toward the tile border. */
+    private static final int RAMP_WIDTH = 6;
+    /** Peak height added to border pixels by the isolate ramp (decays linearly to 0 inward). */
+    private static final float RAMP_HEIGHT = 5000f;
+    /** Width-proxy scale: river width = WIDTH_SCALE * sqrt-flow-accumulation. */
+    private static final float WIDTH_SCALE = 0.35f;
+    /** Maximum descent steps per source before bailing (guards against pathological grids). */
+    private static final int MAX_WALK_STEPS = 4 * 64 * 64;
 
-    private static final double FREQUENCY = 4;
-    private static final double QUERY_RADIUS = 1024.0;
-    private static final double LINE_THICKNESS = 1.0;
-    private static final int MIN_POLYLINE_LEN = 4;
+    // ---- Bit layout for the packed arrow channel ----------------------------
+    private static final int OUTGOING_SHIFT = 0;
+    private static final int SOURCE_BIT = 1 << 8;
+    private static final int COAST_BIT = 1 << 9;
+    private static final int SINK_BIT = 1 << 10;
+    private static final int RIVER_BIT = 1 << 11;
 
-    /** Radius used by {@link #query} on the final per-tile tree. */
-    public static final double FINAL_QUERY_RADIUS = DX2;
-
-
-    private static final Logger LOG = getLogger(GlobalRiverProvider.class);
-    // ---- Derived geometry ---------------------------------------------------
+    // ---- Geometry -----------------------------------------------------------
     private static final int TILE_SIZE = 64;
-    private final int pad = Blur.padFor(SIGMA1);
-    private final int paddedSide = TILE_SIZE + 2 * pad;
-    private final double fieldResolution = 1.0 / FieldLinePlacer.UPSAMPLE;
+    /** Halo so border pixels have neighbours for the gradient descent; equals the ramp width. */
+    private static final int PAD = RAMP_WIDTH;
 
-    private final Skeletonizer maskSkeletonizer = new Skeletonizer(MIN_POLYLINE_LEN, DX1);
-    /** Valley regions are represented by their border (contour), so trace it with marching squares. */
-    private final MarchingSquares valleyTracer = new MarchingSquares(MIN_POLYLINE_LEN, DX1);
+    private static final int PADDED_SIDE = TILE_SIZE + 2 * PAD;
 
-    private final Skeletonizer fieldSkeletonizer = new Skeletonizer(MIN_POLYLINE_LEN, DX2);
-    private final FieldLinePlacer placer =
-            new FieldLinePlacer(paddedSide, paddedSide, fieldResolution, QUERY_RADIUS, LINE_THICKNESS, FREQUENCY);
-    /** Reused, cleared per tile so we don't reallocate the intermediate trees each compute. */
-    private final ThreadLocal<QuadTree<QuadTreePoint>> ridgeScratch = ThreadLocal.withInitial(this::newLocalTree);
-
-    private final ThreadLocal<QuadTree<QuadTreePoint>> valleyScratch = ThreadLocal.withInitial(this::newLocalTree);
-
-    private final NonIntersectingInfiniteQuadTree<QuadTreePoint> globalRiverTile;
+    private final NonIntersectingInfiniteTensor riverTiles;
 
     public GlobalRiverProvider(String path) {
-        this.globalRiverTile =
-                new NonIntersectingInfiniteQuadTree<>(path, new int[] {1,TILE_SIZE, TILE_SIZE}, this::buildRiverTile);
+        this.riverTiles = new NonIntersectingInfiniteTensor(
+                path, new int[] {GLOBAL_RIVER_CHANNELS, TILE_SIZE, TILE_SIZE}, this::buildRiverTile);
     }
 
-    public NonIntersectingInfiniteQuadTree<QuadTreePoint> getInfiniteQuadTree() {
-        return globalRiverTile;
+    public NonIntersectingInfiniteTensor getInfiniteTensor() {
+        return riverTiles;
     }
 
-    /** River points within {@link #FINAL_QUERY_RADIUS} of {@code (cx, cz)} (global coarse-px). */
-    public List<QuadTreePoint> query(double cx, double cz) {
-        return globalRiverTile.query(cx / 256.0, cz / 256.0, FINAL_QUERY_RADIUS);
+    // ---- Pixel accessors (used by ReliefProvider) ---------------------------
+
+    /** Packed arrow bitfield at global coarse-px {@code (cx, cz)}. */
+    public int getArrow(int cx, int cz) {
+        return Float.floatToIntBits(riverTiles.getValue(new int[] {0, cx, cz}));
+    }
+
+    /** River width at global coarse-px {@code (cx, cz)} (0 on non-river pixels). */
+    public float getWidth(int cx, int cz) {
+        return riverTiles.getValue(new int[] {1, cx, cz});
+    }
+
+    public static int outgoingMask(int arrow) {
+        return (arrow >>> OUTGOING_SHIFT) & 0xFF;
+    }
+
+    /**
+     * Upstream (ingoing) direction mask at global coarse-px {@code (cx, cz)}, derived by scanning the
+     * eight neighbours: a river arrives FROM direction {@code d} when the neighbour in that direction
+     * drains back toward this pixel (its outgoing mask has the opposite-direction bit set). Deriving
+     * upstream this way — rather than storing it — stays consistent across tile borders and represents
+     * every tributary at a confluence (a pixel can have multiple upstream arrows).
+     */
+    public int ingoingMask(int cx, int cz) {
+        int mask = 0;
+        for (int d = 0; d < 8; d++) {
+            final int neighborArrow = getArrow(cx + NEIGHBOR_OFFSET_X[d], cz + NEIGHBOR_OFFSET_Z[d]);
+            if ((outgoingMask(neighborArrow) & (1 << OPPOSITE_DIRECTION[d])) != 0) mask |= (1 << d);
+        }
+        return mask;
+    }
+
+    public static boolean isSource(int arrow) {
+        return (arrow & SOURCE_BIT) != 0;
+    }
+
+    public static boolean isCoast(int arrow) {
+        return (arrow & COAST_BIT) != 0;
+    }
+
+    public static boolean isSink(int arrow) {
+        return (arrow & SINK_BIT) != 0;
+    }
+
+    public static boolean isRiver(int arrow) {
+        return (arrow & RIVER_BIT) != 0;
     }
 
     // -------------------------------------------------------------------------
     // Per-tile pipeline
     // -------------------------------------------------------------------------
 
-    /** Production tile compute: uses the reused scratch trees and returns only the final tree. */
-    private QuadTree<QuadTreePoint> buildRiverTile(TileKey key) {
-        final int tx = key.get(X);
-        final int tz = key.get(Z);
-
-        final QuadTree<QuadTreePoint> ridgeTree = ridgeScratch.get();
-        final QuadTree<QuadTreePoint> valleyTree = valleyScratch.get();
-        ridgeTree.clear();
-        valleyTree.clear();
-
-        return computeTile(tx, tz, ridgeTree, valleyTree, null);
+    /** Production tile compute: passes a {@code null} {@link Stages} so nothing is recorded. */
+    private FloatTensor buildRiverTile(TileKey key) {
+        return computeTile(key.get(X), key.get(Z), null);
     }
 
     /**
-     * Full per-tile compute. When {@code stages != null}, every intermediate artifact is recorded
-     * into it (for the debug harness). Returns the final per-tile river tree (global coarse-px).
+     * Full per-tile compute. When {@code stages != null} every intermediate artifact is recorded for
+     * the debug harness (zero allocation / recording overhead when {@code null}).
      */
-    private QuadTree<QuadTreePoint> computeTile(
-            int tx,
-            int tz,
-            QuadTree<QuadTreePoint> ridgeTree,
-            QuadTree<QuadTreePoint> valleyTree,
-            @Nullable Stages stages) {
+    private FloatTensor computeTile(int tx, int tz, @Nullable Stages stages) {
         final int tileOriginCx = tx * TILE_SIZE;
         final int tileOriginCz = tz * TILE_SIZE;
 
-        // 1. padded, ch6-normalized coarse elevation
-        final float[] paddedElevation = paddedElevation(tileOriginCx, tileOriginCz);
+        // 1. slice: padded, weight-normalized coarse elevation.
+        final float[] elevation = paddedElevation(tileOriginCx, tileOriginCz);
 
-        // 2. padded Difference-of-Gaussians
-        // final float[] paddedBlur = DifferenceOfGaussians.run(paddedElevation, paddedSide,paddedSide,SIGMA1, SIGMA2);
-
-        final float[] paddedBlur = Blur.gaussianSeparable(paddedElevation, paddedSide, paddedSide, SIGMA1);
-
-        // 3. ridge / valley masks
-        final boolean[][] ridgeMask = ridgeMask(paddedBlur);
-        final boolean[][] valleyMask = valleyMask(paddedBlur);
-
-        // 4-5. trace masks → splines → insert points into the (padded-local) trees. Ridges use the
-        // skeleton (medial axis); valleys use the region border via marching squares.
-        final List<QuinticHermiteSpline> ridgeSplines = maskSkeletonizer.trace(ridgeMask);
-        final List<QuinticHermiteSpline> valleySplines = valleyTracer.trace(valleyMask);
-        insertLocalSplinePoints(ridgeTree, ridgeSplines);
-        insertLocalSplinePoints(valleyTree, valleySplines);
-
-        // 6. field-line placement at higher resolution, then drop lines over negative elevation.
-        final int fieldW = placer.outputWidth();
-        final int fieldH = placer.outputHeight();
-        final float[] fieldRaw = placer.applyRaw(ridgeTree, valleyTree);
-        maskFieldByElevation(fieldRaw, fieldW, fieldH, paddedElevation);
-        final float[] fieldNorm = FieldLinePlacer.normalizeByFwidth(fieldRaw, fieldW, fieldH);
-
-        // 7. threshold the field into a mask
-        final boolean[][] fieldMask = fieldMask(fieldRaw, fieldW, fieldH);
-
-        // 8-9. skeletonize the field, transform back to global coarse-px, insert into the final tree
-        final List<QuinticHermiteSpline> fieldSplines = fieldSkeletonizer.trace(fieldMask);
-        final QuadTree<QuadTreePoint> finalTree = newFinalTree(tileOriginCx, tileOriginCz);
-        for (QuinticHermiteSpline spline : fieldSplines) {
-            for (double[] fieldPoint : spline.points()) {
-                final double globalX = tileOriginCx - pad + fieldPoint[0] * fieldResolution;
-                final double globalZ = tileOriginCz - pad + fieldPoint[1] * fieldResolution;
-                finalTree.insertPoint(new QuadTreePoint(new double[] {globalX, globalZ}));
+        // 2. threshold on the RAW elevation (so the coast stays anchored to true elevation).
+        final boolean[][] upperMask = new boolean[PADDED_SIDE][PADDED_SIDE];
+        final boolean[][] lowerMask = new boolean[PADDED_SIDE][PADDED_SIDE];
+        for (int pi = 0; pi < PADDED_SIDE; pi++) {
+            for (int pj = 0; pj < PADDED_SIDE; pj++) {
+                final float value = elevation[pi * PADDED_SIDE + pj];
+                upperMask[pi][pj] = value >= RIDGE_THRESHOLD;
+                lowerMask[pi][pj] = value <= COAST_THRESHOLD;
             }
         }
-        LOG.info("tile quadTreeSize {}",finalTree.numPoints());
+
+        // Zero out the outer PAD+1 rows/cols of upperMask so the skeletonizer never thins padded pixels.
+        for (int pi = 0; pi < PADDED_SIDE; pi++) {
+            for (int pj = 0; pj < PADDED_SIDE; pj++) {
+                if (pi < PAD + 1 || pi >= PADDED_SIDE - PAD - 1
+                        || pj < PAD + 1 || pj >= PADDED_SIDE - PAD - 1) {
+                    upperMask[pi][pj] = false;
+                }
+            }
+        }
+
+        // 3. isolate: a ramp rising toward the border on a COPY used only for the descent gradient.
+        final float[] rampedElevation = applyBorderRamp(elevation);
+
+        // 4. ridge mask (thinned upper region) + coast mask (border of the lower region).
+        final boolean[][] ridgeMask = Skeletonizer.thin(upperMask);
+        final boolean[][] coastMask = MarchingSquares.borderMask(lowerMask);
+
+        // 5. gradient descent: steepest-descent D8 field over the ramped elevation, then a per-source
+        //    walk recording outgoing bits along each path until it reaches a coast pixel. A path that
+        //    stalls in an interior sink is rerouted toward the nearest coast cell (see coastTree).
+        final float[] uniformWeight = new float[PADDED_SIDE * PADDED_SIDE];
+        Arrays.fill(uniformWeight, 1f);
+        final float[] drainageDirection =
+                PipelinePreprocessing.computeDrainageDirection(rampedElevation, uniformWeight, PADDED_SIDE);
+        final QuadTree<QuadTreePoint> coastTree = buildCoastTree(coastMask);
+        final int[] arrows = new int[PADDED_SIDE * PADDED_SIDE];
+        for(int i=0 ; i<PADDED_SIDE; i++){
+            for(int j=0 ; j<PADDED_SIDE; j++){
+                arrows[i*PADDED_SIDE+j] = coastMask[i][j] ? COAST_BIT : 0;
+            }
+        }
+        final List<List<int[]>> descentPaths = (stages != null) ? new ArrayList<>() : null;
+        for (int pi = 0; pi < PADDED_SIDE; pi++) {
+            for (int pj = 0; pj < PADDED_SIDE; pj++) {
+                if (!ridgeMask[pi][pj]) continue;
+                walkFromSource(pi, pj, drainageDirection, coastMask, coastTree, arrows, descentPaths);
+            }
+        }
+
+        // 6. width: flow-accumulation proxy mapped through globalRiverWidth, only on river pixels.
+        //    NOTE: flow accumulation comes from the raw steepest-descent field, so cells on a
+        //    sink-reroute segment get width from natural flow rather than the rerouted drainage.
+        final float[] flowAccumulation = PipelinePreprocessing.computeFlow(drainageDirection, PADDED_SIDE);
+        final float[] widths = new float[PADDED_SIDE * PADDED_SIDE];
+        for (int px = 0; px < arrows.length; px++) {
+            if (arrows[px] != 0) widths[px] = globalRiverWidth(flowAccumulation[px]);
+        }
+
+        // 7. result: crop the central 64×64 into a [2,64,64] tile.
+        final FloatTensor tile = new FloatTensor(new int[] {GLOBAL_RIVER_CHANNELS, TILE_SIZE, TILE_SIZE});
+        final int pixelsPerChannel = TILE_SIZE * TILE_SIZE;
+        for (int x = 0; x < TILE_SIZE; x++) {
+            for (int z = 0; z < TILE_SIZE; z++) {
+                final int paddedIndex = (PAD + x) * PADDED_SIDE + (PAD + z);
+                final int localIndex = x * TILE_SIZE + z;
+                tile.data[localIndex] = Float.intBitsToFloat(arrows[paddedIndex]);
+                tile.data[pixelsPerChannel + localIndex] = widths[paddedIndex];
+            }
+        }
+
         if (stages != null) {
-            stages.paddedSide = paddedSide;
-            stages.pad = pad;
+            stages.paddedSide = PADDED_SIDE;
+            stages.pad = PAD;
             stages.tileOriginCx = tileOriginCx;
             stages.tileOriginCz = tileOriginCz;
-            stages.paddedElevation = paddedElevation;
-            stages.paddedBlur = paddedBlur;
+            stages.rawElevation = elevation;
+            stages.rampedElevation = rampedElevation;
+            stages.upperMask = upperMask;
+            stages.lowerMask = lowerMask;
             stages.ridgeMask = ridgeMask;
-            stages.valleyMask = valleyMask;
-            stages.ridgeSplines = ridgeSplines;
-            stages.valleySplines = valleySplines;
-            stages.fieldSplines = fieldSplines;
-            stages.ridgeTree = ridgeTree;
-            stages.valleyTree = valleyTree;
-            stages.fieldWidth = fieldW;
-            stages.fieldHeight = fieldH;
-            stages.fieldRaw = fieldRaw;
-            stages.fieldNorm = fieldNorm;
-            stages.fieldMask = fieldMask;
-            stages.finalTree = finalTree;
+            stages.coastMask = coastMask;
+            stages.descentPaths = descentPaths;
+            stages.arrows = arrows;
+            stages.widths = widths;
+            stages.tile = tile;
         }
-        return finalTree;
+        return tile;
+    }
+
+    /**
+     * Follow the steepest-descent field from ridge seed {@code (startPi, startPj)} pixel-by-pixel.
+     * At each step the exited pixel gets its <b>outgoing</b> bit set (upstream arrows are not stored;
+     * they are derived later by scanning neighbours). The seed is flagged {@code source} and a terminal
+     * coast pixel is flagged {@code coast}. Bits accumulate (OR) so converging tributaries share pixels.
+     * If the walk stalls in an interior sink (no downhill neighbour), the sink is flagged {@code sink}
+     * and the path is rerouted to the nearest coast cell via {@link #marchToCoast}.
+     */
+    private void walkFromSource(
+            int startPi,
+            int startPj,
+            float[] drainageDirection,
+            boolean[][] coastMask,
+            QuadTree<QuadTreePoint> coastTree,
+            int[] arrows,
+            @Nullable List<List<int[]>> descentPaths) {
+        arrows[startPi * PADDED_SIDE + startPj] |= SOURCE_BIT;
+        final List<int[]> path = (descentPaths != null) ? new ArrayList<>() : null;
+        if (path != null) path.add(new int[] {startPi, startPj});
+
+        int pi = startPi;
+        int pj = startPj;
+        for (int step = 0; step < MAX_WALK_STEPS; step++) {
+            arrows[pi * PADDED_SIDE + pj] |= RIVER_BIT;
+            final int direction = PipelinePreprocessing.neighbor(drainageDirection[pi * PADDED_SIDE + pj]);
+            if (direction == -1) {
+                // sink: no downhill neighbour — flag it and reroute toward the nearest coast cell.
+                arrows[pi * PADDED_SIDE + pj] |= SINK_BIT;
+                marchToCoast(pi, pj, coastMask, coastTree, arrows, path);
+                break;
+            }
+            final int nextPi = pi + NEIGHBOR_OFFSET_X[direction];
+            final int nextPj = pj + NEIGHBOR_OFFSET_Z[direction];
+            arrows[pi * PADDED_SIDE + pj] |= (1 << (OUTGOING_SHIFT + direction));
+            if (path != null) path.add(new int[] {nextPi, nextPj});
+            if (isCoast(arrows[nextPi * PADDED_SIDE + nextPj])) break;
+            pi = nextPi;
+            pj = nextPj;
+        }
+        if (descentPaths != null) descentPaths.add(path);
+    }
+
+    /**
+     * Build a spatial index of every coast cell in {@code coastMask}, in padded-grid pixel coords, used
+     * to find the nearest coastline target when a descent walk stalls in an interior sink. Returns
+     * {@code null} when the tile has no coast cells (then a stalled walk simply ends).
+     */
+    private @Nullable QuadTree<QuadTreePoint> buildCoastTree(boolean[][] coastMask) {
+        QuadTree<QuadTreePoint> coastTree = null;
+        for (int pi = 0; pi < PADDED_SIDE; pi++) {
+            for (int pj = 0; pj < PADDED_SIDE; pj++) {
+                if (!coastMask[pi][pj]) continue;
+                if (coastTree == null) {
+                    coastTree =
+                            new QuadTree<>(new double[] {0, 0}, new double[] {PADDED_SIDE, PADDED_SIDE});
+                }
+                coastTree.insertPoint(new QuadTreePoint(new double[] {pi, pj}));
+            }
+        }
+        return coastTree;
+    }
+
+    /**
+     * Reroute a stalled descent from sink {@code (sinkPi, sinkPj)} to the coast: find the nearest coast
+     * cell ({@link #nearestCoast}) and march D8 toward it, at each step taking the in-bounds neighbour
+     * that most reduces the Euclidean distance to the target and setting the current cell's outgoing
+     * bit. Stops when a coast cell is entered (flagged {@code coast}), when no neighbour gets closer, or
+     * after {@link #MAX_WALK_STEPS}. A no-op when the tile has no coast cells.
+     */
+    private void marchToCoast(
+            int sinkPi,
+            int sinkPj,
+            boolean[][] coastMask,
+            @Nullable QuadTree<QuadTreePoint> coastTree,
+            int[] arrows,
+            @Nullable List<int[]> path) {
+        final double[] target = nearestCoast(coastTree, sinkPi, sinkPj);
+        if (target == null) return; // no coastline in this tile — river simply ends.
+
+        int pi = sinkPi;
+        int pj = sinkPj;
+        for (int step = 0; step < MAX_WALK_STEPS; step++) {
+            int bestDirection = -1;
+            double bestDistance = VectorOps.distance(new double[] {pi, pj}, target);
+            for (int d = 0; d < 8; d++) {
+                final int nextPi = pi + NEIGHBOR_OFFSET_X[d];
+                final int nextPj = pj + NEIGHBOR_OFFSET_Z[d];
+                if (nextPi < 0 || nextPj < 0 || nextPi >= PADDED_SIDE || nextPj >= PADDED_SIDE) continue;
+                final double distance = VectorOps.distance(new double[] {nextPi, nextPj}, target);
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    bestDirection = d;
+                }
+            }
+            if (bestDirection == -1) break; // no neighbour gets closer to the coast.
+            final int nextPi = pi + NEIGHBOR_OFFSET_X[bestDirection];
+            final int nextPj = pj + NEIGHBOR_OFFSET_Z[bestDirection];
+            arrows[pi * PADDED_SIDE + pj] |= (1 << (OUTGOING_SHIFT + bestDirection));
+            if (path != null) path.add(new int[] {nextPi, nextPj});
+            if (isCoast(arrows[nextPi * PADDED_SIDE + nextPj]))  break;
+            pi = nextPi;
+            pj = nextPj;
+        }
+    }
+
+    /**
+     * Nearest coast cell to {@code (pi, pj)} in padded-grid coords, found by expanding-radius circle
+     * queries against {@code coastTree} (which has no built-in nearest-neighbour search). Returns
+     * {@code null} when {@code coastTree} is {@code null} (no coast in the tile).
+     */
+    private double @Nullable [] nearestCoast(@Nullable QuadTree<QuadTreePoint> coastTree, int pi, int pj) {
+        if (coastTree == null) return null;
+        final double[] origin = {pi, pj};
+        final double maxRadius = PADDED_SIDE * 1.4143; // padded diagonal, generous upper bound
+        for (double radius = 4; radius <= maxRadius; radius *= 2) {
+            final List<QuadTreePoint> candidates = coastTree.getPointsInCircle(origin, radius);
+            if (candidates.isEmpty()) continue;
+            double[] nearest = null;
+            double nearestDistance = Double.MAX_VALUE;
+            for (QuadTreePoint candidate : candidates) {
+                final double distance = VectorOps.distance(origin, candidate.toArray());
+                if (distance < nearestDistance) {
+                    nearestDistance = distance;
+                    nearest = candidate.toArray();
+                }
+            }
+            return nearest;
+        }
+        return null;
     }
 
     /** Pulls the padded coarse slice and normalizes elevation by the blend weight (channel 6). */
     private float[] paddedElevation(int tileOriginCx, int tileOriginCz) {
-        final int ci0 = tileOriginCx - pad;
-        final int cj0 = tileOriginCz - pad;
-        final int ci1 = tileOriginCx + TILE_SIZE + pad;
-        final int cj1 = tileOriginCz + TILE_SIZE + pad;
+        final int ci0 = tileOriginCx - PAD;
+        final int cj0 = tileOriginCz - PAD;
+        final int ci1 = tileOriginCx + TILE_SIZE + PAD;
+        final int cj1 = tileOriginCz + TILE_SIZE + PAD;
         final FloatTensor slice = pipeline.getCoarseSlice(ci0, cj0, ci1, cj1);
-        final int pixelCount = paddedSide * paddedSide;
+        final int pixelCount = PADDED_SIDE * PADDED_SIDE;
         final float[] elevation = new float[pixelCount];
         for (int px = 0; px < pixelCount; px++) {
             final float weight = slice.data[6 * pixelCount + px];
-            final float normalized = (weight > 1e-6f) ? slice.data[px] / weight : 0f;
-            elevation[px] = normalized;
+            elevation[px] = (weight > 1e-6f) ? slice.data[px] / weight : 0f;
         }
         return elevation;
     }
 
-    private boolean[][] ridgeMask(float[] paddedDog) {
-        final boolean[][] mask = new boolean[paddedSide][paddedSide];
-        for (int di = 0; di < paddedSide; di++) {
-            for (int dj = 0; dj < paddedSide; dj++) {
-                mask[di][dj] = paddedDog[di * paddedSide + dj] >= RIDGE_THRESHOLD;
+    /**
+     * Return a copy of {@code elevation} with a ramp added that rises toward the padded-grid border:
+     * border pixels gain {@link #RAMP_HEIGHT}, decaying linearly to 0 at {@link #RAMP_WIDTH} pixels
+     * inward. This pushes steepest-descent flow inward so rivers terminate within the tile rather than
+     * spilling across its borders. The central 64×64 region is left untouched (real elevation).
+     */
+    private float[] applyBorderRamp(float[] elevation) {
+        final float[] ramped = elevation.clone();
+        for (int pi = 0; pi < PADDED_SIDE; pi++) {
+            for (int pj = 0; pj < PADDED_SIDE; pj++) {
+                final int distanceToBorder =
+                        Math.min(Math.min(pi, pj), Math.min(PADDED_SIDE - 1 - pi, PADDED_SIDE - 1 - pj));
+                if (distanceToBorder >= RAMP_WIDTH) continue;
+                final float rise = RAMP_HEIGHT * (RAMP_WIDTH - distanceToBorder) / (float) RAMP_WIDTH;
+                ramped[pi * PADDED_SIDE + pj] += rise;
             }
         }
-        return mask;
-    }
-
-    private boolean[][] valleyMask(float[] paddedDog) {
-        final boolean[][] mask = new boolean[paddedSide][paddedSide];
-        for (int di = 0; di < paddedSide; di++) {
-            for (int dj = 0; dj < paddedSide; dj++) {
-                mask[di][dj] = paddedDog[di * paddedSide + dj] <= 0;
-            }
-        }
-        return mask;
+        return ramped;
     }
 
     /**
-     * Zero every field cell whose underlying coarse elevation is negative, so no river/field line is
-     * traced over below-sea-level terrain. The field grid is {@link FieldLinePlacer#UPSAMPLE}× the
-     * padded elevation per axis, so cell {@code (row, col)} maps to elevation pixel
-     * {@code (row*fieldResolution, col*fieldResolution)}.
+     * Map a sqrt-scaled flow-accumulation value to a river width. Kept small and tunable: width grows
+     * with upstream drainage, giving large rivers downstream and thin tributaries near the ridges.
      */
-    private void maskFieldByElevation(float[] field, int fieldW, int fieldH, float[] paddedElevation) {
-        for (int row = 0; row < fieldH; row++) {
-            final int di = Math.min((int) (row * fieldResolution), paddedSide - 1);
-            for (int col = 0; col < fieldW; col++) {
-                final int dj = Math.min((int) (col * fieldResolution), paddedSide - 1);
-                if (paddedElevation[di * paddedSide + dj] < 0f) {
-                    field[row * fieldW + col] = 0f;
-                }
-            }
-        }
-    }
-
-    private static boolean[][] fieldMask(float[] field, int fieldW, int fieldH) {
-        final boolean[][] mask = new boolean[fieldH][fieldW];
-        for (int row = 0; row < fieldH; row++) {
-            for (int col = 0; col < fieldW; col++) {
-                mask[row][col] = field[row * fieldW + col] >= FIELD_THRESHOLD;
-            }
-        }
-        return mask;
-    }
-
-    /** Insert spline sample points (padded-local row/col coords) into {@code tree}. */
-    private static void insertLocalSplinePoints(QuadTree<QuadTreePoint> tree, List<QuinticHermiteSpline> splines) {
-        for (QuinticHermiteSpline spline : splines) {
-            for (double[] point : spline.points()) {
-                tree.insertPoint(new QuadTreePoint(new double[] {point[0], point[1]}));
-            }
-        }
-    }
-
-    private QuadTree<QuadTreePoint> newLocalTree() {
-        return new QuadTree<>(new double[] {0, 0}, new double[] {paddedSide, paddedSide});
-    }
-
-    private QuadTree<QuadTreePoint> newFinalTree(int tileOriginCx, int tileOriginCz) {
-        return new QuadTree<>(
-                new double[] {tileOriginCx - pad, tileOriginCz - pad},
-                new double[] {tileOriginCx + TILE_SIZE + pad, tileOriginCz + TILE_SIZE + pad});
+    private static float globalRiverWidth(float flowAccumulation) {
+        return (float) Math.log(flowAccumulation+1);
     }
 
     // -------------------------------------------------------------------------
     // Debug access (used by GlobalRiverTest to render every intermediate stage)
     // -------------------------------------------------------------------------
 
-    /** Recompute one tile with fresh trees, capturing every intermediate stage for visualization. */
+    /** Recompute one tile, capturing every intermediate stage for visualization. */
     @TestOnly
     public Stages debugStages(int tx, int tz) {
         final Stages stages = new Stages();
-        computeTile(tx, tz, newLocalTree(), newLocalTree(), stages);
+        computeTile(tx, tz, stages);
         return stages;
     }
 
@@ -294,20 +446,15 @@ public class GlobalRiverProvider {
         public int pad;
         public int tileOriginCx;
         public int tileOriginCz;
-        public float[] paddedElevation;
-        public float[] paddedBlur;
+        public float[] rawElevation;
+        public float[] rampedElevation;
+        public boolean[][] upperMask;
+        public boolean[][] lowerMask;
         public boolean[][] ridgeMask;
-        public boolean[][] valleyMask;
-        public List<QuinticHermiteSpline> ridgeSplines;
-        public List<QuinticHermiteSpline> valleySplines;
-        public List<QuinticHermiteSpline> fieldSplines;
-        public QuadTree<QuadTreePoint> ridgeTree;
-        public QuadTree<QuadTreePoint> valleyTree;
-        public int fieldWidth;
-        public int fieldHeight;
-        public float[] fieldRaw;
-        public float[] fieldNorm;
-        public boolean[][] fieldMask;
-        public QuadTree<QuadTreePoint> finalTree;
+        public boolean[][] coastMask;
+        public List<List<int[]>> descentPaths;
+        public int[] arrows;
+        public float[] widths;
+        public FloatTensor tile;
     }
 }

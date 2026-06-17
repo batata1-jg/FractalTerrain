@@ -1,14 +1,14 @@
 package me.batata_1.fractal_terrain.relief;
 
+import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
+
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
+import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import me.batata_1.fractal_terrain.noise.PhacelleNoiseSampler;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 public class PopulateNoiseStep {
 
@@ -20,7 +20,8 @@ public class PopulateNoiseStep {
     };
 
     private static final BlockState DEFAULT_ROCK = Blocks.STONE.defaultBlockState();
-    private static final BlockState MARKER_ROCK = Blocks.BLUE_CONCRETE.defaultBlockState();
+    private static final BlockState COAST_MARKER_ROCK = Blocks.BLUE_CONCRETE.defaultBlockState();
+    private static final BlockState RIVER_MARKER_ROCK = Blocks.GREEN_CONCRETE.defaultBlockState();
     private static final double MARKER_THRESHOLD = 0.8;
     private static final Logger LOG = getLogger(PopulateNoiseStep.class);
 
@@ -60,7 +61,7 @@ public class PopulateNoiseStep {
     }
 
     private static BlockState toRock(double v) {
-        return (v >= MARKER_THRESHOLD) ? MARKER_ROCK : DEFAULT_ROCK;
+        return (v >= MARKER_THRESHOLD) ? COAST_MARKER_ROCK : DEFAULT_ROCK;
     }
 
     public BlockState fillRocks(int x, int y, int z) {
@@ -71,10 +72,10 @@ public class PopulateNoiseStep {
 
     public BlockState placeRiver(BlockState state, int xx, int distFromSurface, int zz) {
         if (distFromSurface != 0) return state;
-      //  LOG.info("reaches here");
-        if (FractalTerrainInstance.getGlobalRiverProvider()
-                .query(0.2 * xx, 0.2 * zz)
-                .isEmpty()) return state;
-        return MARKER_ROCK;
+        final int coarseX = Math.floorDiv(xx, 256*5);
+        final int coarseZ = Math.floorDiv(zz, 256*5);
+        if (GlobalRiverProvider.isRiver(FractalTerrainInstance.getGlobalRiverProvider().getArrow(coarseX, coarseZ))) return RIVER_MARKER_ROCK;
+        if (GlobalRiverProvider.isCoast(FractalTerrainInstance.getGlobalRiverProvider().getArrow(coarseX, coarseZ))) return COAST_MARKER_ROCK;
+        return state;
     }
 }

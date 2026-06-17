@@ -1,4 +1,4 @@
-package me.batata_1.fractal_terrain.hydrology;
+package me.batata_1.fractal_terrain.math;
 
 import java.util.List;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
@@ -88,7 +88,7 @@ public class FieldLinePlacer {
 
                 double netAngle = 0.0;
                 for (QuadTreePoint ridge : ridgeHits) {
-                    netAngle += frequency*Math.atan2(sampleX - ridge.get(0), sampleZ - ridge.get(1));
+                    netAngle += frequency * Math.atan2(sampleX - ridge.get(0), sampleZ - ridge.get(1));
                 }
                 for (QuadTreePoint valley : valleyHits) {
                     netAngle -= Math.atan2(sampleX - valley.get(0), sampleZ - valley.get(1));

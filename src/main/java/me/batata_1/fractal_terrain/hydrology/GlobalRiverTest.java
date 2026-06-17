@@ -7,9 +7,6 @@ import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
-import me.batata_1.fractal_terrain.math.ds.QuadTree;
-import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
-import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 import me.batata_1.fractal_terrain.ml.models.ModelAssetManager;
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import org.jetbrains.annotations.TestOnly;
@@ -29,7 +26,7 @@ public class GlobalRiverTest {
     private static final String DEBUG_PATH = FractalTerrainConfig.DEFAULT_DEBUG_PATH + "/global_river";
 
     /** Tiles (tx, tz) to render. */
-    private static final int[][] TILES = {{0, 0}};
+    private static final int[][] TILES = {{-1, -1}};
 
     public static void main(String[] args) throws Exception {
         LOG.info("GlobalRiverTest start; output dir = {}", DEBUG_PATH);
@@ -50,43 +47,21 @@ public class GlobalRiverTest {
         final GlobalRiverProvider.Stages stages = provider.debugStages(tx, tz);
         final String prefix = "tile_tx" + tx + "_tz" + tz + "_";
         final int paddedSide = stages.paddedSide;
-        final int fieldW = stages.fieldWidth;
-        final int fieldH = stages.fieldHeight;
 
-        seeFloat(stages.paddedElevation, paddedSide, paddedSide, prefix + "01_coarse_padded");
-        seeFloat(stages.paddedBlur, paddedSide, paddedSide, prefix + "02_blurred");
-        seeFloat(maskToFloat(stages.ridgeMask), paddedSide, paddedSide, prefix + "03_ridge_mask");
-        seeFloat(maskToFloat(stages.valleyMask), paddedSide, paddedSide, prefix + "04_valley_mask");
-        seeFloat(rasterizeTree(stages.ridgeTree, 0, 0, paddedSide), paddedSide, paddedSide, prefix + "05_ridge_tree");
-        seeFloat(rasterizeTree(stages.valleyTree, 0, 0, paddedSide), paddedSide, paddedSide, prefix + "06_valley_tree");
-        seeFloat(stages.fieldRaw, fieldW, fieldH, prefix + "07_field_raw");
-        seeFloat(stages.fieldNorm, fieldW, fieldH, prefix + "08_field_fwidth");
-        seeFloat(maskToFloat(stages.fieldMask), fieldW, fieldH, prefix + "09_field_mask");
-        seeFloat(
-                rasterizeTree(
-                        stages.finalTree,
-                        stages.tileOriginCx - stages.pad,
-                        stages.tileOriginCz - stages.pad,
-                        paddedSide),
-                paddedSide,
-                paddedSide,
-                prefix + "10_final_tree");
-
-        // Per-spline visualizations: confirm valley contours look like region borders and the
-        // ridge/field splines are well-formed.
-        //        seeSplines(stages.ridgeSplines, prefix + "ridge_spline_");
-        //        seeSplines(stages.valleySplines, prefix + "valley_spline_");
-        //        seeSplines(stages.fieldSplines, prefix + "field_spline_");
+        seeFloat(stages.rawElevation, paddedSide, paddedSide, prefix + "01_raw_elevation");
+        seeFloat(stages.rampedElevation, paddedSide, paddedSide, prefix + "02_ramped_elevation");
+        seeFloat(maskToFloat(stages.upperMask), paddedSide, paddedSide, prefix + "03_upper_mask");
+        seeFloat(maskToFloat(stages.lowerMask), paddedSide, paddedSide, prefix + "04_lower_mask");
+        seeFloat(maskToFloat(stages.ridgeMask), paddedSide, paddedSide, prefix + "05_ridge_mask");
+        seeFloat(maskToFloat(stages.coastMask), paddedSide, paddedSide, prefix + "06_coast_mask");
+        seeFloat(rasterizePaths(stages.descentPaths, paddedSide), paddedSide, paddedSide, prefix + "07_descent_paths");
+        seeFloat(arrowPresence(stages.arrows), paddedSide, paddedSide, prefix + "08_arrows_padded");
+        seeFloat(stages.widths, paddedSide, paddedSide, prefix + "09_widths_padded");
+        seeFloat(channel(stages.tile, 0), TILE_SIZE, TILE_SIZE, prefix + "10_tile_arrows");
+        seeFloat(channel(stages.tile, 1), TILE_SIZE, TILE_SIZE, prefix + "11_tile_widths");
     }
 
-    /** Render each spline to its own PNG via {@link Debug#spline} (auto-bounds, frame-agnostic). */
-    private static void seeSplines(List<QuinticHermiteSpline> splines, String prefix) {
-        Debug.spline.debugPath = DEBUG_PATH;
-        int n = 0;
-        for (QuinticHermiteSpline spline : splines) {
-            Debug.spline.see(spline, prefix + (n++));
-        }
-    }
+    private static final int TILE_SIZE = 64;
 
     private static void seeFloat(float[] data, int width, int height, String name) {
         Debug.tensor.see(new FloatTensor(new int[] {height, width}, data), name, DEBUG_PATH);
@@ -104,19 +79,31 @@ public class GlobalRiverTest {
         return out;
     }
 
-    /** Rasterize a tree's points (global coords) onto a {@code side x side} grid relative to an origin. */
-    private static float[] rasterizeTree(QuadTree<QuadTreePoint> tree, int originX, int originZ, int side) {
+    /** Rasterize every per-source descent path's pixels onto a {@code side x side} grid. */
+    private static float[] rasterizePaths(List<List<int[]>> paths, int side) {
         final float[] grid = new float[side * side];
-        final List<double[]> points = tree.getPointCoordsInBox(
-                new double[] {originX, originZ}, new double[] {originX + side, originZ + side});
-        for (double[] point : points) {
-            final int row = (int) Math.round(point[0] - originX);
-            final int col = (int) Math.round(point[1] - originZ);
-            if (row >= 0 && row < side && col >= 0 && col < side) {
-                grid[row * side + col] = 1f;
-            }
+        if (paths == null) return grid;
+        for (List<int[]> path : paths) {
+            for (int[] pixel : path) grid[pixel[0] * side + pixel[1]] = 1f;
         }
         return grid;
+    }
+
+
+    //TODO:COAST PRESENCE
+    /** 1 where a pixel carries any arrow bit, 0 otherwise. */
+    private static float[] arrowPresence(int[] arrows) {
+        final float[] out = new float[arrows.length];
+        for (int i = 0; i < arrows.length; i++) out[i] = GlobalRiverProvider.isRiver(arrows[i]) ? 1f : 0f;
+        return out;
+    }
+
+    /** Extract a single 64×64 channel from the {@code [2,64,64]} result tile. */
+    private static float[] channel(FloatTensor tile, int ch) {
+        final int pixels = TILE_SIZE * TILE_SIZE;
+        final float[] out = new float[pixels];
+        System.arraycopy(tile.data, ch * pixels, out, 0, pixels);
+        return out;
     }
 
     private static void cleanDir(String path) {

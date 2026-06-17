@@ -63,6 +63,15 @@ public class Skeletonizer {
     // Zhang–Suen thinning
     // -------------------------------------------------------------------------
 
+    /**
+     * Thin {@code mask} to a 1-pixel-wide skeleton mask, without any polyline tracing or spline
+     * fitting. This is the raw Zhang–Suen result — callers (e.g. the global-river ridge pass) want
+     * the skeleton mask directly rather than fitted splines. Returns a fresh array; input untouched.
+     */
+    public static boolean[][] thin(boolean[][] mask) {
+        return zhangSuen(mask);
+    }
+
     /** Zhang–Suen thinning to a 1-pixel-wide skeleton. Returns a fresh array; input is untouched. */
     public static boolean[][] zhangSuen(boolean[][] input) {
         final int height = input.length;

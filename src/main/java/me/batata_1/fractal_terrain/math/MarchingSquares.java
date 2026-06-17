@@ -58,6 +58,42 @@ public class MarchingSquares {
         return splines;
     }
 
+    /**
+     * Rasterize the region <em>border</em> of {@code mask} into a boolean mask of the same shape.
+     * A pixel is a border pixel iff it is {@code true} in {@code mask} and lies in at least one 2×2
+     * window that straddles the contour (i.e. the window mixes {@code true} and {@code false}). This
+     * is the cell-rasterized counterpart to {@link #traceContours} — instead of half-integer edge
+     * crossings it returns the actual filled-region cells that sit on the boundary. Used by the
+     * global-river pass to derive a coast mask (the low-elevation cells touching the coastline) from
+     * a low-elevation region mask. Returns a fresh array; input untouched.
+     */
+    public static boolean[][] borderMask(boolean[][] mask) {
+        final int height = mask.length;
+        final boolean[][] border = new boolean[height][];
+        for (int row = 0; row < height; row++) border[row] = new boolean[mask[row].length];
+        if (height < 2) return border;
+        final int width = mask[0].length;
+        if (width < 2) return border;
+
+        for (int row = 0; row < height - 1; row++) {
+            for (int col = 0; col < width - 1; col++) {
+                final boolean topLeft = mask[row][col];
+                final boolean topRight = mask[row][col + 1];
+                final boolean bottomRight = mask[row + 1][col + 1];
+                final boolean bottomLeft = mask[row + 1][col];
+                final int liveCount =
+                        (topLeft ? 1 : 0) + (topRight ? 1 : 0) + (bottomRight ? 1 : 0) + (bottomLeft ? 1 : 0);
+                final boolean straddlesContour = liveCount != 0 && liveCount != 4;
+                if (!straddlesContour) continue;
+                if (topLeft) border[row][col] = true;
+                if (topRight) border[row][col + 1] = true;
+                if (bottomRight) border[row + 1][col + 1] = true;
+                if (bottomLeft) border[row + 1][col] = true;
+            }
+        }
+        return border;
+    }
+
     // -------------------------------------------------------------------------
     // Marching-squares core
     // -------------------------------------------------------------------------

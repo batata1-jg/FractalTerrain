@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
+import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import me.batata_1.fractal_terrain.ml.pipeline.WorldPipeline;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
@@ -41,6 +42,7 @@ public class FractalTerrainInstance {
     private final ReliefProvider reliefSource;
     private final BiomeProvider biomeProvider;
     private final GlobalRiverProvider globalRiverProvider;
+    private final LocalRiverProvider localRiverProvider;
     private final FractalTerrainSurfaceBuilder surfaceBuilder;
     private final RandomState noiseConfig;
 
@@ -49,7 +51,8 @@ public class FractalTerrainInstance {
         final Path worldPath = server.getWorldPath(LevelResource.ROOT).normalize();
         this.reliefSource = new ReliefProvider(worldPath + "/fractal_terrain");
         this.biomeProvider = new BiomeProvider(worldPath + "/fractal_terrain");
-        this.globalRiverProvider = new GlobalRiverProvider(null);
+        this.globalRiverProvider = new GlobalRiverProvider(worldPath + "/fractal_terrain/global_river");
+        this.localRiverProvider = new LocalRiverProvider(null);
         final long seed = server.getWorldData().worldGenOptions().seed();
         final ServerLevel world = server.overworld();
         final RegistryAccess dynamicRegistryManager = world.registryAccess();
@@ -83,7 +86,8 @@ public class FractalTerrainInstance {
         if (!exists()) return;
         getInstance().biomeProvider.getInfiniteTensor().clear();
         getInstance().reliefSource.getInfiniteTensor().clear();
-        getInstance().globalRiverProvider.getInfiniteQuadTree().clear();
+        getInstance().globalRiverProvider.getInfiniteTensor().clear();
+        getInstance().localRiverProvider.getInfiniteTensor().clear();
         instance = new CompletableFuture<>();
         LOG.info("fractal terrain instance closed");
     }
@@ -122,5 +126,9 @@ public class FractalTerrainInstance {
 
     public static GlobalRiverProvider getGlobalRiverProvider() {
         return getInstance().globalRiverProvider;
+    }
+
+    public static LocalRiverProvider getLocalRiverProvider() {
+        return getInstance().localRiverProvider;
     }
 }

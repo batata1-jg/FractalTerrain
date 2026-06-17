@@ -7,6 +7,7 @@ import java.util.Arrays;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.debug.Debug;
+import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.math.Interpolation;
@@ -18,30 +19,43 @@ import org.jetbrains.annotations.NotNull;
 
 public class BiomeProvider {
 
+    /** Native-px e-folding distance of the river-humidity falloff (tunable). */
+    private static final double HUMIDITY_FALLOFF = 32.0;
+
+    private static final int TILE_PIXELS = 1 << 18; // 512 × 512
+
     private final NonIntersectingInfiniteTensor final_tiles;
     public final Climate.Sampler sampler;
 
     public BiomeProvider(String path) {
-        final_tiles = new NonIntersectingInfiniteTensor(path + "/final_biome_tiles", new int[] {5, 512, 512}, key -> {
-            int x = key.get(X);
-            int z = key.get(Z);
-            FloatTensor reliefTensor = FractalTerrainInstance.getReliefProvider()
-                    .getInfiniteTensor()
-                    .getEntry(key);
+        final_tiles = new NonIntersectingInfiniteTensor(
+                path + "/final_biome_tiles", new int[] {BIOME_CHANNELS, 512, 512}, key -> {
+                    int x = key.get(X);
+                    int z = key.get(Z);
+                    FloatTensor reliefTensor = FractalTerrainInstance.getReliefProvider()
+                            .getInfiniteTensor()
+                            .getEntry(key);
 
-            final float[] elev = Arrays.copyOfRange(reliefTensor.data, 0, 1 << 18);
-            final float[] grad = Arrays.copyOfRange(reliefTensor.data, 4 << 18, 5 << 18);
-            final float[] lowFreqGrad = Arrays.copyOfRange(reliefTensor.data, 5 << 18, 6 << 18);
-            final float[] res = Arrays.copyOfRange(reliefTensor.data, 6 << 18, 7 << 18);
-            final float[] climate = pipeline.getClimate(x, z, elev);
-            final float[] biomeVariables =
-                    ClimateVariableTransform.transform(x, z, elev, grad, lowFreqGrad, climate, res);
+                    final float[] elev = Arrays.copyOfRange(reliefTensor.data, 0, 1 << 18);
+                    final float[] grad = Arrays.copyOfRange(reliefTensor.data, 4 << 18, 5 << 18);
+                    final float[] lowFreqGrad = Arrays.copyOfRange(reliefTensor.data, 5 << 18, 6 << 18);
+                    final float[] res = Arrays.copyOfRange(reliefTensor.data, 6 << 18, 7 << 18);
+                    final float[] vegPdf = new float[512*512];
+                    final float[] climate = pipeline.getClimate(x, z, elev);
+                    final float[] biomeVariables =
+                            ClimateVariableTransform.transform(x, z, elev, grad, lowFreqGrad, climate, res, vegPdf);
 
-            FloatTensor t = new FloatTensor(biomeVariables, new int[] {5, 512, 512});
+                    // Channels 0..4 from the climate transform; channel 5 = river-humidity PDF (reserved,
+                    // not read by the sampler yet).
+                    final float[] entries = new float[BIOME_CHANNELS * TILE_PIXELS];
+                    System.arraycopy(biomeVariables, 0, entries, 0, 5 * TILE_PIXELS);
+                    System.arraycopy(vegPdf, 0, entries, 5 * TILE_PIXELS, TILE_PIXELS);
 
-            Debug.seeTile(t, x, z, "final_biomes");
-            return t;
-        });
+                    FloatTensor t = new FloatTensor(entries, new int[] {BIOME_CHANNELS, 512, 512});
+
+                    Debug.seeTile(t, x, z, "final_biomes");
+                    return t;
+                });
         // T H C E D W SpawnTarget
         final float scale = 1;
         sampler = new Climate.Sampler(
@@ -56,6 +70,26 @@ public class BiomeProvider {
 
     public NonIntersectingInfiniteTensor getInfiniteTensor() {
         return final_tiles;
+    }
+
+    /**
+     * River-humidity PDF for biome tile {@code (tileX, tileZ)}: for each of the 512×512 pixels, the
+     * nearest local-river distance is mapped through an exponential falloff (closer ⇒ more humid).
+     * Pixels with no river within the query radius get 0. Indexed {@code ix*512 + iz}, matching the
+     * relief/biome flat layout.
+     */
+    private static float[] riverHumidity(int tileX, int tileZ) {
+        final LocalRiverProvider localRivers = FractalTerrainInstance.getLocalRiverProvider();
+        final float[] vegPdf = new float[TILE_PIXELS];
+        final int blockOriginX = tileX << 9;
+        final int blockOriginZ = tileZ << 9;
+        for (int ix = 0; ix < 512; ix++) {
+            for (int iz = 0; iz < 512; iz++) {
+                final double dist = localRivers.nearestRiverDistance(blockOriginX + ix, blockOriginZ + iz);
+                vegPdf[ix * 512 + iz] = (dist == Double.MAX_VALUE) ? 0f : (float) Math.exp(-dist / HUMIDITY_FALLOFF);
+            }
+        }
+        return vegPdf;
     }
 
     private static class BiomeProviderDensity implements DensityFunction.SimpleFunction {

@@ -42,7 +42,14 @@ public class ClimateVariableTransform {
             new float[] {0, 0, 0, 0, 0, 0});
     // continentalness erosion temperature vegetation weirdness<-(PV)
     public static float[] transform(
-            int x0, int z0, float[] elev, float[] grad, float[] lowFreqGrad, float[] climate, float[] res) {
+            int x0,
+            int z0,
+            float[] elev,
+            float[] grad,
+            float[] lowFreqGrad,
+            float[] climate,
+            float[] res,
+            float[] vegPdf) {
         float[] out = new float[5 << 18];
         for (int i = 0; i < (5 << 18); i++) out[i] = -1;
 

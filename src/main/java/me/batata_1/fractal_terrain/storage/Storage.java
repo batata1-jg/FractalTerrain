@@ -60,12 +60,14 @@ public class Storage<T extends Persistable<T>> {
     private long totalCachedBytes = 0;
 
     /** Serialize capability for this Storage: TRUE = disk-backed, FALSE = cache-only, null = unknown. */
+    //TODO: change this to final
     private volatile Boolean payloadIsSerializable = null;
 
     /**
      * @param path persistence directory, or {@code null} for a cache-only Storage that never persists
      *     and never touches the filesystem.
      */
+    //TODO: fix this constructor
     public Storage(@Nullable String path, int rank, T deserializationPrototype) {
         PATH = path;
 

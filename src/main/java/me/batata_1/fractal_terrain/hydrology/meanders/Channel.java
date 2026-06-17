@@ -11,7 +11,7 @@ public class Channel {
     public final int channelId;
     public QuinticHermiteSpline spline;
 
-    Channel(double width, ArrayList<double[]> pts, int channelId) {
+    public Channel(double width, ArrayList<double[]> pts, int channelId) {
         this.width = width;
         this.depth = Math.max(1.0, Math.pow(width / 18.8, 1.0 / 1.41));
         this.spline = QuinticHermiteSpline.createCatmullRom(pts);
