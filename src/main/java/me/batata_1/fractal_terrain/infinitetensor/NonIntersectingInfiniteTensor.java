@@ -11,8 +11,8 @@ public class NonIntersectingInfiniteTensor extends Storage<FloatTensor> {
     private final TensorWindow outWindow;
     private final Function<TileKey, FloatTensor> entry_creating_function;
 
-    public NonIntersectingInfiniteTensor(String path, int[] shape, Function<TileKey, FloatTensor> f) {
-        super(path, shape.length, new FloatTensor(new int[] {1}));
+    public NonIntersectingInfiniteTensor(String path, String name, int[] shape, Function<TileKey, FloatTensor> f) {
+        super(path, name, shape.length, new FloatTensor(new int[] {1}));
         this.entry_creating_function = f;
         this.outWindow = new TensorWindow(shape);
     }

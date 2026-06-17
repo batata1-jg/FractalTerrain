@@ -57,8 +57,10 @@ public class GlobalRiverTest {
         seeFloat(rasterizePaths(stages.descentPaths, paddedSide), paddedSide, paddedSide, prefix + "07_descent_paths");
         seeFloat(arrowPresence(stages.arrows), paddedSide, paddedSide, prefix + "08_arrows_padded");
         seeFloat(stages.widths, paddedSide, paddedSide, prefix + "09_widths_padded");
+        seeFloat(stages.riverElevation, paddedSide, paddedSide, prefix + "09b_river_elev_padded");
         seeFloat(channel(stages.tile, 0), TILE_SIZE, TILE_SIZE, prefix + "10_tile_arrows");
         seeFloat(channel(stages.tile, 1), TILE_SIZE, TILE_SIZE, prefix + "11_tile_widths");
+        seeFloat(channel(stages.tile, 2), TILE_SIZE, TILE_SIZE, prefix + "12_tile_river_elev");
     }
 
     private static final int TILE_SIZE = 64;
@@ -89,8 +91,6 @@ public class GlobalRiverTest {
         return grid;
     }
 
-
-    //TODO:COAST PRESENCE
     /** 1 where a pixel carries any arrow bit, 0 otherwise. */
     private static float[] arrowPresence(int[] arrows) {
         final float[] out = new float[arrows.length];
@@ -98,7 +98,13 @@ public class GlobalRiverTest {
         return out;
     }
 
-    /** Extract a single 64×64 channel from the {@code [2,64,64]} result tile. */
+    private static float[] coastPresence(int[] arrows) {
+        final float[] out = new float[arrows.length];
+        for (int i = 0; i < arrows.length; i++) out[i] = GlobalRiverProvider.isCoast(arrows[i]) ? 1f : 0f;
+        return out;
+    }
+
+    /** Extract a single 64×64 channel from the {@code [3,64,64]} result tile. */
     private static float[] channel(FloatTensor tile, int ch) {
         final int pixels = TILE_SIZE * TILE_SIZE;
         final float[] out = new float[pixels];

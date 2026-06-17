@@ -23,7 +23,7 @@ public interface Persistable<T extends Persistable<T>> {
      *
      * @throws UnsupportedOperationException if the type has no real serialization (cache-only).
      */
-    default void serialize(String path) throws IOException {
+    default void serialize(String path) throws IOException, UnsupportedOperationException {
         throw new UnsupportedOperationException(
                 "serialize not implemented for " + getClass().getName());
     }
@@ -35,7 +35,7 @@ public interface Persistable<T extends Persistable<T>> {
      *
      * @throws UnsupportedOperationException if the type has no real serialization (cache-only).
      */
-    default T deserialize(String path) throws IOException, ClassNotFoundException {
+    default T deserialize(String path) throws IOException, ClassNotFoundException, UnsupportedOperationException {
         throw new UnsupportedOperationException(
                 "deserialize not implemented for " + getClass().getName());
     }

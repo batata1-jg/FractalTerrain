@@ -32,6 +32,8 @@ import org.jetbrains.annotations.TestOnly;
  *   <li><b>channel 0</b> — a packed arrow bitfield per pixel (see the bit layout below), stored as a
  *       float (integers below 2^24 are represented exactly).
  *   <li><b>channel 1</b> — the river width at that pixel (0 on non-river pixels).
+ *   <li><b>channel 2</b> — the river-bed elevation (native-px scale), forced monotonically
+ *       non-increasing downstream; consumed by {@code ReliefProvider.carveRiver}.
  * </ul>
  *
  * <p>Arrow bitfield (channel 0), using the D8 ordering of {@link PipelinePreprocessing}. Only the
@@ -57,15 +59,13 @@ public class GlobalRiverProvider {
 
     // ---- Tuning knobs (edit here during testing) ----------------------------
     /** Upper (ridge) region: pixels with normalized elevation ≥ this become river sources. */
-    private static final float RIDGE_THRESHOLD = 10f;
+    private static final float RIDGE_THRESHOLD = 20f;
     /** Lower (coast) region: pixels with normalized elevation ≤ this form the coastline. */
     private static final float COAST_THRESHOLD = 0f;
     /** Halo width (coarse px) over which the isolate ramp rises toward the tile border. */
     private static final int RAMP_WIDTH = 6;
     /** Peak height added to border pixels by the isolate ramp (decays linearly to 0 inward). */
     private static final float RAMP_HEIGHT = 5000f;
-    /** Width-proxy scale: river width = WIDTH_SCALE * sqrt-flow-accumulation. */
-    private static final float WIDTH_SCALE = 0.35f;
     /** Maximum descent steps per source before bailing (guards against pathological grids). */
     private static final int MAX_WALK_STEPS = 4 * 64 * 64;
 
@@ -87,7 +87,7 @@ public class GlobalRiverProvider {
 
     public GlobalRiverProvider(String path) {
         this.riverTiles = new NonIntersectingInfiniteTensor(
-                path, new int[] {GLOBAL_RIVER_CHANNELS, TILE_SIZE, TILE_SIZE}, this::buildRiverTile);
+                path, "global_river", new int[] {GLOBAL_RIVER_CHANNELS, TILE_SIZE, TILE_SIZE}, this::buildRiverTile);
     }
 
     public NonIntersectingInfiniteTensor getInfiniteTensor() {
@@ -104,6 +104,15 @@ public class GlobalRiverProvider {
     /** River width at global coarse-px {@code (cx, cz)} (0 on non-river pixels). */
     public float getWidth(int cx, int cz) {
         return riverTiles.getValue(new int[] {1, cx, cz});
+    }
+
+    /**
+     * River-bed elevation at global coarse-px {@code (cx, cz)}, in native-px scale: the original
+     * coarse elevation made monotonically non-increasing downstream along the arrow network. Consumed
+     * by {@code ReliefProvider.carveRiver} as the target bed to carve toward.
+     */
+    public float getElevation(int cx, int cz) {
+        return riverTiles.getValue(new int[] {2, cx, cz});
     }
 
     public static int outgoingMask(int arrow) {
@@ -176,8 +185,7 @@ public class GlobalRiverProvider {
         // Zero out the outer PAD+1 rows/cols of upperMask so the skeletonizer never thins padded pixels.
         for (int pi = 0; pi < PADDED_SIDE; pi++) {
             for (int pj = 0; pj < PADDED_SIDE; pj++) {
-                if (pi < PAD + 1 || pi >= PADDED_SIDE - PAD - 1
-                        || pj < PAD + 1 || pj >= PADDED_SIDE - PAD - 1) {
+                if (pi < PAD + 1 || pi >= PADDED_SIDE - PAD - 1 || pj < PAD + 1 || pj >= PADDED_SIDE - PAD - 1) {
                     upperMask[pi][pj] = false;
                 }
             }
@@ -187,7 +195,8 @@ public class GlobalRiverProvider {
         final float[] rampedElevation = applyBorderRamp(elevation);
 
         // 4. ridge mask (thinned upper region) + coast mask (border of the lower region).
-        final boolean[][] ridgeMask = Skeletonizer.thin(upperMask);
+//        final boolean[][] ridgeMask = Skeletonizer.thin(upperMask);
+        final boolean[][] ridgeMask = upperMask;
         final boolean[][] coastMask = MarchingSquares.borderMask(lowerMask);
 
         // 5. gradient descent: steepest-descent D8 field over the ramped elevation, then a per-source
@@ -195,13 +204,13 @@ public class GlobalRiverProvider {
         //    stalls in an interior sink is rerouted toward the nearest coast cell (see coastTree).
         final float[] uniformWeight = new float[PADDED_SIDE * PADDED_SIDE];
         Arrays.fill(uniformWeight, 1f);
-        final float[] drainageDirection =
+        final int[] drainageDirection =
                 PipelinePreprocessing.computeDrainageDirection(rampedElevation, uniformWeight, PADDED_SIDE);
         final QuadTree<QuadTreePoint> coastTree = buildCoastTree(coastMask);
         final int[] arrows = new int[PADDED_SIDE * PADDED_SIDE];
-        for(int i=0 ; i<PADDED_SIDE; i++){
-            for(int j=0 ; j<PADDED_SIDE; j++){
-                arrows[i*PADDED_SIDE+j] = coastMask[i][j] ? COAST_BIT : 0;
+        for (int i = 0; i < PADDED_SIDE; i++) {
+            for (int j = 0; j < PADDED_SIDE; j++) {
+                arrows[i * PADDED_SIDE + j] = coastMask[i][j] ? COAST_BIT : 0;
             }
         }
         final List<List<int[]>> descentPaths = (stages != null) ? new ArrayList<>() : null;
@@ -221,7 +230,11 @@ public class GlobalRiverProvider {
             if (arrows[px] != 0) widths[px] = globalRiverWidth(flowAccumulation[px]);
         }
 
-        // 7. result: crop the central 64×64 into a [2,64,64] tile.
+        // 6b. river-bed elevation: original (un-ramped) coarse elevation mapped to native scale and
+        //     forced monotonically non-increasing downstream along the arrow network.
+        final float[] riverElevation = computeRiverElevation(arrows, elevation);
+
+        // 7. result: crop the central 64×64 into a [3,64,64] tile.
         final FloatTensor tile = new FloatTensor(new int[] {GLOBAL_RIVER_CHANNELS, TILE_SIZE, TILE_SIZE});
         final int pixelsPerChannel = TILE_SIZE * TILE_SIZE;
         for (int x = 0; x < TILE_SIZE; x++) {
@@ -230,10 +243,12 @@ public class GlobalRiverProvider {
                 final int localIndex = x * TILE_SIZE + z;
                 tile.data[localIndex] = Float.intBitsToFloat(arrows[paddedIndex]);
                 tile.data[pixelsPerChannel + localIndex] = widths[paddedIndex];
+                tile.data[2 * pixelsPerChannel + localIndex] = riverElevation[paddedIndex];
             }
         }
 
         if (stages != null) {
+            stages.riverElevation = riverElevation;
             stages.paddedSide = PADDED_SIDE;
             stages.pad = PAD;
             stages.tileOriginCx = tileOriginCx;
@@ -263,7 +278,7 @@ public class GlobalRiverProvider {
     private void walkFromSource(
             int startPi,
             int startPj,
-            float[] drainageDirection,
+            int[] drainageDirection,
             boolean[][] coastMask,
             QuadTree<QuadTreePoint> coastTree,
             int[] arrows,
@@ -305,8 +320,7 @@ public class GlobalRiverProvider {
             for (int pj = 0; pj < PADDED_SIDE; pj++) {
                 if (!coastMask[pi][pj]) continue;
                 if (coastTree == null) {
-                    coastTree =
-                            new QuadTree<>(new double[] {0, 0}, new double[] {PADDED_SIDE, PADDED_SIDE});
+                    coastTree = new QuadTree<>(new double[] {0, 0}, new double[] {PADDED_SIDE, PADDED_SIDE});
                 }
                 coastTree.insertPoint(new QuadTreePoint(new double[] {pi, pj}));
             }
@@ -351,7 +365,7 @@ public class GlobalRiverProvider {
             final int nextPj = pj + NEIGHBOR_OFFSET_Z[bestDirection];
             arrows[pi * PADDED_SIDE + pj] |= (1 << (OUTGOING_SHIFT + bestDirection));
             if (path != null) path.add(new int[] {nextPi, nextPj});
-            if (isCoast(arrows[nextPi * PADDED_SIDE + nextPj]))  break;
+            if (isCoast(arrows[nextPi * PADDED_SIDE + nextPj])) break;
             pi = nextPi;
             pj = nextPj;
         }
@@ -424,7 +438,59 @@ public class GlobalRiverProvider {
      * with upstream drainage, giving large rivers downstream and thin tributaries near the ridges.
      */
     private static float globalRiverWidth(float flowAccumulation) {
-        return (float) Math.log(flowAccumulation+1);
+        return (float) Math.sqrt(flowAccumulation);
+    }
+
+    /** Divisor in the coarse→native elevation scale map ({@code nativeElev = coarseElev² / SCALE}). */
+    private static final float ELEV_NATIVE_SCALE = 5f;
+
+    /**
+     * Per-pixel river-bed elevation in native-px scale. Each pixel starts at its original coarse
+     * elevation mapped to native scale ({@code clamp(e,0,∞)² / ELEV_NATIVE_SCALE} — below-sea pixels
+     * clamp to 0 so they don't read as high terrain), then a topological (Kahn) downstream pass over
+     * the outgoing-arrow graph forces the value monotonically non-increasing:
+     * {@code riverElev[down] = min(riverElev[down], riverElev[up])}. The arrow graph (not the raw
+     * drainage field) is used because it includes the {@code marchToCoast} reroute segments. Cells in
+     * a cycle (not expected) simply keep their initial value.
+     */
+    private float[] computeRiverElevation(int[] arrows, float[] originalElevation) {
+        final int n = PADDED_SIDE * PADDED_SIDE;
+        final float[] riverElev = new float[n];
+        for (int i = 0; i < n; i++) {
+            final float e = Math.max(0f, originalElevation[i]);
+            riverElev[i] = e * e / ELEV_NATIVE_SCALE;
+        }
+
+        final int[] inDegree = new int[n];
+        for (int cell = 0; cell < n; cell++) {
+            final int outgoing = outgoingMask(arrows[cell]);
+            for (int d = 0; d < 8; d++) {
+                if ((outgoing & (1 << d)) == 0) continue;
+                final int down = PipelinePreprocessing.neighborIndex(cell, d, PADDED_SIDE);
+                if (down != -1) inDegree[down]++;
+            }
+        }
+
+        final java.util.ArrayDeque<Integer> queue = new java.util.ArrayDeque<>();
+        for (int cell = 0; cell < n; cell++) if (inDegree[cell] == 0) queue.add(cell);
+        while (!queue.isEmpty()) {
+            final int cell = queue.poll();
+            final int outgoing = outgoingMask(arrows[cell]);
+            for (int d = 0; d < 8; d++) {
+                if ((outgoing & (1 << d)) == 0) continue;
+                final int down = PipelinePreprocessing.neighborIndex(cell, d, PADDED_SIDE);
+                if (down == -1) continue;
+                if (riverElev[cell] < riverElev[down]) riverElev[down] = riverElev[cell];
+                if (--inDegree[down] == 0) queue.add(down);
+            }
+        }
+
+        //rivers should aways we lower
+        for (int i = 0; i < n; i++) {
+            riverElev[i] -= 50;
+            if( riverElev[i] < 0) riverElev[i] = 0;
+        }
+        return riverElev;
     }
 
     // -------------------------------------------------------------------------
@@ -455,6 +521,7 @@ public class GlobalRiverProvider {
         public List<List<int[]>> descentPaths;
         public int[] arrows;
         public float[] widths;
+        public float[] riverElevation;
         public FloatTensor tile;
     }
 }

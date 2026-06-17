@@ -60,20 +60,23 @@ public class Storage<T extends Persistable<T>> {
     private long totalCachedBytes = 0;
 
     /** Serialize capability for this Storage: TRUE = disk-backed, FALSE = cache-only, null = unknown. */
-    //TODO: change this to final
     private volatile Boolean payloadIsSerializable = null;
 
     /**
      * @param path persistence directory, or {@code null} for a cache-only Storage that never persists
      *     and never touches the filesystem.
      */
-    //TODO: fix this constructor
-    public Storage(@Nullable String path, int rank, T deserializationPrototype) {
-        PATH = path;
-
+    public Storage(@Nullable String path, String name, int rank, T deserializationPrototype) {
+        if (path == null) {
+            // Cache-only Storage: keep PATH null so the persistence paths short-circuit.
+            payloadIsSerializable = false;
+            PATH = null;
+        } else {
+            PATH = path + "/" + name;
+        }
         this.rank = rank;
         this.deserializationPrototype = deserializationPrototype;
-        bootstrap();
+        if (!Boolean.FALSE.equals(payloadIsSerializable)) bootstrap();
     }
 
     public boolean inStorage(int[] index) {
@@ -143,11 +146,6 @@ public class Storage<T extends Persistable<T>> {
     }
 
     private void bootstrap() {
-        if (PATH == null) {
-            // No path supplied: cache-only Storage. Never touch the filesystem and never persist.
-            payloadIsSerializable = Boolean.FALSE;
-            return;
-        }
         File file = new File(getEntryDir());
         if (!file.exists()) if (file.mkdirs()) LOG.info("created tile dir in: {}", getEntryDir());
         String[] createdTiles = file.list();
@@ -270,7 +268,7 @@ public class Storage<T extends Persistable<T>> {
      * to catch that signal and recompute the entry on demand.
      */
     protected void loadInto(TileKey key, CompletableFuture<T> promise) throws EntryNotLoadableException {
-        if (PATH == null || Boolean.FALSE.equals(payloadIsSerializable)) {
+        if (Boolean.FALSE.equals(payloadIsSerializable)) {
             // Cache-only Storage (null path or non-serializable payload): nothing persisted to load.
             throw new EntryNotLoadableException("cache-only storage has no persistent entry for " + key);
         }

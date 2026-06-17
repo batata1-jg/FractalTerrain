@@ -39,7 +39,7 @@ public class LocalRiverTest {
     private static final double RIVER_SPLINE_RADIUS = 10;
 
     /** Tiles (tx, tz) to render. */
-    private static final int[][] TILES = {{-2, -3}};
+    private static final int[][] TILES = {{1,-3},{1,-4},{2, -3},{2,-4}};
 
     public static void main(String[] args) throws Exception {
         LOG.info("LocalRiverTest start; output dir = {}", DEBUG_PATH);
@@ -54,23 +54,24 @@ public class LocalRiverTest {
         final LocalRiverProvider localRivers = new LocalRiverProvider(null);
         localRivers.setReliefProvider(relief);
 
-        float[] gb = new float[64*64];
-        for(int i = 0; i < 64; i++) {
-            for(int j = 0; j < 64; j++) {
-                int x = i-32;
-                int y = j-32;
-                gb[i*64 + j] = GlobalRiverProvider.isCoast(globalRivers.getArrow(x, y))?1 :0;
+        float[] gb = new float[64 * 64];
+        for (int i = 0; i < 64; i++) {
+            for (int j = 0; j < 64; j++) {
+                int x = i - 32;
+                int y = j - 32;
+                gb[i * 64 + j] = GlobalRiverProvider.isCoast(globalRivers.getArrow(x, y)) ? 1 : 0;
             }
         }
-        seeFloat(gb,64,64,"globalsss");
+        seeFloat(gb, 64, 64, "globalsss");
         for (int[] tile : TILES) {
             dumpTile(localRivers, relief, globalRivers, tile[0], tile[1]);
         }
         LOG.info("LocalRiverTest done. See {}", DEBUG_PATH);
     }
 
-    private static void dumpTile(LocalRiverProvider provider, ReliefProvider relief, GlobalRiverProvider globalRivers, int tx, int tz) {
-        LOG.info("Dumping {} {} {} is river:", GlobalRiverProvider.isRiver(globalRivers.getArrow(tx,tz)), tx,tz );
+    private static void dumpTile(
+            LocalRiverProvider provider, ReliefProvider relief, GlobalRiverProvider globalRivers, int tx, int tz) {
+        LOG.info("Dumping {} {} {} is river:", GlobalRiverProvider.isRiver(globalRivers.getArrow(tx, tz)), tx, tz);
         final String prefix = "tile_tx" + tx + "_tz" + tz + "_";
 
         dumpReliefStages(relief, tx, tz, prefix);
@@ -105,14 +106,15 @@ public class LocalRiverTest {
      * {@link QuadTree} and lighting up every pixel within {@link #RIVER_SPLINE_RADIUS} of a sample.
      */
     private static float[] rasterizeRiverSplines(List<double[]> points) {
-        final QuadTree<QuadTreePoint> tree = new QuadTree<>(
-                new double[] {-1, -1}, new double[] {RELIEF_PADDED + 1, RELIEF_PADDED + 1});
+        final QuadTree<QuadTreePoint> tree =
+                new QuadTree<>(new double[] {-1, -1}, new double[] {RELIEF_PADDED + 1, RELIEF_PADDED + 1});
         for (double[] point : points) tree.insertPoint(new QuadTreePoint(point));
 
         final float[] mask = new float[RELIEF_PADDED * RELIEF_PADDED];
         for (int pi = 0; pi < RELIEF_PADDED; pi++) {
             for (int pj = 0; pj < RELIEF_PADDED; pj++) {
-                if (!tree.getPointsInCircle(new double[] {pi, pj}, RIVER_SPLINE_RADIUS).isEmpty()) {
+                if (!tree.getPointsInCircle(new double[] {pi, pj}, RIVER_SPLINE_RADIUS)
+                        .isEmpty()) {
                     mask[pi * RELIEF_PADDED + pj] = 1f;
                 }
             }

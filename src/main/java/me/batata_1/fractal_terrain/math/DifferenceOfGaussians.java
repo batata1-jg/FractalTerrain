@@ -28,7 +28,7 @@ public class DifferenceOfGaussians {
         this.threshold = threshold;
         this.pad = padFor(sigma1, sigma2);
         this.DoGTensor = new NonIntersectingInfiniteTensor(
-                path + "/dog_tensor", new int[] {1, COARSE_TILE_SIZE, COARSE_TILE_SIZE}, this::buildTile);
+                path, "dog_tensor", new int[] {1, COARSE_TILE_SIZE, COARSE_TILE_SIZE}, this::buildTile);
     }
 
     /**

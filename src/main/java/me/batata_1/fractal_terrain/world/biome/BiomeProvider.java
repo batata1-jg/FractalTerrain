@@ -29,7 +29,7 @@ public class BiomeProvider {
 
     public BiomeProvider(String path) {
         final_tiles = new NonIntersectingInfiniteTensor(
-                path + "/final_biome_tiles", new int[] {BIOME_CHANNELS, 512, 512}, key -> {
+                path, "final_biome_tiles", new int[] {BIOME_CHANNELS, 512, 512}, key -> {
                     int x = key.get(X);
                     int z = key.get(Z);
                     FloatTensor reliefTensor = FractalTerrainInstance.getReliefProvider()
@@ -40,7 +40,7 @@ public class BiomeProvider {
                     final float[] grad = Arrays.copyOfRange(reliefTensor.data, 4 << 18, 5 << 18);
                     final float[] lowFreqGrad = Arrays.copyOfRange(reliefTensor.data, 5 << 18, 6 << 18);
                     final float[] res = Arrays.copyOfRange(reliefTensor.data, 6 << 18, 7 << 18);
-                    final float[] vegPdf = new float[512*512];
+                    final float[] vegPdf = new float[512 * 512];
                     final float[] climate = pipeline.getClimate(x, z, elev);
                     final float[] biomeVariables =
                             ClimateVariableTransform.transform(x, z, elev, grad, lowFreqGrad, climate, res, vegPdf);

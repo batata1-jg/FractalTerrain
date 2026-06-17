@@ -35,19 +35,26 @@ import org.jetbrains.annotations.TestOnly;
  * {@code [7]} drainageDirection (the D8 steepest-descent bitfield).
  *
  * <p>Per-tile pipeline: {@link #decodeBaseChannels} (padded 514×514) → fetch the 2×2 coarse global
- * river block (plus exit-neighbour widths) → trace the arrows into river splines → carve the
- * elevation along those splines → recompute the drainage direction on the carved (padded) elevation
- * → crop to the inner 512×512. All tuning literals live grouped near the top.
+ * river block (plus exit-neighbour widths/elevations) → trace the arrows into river splines → carve
+ * the elevation toward the global river bed along those splines (recording a carve-band mask) → fill
+ * sinks ({@link PipelinePreprocessing#fillSinks}) so drainage has no trapped pits → recompute the
+ * drainage direction on the filled (padded) elevation, OR-ing {@link PipelinePreprocessing#GLOBAL_RIVER_BIT}
+ * into the carve-band pixels → crop to the inner 512×512. Channel 7 stores the int drainage mask
+ * bit-preserving via {@link Float#intBitsToFloat}. All tuning literals live grouped near the top.
  */
 public class ReliefProvider {
 
     // ---- Tuning knobs (edit here during testing) ----------------------------
     /** Max distance (native px) from a river sample at which carving still applies. */
-    private static final double MAX_CARVE_DIST = 24.0;
+    private static final double MAX_CARVE_DIST = 64.0;
     /** Arc-length spacing (native px) used to densify river splines for the spatial index. */
     private static final double CARVE_SAMPLE_SPACING = 2.0;
-    /** Channel depth scale: full-depth carve at a river's centre is CARVE_DEPTH_SCALE × width. */
+    /** Extra incision below the target bed at the river centre: CARVE_DEPTH_SCALE × width (0 = none). */
     private static final double CARVE_DEPTH_SCALE = 0.6;
+    /** Pixels within (river half-width + this margin) of a sample are flagged as global-river. */
+    private static final double GLOBAL_BAND = 1.0;
+    /** Border transition width (px) for the sink-fill blend (keeps tile seams consistent). */
+    private static final int FILL_PADDING = 64;
 
     // ---- Geometry -----------------------------------------------------------
     private static final int INNER = 512;
@@ -67,7 +74,7 @@ public class ReliefProvider {
 
     public ReliefProvider(String path) {
         final_tiles = new NonIntersectingInfiniteTensor(
-                path + "/final_relief_tiles", new int[] {RELIEF_CHANNELS, INNER, INNER}, this::buildReliefTile);
+                path, "final_relief_tiles", new int[] {RELIEF_CHANNELS, INNER, INNER}, this::buildReliefTile);
     }
 
     @TestOnly
@@ -107,15 +114,23 @@ public class ReliefProvider {
         // 2-3. trace the global river arrows over this tile into splines (control points + widths).
         final List<RiverPolyline> riverSplines = traceRiverSplines(x, z);
 
-        // 4. carve the elevation (base channel 0) along the splines.
+        // 4. carve the elevation (base channel 0) toward the global river bed, recording the
+        //    carve-band mask (pixels that belong to the global river).
         final float[] carvedElevation = baseChannels[0].clone();
-        carveRiver(carvedElevation, riverSplines, stages);
+        final boolean[] globalRiverMask = carveRiver(carvedElevation, riverSplines, stages);
 
-        // 5. drainage direction on the carved padded elevation (uniform weight = already normalized).
+        // 5a. fill sinks so drainage has no trapped interior pits (border-blended for seam consistency).
+        final float[] filledElevation = PipelinePreprocessing.fillSinks(carvedElevation, PADDED, FILL_PADDING);
+
+        // 5b. drainage direction on the filled padded elevation (uniform weight = already normalized);
+        //     then flag global-river pixels with GLOBAL_RIVER_BIT.
         final float[] uniformWeight = new float[PADDED * PADDED];
         Arrays.fill(uniformWeight, 1f);
-        final float[] drainageDirection =
-                PipelinePreprocessing.computeDrainageDirection(carvedElevation, uniformWeight, PADDED);
+        final int[] drainageDirection =
+                PipelinePreprocessing.computeDrainageDirection(filledElevation, uniformWeight, PADDED);
+        for (int i = 0; i < drainageDirection.length; i++) {
+            if (globalRiverMask[i]) drainageDirection[i] |= PipelinePreprocessing.GLOBAL_RIVER_BIT;
+        }
 
         // 6. crop to the inner 512×512 and assemble the result tensor.
         final float[] entries = new float[RELIEF_CHANNELS * INNER * INNER];
@@ -123,11 +138,12 @@ public class ReliefProvider {
             for (int iz = 0; iz < INNER; iz++) {
                 final int paddedIndex = (PAD + ix) * PADDED + (PAD + iz);
                 final int innerIndex = ix * INNER + iz;
-                entries[innerIndex] = carvedElevation[paddedIndex];
+                entries[innerIndex] = filledElevation[paddedIndex];
                 for (int ch = 1; ch < BASE_CHANNELS; ch++) {
                     entries[ch * INNER * INNER + innerIndex] = baseChannels[ch][paddedIndex];
                 }
-                entries[7 * INNER * INNER + innerIndex] = drainageDirection[paddedIndex];
+                // ch7 holds the int drainage mask, stored bit-preserving (see LocalRiverProvider).
+                entries[7 * INNER * INNER + innerIndex] = Float.intBitsToFloat(drainageDirection[paddedIndex]);
             }
         }
 
@@ -136,7 +152,10 @@ public class ReliefProvider {
             stages.baseChannels = baseChannels;
             stages.riverSplines = riverSplines;
             stages.carvedElevation = carvedElevation;
-            stages.drainageDirection = drainageDirection;
+            stages.filledElevation = filledElevation;
+            final float[] drainageAsFloat = new float[drainageDirection.length];
+            for (int i = 0; i < drainageDirection.length; i++) drainageAsFloat[i] = drainageDirection[i];
+            stages.drainageDirection = drainageAsFloat;
             stages.result = result;
         }
         return result;
@@ -169,18 +188,22 @@ public class ReliefProvider {
     // River spline tracing (step 2-3)
     // -------------------------------------------------------------------------
 
-    /** One traced global-river branch: ordered control points (padded px) with per-vertex widths. */
+    /**
+     * One traced global-river branch: ordered control points (padded px) with per-vertex widths and
+     * bed elevations (native-px scale, from {@code GlobalRiverProvider.getElevation}).
+     */
     public static final class RiverPolyline {
         final ArrayList<double[]> controlPoints = new ArrayList<>();
         final ArrayList<Double> widths = new ArrayList<>();
+        final ArrayList<Double> bedElevations = new ArrayList<>();
         QuinticHermiteSpline spline;
     }
 
     /**
-     * A coarse cell in the relevant set: its decoded arrow, width, and padded-px centre.
+     * A coarse cell in the relevant set: its decoded arrow, width, bed elevation, and padded-px centre.
      */
-    public record Cell(int coarseX, int coarseZ, int arrow, double width, double centerX, double centerZ) {
-    }
+    public record Cell(
+            int coarseX, int coarseZ, int arrow, double width, double elevation, double centerX, double centerZ) {}
 
     private static long cellKey(int coarseX, int coarseZ) {
         return ((long) coarseX << 32) ^ (coarseZ & 0xffffffffL);
@@ -192,28 +215,19 @@ public class ReliefProvider {
      * downstream-neighbour cell (for its terminal width). Directed edges chain cell centres into
      * ordered control-point lists, which are fitted with Catmull-Rom.
      */
+    //TODO: do the global river meander sim here
     private List<RiverPolyline> traceRiverSplines(int x, int z) {
         final GlobalRiverProvider riverProvider = globalRiverProvider();
-        final int blockOriginX = x<<1;
-        final int blockOriginZ = z<<1;
+        final int blockOriginX = x << 1;
+        final int blockOriginZ = z << 1;
 
-        // Relevant set: the 4 block cells plus the exit-neighbor cells rivers flow into.
+        // Relevant set: the 4x4 block cells
         final Map<Long, Cell> cells = new HashMap<>();
-        for (int a = 0; a < 2; a++) {
-            for (int b = 0; b < 2; b++) {
-                final int ccx = blockOriginX + a;
-                final int ccz = blockOriginZ + b;
+        for (int xx = -1; xx < 3; xx++) {
+            for (int zz = -1; zz < 3; zz++) {
+                final int ccx = blockOriginX + xx;
+                final int ccz = blockOriginZ + zz;
                 cells.put(cellKey(ccx, ccz), makeCell(riverProvider, x, z, ccx, ccz));
-            }
-        }
-        for (Cell cell : new ArrayList<>(cells.values())) {
-            final int outgoing = GlobalRiverProvider.outgoingMask(cell.arrow);
-            for (int d = 0; d < 8; d++) {
-                if ((outgoing & (1 << d)) == 0) continue;
-                final int nx = cell.coarseX + NEIGHBOR_OFFSET_X[d];
-                final int nz = cell.coarseZ + NEIGHBOR_OFFSET_Z[d];
-                final long nk = cellKey(nx, nz);
-                if (!cells.containsKey(nk)) cells.put(nk, makeCell(riverProvider, x, z, nx, nz));
             }
         }
 
@@ -250,18 +264,20 @@ public class ReliefProvider {
     private Cell makeCell(GlobalRiverProvider riverProvider, int tileX, int tileZ, int ccx, int ccz) {
         final int arrow = riverProvider.getArrow(ccx, ccz);
         final double width = riverProvider.getWidth(ccx, ccz);
+        final double elevation = riverProvider.getElevation(ccx, ccz);
         final double centerX = PAD + COARSE_HALF + (ccx - tileX * 2) * COARSE_PX;
         final double centerZ = PAD + COARSE_HALF + (ccz - tileZ * 2) * COARSE_PX;
-        return new Cell(ccx, ccz, arrow, width, centerX, centerZ);
+        return new Cell(ccx, ccz, arrow, width, elevation, centerX, centerZ);
     }
 
-    /** Follow downstream pointers from {@code head} appending cell centres + widths. */
+    /** Follow downstream pointers from {@code head} appending cell centres + widths + bed elevations. */
     public RiverPolyline walkChain(Cell head, Map<Long, Cell> downstream, int cap) {
         final RiverPolyline polyline = new RiverPolyline();
         Cell current = head;
         for (int step = 0; step <= cap && current != null; step++) {
             polyline.controlPoints.add(new double[] {current.centerX, current.centerZ});
             polyline.widths.add(current.width);
+            polyline.bedElevations.add(current.elevation);
             current = downstream.get(cellKey(current.coarseX, current.coarseZ));
         }
         return polyline;
@@ -271,24 +287,33 @@ public class ReliefProvider {
     // River carving (step 4)
     // -------------------------------------------------------------------------
 
-    /** A densified river sample carrying its interpolated width, indexed in the carve QuadTree. */
+    /** A densified river sample carrying its interpolated width + bed elevation, indexed in the carve QuadTree. */
     private static final class RiverSample extends QuadTreePoint {
         final double width;
+        final double bedElev;
 
-        RiverSample(double px, double pz, double width) {
+        RiverSample(double px, double pz, double width, double bedElev) {
             super(new double[] {px, pz});
             this.width = width;
+            this.bedElev = bedElev;
         }
     }
 
     /**
-     * Carve {@code elevation} (padded 514×514) along the river splines. Each spline is densified into
-     * sample points (with width lerped between adjacent control points) and inserted into a QuadTree;
-     * each pixel then queries the nearest sample within {@link #MAX_CARVE_DIST} and subtracts
-     * {@link #riverDepth}. Pixels with no nearby sample are left untouched.
+     * Carve {@code elevation} (padded 514×514) toward the global river bed along the splines. Each
+     * spline is densified into sample points (width and bed elevation lerped between adjacent control
+     * points) and inserted into a QuadTree. Each pixel queries the nearest sample within
+     * {@link #MAX_CARVE_DIST} and is pulled <b>down toward</b> the river-bed elevation there: at the
+     * centreline the floor is {@code bedElev - CARVE_DEPTH_SCALE*width}, blending linearly back to the
+     * original elevation at {@link #MAX_CARVE_DIST} (never raised — only lowered). Pixels with no nearby
+     * sample are left untouched.
+     *
+     * @return a padded {@code boolean[]} flagging pixels inside the carve band (within the river
+     *     half-width + {@link #GLOBAL_BAND}) — i.e. those that belong to the global river.
      */
-    private void carveRiver(float[] elevation, List<RiverPolyline> riverSplines, @Nullable Stages stages) {
-        if (riverSplines.isEmpty()) return;
+    private boolean[] carveRiver(float[] elevation, List<RiverPolyline> riverSplines, @Nullable Stages stages) {
+        final boolean[] globalRiverMask = new boolean[PADDED * PADDED];
+        if (riverSplines.isEmpty()) return globalRiverMask;
 
         final QuadTree<RiverSample> index = new QuadTree<>(
                 new double[] {-COARSE_PX * 4, -COARSE_PX * 4},
@@ -303,11 +328,14 @@ public class ReliefProvider {
                 final int sampleCount = Math.max(1, (int) Math.ceil(segLength / CARVE_SAMPLE_SPACING));
                 final double startWidth = polyline.widths.get(i);
                 final double endWidth = polyline.widths.get(i + 1);
+                final double startBed = polyline.bedElevations.get(i);
+                final double endBed = polyline.bedElevations.get(i + 1);
                 for (int s = 0; s <= sampleCount; s++) {
                     final double frac = (double) s / sampleCount;
                     final double[] point = spline.sample(i + frac);
                     final double width = startWidth + (endWidth - startWidth) * frac;
-                    index.insertPoint(new RiverSample(point[0], point[1], width));
+                    final double bed = startBed + (endBed - startBed) * frac;
+                    index.insertPoint(new RiverSample(point[0], point[1], width, bed));
                 }
             }
         }
@@ -315,39 +343,39 @@ public class ReliefProvider {
         final float[] carveDepthField = (stages != null) ? new float[PADDED * PADDED] : null;
         for (int pi = 0; pi < PADDED; pi++) {
             for (int pj = 0; pj < PADDED; pj++) {
-                if(elevation[pi * PADDED + pj]<0) continue;
+                final int idx = pi * PADDED + pj;
+                if (elevation[idx] < 0) continue;
                 final double[] pixel = {pi, pj};
                 final List<RiverSample> nearby = index.getPointsInCircle(pixel, MAX_CARVE_DIST);
                 if (nearby.isEmpty()) continue;
                 double nearestDist = Double.MAX_VALUE;
-                double nearestWidth = 0;
+                double width = 0;
+                double bedElev = 0;
                 for (RiverSample sample : nearby) {
                     final double dist = VectorOps.distance(pixel, sample.toArray());
                     if (dist < nearestDist) {
                         nearestDist = dist;
-                        nearestWidth = sample.width;
+                        width = sample.width;
+                        bedElev = sample.bedElev;
                     }
                 }
-                final float depth = (float) riverDepth(nearestDist, nearestWidth);
-                elevation[pi * PADDED + pj] -= depth;
-                if (carveDepthField != null) carveDepthField[pi * PADDED + pj] = depth;
+                if (nearestDist >= MAX_CARVE_DIST) continue;
+
+                final double bankHalf = width;
+                if (nearestDist <= bankHalf + GLOBAL_BAND) globalRiverMask[idx] = true;
+
+                final float orig = elevation[idx];
+                final double centreFloor = bedElev;
+                final double frac = (nearestDist <= bankHalf)
+                        ? 0.0
+                        : Math.min(1.0, (nearestDist - bankHalf) / (MAX_CARVE_DIST - bankHalf));
+                final float carved = (float) (centreFloor + (orig - centreFloor) * frac);
+                elevation[idx] = carved;
+                if (carveDepthField != null) carveDepthField[idx] = orig - carved;
             }
         }
         if (stages != null) stages.carveDepthField = carveDepthField;
-    }
-
-    /**
-     * River carve depth as a function of distance to the nearest river sample and the river width
-     * there. Full depth ({@link #CARVE_DEPTH_SCALE} × width) within the half-width banks, falling off
-     * linearly to 0 at {@link #MAX_CARVE_DIST}. Tunable / easily swappable.
-     */
-    private static double riverDepth(double dist, double width) {
-        if (dist >= MAX_CARVE_DIST) return 0;
-        final double maxDepth = CARVE_DEPTH_SCALE * width;
-        final double bankHalf = width * 0.5;
-        if (dist <= bankHalf) return maxDepth;
-        final double falloff = 1.0 - (dist - bankHalf) / (MAX_CARVE_DIST - bankHalf);
-        return maxDepth * Math.max(0.0, falloff);
+        return globalRiverMask;
     }
 
     // -------------------------------------------------------------------------
@@ -462,6 +490,7 @@ public class ReliefProvider {
         public List<RiverPolyline> riverSplines;
         public float[] carveDepthField;
         public float[] carvedElevation;
+        public float[] filledElevation;
         public float[] drainageDirection;
         public FloatTensor result;
     }

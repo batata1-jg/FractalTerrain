@@ -340,7 +340,7 @@ public abstract class InfiniteTensor {
     public synchronized void updatePath(String newPath) {
         if (Objects.equals(getCurrentPath(), newPath + "/" + id)) return;
         if (storage != null) storage.clear();
-        storage = new Storage<>(newPath + "/" + id, outputWindow.ndim(), new FloatTensor(new int[] {1}));
+        storage = new Storage<>(newPath, id, outputWindow.ndim(), new FloatTensor(new int[] {1}));
         for (InfiniteTensor dependent : deps) dependent.updatePath(newPath);
     }
 

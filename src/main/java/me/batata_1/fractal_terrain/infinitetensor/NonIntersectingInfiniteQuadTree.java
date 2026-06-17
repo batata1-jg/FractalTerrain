@@ -25,8 +25,8 @@ public class NonIntersectingInfiniteQuadTree<T extends QuadTreePoint> extends St
     private final TensorWindow outWindow;
     private final Function<TileKey, QuadTree<T>> entryCreatingFunction;
 
-    public NonIntersectingInfiniteQuadTree(String path, int[] shape, Function<TileKey, QuadTree<T>> f) {
-        super(path, shape.length, new QuadTree<>(new double[] {0, 0}, new double[] {0, 0}));
+    public NonIntersectingInfiniteQuadTree(String path, String name, int[] shape, Function<TileKey, QuadTree<T>> f) {
+        super(path, name, shape.length, new QuadTree<>(new double[] {0, 0}, new double[] {0, 0}));
         this.entryCreatingFunction = f;
         this.outWindow = new TensorWindow(shape);
     }

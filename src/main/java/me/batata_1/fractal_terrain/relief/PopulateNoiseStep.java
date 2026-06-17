@@ -72,10 +72,12 @@ public class PopulateNoiseStep {
 
     public BlockState placeRiver(BlockState state, int xx, int distFromSurface, int zz) {
         if (distFromSurface != 0) return state;
-        final int coarseX = Math.floorDiv(xx, 256*5);
-        final int coarseZ = Math.floorDiv(zz, 256*5);
-        if (GlobalRiverProvider.isRiver(FractalTerrainInstance.getGlobalRiverProvider().getArrow(coarseX, coarseZ))) return RIVER_MARKER_ROCK;
-        if (GlobalRiverProvider.isCoast(FractalTerrainInstance.getGlobalRiverProvider().getArrow(coarseX, coarseZ))) return COAST_MARKER_ROCK;
+        final int coarseX = Math.floorDiv(xx, 256 * 5);
+        final int coarseZ = Math.floorDiv(zz, 256 * 5);
+        if (GlobalRiverProvider.isRiver(
+                FractalTerrainInstance.getGlobalRiverProvider().getArrow(coarseX, coarseZ))) return RIVER_MARKER_ROCK;
+        if (GlobalRiverProvider.isCoast(
+                FractalTerrainInstance.getGlobalRiverProvider().getArrow(coarseX, coarseZ))) return COAST_MARKER_ROCK;
         return state;
     }
 }

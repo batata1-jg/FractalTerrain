@@ -51,7 +51,7 @@ public class FractalTerrainInstance {
         final Path worldPath = server.getWorldPath(LevelResource.ROOT).normalize();
         this.reliefSource = new ReliefProvider(worldPath + "/fractal_terrain");
         this.biomeProvider = new BiomeProvider(worldPath + "/fractal_terrain");
-        this.globalRiverProvider = new GlobalRiverProvider(worldPath + "/fractal_terrain/global_river");
+        this.globalRiverProvider = new GlobalRiverProvider(worldPath + "/fractal_terrain");
         this.localRiverProvider = new LocalRiverProvider(null);
         final long seed = server.getWorldData().worldGenOptions().seed();
         final ServerLevel world = server.overworld();

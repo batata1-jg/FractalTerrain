@@ -27,8 +27,11 @@ import org.jetbrains.annotations.TestOnly;
  * river because the relief carve already biases drainage toward it.
  *
  * <p>Storage is a cache-only {@link NonIntersectingInfiniteQuadTree} of {@link Channel.ChannelPt}
- * (one {@code QuadTree} per 512×512 relief tile). Rivers that touch the tile border are dropped —
- * they continue into the neighbouring tile, which traces its own matching segment.
+ * (one {@code QuadTree} per 512×512 relief tile). A traced segment is kept only when its drainage
+ * reaches an outlet — a global-river cell (relief ch7's {@link PipelinePreprocessing#GLOBAL_RIVER_BIT})
+ * or the sea ({@code elev < 0}). Border rule: only global-river channels may leave the tile (they are
+ * consistent across tiles via the global network); every other channel touching the border is dropped,
+ * since the neighbouring tile traces its own matching segment.
  */
 public class LocalRiverProvider {
 
@@ -51,10 +54,12 @@ public class LocalRiverProvider {
     private final NonIntersectingInfiniteQuadTree<Channel.ChannelPt> tiles;
 
     /** Test-only override for the relief source; {@code null} → use the singleton. */
+    @TestOnly
     private @Nullable ReliefProvider reliefOverride;
 
     public LocalRiverProvider(String path) {
-        tiles = new NonIntersectingInfiniteQuadTree<>(path, new int[] {1, GRID, GRID}, key -> key != null ? buildTile(key) : null);
+        tiles = new NonIntersectingInfiniteQuadTree<>(
+                path, "local_river", new int[] {1, GRID, GRID}, this::buildTile);
     }
 
     @TestOnly
@@ -74,18 +79,26 @@ public class LocalRiverProvider {
     // Per-tile pipeline
     // -------------------------------------------------------------------------
 
-    private QuadTree<Channel.ChannelPt> buildTile(TileKey key) {
+    private QuadTree<Channel.ChannelPt> buildTile( @Nullable TileKey key) {
+        if(key==null) return null;
         return computeTile(key.get(X), key.get(Z), null);
     }
 
+
+    //TODO: maybe rewrite this to be more efficient
     private QuadTree<Channel.ChannelPt> computeTile(int tileX, int tileZ, @Nullable Stages stages) {
         final ReliefProvider relief = reliefProvider();
         final FloatTensor reliefTile = relief.getTile(tileX, tileZ);
         final int cellCount = GRID * GRID;
 
-        // ch7 = drainageDirection (D8 one-hot bitfield), ch0 = carved elevation (unused for now).
-        final float[] drainageDirection = new float[cellCount];
-        System.arraycopy(reliefTile.data, 7 * cellCount, drainageDirection, 0, cellCount);
+        // ch7 = drainageDirection (D8 one-hot bitfield + GLOBAL_RIVER_BIT), stored bit-preserving;
+        // ch0 = carved+filled elevation (used for the sea test in the connectivity filter).
+        final int[] drainageDirection = new int[cellCount];
+        final float[] elev = new float[cellCount];
+        for (int i = 0; i < cellCount; i++) {
+            drainageDirection[i] = Float.floatToIntBits(reliefTile.data[7 * cellCount + i]);
+            elev[i] = reliefTile.data[i];
+        }
 
         // 1. flow accumulation; 2. threshold into a river-cell mask.
         final float[] flow = computeFlow(drainageDirection, GRID);
@@ -112,6 +125,7 @@ public class LocalRiverProvider {
                 new double[] {(double) tileX * GRID, (double) tileZ * GRID},
                 new double[] {(double) (tileX + 1) * GRID, (double) (tileZ + 1) * GRID});
         final List<Channel> channels = new ArrayList<>();
+        final byte[] conn = new byte[cellCount]; // reachesOutlet memo (0 unknown / 1 yes / 2 no / 3 visiting)
         int channelId = 0;
         for (int start = 0; start < cellCount; start++) {
             if (!riverMask[start]) continue;
@@ -120,7 +134,10 @@ public class LocalRiverProvider {
             if (!isSource && !isJunction) continue; // mid-segment cell — covered by another walk
             final List<Integer> segmentCells = walkSegment(start, downstream, inDegree);
             if (segmentCells.size() < 2) continue;
-            if (leavesTile(segmentCells)) continue; // continues into a neighbour tile
+            // Only global-river channels may leave the tile; every other channel must stay inside it.
+            if (!isGlobalChannel(segmentCells, drainageDirection) && leavesTile(segmentCells)) continue;
+            // Keep only channels whose drainage reaches a global-river cell or the sea.
+            if (!reachesOutlet(segmentCells.getLast(), drainageDirection, elev, conn)) continue;
             final Channel channel = buildChannel(segmentCells, flow, tileX, tileZ, channelId++);
             if (channel == null) continue;
             channels.add(channel);
@@ -163,6 +180,54 @@ public class LocalRiverProvider {
         final int x = cell / GRID;
         final int z = cell % GRID;
         return x == 0 || z == 0 || x == GRID - 1 || z == GRID - 1;
+    }
+
+    /**
+     * Whether the segment lies on the global river, judged by its first (upstream) cell carrying
+     * {@link PipelinePreprocessing#GLOBAL_RIVER_BIT}: a global-river trunk segment's head is itself a
+     * river cell, while a local tributary's source is not.
+     */
+    private boolean isGlobalChannel(List<Integer> cells, int[] drainageDirection) {
+        return (drainageDirection[cells.getFirst()] & PipelinePreprocessing.GLOBAL_RIVER_BIT) != 0;
+    }
+
+    /**
+     * Trace the raw D8 drainage downstream from {@code startCell} and report whether it reaches an
+     * outlet — a cell flagged {@link PipelinePreprocessing#GLOBAL_RIVER_BIT} (the global river) or a
+     * sea cell ({@code elev < 0}). An interior sink, a path leaving the tile border, or a cycle counts
+     * as not reaching an outlet. Results are memoized in {@code conn} (0 unknown / 1 yes / 2 no /
+     * 3 visiting) and back-filled along the traced path, so the whole tile resolves in O(n).
+     */
+    private boolean reachesOutlet(int startCell, int[] drainageDirection, float[] elev, byte[] conn) {
+        final List<Integer> path = new ArrayList<>();
+        int cell = startCell;
+        byte result;
+        while (true) {
+            if (conn[cell] != 0) {
+                result = (conn[cell] == 1) ? (byte) 1 : (byte) 2; // 3 (visiting) ⇒ cycle ⇒ not connected
+                break;
+            }
+            if ((drainageDirection[cell] & PipelinePreprocessing.GLOBAL_RIVER_BIT) != 0 || elev[cell] < 0) {
+                conn[cell] = 1;
+                result = 1;
+                break;
+            }
+            conn[cell] = 3; // visiting
+            path.add(cell);
+            final int direction = neighbor(drainageDirection[cell]);
+            if (direction == -1) {
+                result = 2;
+                break;
+            }
+            final int next = PipelinePreprocessing.neighborIndex(cell, direction, GRID);
+            if (next == -1) { // exits the tile border — does not count as connected
+                result = 2;
+                break;
+            }
+            cell = next;
+        }
+        for (int c : path) conn[c] = result;
+        return result == 1;
     }
 
     /** Build a resampled {@link Channel} from the segment's cell centres (in global native px). */
