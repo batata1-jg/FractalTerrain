@@ -578,7 +578,7 @@ public final class WorldPipeline implements AutoCloseable {
                 double varE = muE2 - muE * muE;
                 double covET = muET - muE * muT;
                 double beta = (varE < 1.0 || sumW < fallbackThreshold * n) ? fallbackBeta : (covET / (varE + eps));
-                beta = Math.max(betaMin, Math.min(betaMax, beta));
+                beta = Math.clamp(beta, betaMin, betaMax);
 
                 int pad = (win - 1) / 2;
                 float Tc = T[r + pad][c + pad];

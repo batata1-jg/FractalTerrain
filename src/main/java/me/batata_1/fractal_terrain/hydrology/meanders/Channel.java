@@ -11,6 +11,14 @@ public class Channel {
     public final int channelId;
     public QuinticHermiteSpline spline;
 
+    /**
+     * Directed-edge endpoints in the {@link Meanders} river-network graph: spline index 0 sits on
+     * {@code startNodeId} (upstream), the last index on {@code endNodeId} (downstream); flow goes
+     * 0 -> last. {@code -1} means the channel is not part of a graph (e.g. LocalRiverProvider's
+     * direct use), so those callers are unaffected.
+     */
+    public int startNodeId = -1, endNodeId = -1;
+
     public Channel(double width, ArrayList<double[]> pts, int channelId) {
         this.width = width;
         this.depth = Math.max(1.0, Math.pow(width / 18.8, 1.0 / 1.41));

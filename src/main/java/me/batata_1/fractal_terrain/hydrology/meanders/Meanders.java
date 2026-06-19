@@ -2,9 +2,16 @@ package me.batata_1.fractal_terrain.hydrology.meanders;
 
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
@@ -12,6 +19,18 @@ import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 
+/**
+ * River-network editor. A {@code Meanders} instance is constructed with a COMPLETE initial network
+ * (sources, drains, junctions, channels) and only mutates it — it never originates the network. The
+ * source count is fixed; drains are never added but may be deleted when a capture orphans one. The
+ * network is a directed dendritic in-tree: edges
+ * are {@link Channel}s (keyed by {@code channelId}), vertices are typed {@link Node}s sitting on
+ * channel endpoints (see {@link Node} for the single-outflow invariant).
+ *
+ * <p>New channels and junctions appear only internally when {@link #manageCollisions()} resolves
+ * stream-capture events: where a wider river crosses a narrower one, the narrow channel is captured
+ * into the wide one at a confluence junction.
+ */
 public final class Meanders {
 
     // sampling dist e DT estao muito intimos
@@ -26,81 +45,92 @@ public final class Meanders {
     private static final double DT = 1;
     // mudar pra 50m depois
     public static final double DX = 1.5;
+    /** max per-step displacement for the valley-seeking migration. */
+    private static final double MAX_GRAD_MIGRATION = DX;
+    /** contiguous index gap (on the same channel pair) below which contacts are one crossing. */
+    private static final int CLUSTER_GAP = 3;
+
+    /** When true, step()/manageCollisions() dump per-stage network PNGs into step_&lt;n&gt;/ folders. */
+    public static boolean DEBUG_STEPS = false;
+
     private static final double[] UNIT_VECTOR = new double[] {1, 1};
     private static final Logger LOG = getLogger(Meanders.class);
 
-    // this model does not remove junctions and channels that have dried out.
     private final int gridSize;
-    private final double[] gradMag;
+    private final float[] gradX;
+    private final float[] gradZ;
     private final QuadTree<Channel.ChannelPt> quadTree =
             new QuadTree<>(new double[] {-INF, -INF}, new double[] {INF, INF});
-    private final ArrayList<Channel> channels = new ArrayList<>();
-    private final ArrayList<Junction> junctions = new ArrayList<>();
+
+    // graph storage: stable channel/node ids (sparse after split/merge/prune)
+    private final Map<Integer, Channel> channels = new HashMap<>();
+    private final Map<Integer, Node> nodes = new HashMap<>();
+    private int nextChannelId = 0;
+    private int nextNodeId = 0;
+    private int currentStep = 0; // the step number being processed, for debug image folders
+
     private final double cutOffThreshold;
     private final double maxMigrationMagnetude;
 
-    public record Junction(int[] parents, int child) {
+    /** A vertex of the supplied initial network. */
+    public record NodeSpec(double x, double z, Node.NodeType type) {}
 
-        public boolean isChild(int id) {
-            return id == child;
-        }
+    /** A directed edge of the supplied initial network; {@code pts} include the two endpoints. */
+    public record EdgeSpec(int startNodeIdx, int endNodeIdx, ArrayList<double[]> pts, double width) {}
 
-        public boolean contains(int id) {
-            for (int i : parents) if (i == id) return true;
-            return isChild(id);
-        }
-    }
-
-    public Meanders(int gridSize, double[] gradMag) {
+    public Meanders(int gridSize, float[] gradX, float[] gradZ, List<NodeSpec> nodeSpecs, List<EdgeSpec> edgeSpecs) {
         this.gridSize = gridSize;
-        this.gradMag = gradMag;
+        this.gradX = gradX;
+        this.gradZ = gradZ;
         cutOffThreshold = 1.5 * DX * Math.max(Math.log(Math.sqrt(DT)), 1) * Math.max(Math.log(FRICTION * 10), 1);
         maxMigrationMagnetude = INF;
-    }
 
-    public int addChannel(ArrayList<double[]> xzPts, double width) {
-        final int id = channels.size();
-        channels.add(new Channel(width, xzPts, id));
-        junctions.add(null);
-        channels.getLast().reSample(DX);
-        return id;
-    }
+        for (int i = 0; i < nodeSpecs.size(); i++) {
+            NodeSpec ns = nodeSpecs.get(i);
+            nodes.put(i, new Node(i, ns.type(), new double[] {ns.x(), ns.z()}));
+        }
+        nextNodeId = nodeSpecs.size();
 
-    private int addChildChannel(ArrayList<double[]> xzPts, double width) {
-        final int id = channels.size();
-        channels.add(new Channel(width, xzPts, id));
-        junctions.add(null);
-        return id;
+        for (EdgeSpec es : edgeSpecs) {
+            final int id = nextChannelId++;
+            Channel ch = new Channel(es.width(), new ArrayList<>(es.pts()), id);
+            ch.reSample(DX);
+            ch.startNodeId = es.startNodeIdx();
+            ch.endNodeId = es.endNodeIdx();
+            channels.put(id, ch);
+            Node start = nodes.get(es.startNodeIdx());
+            Node end = nodes.get(es.endNodeIdx());
+            if (start.outgoing != -1)
+                throw new IllegalArgumentException("node " + start.id + " would have >1 outgoing edge");
+            start.outgoing = id;
+            end.incoming.add(id);
+        }
     }
 
     public void step(int i) {
+        currentStep = i;
         LOG.info("step {}", i);
         quadTree.clear();
-        for (Channel ch : channels) {
+        for (Channel ch : new ArrayList<>(channels.values())) {
             ch.reSample(DX);
             ch.spline = QuinticHermiteSpline.createCatmullRom(ch.spline.points());
-            migrate(ch);
+            migrateMeanders(ch);
             ch.reSample(Math.sqrt(ch.width));
             manageCutoffs(ch);
         }
-        //  manageCollisions();
-        ensureJunctionsConnected();
-        for (Channel ch : channels) {
+        dumpNetwork("01_migrated");
+        manageCollisions();
+        for (Channel ch : new ArrayList<>(channels.values())) {
             ch.reSample(DX);
             ch.spline = QuinticHermiteSpline.createCatmullRom(ch.spline.points());
         }
+        dumpNetwork("05_final");
     }
 
-    private void ensureJunctionsConnected() {
-        for (final Junction j : junctions)
-            if (j != null) {
-                final double[] childStatingPoint =
-                        channels.get(j.child()).spline.points().getFirst();
-                for (final int id : j.parents()) {
-                    final ArrayList<double[]> pts = channels.get(id).spline.points();
-                    pts.set(pts.size() - 1, childStatingPoint);
-                }
-            }
+    /** Dumps the whole network into {@code step_<currentStep>/<name>.png} when {@link #DEBUG_STEPS}. */
+    private void dumpNetwork(String name) {
+        if (!DEBUG_STEPS) return;
+        Debug.river.seeNetwork(this, "step_" + currentStep, name);
     }
 
     public void simulate(int n) {
@@ -111,9 +141,9 @@ public final class Meanders {
         return gridSize;
     }
 
-    public void addConstraint(double cx, double cz, double radius, double effect) {
-        // TODO: PointConstraint gradient influence
-    }
+    // ---------------------------------------------------------------------------------------------
+    // Migration
+    // ---------------------------------------------------------------------------------------------
 
     private static double[] computeMigrationRates(Channel ch) {
         final double sinuosity = ch.computeSinuosity();
@@ -138,21 +168,57 @@ public final class Meanders {
     }
 
     /**
-     *   Migrates points to new locations, simulating channel meandering.
-     *   Does not migrate the derivatives as well, only the points. It computes the derivatives later
-     *   assuming equal distance in parameter space of the spline. Thus providing an approximation.
+     *   Migrates points to new locations using the Ikeda-Parker-Sawai meandering model.
+     *   The first/last points (graph node endpoints) are pinned so source/drain/junction
+     *   coordinates stay locked. Does not migrate the derivatives, only the points; the
+     *   derivatives are recomputed from the new points (an approximation).
      */
-    public void migrate(Channel ch) {
-        final double[] migRates = computeMigrationRates(ch);
-        ArrayList<double[]> newPts = new ArrayList<>();
-        for (int i = 0; i < ch.spline.points().size(); i++) {
-            final double rate = Math.clamp(DT * migRates[i], -maxMigrationMagnetude, maxMigrationMagnetude);
-            final double[] migVector = VectorOps.scale(ch.spline.normal(i), -rate);
-            double[] newPt = VectorOps.add(ch.spline.points().get(i), migVector);
-            Debug.isNan(newPt);
-            newPts.add(newPt);
+    public void migrateMeanders(Channel ch) {
+        final double[] migrationRates = computeMigrationRates(ch);
+        final int pointCount = ch.spline.points().size();
+        ArrayList<double[]> migratedPoints = new ArrayList<>(pointCount);
+        for (int i = 0; i < pointCount; i++) {
+            if (i == 0 || i == pointCount - 1) {
+                migratedPoints.add(ch.spline.points().get(i)); // pin node endpoints
+                continue;
+            }
+            final double rate = Math.clamp(DT * migrationRates[i], -maxMigrationMagnetude, maxMigrationMagnetude);
+            final double[] migrationVector = VectorOps.scale(ch.spline.normal(i), -rate);
+            double[] migratedPoint = VectorOps.add(ch.spline.points().get(i), migrationVector);
+            Debug.isNan(migratedPoint);
+            migratedPoints.add(migratedPoint);
         }
-        ch.spline = QuinticHermiteSpline.createCatmullRom(newPts);
+        ch.spline = QuinticHermiteSpline.createCatmullRom(migratedPoints);
+    }
+
+    /**
+     * Pushes each interior point toward the valley (down the terrain gradient) within a maximum
+     * migration rate per step. NOTE: written for later use; not called from {@link #step}.
+     */
+    public void migrateLowerGrad(Channel ch) {
+        final int pointCount = ch.spline.points().size();
+        ArrayList<double[]> migratedPoints = new ArrayList<>(pointCount);
+        for (int i = 0; i < pointCount; i++) {
+            final double[] point = ch.spline.points().get(i);
+            if (i == 0 || i == pointCount - 1) {
+                migratedPoints.add(point); // pin node endpoints
+                continue;
+            }
+            final double[] gradient = sampleGradient(point[0], point[1]);
+            double[] displacement = new double[] {-gradient[0], -gradient[1]}; // valley-seeking = -gradient
+            final double magnitude = VectorOps.magnitude(displacement);
+            if (magnitude > MAX_GRAD_MIGRATION)
+                displacement = VectorOps.scale(displacement, MAX_GRAD_MIGRATION / magnitude);
+            migratedPoints.add(VectorOps.add(point, displacement));
+        }
+        ch.spline = QuinticHermiteSpline.createCatmullRom(migratedPoints);
+    }
+
+    private double[] sampleGradient(double x, double z) {
+        final int xCell = Math.clamp((int) Math.round(x), 0, gridSize - 1);
+        final int zCell = Math.clamp((int) Math.round(z), 0, gridSize - 1);
+        final int cellIndex = xCell * gridSize + zCell;
+        return new double[] {gradX[cellIndex], gradZ[cellIndex]};
     }
 
     @TestOnly
@@ -169,25 +235,12 @@ public final class Meanders {
         return newPts;
     }
 
-    private List<Channel.ChannelPt> getPtsCloseTo(final int index, final Channel.ChannelPt[] pts) {
-        Channel ch = channels.get(pts[0].channelId);
-        final int id1 = Math.min(index + 1, pts.length - 1);
-        final int id0 = Math.max(index - 1, 0);
-        final double maxDist = Math.max(
-                VectorOps.distance(pts[index].toArray(), pts[id0].toArray()),
-                VectorOps.distance(pts[index].toArray(), pts[id1].toArray()));
-        return quadTree.getPointsInBox(
-                VectorOps.sub(pts[index].toArray(), VectorOps.scale(UNIT_VECTOR, ch.width)),
-                VectorOps.add(pts[index].toArray(), VectorOps.scale(UNIT_VECTOR, ch.width)));
-    }
+    // ---------------------------------------------------------------------------------------------
+    // Cutoffs (per-channel self-intersection removal) — unchanged logic
+    // ---------------------------------------------------------------------------------------------
 
     private List<Channel.ChannelPt> getPtsCloseTo(Channel.ChannelPt pt) {
         return quadTree.getPointsInCircle(pt.toArray(), Math.sqrt(channels.get(pt.channelId).width));
-
-        //        return quadTree.getPointsInBox(
-        //                VectorOps.sub(pt.toArray(),VectorOps.scale(UNIT_VECTOR, channels.get(pt.channelId).width)),
-        //                VectorOps.add(pt.toArray(),VectorOps.scale(UNIT_VECTOR, channels.get(pt.channelId).width))
-        //        );
     }
 
     private void manageCutoffs(Channel ch) {
@@ -198,14 +251,11 @@ public final class Meanders {
         insertChannel(ch);
         ArrayList<Integer> newPathIndexes = new ArrayList<>();
 
-        int maxListSize = 0;
-
         for (int id = 0; id < ch.numPts() - 1; id++) {
             if (!quadTree.containsPoint(ch.pt(id))) continue;
             newPathIndexes.add(id);
             List<Channel.ChannelPt> ptList = getPtsCloseTo(ch.pt(id));
             ptList.sort(null);
-            maxListSize = Math.max(maxListSize, ptList.size());
             for (Channel.ChannelPt cpt : ptList) {
                 if (cpt.index <= id + 1 || cpt.channelId != ch.channelId) continue;
                 cutRiverSection(id, cpt.index, ch);
@@ -215,126 +265,6 @@ public final class Meanders {
         ch.keepOnly(newPathIndexes);
     }
 
-    // TODO:rewrite this accumulate indexes to remove and new pts to add, make all of the changes after this;
-    private void manageCollisions() {
-        quadTree.clear();
-        final HashMap<Integer, ArrayList<Integer>> removedIds = new HashMap<>();
-        for (Channel ch : channels) {
-            removedIds.put(ch.channelId, new ArrayList<>());
-            insertChannel(ch);
-        }
-        for (int chId = 0; chId < channels.size(); chId++) {
-            if (!removedIds.containsKey(chId)) removedIds.put(chId, new ArrayList<>());
-            final Channel ch = channels.get(chId);
-            pointTraversal:
-            for (int ptId = 0; ptId < ch.numPts(); ptId++)
-                if (quadTree.containsPoint(ch.pt(ptId))) {
-                    List<Channel.ChannelPt> closePts = getPtsCloseTo(ch.pt(ptId));
-                    closePts.sort(null);
-                    for (Channel.ChannelPt close : closePts)
-                        if (close.channelId != chId) {
-                            final int colId = close.channelId;
-                            final Channel collided = channels.get(colId);
-                            // connected collision
-                            if (junctions.get(chId) != null) {
-                                if (junctions.get(chId).contains(colId)) {
-                                    Junction junction = junctions.get(chId);
-                                    // downstream collision:
-                                    // assumes there are only two parents
-                                    if (junction.isChild(colId)) {
-                                        ArrayList<Integer> removedFromCh = cutRiverSection(ptId, ch.numPts(), ch);
-                                        removedIds.get(chId).addAll(removedFromCh);
-                                        ch.add(close, collided);
-                                        ArrayList<Integer> removedFromChild = cutRiverSection(0, close.index, collided);
-                                        removedIds.get(colId).addAll(removedFromChild);
-                                        final int parentId =
-                                                junction.parents[0] == chId ? junction.parents[1] : junction.parents[0];
-                                        final Channel parent = channels.get(parentId);
-                                        addSection(removedFromChild, collided, parent);
-                                        parent.add(close, collided);
-                                        break pointTraversal;
-                                    }
-                                    // upstream collision:
-                                    ArrayList<Integer> removedFromCh = cutRiverSection(ptId, ch.numPts(), ch);
-                                    removedIds.get(chId).addAll(removedFromCh);
-                                    ArrayList<Integer> removedFromCollided =
-                                            cutRiverSection(close.index, collided.numPts(), collided);
-                                    removedIds.get(colId).addAll(removedFromCollided);
-                                    if (ch.width >= collided.width) {
-                                        collided.add(ptId, ch);
-                                    } else {
-                                        ch.add(close.index, collided);
-                                    }
-                                    final int childId = junction.child;
-                                    final Channel child = channels.get(childId);
-                                    removeChannel(child);
-                                    if (ch.width >= collided.width) {
-                                        for (int i = removedFromCh.size() - 1; i >= 0; i--)
-                                            child.addFront(removedFromCh.get(i), ch);
-                                    } else {
-                                        for (int i = removedFromCollided.size() - 1; i >= 0; i--)
-                                            child.addFront(removedFromCollided.get(i), collided);
-                                    }
-                                    insertChannel(child);
-                                    break pointTraversal;
-                                }
-                            }
-                            if (junctions.get(colId) != null) {
-                                if (junctions.get(colId).isChild(chId)) {
-                                    Junction junction = junctions.get(colId);
-                                    // ch is the child
-                                    ArrayList<Integer> removedFromChild = cutRiverSection(0, ptId, ch);
-                                    removedIds.get(chId).addAll(removedFromChild);
-                                    ArrayList<Integer> removedFromCollided =
-                                            cutRiverSection(close.index, collided.numPts(), collided);
-                                    removedIds.get(colId).addAll(removedFromCollided);
-                                    final int parentId =
-                                            junction.parents[0] == colId ? junction.parents[1] : junction.parents[0];
-                                    final Channel parent = channels.get(parentId);
-                                    addSection(removedFromChild, ch, parent);
-                                    parent.add(ptId, ch);
-                                    break pointTraversal;
-                                }
-                            }
-
-                            // disconnected collision
-                            ArrayList<Integer> removedFromCh = cutRiverSection(ptId, ch.numPts(), ch);
-                            removedIds.get(chId).addAll(removedFromCh);
-                            ArrayList<Integer> removedFromCollided =
-                                    cutRiverSection(close.index, collided.numPts(), collided);
-                            removedIds.get(colId).addAll(removedFromCollided);
-                            // add channels with previous tangents
-                            final int newId = addChildChannel(
-                                    new ArrayList<>(),
-                                    Math.sqrt(ch.width * ch.width + collided.width * collided.width));
-                            Junction newJunction = new Junction(new int[] {chId, colId}, newId);
-                            junctions.set(chId, newJunction);
-                            junctions.set(colId, newJunction);
-                            junctions.add(null);
-                            if (ch.width >= collided.width) {
-                                channels.get(newId).add(ptId, ch);
-                                for (int id : removedFromCh) channels.get(newId).add(id, ch);
-                            } else {
-                                channels.get(newId).add(close.index, collided);
-                                for (int id : removedFromCollided)
-                                    channels.get(newId).add(id, collided);
-                            }
-                            break pointTraversal;
-                        }
-                }
-        }
-
-        // for(Channel ch : channels) ch.removeIndexes(removedIds.get(ch.channelId));
-
-    }
-
-    /**
-     * adds all but the first element of the section to the channel. It appends from the last index of the channel
-     * */
-    private void addSection(ArrayList<Integer> section, Channel from, Channel to) {
-        for (int i = 1; i < section.size(); i++) to.add(section.get(i), from);
-    }
-
     private void insertChannel(Channel ch) {
         Channel.ChannelPt[] pts = ch.getChannelAsPts();
         for (Channel.ChannelPt pt : pts) {
@@ -342,28 +272,411 @@ public final class Meanders {
         }
     }
 
-    private void removeChannel(Channel ch) {
-        Channel.ChannelPt[] pts = ch.getChannelAsPts();
-        for (Channel.ChannelPt pt : pts) quadTree.removePoint(pt);
+    private void cutRiverSection(int from, int to, Channel ch) {
+        for (int i = from; i < to; i++) quadTree.removePoint(ch.pt(i));
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // split / merge — public single-step graph primitives
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Splits channel {@code id} at point index {@code pos}, inserting a junction there. Returns the
+     * new (downstream) channel's id, or -1 if nothing was done.
+     *
+     * <p>{@code redirect == false}: one shared junction joins the two halves (a normal mid-channel
+     * junction). {@code redirect == true}: two disconnected junctions are created at the same
+     * coordinate — one ending the upstream half, one starting the downstream half — so the two
+     * halves are no longer connected (used for the captured channel in a collision).
+     *
+     * <p>Uses only keepOnly / sub-point-lists + createCatmullRom (point positions preserved), never
+     * reSample, so point indices stay stable.
+     */
+    public int split(int id, int pos, boolean redirect) {
+        Channel channel = channels.get(id);
+        if (channel == null) return -1;
+        final int lastIndex = channel.numPts() - 1;
+        if (pos <= 0 || pos >= lastIndex) return -1;
+
+        final int downstreamNodeId = channel.endNodeId;
+        final double[] splitCoord = channel.spline.points().get(pos).clone();
+
+        // downstream half [pos..lastIndex]
+        ArrayList<double[]> downstreamPoints = new ArrayList<>();
+        for (int i = pos; i <= lastIndex; i++)
+            downstreamPoints.add(channel.spline.points().get(i));
+        final int downstreamChannelId = nextChannelId++;
+        Channel downstreamChannel = new Channel(channel.width, downstreamPoints, downstreamChannelId);
+        downstreamChannel.endNodeId = downstreamNodeId;
+        channels.put(downstreamChannelId, downstreamChannel);
+
+        // truncate the original channel to the upstream half [0..pos]
+        ArrayList<Integer> upstreamIndexes = new ArrayList<>();
+        for (int i = 0; i <= pos; i++) upstreamIndexes.add(i);
+        channel.keepOnly(upstreamIndexes);
+
+        // downstream node's incoming: original channel -> downstream channel
+        Node downstreamNode = nodes.get(downstreamNodeId);
+        downstreamNode.incoming.remove(id);
+        downstreamNode.incoming.add(downstreamChannelId);
+
+        if (!redirect) {
+            Node junction = newNode(splitCoord);
+            channel.endNodeId = junction.id;
+            downstreamChannel.startNodeId = junction.id;
+            junction.incoming.add(id);
+            junction.outgoing = downstreamChannelId;
+        } else {
+            Node upstreamJunction = newNode(splitCoord);
+            Node downstreamJunction = newNode(splitCoord.clone());
+            channel.endNodeId = upstreamJunction.id;
+            upstreamJunction.incoming.add(id);
+            downstreamChannel.startNodeId = downstreamJunction.id;
+            downstreamJunction.outgoing = downstreamChannelId;
+        }
+        return downstreamChannelId;
     }
 
     /**
-     *  returns the indexes of the cut channel does not remove index {@code to}
-     * */
-    private ArrayList<Integer> cutRiverSection(int from, int to, Channel ch) {
-        final ArrayList<Integer> res = new ArrayList<>();
-        for (int i = from; i < to; i++) {
-            res.add(i);
-            quadTree.removePoint(ch.pt(i));
-        }
-        return res;
+     * Merges channel {@code id} with its single downstream channel iff the junction between them is
+     * a pass-through (degree 2: exactly one inflow = this channel, one outflow). Returns true if a
+     * merge happened.
+     */
+    public boolean merge(int id) {
+        Channel channel = channels.get(id);
+        if (channel == null) return false;
+        Node junction = nodes.get(channel.endNodeId);
+        if (junction == null || junction.type != Node.NodeType.JUNCTION) return false;
+        if (junction.outgoing == -1) return false;
+        if (!(junction.incoming.size() == 1 && junction.incoming.contains(id))) return false;
+
+        final int downstreamChannelId = junction.outgoing;
+        Channel downstreamChannel = channels.get(downstreamChannelId);
+        final int upstreamNodeId = channel.startNodeId;
+        final int downstreamNodeId = downstreamChannel.endNodeId;
+
+        ArrayList<double[]> mergedPoints = new ArrayList<>(channel.spline.points());
+        List<double[]> downstreamPoints = downstreamChannel.spline.points();
+        for (int i = 1; i < downstreamPoints.size(); i++)
+            mergedPoints.add(downstreamPoints.get(i)); // drop duplicate junction pt
+
+        Channel mergedChannel = new Channel(Math.max(channel.width, downstreamChannel.width), mergedPoints, id);
+        mergedChannel.startNodeId = upstreamNodeId;
+        mergedChannel.endNodeId = downstreamNodeId;
+        channels.put(id, mergedChannel); // replaces the original channel (same id)
+        channels.remove(downstreamChannelId);
+
+        Node downstreamNode = nodes.get(downstreamNodeId);
+        downstreamNode.incoming.remove(downstreamChannelId);
+        downstreamNode.incoming.add(id);
+        // upstream node's outgoing already == id (unchanged)
+
+        nodes.remove(junction.id);
+        return true;
     }
+
+    private Node newNode(double[] coord) {
+        final int nodeId = nextNodeId++;
+        Node node = new Node(nodeId, Node.NodeType.JUNCTION, coord);
+        nodes.put(nodeId, node);
+        return node;
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Collisions (stream capture)
+    // ---------------------------------------------------------------------------------------------
+
+    private record Crossing(int channelIdA, int posA, int channelIdB, int posB, double widthA, double widthB) {}
+
+    void manageCollisions() {
+        List<Crossing> crossings = detectCrossings();
+        if (crossings.isEmpty()) return;
+        segmentAndResolve(crossings);
+        dumpNetwork("02_captured");
+        pruneDanglingJunctionLeaves();
+        deleteOrphanDrains();
+        dumpNetwork("03_pruned");
+        mergePassFromSources();
+        dumpNetwork("04_merged");
+    }
+
+    /**
+     * Drains are special: a capture beheads the loser's downstream remnant, which the prune step
+     * removes, orphaning that remnant's drain. Such isolated drains are deleted. Drains are never
+     * created (sources/drains are otherwise fixed for the instance's lifetime).
+     */
+    private void deleteOrphanDrains() {
+        List<Integer> orphanDrainIds = new ArrayList<>();
+        for (Node node : nodes.values())
+            if (node.type == Node.NodeType.DRAIN && node.degree() == 0) orphanDrainIds.add(node.id);
+        for (int drainId : orphanDrainIds) nodes.remove(drainId);
+    }
+
+    /** Single quadtree pass: detect every channel-vs-channel crossing. */
+    private List<Crossing> detectCrossings() {
+        quadTree.clear();
+        List<Integer> channelIds = new ArrayList<>(channels.keySet());
+        Collections.sort(channelIds);
+        for (int channelId : channelIds) insertChannel(channels.get(channelId));
+
+        List<Crossing> crossings = new ArrayList<>();
+        for (int channelAId : channelIds) {
+            Channel channelA = channels.get(channelAId);
+            final int pointCountA = channelA.numPts();
+            final double queryRadius = Math.max(channelA.width, 1.0);
+            // partner channelId -> contacts, each [posA, posB, distance]
+            Map<Integer, List<double[]>> contactsByPartner = new HashMap<>();
+            for (int posA = 1; posA < pointCountA - 1; posA++) { // skip endpoints (they are nodes)
+                final double[] pointA = channelA.spline.points().get(posA);
+                List<Channel.ChannelPt> nearbyPoints = quadTree.getPointsInCircle(pointA, queryRadius);
+                nearbyPoints.sort(null); // determinism, not Set/tree iteration order
+                for (Channel.ChannelPt nearbyPoint : nearbyPoints) {
+                    final int channelBId = nearbyPoint.channelId;
+                    if (channelBId <= channelAId) continue; // emit each crossing once (a < b)
+                    Channel channelB = channels.get(channelBId);
+                    final int posB = nearbyPoint.index;
+                    if (posB <= 0 || posB >= channelB.numPts() - 1) continue; // skip b endpoints
+                    if (shareEndpointNode(channelA, channelB)) continue; // legitimately meet at a junction
+                    final double distance = VectorOps.distance(pointA, nearbyPoint.toArray());
+                    if (distance > 0.5 * (channelA.width + channelB.width)) continue; // not actually touching
+                    contactsByPartner
+                            .computeIfAbsent(channelBId, partner -> new ArrayList<>())
+                            .add(new double[] {posA, posB, distance});
+                }
+            }
+            for (Map.Entry<Integer, List<double[]>> entry : contactsByPartner.entrySet()) {
+                Channel channelB = channels.get(entry.getKey());
+                List<double[]> contactList = entry.getValue();
+                contactList.sort(Comparator.comparingDouble(contact -> contact[0])); // by posA
+                // A and B may cross several times; keep only the FIRST crossing (smallest posA).
+                // contactList is sorted ascending, so the first contiguous cluster is that crossing;
+                // its min-distance contact is the split point.
+                int firstClusterEnd = 1;
+                while (firstClusterEnd < contactList.size()
+                        && contactList.get(firstClusterEnd)[0] - contactList.get(firstClusterEnd - 1)[0] <= CLUSTER_GAP)
+                    firstClusterEnd++;
+                double[] closest = contactList.get(0);
+                for (int scan = 1; scan < firstClusterEnd; scan++)
+                    if (contactList.get(scan)[2] < closest[2]) closest = contactList.get(scan);
+                crossings.add(new Crossing(
+                        channelAId,
+                        (int) closest[0],
+                        channelB.channelId,
+                        (int) closest[1],
+                        channelA.width,
+                        channelB.width));
+            }
+        }
+        return crossings;
+    }
+
+    private boolean shareEndpointNode(Channel channelA, Channel channelB) {
+        return channelA.startNodeId == channelB.startNodeId
+                || channelA.startNodeId == channelB.endNodeId
+                || channelA.endNodeId == channelB.startNodeId
+                || channelA.endNodeId == channelB.endNodeId;
+    }
+
+    /** 0 if A wins the crossing, 1 if B wins (wider wins; tie -> smaller channelId). */
+    private static int decideWinner(Crossing crossing) {
+        if (crossing.widthA() > crossing.widthB()) return 0;
+        if (crossing.widthB() > crossing.widthA()) return 1;
+        return crossing.channelIdA() < crossing.channelIdB() ? 0 : 1;
+    }
+
+    /**
+     * Phase A: bulk-segment every channel at all its crossing positions at once (no reSample, no
+     * per-split renumbering), wiring junction nodes by each channel's win/lose role. Phase B:
+     * reconnect each loser's upstream segment into the winner's junction.
+     */
+    private void segmentAndResolve(List<Crossing> crossings) {
+        final int crossingCount = crossings.size();
+        final int[] winnerSide = new int[crossingCount];
+        for (int crossingIdx = 0; crossingIdx < crossingCount; crossingIdx++)
+            winnerSide[crossingIdx] = decideWinner(crossings.get(crossingIdx));
+
+        // channelId -> (splitPosition -> crossingIndex), positions ascending
+        Map<Integer, TreeMap<Integer, Integer>> splitsByChannel = new HashMap<>();
+        for (int crossingIdx = 0; crossingIdx < crossingCount; crossingIdx++) {
+            Crossing crossing = crossings.get(crossingIdx);
+            splitsByChannel
+                    .computeIfAbsent(crossing.channelIdA(), channelId -> new TreeMap<>())
+                    .put(crossing.posA(), crossingIdx);
+            splitsByChannel
+                    .computeIfAbsent(crossing.channelIdB(), channelId -> new TreeMap<>())
+                    .put(crossing.posB(), crossingIdx);
+        }
+
+        final int[] winnerJunctionId = new int[crossingCount];
+        final int[] loserUpstreamJunctionId = new int[crossingCount];
+        final int[] loserUpstreamSegmentId = new int[crossingCount];
+        Arrays.fill(winnerJunctionId, -1);
+        Arrays.fill(loserUpstreamJunctionId, -1);
+        Arrays.fill(loserUpstreamSegmentId, -1);
+
+        for (Map.Entry<Integer, TreeMap<Integer, Integer>> entry : splitsByChannel.entrySet()) {
+            final int channelId = entry.getKey();
+            Channel originalChannel = channels.get(channelId); // read geometry from the full channel
+            final List<Integer> splitPositions =
+                    new ArrayList<>(entry.getValue().keySet());
+            final List<Integer> crossingAtPosition =
+                    new ArrayList<>(entry.getValue().values());
+            final int splitCount = splitPositions.size();
+            final int upstreamNodeId = originalChannel.startNodeId;
+            final int downstreamNodeId = originalChannel.endNodeId;
+            final int lastIndex = originalChannel.numPts() - 1;
+
+            // segment ranges [start..end] inclusive: [0..p1], [p1..p2], ..., [pk..lastIndex]
+            final int[] segmentIds = new int[splitCount + 1];
+            int rangeStart = 0;
+            for (int segmentIndex = 0; segmentIndex <= splitCount; segmentIndex++) {
+                final int startIndex = rangeStart;
+                final int endIndex = (segmentIndex < splitCount) ? splitPositions.get(segmentIndex) : lastIndex;
+                ArrayList<double[]> segmentPoints = new ArrayList<>();
+                for (int i = startIndex; i <= endIndex; i++)
+                    segmentPoints.add(originalChannel.spline.points().get(i));
+                final int segmentId = (segmentIndex == 0) ? channelId : nextChannelId++;
+                Channel segment = new Channel(originalChannel.width, segmentPoints, segmentId);
+                channels.put(segmentId, segment);
+                segmentIds[segmentIndex] = segmentId;
+                rangeStart = endIndex;
+            }
+
+            // outer endpoints
+            channels.get(segmentIds[0]).startNodeId = upstreamNodeId; // upstream.outgoing already == segmentIds[0]
+            channels.get(segmentIds[splitCount]).endNodeId = downstreamNodeId;
+            Node downstreamNode = nodes.get(downstreamNodeId);
+            downstreamNode.incoming.remove(channelId);
+            downstreamNode.incoming.add(segmentIds[splitCount]);
+
+            // boundary junctions, by win/lose role at each crossing
+            for (int boundary = 0; boundary < splitCount; boundary++) {
+                final int crossingIdx = crossingAtPosition.get(boundary);
+                final int upstreamSegmentId = segmentIds[boundary];
+                final int downstreamSegmentId = segmentIds[boundary + 1];
+                final double[] junctionCoord = originalChannel
+                        .spline
+                        .points()
+                        .get(splitPositions.get(boundary))
+                        .clone();
+                Crossing crossing = crossings.get(crossingIdx);
+                final boolean channelWins = (channelId == crossing.channelIdA() && winnerSide[crossingIdx] == 0)
+                        || (channelId == crossing.channelIdB() && winnerSide[crossingIdx] == 1);
+                if (channelWins) {
+                    Node winnerJunction = newNode(junctionCoord);
+                    channels.get(upstreamSegmentId).endNodeId = winnerJunction.id;
+                    channels.get(downstreamSegmentId).startNodeId = winnerJunction.id;
+                    winnerJunction.incoming.add(upstreamSegmentId);
+                    winnerJunction.outgoing = downstreamSegmentId;
+                    winnerJunctionId[crossingIdx] = winnerJunction.id;
+                } else {
+                    Node loserUpstreamJunction = newNode(junctionCoord);
+                    Node loserDownstreamJunction = newNode(junctionCoord.clone());
+                    channels.get(upstreamSegmentId).endNodeId = loserUpstreamJunction.id;
+                    loserUpstreamJunction.incoming.add(upstreamSegmentId);
+                    channels.get(downstreamSegmentId).startNodeId = loserDownstreamJunction.id;
+                    loserDownstreamJunction.outgoing = downstreamSegmentId;
+                    loserUpstreamJunctionId[crossingIdx] = loserUpstreamJunction.id;
+                    loserUpstreamSegmentId[crossingIdx] = upstreamSegmentId;
+                }
+            }
+        }
+
+        // Phase B: capture reconnection
+        for (int crossingIdx = 0; crossingIdx < crossingCount; crossingIdx++) {
+            final int winnerJunction = winnerJunctionId[crossingIdx];
+            final int loserJunction = loserUpstreamJunctionId[crossingIdx];
+            final int loserSegment = loserUpstreamSegmentId[crossingIdx];
+            if (winnerJunction == -1 || loserJunction == -1 || loserSegment == -1) continue;
+            Channel tributary = channels.get(loserSegment);
+            tributary.endNodeId = winnerJunction;
+            nodes.get(winnerJunction).incoming.add(loserSegment);
+            // The winner junction sits on the winner's crossing point; the tributary's mouth was the
+            // loser's (nearby but distinct) crossing point. Snap the mouth onto the confluence node so
+            // the channel's last point lines up exactly with its end node.
+            ArrayList<double[]> tributaryPoints = tributary.spline.points();
+            tributaryPoints.set(
+                    tributaryPoints.size() - 1, nodes.get(winnerJunction).coord.clone());
+            tributary.spline = QuinticHermiteSpline.createCatmullRom(tributaryPoints);
+            nodes.remove(loserJunction); // the loser's now-orphan upstream junction
+        }
+    }
+
+    /** Iteratively remove channels dangling off leaf JUNCTION nodes until all leaves are sources/drains. */
+    private void pruneDanglingJunctionLeaves() {
+        ArrayDeque<Integer> leafQueue = new ArrayDeque<>();
+        for (Node node : nodes.values())
+            if (node.type == Node.NodeType.JUNCTION && node.degree() == 1) leafQueue.add(node.id);
+        while (!leafQueue.isEmpty()) {
+            final int nodeId = leafQueue.poll();
+            Node node = nodes.get(nodeId);
+            if (node == null || node.type != Node.NodeType.JUNCTION || node.degree() != 1) continue;
+
+            final boolean incidentIsOutgoing = node.outgoing != -1;
+            final int channelId = incidentIsOutgoing
+                    ? node.outgoing
+                    : node.incoming.iterator().next();
+            Channel channel = channels.get(channelId);
+            final int otherNodeId = incidentIsOutgoing ? channel.endNodeId : channel.startNodeId;
+            Node otherNode = nodes.get(otherNodeId);
+            if (otherNode != null) {
+                if (otherNode.outgoing == channelId) otherNode.outgoing = -1;
+                otherNode.incoming.remove(channelId);
+                if (otherNode.type == Node.NodeType.JUNCTION && otherNode.degree() == 1) leafQueue.add(otherNode.id);
+            }
+            channels.remove(channelId);
+            nodes.remove(nodeId);
+        }
+    }
+
+    /** Walk downstream from every source, collapsing pass-through junctions, to a fixpoint. */
+    private void mergePassFromSources() {
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            for (Node source : new ArrayList<>(nodes.values())) {
+                if (source.type != Node.NodeType.SOURCE) continue;
+                int channelId = source.outgoing;
+                while (channelId != -1) {
+                    Channel channel = channels.get(channelId);
+                    if (channel == null) break;
+                    if (merge(channelId)) {
+                        changed = true;
+                        continue; // the merged channel keeps id and now reaches further downstream
+                    }
+                    Node downstreamNode = nodes.get(channel.endNodeId);
+                    if (downstreamNode == null) break;
+                    channelId = downstreamNode.outgoing;
+                }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Accessors
+    // ---------------------------------------------------------------------------------------------
 
     public List<Channel> getChannels() {
-        return channels;
+        return new ArrayList<>(channels.values());
     }
 
-    public ArrayList<double[]> getChannelPts(int i) {
-        return channels.get(i).spline.points();
+    public ArrayList<double[]> getChannelPts(int channelId) {
+        return channels.get(channelId).spline.points();
+    }
+
+    public int getChannelCount() {
+        return channels.size();
+    }
+
+    public Channel getChannel(int id) {
+        return channels.get(id);
+    }
+
+    public Collection<Node> getNodes() {
+        return nodes.values();
+    }
+
+    public Node getNode(int id) {
+        return nodes.get(id);
     }
 }

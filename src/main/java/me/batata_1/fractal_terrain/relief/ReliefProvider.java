@@ -5,14 +5,11 @@ import static me.batata_1.fractal_terrain.FractalTerrainConfig.RELIEF_CHANNELS;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.X;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.Z;
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
-import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.NEIGHBOR_OFFSET_X;
-import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.NEIGHBOR_OFFSET_Z;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing;
@@ -34,9 +31,10 @@ import org.jetbrains.annotations.TestOnly;
  * {@code [3]} gradY {@code [4]} refinedGrad {@code [5]} lowFreqGrad {@code [6]} res
  * {@code [7]} drainageDirection (the D8 steepest-descent bitfield).
  *
- * <p>Per-tile pipeline: {@link #decodeBaseChannels} (padded 514×514) → fetch the 2×2 coarse global
- * river block (plus exit-neighbour widths/elevations) → trace the arrows into river splines → carve
- * the elevation toward the global river bed along those splines (recording a carve-band mask) → fill
+ * <p>Per-tile pipeline: {@link #decodeBaseChannels} (padded 514×514) → trace the 2×2 owned coarse
+ * cells' global-river arrows into splines by gradient descent over the decoded terrain
+ * ({@link #traceRiverSplines}) → carve the elevation toward the global river bed along those splines
+ * (recording a carve-band mask) → fill
  * sinks ({@link PipelinePreprocessing#fillSinks}) so drainage has no trapped pits → recompute the
  * drainage direction on the filled (padded) elevation, OR-ing {@link PipelinePreprocessing#GLOBAL_RIVER_BIT}
  * into the carve-band pixels → crop to the inner 512×512. Channel 7 stores the int drainage mask
@@ -111,8 +109,9 @@ public class ReliefProvider {
         // 1. decode the 7 weight-normalized base channels at padded 514×514.
         final float[][] baseChannels = decodeBaseChannels(x, z);
 
-        // 2-3. trace the global river arrows over this tile into splines (control points + widths).
-        final List<RiverPolyline> riverSplines = traceRiverSplines(x, z);
+        // 2-3. trace the global river arrows over this tile into splines via gradient descent over the
+        //       decoded terrain (control points + widths + bed elevations).
+        final List<RiverPolyline> riverSplines = traceRiverSplines(x, z, baseChannels);
 
         // 4. carve the elevation (base channel 0) toward the global river bed, recording the
         //    carve-band mask (pixels that belong to the global river).
@@ -199,88 +198,222 @@ public class ReliefProvider {
         QuinticHermiteSpline spline;
     }
 
-    /**
-     * A coarse cell in the relevant set: its decoded arrow, width, bed elevation, and padded-px centre.
-     */
-    public record Cell(
-            int coarseX, int coarseZ, int arrow, double width, double elevation, double centerX, double centerZ) {}
+    // ---- Gradient-descent tuning knobs --------------------------------------
+    /** Arc-length step (padded px) taken per gradient-descent iteration inside a cell. */
+    private static final double DESCENT_STEP_SIZE = 2.0;
+    /** Hard cap on descent steps per stream (a path can't be longer than ~2 cell widths). */
+    private static final int DESCENT_MAX_STEPS = COARSE_PX * 2;
+    /** Inward push magnitude of the cell-border "wall" that confines a descent to its own cell. */
+    private static final double WALL_STRENGTH = 4.0;
+    /** Distance (px) over which the steer-to-exit weight ramps from {@link #MIN_STEER} up to 1. */
+    private static final double STEER_RADIUS = COARSE_PX;
+    /** Baseline steer-to-exit weight applied everywhere (so a path always trends to its exit). */
+    private static final double MIN_STEER = 0.2;
+    /** Gain on the (unit) steer-to-exit vector; &gt;1 so it overpowers the wall near the exit. */
+    private static final double STEER_GAIN = 2.0;
+    /** Gain on the (unit) downhill vector. */
+    private static final double DOWN_GAIN = 1.0;
+    /** Radius (px) at which a descending stream snaps onto an existing in-cell stream (junction). */
+    private static final double MERGE_RADIUS = 2.0;
 
-    private static long cellKey(int coarseX, int coarseZ) {
-        return ((long) coarseX << 32) ^ (coarseZ & 0xffffffffL);
+    /**
+     * Build the river polylines covering relief tile {@code (tileX, tileZ)}. The tile owns a 2×2 block
+     * of coarse cells; for each river cell we (a) find its <b>exit point</b> on the cardinal-arrow edge
+     * (the edge pixel whose decoded elevation is closest to the cell's coarse bed), (b) gather descent
+     * <b>origins</b> — the exit points of upstream neighbour cells, or a deterministic random interior
+     * seed when the cell is a source — and (c) trace each origin to the exit via gradient descent over
+     * the decoded terrain ({@code gradX = baseChannels[2]}, {@code gradZ = baseChannels[3]}), confined to
+     * the cell by a border "wall" and steered toward the exit. Streams that meet inside a cell merge at a
+     * junction. Each traced path becomes a Catmull-Rom {@link RiverPolyline} with decoded-tracking,
+     * monotonically non-increasing bed elevations.
+     */
+    // TODO: rewrite this
+    private List<RiverPolyline> traceRiverSplines(int tileX, int tileZ, float[][] baseChannels) {
+        return null;
     }
 
     /**
-     * Build the river polylines covering relief tile {@code (x, z)} from the global river arrows. The
-     * tile spans a 2×2 block of coarse cells; any river leaving the block contributes its single
-     * downstream-neighbour cell (for its terminal width). Directed edges chain cell centres into
-     * ordered control-point lists, which are fitted with Catmull-Rom.
+     * The exit point (padded px) of coarse cell {@code (ccx, ccz)} on the edge toward cardinal direction
+     * {@code dir} (4..7): the edge pixel whose decoded elevation ({@code elev}) is closest to the cell's
+     * coarse bed {@code target}. Only the shared-edge pixel line is read, so both tiles flanking the edge
+     * compute the same point (seam-deterministic).
      */
-    //TODO: do the global river meander sim here
-    private List<RiverPolyline> traceRiverSplines(int x, int z) {
-        final GlobalRiverProvider riverProvider = globalRiverProvider();
-        final int blockOriginX = x << 1;
-        final int blockOriginZ = z << 1;
+    private double[] exitPoint(int ccx, int ccz, int dir, int tileX, int tileZ, float[] elev, double target) {
+        final int minXi = PAD + (ccx - tileX * 2) * COARSE_PX;
+        final int minZi = PAD + (ccz - tileZ * 2) * COARSE_PX;
+        final int maxXi = minXi + COARSE_PX;
+        final int maxZi = minZi + COARSE_PX;
 
-        // Relevant set: the 4x4 block cells
-        final Map<Long, Cell> cells = new HashMap<>();
-        for (int xx = -1; xx < 3; xx++) {
-            for (int zz = -1; zz < 3; zz++) {
-                final int ccx = blockOriginX + xx;
-                final int ccz = blockOriginZ + zz;
-                cells.put(cellKey(ccx, ccz), makeCell(riverProvider, x, z, ccx, ccz));
+        int bestX = -1;
+        int bestZ = -1;
+        double bestDiff = Double.MAX_VALUE;
+        if (dir == 4 || dir == 5) { // z-edge → iterate over x
+            final int lineZ = (dir == 4) ? minZi : maxZi;
+            if (lineZ >= 0 && lineZ < PADDED) {
+                for (int xi = Math.max(0, minXi); xi < Math.min(PADDED, maxXi); xi++) {
+                    final double diff = Math.abs(elev[xi * PADDED + lineZ] - target);
+                    if (diff < bestDiff) {
+                        bestDiff = diff;
+                        bestX = xi;
+                        bestZ = lineZ;
+                    }
+                }
+            }
+        } else { // dir 6 or 7 → x-edge → iterate over z
+            final int lineX = (dir == 6) ? minXi : maxXi;
+            if (lineX >= 0 && lineX < PADDED) {
+                for (int zi = Math.max(0, minZi); zi < Math.min(PADDED, maxZi); zi++) {
+                    final double diff = Math.abs(elev[lineX * PADDED + zi] - target);
+                    if (diff < bestDiff) {
+                        bestDiff = diff;
+                        bestX = lineX;
+                        bestZ = zi;
+                    }
+                }
             }
         }
+        if (bestX < 0) return new double[] {(minXi + maxXi) / 2.0, (minZi + maxZi) / 2.0};
+        return new double[] {bestX, bestZ};
+    }
 
-        // Downstream pointer (≤1 per cell) and in-degree within the relevant set.
-        final Map<Long, Cell> downstream = new HashMap<>();
-        final Map<Long, Integer> inDegree = new HashMap<>();
-        for (Cell cell : cells.values()) {
-            final int outgoing = GlobalRiverProvider.outgoingMask(cell.arrow);
-            for (int d = 0; d < 8; d++) {
-                if ((outgoing & (1 << d)) == 0) continue;
-                final long nk = cellKey(cell.coarseX + NEIGHBOR_OFFSET_X[d], cell.coarseZ + NEIGHBOR_OFFSET_Z[d]);
-                final Cell target = cells.get(nk);
-                if (target == null) continue;
-                downstream.put(cellKey(cell.coarseX, cell.coarseZ), target);
-                inDegree.merge(nk, 1, Integer::sum);
+    /** A deterministic, interior-biased seed point (padded px) for a source cell, keyed by its coords. */
+    private double[] sourceSeed(int ccx, int ccz, double minX, double minZ) {
+        final java.util.Random rng =
+                new java.util.Random(((long) ccx * 0x9E3779B97F4A7C15L) ^ ((long) ccz * 0xC2B2AE3D27D4EB4FL));
+        final double rx = (rng.nextDouble() - rng.nextDouble()) * (COARSE_HALF * 0.7);
+        final double rz = (rng.nextDouble() - rng.nextDouble()) * (COARSE_HALF * 0.7);
+        return new double[] {minX + COARSE_HALF + rx, minZ + COARSE_HALF + rz};
+    }
+
+    /**
+     * Gradient-descend from {@code start} to {@code exit} inside a cell. Each step blends the downhill
+     * direction (−∇ of the decoded elevation, from {@code gradX}/{@code gradZ}), an inward "wall" push
+     * (within {@code wallBand} of any cell edge) that keeps the path from bleeding into neighbour cells,
+     * and a steer-to-exit vector whose weight grows as the exit nears. If the path reaches a point
+     * already laid down by an earlier stream in {@code occupancy} it snaps there and stops (a junction).
+     */
+    private List<double[]> descendInCell(
+            double[] start,
+            double[] exit,
+            float[] gradX,
+            float[] gradZ,
+            double minX,
+            double minZ,
+            double maxX,
+            double maxZ,
+            double wallBand,
+            QuadTree<QuadTreePoint> occupancy) {
+        final List<double[]> path = new ArrayList<>();
+        double px = clamp(start[0], minX, maxX);
+        double pz = clamp(start[1], minZ, maxZ);
+        path.add(new double[] {px, pz});
+
+        for (int step = 0; step < DESCENT_MAX_STEPS; step++) {
+            final double dx = exit[0] - px;
+            final double dz = exit[1] - pz;
+            final double distToExit = Math.sqrt(dx * dx + dz * dz);
+            if (distToExit <= DESCENT_STEP_SIZE) {
+                path.add(new double[] {exit[0], exit[1]});
+                break;
+            }
+            final double sx = dx / distToExit;
+            final double sz = dz / distToExit;
+
+            final double[] downhill = normalizeOrZero(-sampleBilinear(gradX, px, pz), -sampleBilinear(gradZ, px, pz));
+            final double[] wall = wallVector(px, pz, minX, minZ, maxX, maxZ, wallBand);
+            final double w = clamp(1.0 - distToExit / STEER_RADIUS, MIN_STEER, 1.0);
+
+            double mx = (1 - w) * (downhill[0] * DOWN_GAIN + wall[0]) + w * STEER_GAIN * sx;
+            double mz = (1 - w) * (downhill[1] * DOWN_GAIN + wall[1]) + w * STEER_GAIN * sz;
+            double mlen = Math.sqrt(mx * mx + mz * mz);
+            if (mlen < 1e-9) {
+                mx = sx;
+                mz = sz;
+                mlen = 1.0;
+            }
+            double npx = clamp(px + mx / mlen * DESCENT_STEP_SIZE, minX, maxX);
+            double npz = clamp(pz + mz / mlen * DESCENT_STEP_SIZE, minZ, maxZ);
+
+            // Junction: snap onto an earlier stream in this cell if we collided with it.
+            if (occupancy.numPoints() > 0) {
+                final List<QuadTreePoint> near = occupancy.getPointsInCircle(new double[] {npx, npz}, MERGE_RADIUS);
+                if (!near.isEmpty()) {
+                    final double[] j = nearestOf(near, npx, npz);
+                    path.add(new double[] {j[0], j[1]});
+                    break;
+                }
+            }
+
+            // Stalled against a wall: nudge straight toward the exit; if still stuck, finish at the exit.
+            if (Math.abs(npx - px) < 1e-6 && Math.abs(npz - pz) < 1e-6) {
+                npx = clamp(px + sx * DESCENT_STEP_SIZE, minX, maxX);
+                npz = clamp(pz + sz * DESCENT_STEP_SIZE, minZ, maxZ);
+                if (Math.abs(npx - px) < 1e-6 && Math.abs(npz - pz) < 1e-6) {
+                    path.add(new double[] {exit[0], exit[1]});
+                    break;
+                }
+            }
+            px = npx;
+            pz = npz;
+            path.add(new double[] {px, pz});
+        }
+        return path;
+    }
+
+    /** Sum of inward pushes from each cell edge within {@code band} px (0 when {@code band <= 0}). */
+    private static double[] wallVector(
+            double px, double pz, double minX, double minZ, double maxX, double maxZ, double band) {
+        if (band <= 0) return new double[] {0, 0};
+        double wx = 0;
+        double wz = 0;
+        final double dl = px - minX;
+        if (dl < band) wx += WALL_STRENGTH * (1 - dl / band);
+        final double dr = maxX - px;
+        if (dr < band) wx -= WALL_STRENGTH * (1 - dr / band);
+        final double db = pz - minZ;
+        if (db < band) wz += WALL_STRENGTH * (1 - db / band);
+        final double dt = maxZ - pz;
+        if (dt < band) wz -= WALL_STRENGTH * (1 - dt / band);
+        return new double[] {wx, wz};
+    }
+
+    private static double[] nearestOf(List<QuadTreePoint> pts, double px, double pz) {
+        double[] best = null;
+        double bestD = Double.MAX_VALUE;
+        for (QuadTreePoint p : pts) {
+            final double d = VectorOps.distanceSquared(new double[] {px, pz}, p.toArray());
+            if (d < bestD) {
+                bestD = d;
+                best = p.toArray();
             }
         }
-
-        // Entries: chain heads (have a downstream edge but no in-set upstream).
-        final List<RiverPolyline> polylines = new ArrayList<>();
-        for (Cell cell : cells.values()) {
-            final long key = cellKey(cell.coarseX, cell.coarseZ);
-            if (!downstream.containsKey(key)) continue; // no outgoing edge → not a chain head
-            if (inDegree.getOrDefault(key, 0) != 0) continue; // mid-chain or confluence branch tail
-            polylines.add(walkChain(cell, downstream, cells.size()));
-        }
-
-        for (RiverPolyline polyline : polylines) {
-            polyline.spline = QuinticHermiteSpline.createCatmullRom(polyline.controlPoints);
-        }
-        return polylines;
+        return best;
     }
 
-    private Cell makeCell(GlobalRiverProvider riverProvider, int tileX, int tileZ, int ccx, int ccz) {
-        final int arrow = riverProvider.getArrow(ccx, ccz);
-        final double width = riverProvider.getWidth(ccx, ccz);
-        final double elevation = riverProvider.getElevation(ccx, ccz);
-        final double centerX = PAD + COARSE_HALF + (ccx - tileX * 2) * COARSE_PX;
-        final double centerZ = PAD + COARSE_HALF + (ccz - tileZ * 2) * COARSE_PX;
-        return new Cell(ccx, ccz, arrow, width, elevation, centerX, centerZ);
+    private static double[] normalizeOrZero(double x, double z) {
+        final double len = Math.sqrt(x * x + z * z);
+        return (len < 1e-9) ? new double[] {0, 0} : new double[] {x / len, z / len};
     }
 
-    /** Follow downstream pointers from {@code head} appending cell centres + widths + bed elevations. */
-    public RiverPolyline walkChain(Cell head, Map<Long, Cell> downstream, int cap) {
-        final RiverPolyline polyline = new RiverPolyline();
-        Cell current = head;
-        for (int step = 0; step <= cap && current != null; step++) {
-            polyline.controlPoints.add(new double[] {current.centerX, current.centerZ});
-            polyline.widths.add(current.width);
-            polyline.bedElevations.add(current.elevation);
-            current = downstream.get(cellKey(current.coarseX, current.coarseZ));
-        }
-        return polyline;
+    private static double clamp(double v, double lo, double hi) {
+        return (v < lo) ? lo : (v > hi) ? hi : v;
+    }
+
+    /** Bilinear sample of a padded {@code PADDED×PADDED} field (row-major {@code x*PADDED + z}). */
+    private static double sampleBilinear(float[] field, double px, double pz) {
+        int x0 = (int) Math.floor(px);
+        int z0 = (int) Math.floor(pz);
+        final double fx = px - x0;
+        final double fz = pz - z0;
+        int x1 = x0 + 1;
+        int z1 = z0 + 1;
+        x0 = Math.max(0, Math.min(PADDED - 1, x0));
+        x1 = Math.max(0, Math.min(PADDED - 1, x1));
+        z0 = Math.max(0, Math.min(PADDED - 1, z0));
+        z1 = Math.max(0, Math.min(PADDED - 1, z1));
+        final double v0 = field[x0 * PADDED + z0] * (1 - fz) + field[x0 * PADDED + z1] * fz;
+        final double v1 = field[x1 * PADDED + z0] * (1 - fz) + field[x1 * PADDED + z1] * fz;
+        return v0 * (1 - fx) + v1 * fx;
     }
 
     // -------------------------------------------------------------------------
@@ -302,14 +435,15 @@ public class ReliefProvider {
     /**
      * Carve {@code elevation} (padded 514×514) toward the global river bed along the splines. Each
      * spline is densified into sample points (width and bed elevation lerped between adjacent control
-     * points) and inserted into a QuadTree. Each pixel queries the nearest sample within
-     * {@link #MAX_CARVE_DIST} and is pulled <b>down toward</b> the river-bed elevation there: at the
-     * centreline the floor is {@code bedElev - CARVE_DEPTH_SCALE*width}, blending linearly back to the
-     * original elevation at {@link #MAX_CARVE_DIST} (never raised — only lowered). Pixels with no nearby
-     * sample are left untouched.
+     * points) and inserted into a QuadTree. Each pixel queries the nearest sample (within the
+     * {@link #MAX_CARVE_DIST} query cap) and is pulled <b>down toward</b> the river-bed elevation there,
+     * forming a tight bank: within {@code margin = width/2} the floor is {@code bedElev}; from
+     * {@code margin} out to {@code marginInfluence = width + 1} the result lerps linearly from
+     * {@code bedElev} back to the original elevation; beyond {@code marginInfluence} the pixel is left
+     * untouched (never raised — only lowered).
      *
-     * @return a padded {@code boolean[]} flagging pixels inside the carve band (within the river
-     *     half-width + {@link #GLOBAL_BAND}) — i.e. those that belong to the global river.
+     * @return a padded {@code boolean[]} flagging pixels inside the carve band (within
+     *     {@code margin + }{@link #GLOBAL_BAND}) — i.e. those that belong to the global river.
      */
     private boolean[] carveRiver(float[] elevation, List<RiverPolyline> riverSplines, @Nullable Stages stages) {
         final boolean[] globalRiverMask = new boolean[PADDED * PADDED];
@@ -359,16 +493,22 @@ public class ReliefProvider {
                         bedElev = sample.bedElev;
                     }
                 }
+                // MAX_CARVE_DIST is only the QuadTree query/safety cap now; the actual carve influence
+                // ends at marginInfluence (rivers wider than ~2*MAX_CARVE_DIST clip at the cap).
                 if (nearestDist >= MAX_CARVE_DIST) continue;
 
-                final double bankHalf = width;
-                if (nearestDist <= bankHalf + GLOBAL_BAND) globalRiverMask[idx] = true;
+                final double margin = width * 0.5;
+                final double marginInfluence = 2 * width;
+                if (nearestDist <= margin + GLOBAL_BAND) globalRiverMask[idx] = true;
+
+                // Beyond marginInfluence the terrain is untouched; carve only within [0, marginInfluence].
+                if (nearestDist >= marginInfluence) continue;
 
                 final float orig = elevation[idx];
                 final double centreFloor = bedElev;
-                final double frac = (nearestDist <= bankHalf)
+                final double frac = (nearestDist <= margin)
                         ? 0.0
-                        : Math.min(1.0, (nearestDist - bankHalf) / (MAX_CARVE_DIST - bankHalf));
+                        : Math.min(1.0, (nearestDist - margin) / (marginInfluence - margin));
                 final float carved = (float) (centreFloor + (orig - centreFloor) * frac);
                 elevation[idx] = carved;
                 if (carveDepthField != null) carveDepthField[idx] = orig - carved;
@@ -383,7 +523,7 @@ public class ReliefProvider {
     // -------------------------------------------------------------------------
 
     public Float get_entry(final int[] mutableCoords, final int ch) {
-        mutableCoords[me.batata_1.fractal_terrain.FractalTerrainConfig.CH] = ch;
+        mutableCoords[FractalTerrainConfig.CH] = ch;
         return final_tiles.getValue(mutableCoords);
     }
 

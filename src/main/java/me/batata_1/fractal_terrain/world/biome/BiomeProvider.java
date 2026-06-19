@@ -85,8 +85,8 @@ public class BiomeProvider {
         final int blockOriginZ = tileZ << 9;
         for (int ix = 0; ix < 512; ix++) {
             for (int iz = 0; iz < 512; iz++) {
-                final double dist = localRivers.nearestRiverDistance(blockOriginX + ix, blockOriginZ + iz);
-                vegPdf[ix * 512 + iz] = (dist == Double.MAX_VALUE) ? 0f : (float) Math.exp(-dist / HUMIDITY_FALLOFF);
+                // final double dist = localRivers.nearestRiverDistance(blockOriginX + ix, blockOriginZ + iz);
+                // vegPdf[ix * 512 + iz] = (dist == Double.MAX_VALUE) ? 0f : (float) Math.exp(-dist / HUMIDITY_FALLOFF);
             }
         }
         return vegPdf;

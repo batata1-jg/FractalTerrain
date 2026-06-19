@@ -48,37 +48,9 @@ public class NonIntersectingInfiniteQuadTree<T extends QuadTreePoint> extends St
         }
     }
 
-    /**
-     * Single-tile spatial query: find the tile that owns {@code (queryX, queryZ)}, (re)compute it if
-     * needed, and return the points within {@code radius}. Results are restricted to the owning
-     * tile's logical window bounds, so points lying in a neighbouring tile's halo are never returned
-     * — this is the "symbolic crop": the final tile may physically hold halo points, but {@code query}
-     * never looks beyond the requested window.
-     */
-    public List<T> query(double queryX, double queryZ, double radius) {
-        final int[] coords = {0, (int) Math.floor(queryX), (int) Math.floor(queryZ)};
-        final int[] tileIndex = outWindow.getSinglePixelIntersection(coords);
-        final QuadTree<T> tile = getEntry(tileIndex);
-
-        // Shape is {1, size, size}: dim 0 is a dummy leading axis, X is dim 1 and Z is dim 2 (matching
-        // the {0, x, z} coords above), so the spatial crop reads windowBounds[1] and windowBounds[2].
-        final int[][] windowBounds = outWindow.getBounds(tileIndex);
-        final double windowMinX = windowBounds[1][0];
-        final double windowMaxX = windowBounds[1][1];
-        final double windowMinZ = windowBounds[2][0];
-        final double windowMaxZ = windowBounds[2][1];
-
-        final List<T> hits = tile.getPointsInCircle(new double[] {queryX, queryZ}, radius);
-        hits.removeIf(point -> point.get(0) < windowMinX
-                || point.get(0) >= windowMaxX
-                || point.get(1) < windowMinZ
-                || point.get(1) >= windowMaxZ);
-        return hits;
-    }
-
     /** The (re)computed {@link QuadTree} for the tile owning {@code (queryX, queryZ)}. */
-    public QuadTree<T> getTile(double queryX, double queryZ) {
-        final int[] coords = {0, (int) Math.floor(queryX), (int) Math.floor(queryZ)};
-        return getEntry(outWindow.getSinglePixelIntersection(coords));
+    public List<T> getValuesWithin(final double[] coords, final double radius) {
+        final QuadTree<T> entry = getEntry(outWindow.getSinglePixelIntersection(coords));
+        return entry.getPointsInCircle(outWindow.getPerWindowCoord(coords), radius);
     }
 }

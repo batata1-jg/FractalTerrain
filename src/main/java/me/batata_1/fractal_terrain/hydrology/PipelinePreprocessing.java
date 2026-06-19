@@ -140,6 +140,44 @@ public class PipelinePreprocessing {
         return drainageDirection;
     }
 
+    /**
+     * Cardinal-only ("D4") steepest-descent drainage: identical to {@link #computeDrainageDirection}
+     * but each cell may only drain toward one of its four <b>cardinal</b> neighbours (offset indices
+     * 4..7); the diagonals (0..3) are never considered, so no {@code 1/√2} distance scaling is needed.
+     * The output is the same one-hot bitfield convention, but only bits 4..7 can ever be set. Used by
+     * {@code GlobalRiverProvider} so every river cell has a single, edge-aligned exit direction.
+     *
+     * @param elev raw (un-normalized) elevation per cell.
+     * @param weight per-cell blend weight; {@code elev} is divided by this (0 when weight ≈ 0).
+     * @param gridSize side length of the square grid.
+     * @return per-cell one-hot D4 drainage bitfield (only bits 4..7 set; 0 for a sink).
+     */
+    public static int[] computeDrainageDirectionCardinal(final float[] elev, final float[] weight, final int gridSize) {
+        final int[] drainageDirection = new int[gridSize * gridSize];
+        for (int x = 0; x < gridSize; x++) {
+            for (int z = 0; z < gridSize; z++) {
+                final int cellIndex = x * gridSize + z;
+                final float cellElevation = (weight[cellIndex] > 1e-6f) ? (elev[cellIndex] / weight[cellIndex]) : 0f;
+                float steepestSlope = 0;
+                int steepestDirection = 0;
+                for (int i = 4; i < 8; i++) {
+                    if ((x == 0 && NEIGHBOR_OFFSET_X[i] == -1) || (z == 0 && NEIGHBOR_OFFSET_Z[i] == -1)) continue;
+                    if ((x == (gridSize - 1) && NEIGHBOR_OFFSET_X[i] == 1)
+                            || (z == (gridSize - 1) && NEIGHBOR_OFFSET_Z[i] == 1)) continue;
+                    final int neighborIndex = gridSize * (x + NEIGHBOR_OFFSET_X[i]) + z + NEIGHBOR_OFFSET_Z[i];
+                    final float neighborElevation =
+                            (weight[neighborIndex] > 1e-6f) ? (elev[neighborIndex] / weight[neighborIndex]) : 0f;
+                    final float slopeToNeighbor = neighborElevation - cellElevation;
+                    if (slopeToNeighbor >= steepestSlope) continue;
+                    steepestSlope = slopeToNeighbor;
+                    steepestDirection = 1 << i;
+                }
+                drainageDirection[cellIndex] = steepestDirection;
+            }
+        }
+        return drainageDirection;
+    }
+
     /** Increment added at each flood step so filled depressions still descend toward the outlet. */
     private static final float FILL_EPSILON = 1e-4f;
 

@@ -1,6 +1,9 @@
 package me.batata_1.fractal_terrain.infinitetensor;
 
+import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
+
 import java.util.Arrays;
+import org.slf4j.Logger;
 
 /**
  * Defines the sliding window layout for an InfiniteTensor.
@@ -12,6 +15,7 @@ import java.util.Arrays;
  * Overlapping windows are summed during slice accumulation.
  */
 public class TensorWindow {
+    private static final Logger LOG = getLogger(TensorWindow.class);
     public final int[] size;
     public final int[] stride;
     public final int[] offset;
@@ -106,10 +110,31 @@ public class TensorWindow {
         return res;
     }
 
+    public int[] getSinglePixelIntersection(final double[] coords) {
+        final int n = size.length;
+        final int[] res = new int[n];
+        for (int i = 0; i < n; i++) {
+            res[i] = Math.floorDiv((int) (coords[i] - offset[i]), stride[i]);
+        }
+        return res;
+    }
+
     public int[] getPerWindowCoord(final int[] coords) {
         for (int i = 0; i < coords.length; i++) {
             coords[i] %= stride[i];
             if (coords[i] < 0) coords[i] = (coords[i] + stride[i]) % stride[i];
+        }
+        return coords;
+    }
+
+    public double[] getPerWindowCoord(final double[] coords) {
+        for (int i = 0; i < coords.length; i++) {
+            if (coords[i] < 0) coords[i] += stride[i] * Math.ceil(-coords[i] / stride[i]);
+            else coords[i] -= Math.floor(coords[i] / stride[i]) * stride[i];
+            if (coords[i] < 0 || coords[i] > stride[i]) {
+                coords[i] = 0;
+                LOG.error("doublePerWindowsCoord failed at coord[{}] = {}", i, coords[i]);
+            }
         }
         return coords;
     }

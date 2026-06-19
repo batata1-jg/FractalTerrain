@@ -24,6 +24,7 @@ public class PopulateNoiseStep {
     private static final BlockState RIVER_MARKER_ROCK = Blocks.GREEN_CONCRETE.defaultBlockState();
     private static final double MARKER_THRESHOLD = 0.8;
     private static final Logger LOG = getLogger(PopulateNoiseStep.class);
+    private static final BlockState INSIDE_MARGIN_ROCK = Blocks.LIGHT_BLUE_CONCRETE.defaultBlockState();
 
     private final Interpolation reliefInterpolation;
     private final Interpolation reliefGradInterpolation;
@@ -70,14 +71,22 @@ public class PopulateNoiseStep {
         return DEFAULT_ROCK;
     }
 
+    private final ThreadLocal<double[]> mutableCoordsXZ = ThreadLocal.withInitial(() -> new double[2]);
+
     public BlockState placeRiver(BlockState state, int xx, int distFromSurface, int zz) {
         if (distFromSurface != 0) return state;
         final int coarseX = Math.floorDiv(xx, 256 * 5);
         final int coarseZ = Math.floorDiv(zz, 256 * 5);
-        if (GlobalRiverProvider.isRiver(
-                FractalTerrainInstance.getGlobalRiverProvider().getArrow(coarseX, coarseZ))) return RIVER_MARKER_ROCK;
-        if (GlobalRiverProvider.isCoast(
-                FractalTerrainInstance.getGlobalRiverProvider().getArrow(coarseX, coarseZ))) return COAST_MARKER_ROCK;
+        mutableCoordsXZ.get()[0] = xx * 0.2;
+        mutableCoordsXZ.get()[1] = zz * 0.2;
+        final int globalRiverData =
+                FractalTerrainInstance.getGlobalRiverProvider().getArrow(coarseX, coarseZ);
+        if (GlobalRiverProvider.isRiver(globalRiverData) || GlobalRiverProvider.isCoast(globalRiverData)) {
+            boolean f = FractalTerrainInstance.getLocalRiverProvider().insideMargin(mutableCoordsXZ.get());
+            if (f) return INSIDE_MARGIN_ROCK;
+            if (GlobalRiverProvider.isRiver(globalRiverData)) return RIVER_MARKER_ROCK;
+            return COAST_MARKER_ROCK;
+        }
         return state;
     }
 }

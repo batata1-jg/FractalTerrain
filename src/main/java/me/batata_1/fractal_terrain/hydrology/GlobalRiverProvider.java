@@ -36,12 +36,15 @@ import org.jetbrains.annotations.TestOnly;
  *       non-increasing downstream; consumed by {@code ReliefProvider.carveRiver}.
  * </ul>
  *
- * <p>Arrow bitfield (channel 0), using the D8 ordering of {@link PipelinePreprocessing}. Only the
- * <b>downstream</b> (outgoing) direction is stored — upstream/tributary arrows are derived on demand
- * by scanning a pixel's neighbours (see {@link #ingoingMask(int, int)}), which stays consistent across
- * tile borders and naturally represents the multiple upstream branches at a confluence:
+ * <p>Arrow bitfield (channel 0), using the neighbour ordering of {@link PipelinePreprocessing}. Routing
+ * is <b>D4</b> (cardinal neighbours only): drainage uses
+ * {@link PipelinePreprocessing#computeDrainageDirectionCardinal} and the sink reroute marches cardinally,
+ * so only the cardinal direction bits (4..7) are ever set and every river cell has a single edge-aligned
+ * exit. Only the <b>downstream</b> (outgoing) direction is stored — upstream/tributary arrows are derived
+ * on demand by scanning a pixel's neighbours (see {@link #ingoingMask(int, int)}), which stays consistent
+ * across tile borders and naturally represents the multiple upstream branches at a confluence:
  * <pre>
- *   bits  0..7 : outgoing direction mask — which neighbour the river leaves TOWARD
+ *   bits  0..7 : outgoing direction mask — which neighbour the river leaves TOWARD (only 4..7 set under D4)
  *   bit   8    : source — this pixel is a ridge seed (river origin)
  *   bit   9    : coast  — this pixel is a river terminus on the coastline
  *   bit   10   : sink   — this pixel was a local minimum that triggered a reroute to the coast
@@ -50,8 +53,8 @@ import org.jetbrains.annotations.TestOnly;
  * <p>Per-tile pipeline: padded coarse elevation → threshold (upper/lower masks on the RAW elevation)
  * → isolate (an elevation ramp toward the tile border, applied only to a descent-gradient copy) →
  * ridge mask ({@link Skeletonizer#thin}) + coast mask ({@link MarchingSquares#borderMask}) →
- * per-source steepest-descent D8 walk recording outgoing bits (a sink reroutes to the nearest coast
- * point) → width from a flow-accumulation proxy → packed result tile. Thresholding before the ramp
+ * per-source steepest-descent D4 walk recording outgoing bits (a sink reroutes cardinally to the nearest
+ * coast point) → width from a flow-accumulation proxy → packed result tile. Thresholding before the ramp
  * keeps the coast classification anchored to real elevation, while the ramp confines steepest-descent
  * flow inward so rivers do not spill across tile borders.
  */
@@ -121,14 +124,15 @@ public class GlobalRiverProvider {
 
     /**
      * Upstream (ingoing) direction mask at global coarse-px {@code (cx, cz)}, derived by scanning the
-     * eight neighbours: a river arrives FROM direction {@code d} when the neighbour in that direction
-     * drains back toward this pixel (its outgoing mask has the opposite-direction bit set). Deriving
-     * upstream this way — rather than storing it — stays consistent across tile borders and represents
-     * every tributary at a confluence (a pixel can have multiple upstream arrows).
+     * four cardinal neighbours: a river arrives FROM direction {@code d} when the neighbour in that
+     * direction drains back toward this pixel (its outgoing mask has the opposite-direction bit set).
+     * Deriving upstream this way — rather than storing it — stays consistent across tile borders and
+     * represents every tributary at a confluence (a pixel can have multiple upstream arrows). Only the
+     * cardinal directions (4..7) are scanned since drainage is D4.
      */
     public int ingoingMask(int cx, int cz) {
         int mask = 0;
-        for (int d = 0; d < 8; d++) {
+        for (int d = 4; d < 8; d++) {
             final int neighborArrow = getArrow(cx + NEIGHBOR_OFFSET_X[d], cz + NEIGHBOR_OFFSET_Z[d]);
             if ((outgoingMask(neighborArrow) & (1 << OPPOSITE_DIRECTION[d])) != 0) mask |= (1 << d);
         }
@@ -195,7 +199,7 @@ public class GlobalRiverProvider {
         final float[] rampedElevation = applyBorderRamp(elevation);
 
         // 4. ridge mask (thinned upper region) + coast mask (border of the lower region).
-//        final boolean[][] ridgeMask = Skeletonizer.thin(upperMask);
+        //        final boolean[][] ridgeMask = Skeletonizer.thin(upperMask);
         final boolean[][] ridgeMask = upperMask;
         final boolean[][] coastMask = MarchingSquares.borderMask(lowerMask);
 
@@ -205,7 +209,7 @@ public class GlobalRiverProvider {
         final float[] uniformWeight = new float[PADDED_SIDE * PADDED_SIDE];
         Arrays.fill(uniformWeight, 1f);
         final int[] drainageDirection =
-                PipelinePreprocessing.computeDrainageDirection(rampedElevation, uniformWeight, PADDED_SIDE);
+                PipelinePreprocessing.computeDrainageDirectionCardinal(rampedElevation, uniformWeight, PADDED_SIDE);
         final QuadTree<QuadTreePoint> coastTree = buildCoastTree(coastMask);
         final int[] arrows = new int[PADDED_SIDE * PADDED_SIDE];
         for (int i = 0; i < PADDED_SIDE; i++) {
@@ -302,7 +306,12 @@ public class GlobalRiverProvider {
             final int nextPj = pj + NEIGHBOR_OFFSET_Z[direction];
             arrows[pi * PADDED_SIDE + pj] |= (1 << (OUTGOING_SHIFT + direction));
             if (path != null) path.add(new int[] {nextPi, nextPj});
-            if (isCoast(arrows[nextPi * PADDED_SIDE + nextPj])) break;
+            final int nextIndex = nextPi * PADDED_SIDE + nextPj;
+            if (isCoast(arrows[nextIndex])) break;
+            // next was already walked: its downstream path (deterministic steepest descent) is already
+            // recorded, so stop here instead of re-tracing the shared trunk down to the coast. The
+            // outgoing link into next is set above, so this tributary still joins the trunk.
+            if ((arrows[nextIndex] & RIVER_BIT) != 0) break;
             pi = nextPi;
             pj = nextPj;
         }
@@ -330,10 +339,12 @@ public class GlobalRiverProvider {
 
     /**
      * Reroute a stalled descent from sink {@code (sinkPi, sinkPj)} to the coast: find the nearest coast
-     * cell ({@link #nearestCoast}) and march D8 toward it, at each step taking the in-bounds neighbour
-     * that most reduces the Euclidean distance to the target and setting the current cell's outgoing
-     * bit. Stops when a coast cell is entered (flagged {@code coast}), when no neighbour gets closer, or
-     * after {@link #MAX_WALK_STEPS}. A no-op when the tile has no coast cells.
+     * cell ({@link #nearestCoast}) and march <b>D4</b> (cardinal neighbours only) toward it, at each step
+     * taking the in-bounds cardinal neighbour that most reduces the Euclidean distance to the target and
+     * setting the current cell's outgoing bit. Restricting to cardinals keeps the rerouted arrows
+     * edge-aligned, consistent with the cardinal drainage field. Stops when a coast cell is entered
+     * (flagged {@code coast}), when no neighbour gets closer, or after {@link #MAX_WALK_STEPS}. A no-op
+     * when the tile has no coast cells.
      */
     private void marchToCoast(
             int sinkPi,
@@ -350,7 +361,7 @@ public class GlobalRiverProvider {
         for (int step = 0; step < MAX_WALK_STEPS; step++) {
             int bestDirection = -1;
             double bestDistance = VectorOps.distance(new double[] {pi, pj}, target);
-            for (int d = 0; d < 8; d++) {
+            for (int d = 4; d < 8; d++) {
                 final int nextPi = pi + NEIGHBOR_OFFSET_X[d];
                 final int nextPj = pj + NEIGHBOR_OFFSET_Z[d];
                 if (nextPi < 0 || nextPj < 0 || nextPi >= PADDED_SIDE || nextPj >= PADDED_SIDE) continue;
@@ -485,10 +496,10 @@ public class GlobalRiverProvider {
             }
         }
 
-        //rivers should aways we lower
+        // rivers should aways we lower
         for (int i = 0; i < n; i++) {
             riverElev[i] -= 50;
-            if( riverElev[i] < 0) riverElev[i] = 0;
+            if (riverElev[i] < 0) riverElev[i] = 0;
         }
         return riverElev;
     }
