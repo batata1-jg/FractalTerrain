@@ -83,7 +83,7 @@ public class RiverNetworkVisualizer {
         raster.setSamples(0, 0, gridSize, gridSize, 0, migPixels); // red = migVector points
         raster.setSamples(0, 0, gridSize, gridSize, 1, splinePixels); // green = spline points
         raster.setSamples(0, 0, gridSize, gridSize, 2, outline); // blue = channel outline
-      //  DEBUG_LOGGER.info("creating image bounds a:");
+        //  DEBUG_LOGGER.info("creating image bounds a:");
         try {
             ImageIO.write(image, "png", outputFile);
         } catch (IOException e) {
@@ -111,15 +111,47 @@ public class RiverNetworkVisualizer {
             for (int i = 1; i < pts.size(); i++) drawLine(rgb, size, pts.get(i - 1), pts.get(i), COLOR_CHANNEL);
         }
         for (Node node : meanders.getNodes()) {
-            final int color =
-                    switch (node.type) {
-                        case SOURCE -> COLOR_SOURCE;
-                        case DRAIN -> COLOR_DRAIN;
-                        case JUNCTION -> COLOR_JUNCTION;
-                    };
-            drawDot(rgb, size, node.coord, color, 2);
+            drawDot(rgb, size, node.coord, nodeColor(node.type), 2);
         }
 
+        writeImage(rgb, size, folder, name);
+    }
+
+    /**
+     * Same render as {@link #seeNetwork(Meanders, String, String)} but straight from the raw
+     * {@code nodeSpecs}/{@code edgeSpecs} — without building a {@link Meanders}. Use this to debug a
+     * network that may fail to construct (e.g. a node with two outgoing edges). Edges are drawn between
+     * consecutive {@code EdgeSpec.pts()}; nodes by {@code NodeSpec.type()}.
+     */
+    public void seeNetwork(
+            int gridSize,
+            List<Meanders.NodeSpec> nodeSpecs,
+            List<Meanders.EdgeSpec> edgeSpecs,
+            String folder,
+            String name) {
+        final int size = gridSize * NETWORK_SCALE;
+        final int[] rgb = new int[size * size]; // black background
+
+        for (Meanders.EdgeSpec edge : edgeSpecs) {
+            final List<double[]> pts = edge.pts();
+            for (int i = 1; i < pts.size(); i++) drawLine(rgb, size, pts.get(i - 1), pts.get(i), COLOR_CHANNEL);
+        }
+        for (Meanders.NodeSpec node : nodeSpecs) {
+            drawDot(rgb, size, new double[] {node.x(), node.z()}, nodeColor(node.type()), 2);
+        }
+
+        writeImage(rgb, size, folder, name);
+    }
+
+    private static int nodeColor(Node.NodeType type) {
+        return switch (type) {
+            case SOURCE -> COLOR_SOURCE;
+            case DRAIN -> COLOR_DRAIN;
+            case JUNCTION -> COLOR_JUNCTION;
+        };
+    }
+
+    private void writeImage(int[] rgb, int size, String folder, String name) {
         File dir = new File(debugPath, folder);
         dir.mkdirs();
         BufferedImage image = new BufferedImage(size, size, BufferedImage.TYPE_INT_RGB);

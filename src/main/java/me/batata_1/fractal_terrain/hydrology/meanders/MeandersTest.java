@@ -15,13 +15,49 @@ public class MeandersTest {
     private static final int GRID = 512;
 
     public static void main(String[] args) {
-        Meanders.DEBUG_STEPS=true;
+        // Meanders.DEBUG_STEPS = true;
         testMeanders();
-      //  testSplit();
-      //  testMerge();
-     //   testCollisionCapture();
-     //   testNodeChannelEndpointsLineUp();
+        //  testSplit();
+        //  testMerge();
+        //   testCollisionCapture();
+        //   testNodeChannelEndpointsLineUp();
         LOG.info("ALL MEANDERS TESTS PASSED.");
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // relaxLowerGrad: migrateLowerGrad-only relaxation (used by ReliefProvider)
+    // -----------------------------------------------------------------------------------------
+    private static void testRelaxLowerGrad() {
+        final int grid = 256;
+        final float[] gx = new float[grid * grid];
+        final float[] gz = new float[grid * grid];
+        for (int i = 0; i < gz.length; i++) gz[i] = 5f; // constant downhill toward -z
+
+        ArrayList<double[]> pts = new ArrayList<>();
+        for (int i = 0; i < 40; i++) pts.add(new double[] {20.0 + i * 5.0, 128.0});
+        double sx = pts.getFirst()[0], sz = pts.getFirst()[1];
+        double dx = pts.getLast()[0], dz = pts.getLast()[1];
+        List<NodeSpec> nodeSpecs =
+                List.of(new NodeSpec(sx, sz, Node.NodeType.SOURCE), new NodeSpec(dx, dz, Node.NodeType.DRAIN));
+        List<EdgeSpec> edgeSpecs = List.of(new EdgeSpec(0, 1, pts, 8.0));
+        Meanders sim = new Meanders(grid, gx, gz, nodeSpecs, edgeSpecs);
+
+        sim.relaxLowerGrad(5); // full step: reSample + migrateLowerGrad + cutoffs + collisions
+
+        ArrayList<double[]> res = sim.getChannelPts(0);
+        int n = res.size();
+        double eps = 1e-9;
+        check(Math.abs(res.get(0)[0] - sx) <= eps && Math.abs(res.get(0)[1] - sz) <= eps, "source endpoint moved");
+        check(
+                Math.abs(res.get(n - 1)[0] - dx) <= eps && Math.abs(res.get(n - 1)[1] - dz) <= eps,
+                "drain endpoint moved");
+        boolean relaxedDown = false;
+        for (int i = 0; i < n; i++) {
+            check(Double.isFinite(res.get(i)[0]) && Double.isFinite(res.get(i)[1]), "NaN/Inf at " + i);
+            if (i > 0 && i < n - 1 && res.get(i)[1] < sz - 0.1) relaxedDown = true;
+        }
+        check(relaxedDown, "interior points did not relax down-gradient");
+        LOG.info("testRelaxLowerGrad passed.");
     }
 
     private static void check(boolean cond, String msg) {
@@ -60,7 +96,7 @@ public class MeandersTest {
         double width = 10;
         ArrayList<double[]> pts1 = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
-            pts1.add(new double[] {10.0 + i * 5.0, 250.0 + 5.0 * Math.sin(2.0 * Math.PI * i / (n - 1))});
+            pts1.add(new double[] {10.0 + i * 5.0, 300.0 + 5.0 * Math.sin(2.0 * Math.PI * i / (n - 1))});
         }
         List<NodeSpec> nodeSpecs = List.of(
                 new NodeSpec(pts.getFirst()[0], pts.getFirst()[1], Node.NodeType.SOURCE),
@@ -78,7 +114,7 @@ public class MeandersTest {
         LOG.info("Before: sinuosity={}  points={}", String.format("%.4f", sBefore), before.size());
         Debug.river.see(sim, "before");
 
-        sim.simulate(7);
+        sim.simulate(100);
 
         ArrayList<double[]> result = sim.getChannelPts(0);
         int m = result.size();

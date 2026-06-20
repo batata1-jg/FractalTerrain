@@ -169,7 +169,7 @@ public class Storage<T extends Persistable<T>> {
         try {
             return fetchEntry(key).get();
         } catch (InterruptedException | ExecutionException e) {
-            throw new RuntimeException(e);
+            throw new RuntimeException(e + " at key:" + key.toString());
         }
     }
 

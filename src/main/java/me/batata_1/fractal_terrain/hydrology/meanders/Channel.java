@@ -134,7 +134,7 @@ public class Channel {
 
         @Override
         public String toString() {
-            return "[" + ptCoords.toString() + " " + index + "]";
+            return "[" + ptCoords.toString() + " " + index + " chId:" + channelId + "]";
         }
 
         @Override

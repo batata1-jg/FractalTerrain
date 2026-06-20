@@ -44,7 +44,7 @@ public class LocalRiverProvider {
     /** Arc-length spacing (native px) the traced channel splines are resampled to. */
     private static final double RESAMPLE_DIST = 2.0;
     /** Radius (native px) the nearest-river query searches. */
-    private static final double QUERY_RADIUS = 64.0;
+    private static final double QUERY_RADIUS = 1.0;
 
     // ---- Geometry -----------------------------------------------------------
     /** Relief tile side in native px (= grid side for flow routing). */

@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.function.Consumer;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
@@ -100,21 +101,39 @@ public final class Meanders {
             channels.put(id, ch);
             Node start = nodes.get(es.startNodeIdx());
             Node end = nodes.get(es.endNodeIdx());
-            if (start.outgoing != -1)
+            Debug.river.seeNetwork(gridSize, nodeSpecs, edgeSpecs, "debug", "invalid_network");
+            if (start.outgoing != -1) {
+
                 throw new IllegalArgumentException("node " + start.id + " would have >1 outgoing edge");
+            }
             start.outgoing = id;
             end.incoming.add(id);
         }
     }
 
+    /** One simulation step using the Ikeda-Parker-Sawai meander migration. */
     public void step(int i) {
+        stepImpl(i, this::migrateMeanders);
+    }
+
+    /** One step that only relaxes channels down the terrain gradient (no meandering). */
+    public void relaxStep(int i) {
+        stepImpl(i, this::migrateLowerGrad);
+    }
+
+    /** Relax the whole network down-gradient for {@code steps} steps (cutoffs + collisions run). */
+    public void relaxLowerGrad(int steps) {
+        for (int i = 1; i <= steps; i++) relaxStep(i);
+    }
+
+    private void stepImpl(int i, Consumer<Channel> migrate) {
         currentStep = i;
         LOG.info("step {}", i);
         quadTree.clear();
         for (Channel ch : new ArrayList<>(channels.values())) {
             ch.reSample(DX);
             ch.spline = QuinticHermiteSpline.createCatmullRom(ch.spline.points());
-            migrateMeanders(ch);
+            migrate.accept(ch);
             ch.reSample(Math.sqrt(ch.width));
             manageCutoffs(ch);
         }
@@ -390,7 +409,7 @@ public final class Meanders {
 
     void manageCollisions() {
         List<Crossing> crossings = detectCrossings();
-        if (crossings.isEmpty()) return;
+        //        if (crossings.isEmpty()) return;
         segmentAndResolve(crossings);
         dumpNetwork("02_captured");
         pruneDanglingJunctionLeaves();
@@ -429,14 +448,19 @@ public final class Meanders {
             for (int posA = 1; posA < pointCountA - 1; posA++) { // skip endpoints (they are nodes)
                 final double[] pointA = channelA.spline.points().get(posA);
                 List<Channel.ChannelPt> nearbyPoints = quadTree.getPointsInCircle(pointA, queryRadius);
-                nearbyPoints.sort(null); // determinism, not Set/tree iteration order
+                nearbyPoints.sort(null);
+
+                // determinism, not Set/tree iteration order
                 for (Channel.ChannelPt nearbyPoint : nearbyPoints) {
                     final int channelBId = nearbyPoint.channelId;
                     if (channelBId <= channelAId) continue; // emit each crossing once (a < b)
                     Channel channelB = channels.get(channelBId);
                     final int posB = nearbyPoint.index;
                     if (posB <= 0 || posB >= channelB.numPts() - 1) continue; // skip b endpoints
-                    if (shareEndpointNode(channelA, channelB)) continue; // legitimately meet at a junction
+
+                    // Only skip proximity that is explained by a junction the two channels share —
+                    // i.e. contacts NEAR that shared node. A crossing far from any shared node counts.
+                    if (nearSharedNode(channelA, channelB, pointA)) continue;
                     final double distance = VectorOps.distance(pointA, nearbyPoint.toArray());
                     if (distance > 0.5 * (channelA.width + channelB.width)) continue; // not actually touching
                     contactsByPartner
@@ -444,6 +468,7 @@ public final class Meanders {
                             .add(new double[] {posA, posB, distance});
                 }
             }
+            //          LOG.info("contactsByPartner: {}", contactsByPartner);
             for (Map.Entry<Integer, List<double[]>> entry : contactsByPartner.entrySet()) {
                 Channel channelB = channels.get(entry.getKey());
                 List<double[]> contactList = entry.getValue();
@@ -455,7 +480,7 @@ public final class Meanders {
                 while (firstClusterEnd < contactList.size()
                         && contactList.get(firstClusterEnd)[0] - contactList.get(firstClusterEnd - 1)[0] <= CLUSTER_GAP)
                     firstClusterEnd++;
-                double[] closest = contactList.get(0);
+                double[] closest = contactList.getFirst();
                 for (int scan = 1; scan < firstClusterEnd; scan++)
                     if (contactList.get(scan)[2] < closest[2]) closest = contactList.get(scan);
                 crossings.add(new Crossing(
@@ -470,18 +495,52 @@ public final class Meanders {
         return crossings;
     }
 
-    private boolean shareEndpointNode(Channel channelA, Channel channelB) {
-        return channelA.startNodeId == channelB.startNodeId
-                || channelA.startNodeId == channelB.endNodeId
-                || channelA.endNodeId == channelB.startNodeId
-                || channelA.endNodeId == channelB.endNodeId;
+    /**
+     * True when the contact point sits near a node that A and B share — their proximity here is just
+     * that common junction/endpoint, not a real crossing. Channels that share a node but cross far
+     * from it (beyond {@code widthA + widthB}) are NOT skipped.
+     */
+    private boolean nearSharedNode(Channel channelA, Channel channelB, double[] contactPoint) {
+        final double radius = channelA.width + channelB.width;
+        final double radiusSq = radius * radius;
+        for (int nodeA : new int[] {channelA.startNodeId, channelA.endNodeId})
+            for (int nodeB : new int[] {channelB.startNodeId, channelB.endNodeId})
+                if (nodeA != -1 && nodeA == nodeB) {
+                    Node shared = nodes.get(nodeA);
+                    if (shared != null && VectorOps.distanceSquared(contactPoint, shared.coord) <= radiusSq)
+                        return true;
+                }
+        return false;
     }
 
-    /** 0 if A wins the crossing, 1 if B wins (wider wins; tie -> smaller channelId). */
-    private static int decideWinner(Crossing crossing) {
+    /**
+     * Winner of a crossing: 0 if A wins, 1 if B wins. If one channel is downstream of the other on
+     * the same flow path (an ancestor crosses its own descendant), the DOWNSTREAM channel wins —
+     * which keeps the network acyclic (the capture becomes a meander cutoff). Otherwise the wider
+     * channel wins; ties break to the smaller channelId.
+     */
+    private int decideWinner(Crossing crossing) {
+        if (reachesDownstream(crossing.channelIdA(), crossing.channelIdB())) return 1; // B downstream of A
+        if (reachesDownstream(crossing.channelIdB(), crossing.channelIdA())) return 0; // A downstream of B
         if (crossing.widthA() > crossing.widthB()) return 0;
         if (crossing.widthB() > crossing.widthA()) return 1;
         return crossing.channelIdA() < crossing.channelIdB() ? 0 : 1;
+    }
+
+    /** True if {@code descendantId} is reachable by following outgoing edges downstream from {@code ancestorId}. */
+    private boolean reachesDownstream(int ancestorId, int descendantId) {
+        Channel ancestor = channels.get(ancestorId);
+        if (ancestor == null) return false;
+        int nodeId = ancestor.endNodeId;
+        for (int guard = 0; guard <= channels.size() && nodeId != -1; guard++) {
+            Node node = nodes.get(nodeId);
+            if (node == null || node.outgoing == -1) return false;
+            if (node.outgoing == descendantId) return true;
+            Channel next = channels.get(node.outgoing);
+            if (next == null) return false;
+            nodeId = next.endNodeId;
+        }
+        return false;
     }
 
     /**

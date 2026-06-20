@@ -39,11 +39,12 @@ public class LocalRiverTest {
     private static final double RIVER_SPLINE_RADIUS = 10;
 
     /** Tiles (tx, tz) to render. */
-    private static final int[][] TILES = {{1, -3}, {1, -4}, {2, -3}, {2, -4}};
+    private static final int[][] TILES = {{1, -3}};
+    // {{1, -3}, {1, -4}, {2, -3}, {2, -4}};
 
     public static void main(String[] args) throws Exception {
         LOG.info("LocalRiverTest start; output dir = {}", DEBUG_PATH);
-        cleanDir(DEBUG_PATH);
+        // cleanDir(DEBUG_PATH);
         ModelAssetManager.ensureAssetsReady();
         PipelineModels.load();
         pipeline.updateInstance(420, DEBUG_PATH);
