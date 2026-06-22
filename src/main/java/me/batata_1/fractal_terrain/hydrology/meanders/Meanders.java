@@ -78,7 +78,7 @@ public final class Meanders {
 
     /** A directed edge of the supplied initial network; {@code pts} include the two endpoints. */
     public record EdgeSpec(int startNodeIdx, int endNodeIdx, ArrayList<double[]> pts, double width) {}
-
+    
     public Meanders(int gridSize, float[] gradX, float[] gradZ, List<NodeSpec> nodeSpecs, List<EdgeSpec> edgeSpecs) {
         this.gridSize = gridSize;
         this.gradX = gradX;
