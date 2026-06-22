@@ -1,35 +1,41 @@
 package me.batata_1.fractal_terrain.math.ds;
 
-import java.util.Arrays;
-import java.util.List;
 import org.jetbrains.annotations.NotNull;
 
-public class QuadTreePoint implements Comparable<QuadTreePoint> {
+/**
+ * A point stored in a {@link QuadTree}. The only thing an implementation must provide is its
+ * coordinate array via {@link #getCoords()}; everything else (axis access, rank, comparison) is
+ * derived by default.
+ *
+ * <p>Implementations are typically {@code record}s that carry extra payload alongside the
+ * coordinates (e.g. {@link me.batata_1.fractal_terrain.hydrology.meanders.Channel.ChannelPt},
+ * {@link me.batata_1.fractal_terrain.hydrology.HydrologicalUnit}). A point that must be persisted
+ * additionally implements {@link me.batata_1.fractal_terrain.storage.Persistable}; that
+ * responsibility is left to the implementation, not this interface.
+ */
+public interface QuadTreePoint extends Comparable<QuadTreePoint> {
 
-    protected final List<Double> ptCoords;
+    /**
+     * The point's coordinates. May return the backing array for performance — callers must treat it
+     * as read-only.
+     */
+    double[] getCoords();
 
-    public QuadTreePoint(List<Double> ptCoords) {
-        this.ptCoords = ptCoords;
+    default double get(int axis) {
+        return getCoords()[axis];
     }
 
-    public QuadTreePoint(double[] pt) {
-        this.ptCoords = Arrays.stream(pt).boxed().toList();
+    default int size() {
+        return getCoords().length;
     }
 
-    public double[] toArray() {
-        return ptCoords.stream().mapToDouble(o -> o).toArray();
-    }
-
-    public double get(int x) {
-        return ptCoords.get(x);
-    }
-
-    public int size() {
-        return ptCoords.size();
+    /** Read-only view of the coordinates (the backing array). */
+    default double[] toArray() {
+        return getCoords();
     }
 
     @Override
-    public int compareTo(@NotNull QuadTreePoint pt) {
+    default int compareTo(@NotNull QuadTreePoint pt) {
         if (pt.size() != this.size()) throw new IllegalArgumentException("points must match rank");
         for (int i = 0; i < this.size(); i++) {
             if (pt.get(i) < this.get(i)) return 1;

@@ -1,5 +1,7 @@
 package me.batata_1.fractal_terrain.infinitetensor;
 
+import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
+
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -10,8 +12,11 @@ import me.batata_1.fractal_terrain.storage.TileKey;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
+import org.slf4j.Logger;
 
 public abstract class InfiniteTensor {
+
+    private static final Logger LOG = getLogger(InfiniteTensor.class);
 
     protected final String id;
 
@@ -96,8 +101,7 @@ public abstract class InfiniteTensor {
         final int[][] srcRegion = new int[n][2];
         final int[][] dstRegion = new int[n][2];
         iterateWindows(lo, hi, windowIndex -> {
-            final FloatTensor cached = storage.getEntry(windowIndex);
-            // FloatTensor cached = storage.getCachedWindow(id, windowIndex);
+            final FloatTensor cached = getEntryOrRecompute(windowIndex);
             if (cached == null) return;
 
             final int[][] wBounds = outputWindow.getBounds(windowIndex);
@@ -122,6 +126,26 @@ public abstract class InfiniteTensor {
 
         storage.evictIfNeeded(cacheLimitBytes);
         return output;
+    }
+
+    /**
+     * Read a cached window, self-healing on a fetch failure: if the storage cannot supply the tile
+     * (e.g. a corrupt or vanished on-disk file), log a warning and recompute it once instead of
+     * propagating the error. {@code ensureComputed} has already produced every needed window, so a
+     * failure here means a previously-persisted tile became unreadable.
+     */
+    private FloatTensor getEntryOrRecompute(int[] windowIndex) {
+        try {
+            return storage.getEntry(windowIndex);
+        } catch (RuntimeException fetchFailure) {
+            LOG.warn(
+                    "failed to fetch tile {} for tensor '{}'; recomputing",
+                    Arrays.toString(windowIndex),
+                    id,
+                    fetchFailure);
+            computeSingle(windowIndex);
+            return storage.getEntry(windowIndex);
+        }
     }
 
     protected abstract void updateOutput(

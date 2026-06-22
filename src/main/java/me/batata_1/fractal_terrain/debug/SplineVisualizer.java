@@ -11,8 +11,8 @@ import java.util.List;
 import javax.imageio.ImageIO;
 import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
 import me.batata_1.fractal_terrain.math.VectorOps;
+import me.batata_1.fractal_terrain.math.ds.CoordPoint;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
-import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 
 public class SplineVisualizer {
@@ -51,7 +51,7 @@ public class SplineVisualizer {
         var tree = new QuadTree<>(new double[] {-INF, -INF}, new double[] {INF, INF});
 
         for (double i = 0; i < spline.getSize() + beyond; i += resolution)
-            tree.insertPoint(new QuadTreePoint(spline.sample(i)));
+            tree.insertPoint(new CoordPoint(spline.sample(i)));
 
         for (int x = 0; x < (int) WH[0]; x++) {
             for (int z = 0; z < (int) WH[1]; z++) {

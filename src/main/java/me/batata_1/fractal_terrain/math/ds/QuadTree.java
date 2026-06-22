@@ -1,5 +1,7 @@
 package me.batata_1.fractal_terrain.math.ds;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.*;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import me.batata_1.fractal_terrain.math.VectorOps;
@@ -21,8 +23,17 @@ public class QuadTree<T extends QuadTreePoint> implements Persistable<QuadTree<T
     private static final int X = 0;
     private static final int Z = 1;
     private static final int MAX_TREE_DEPTH = 50;
+    /** Format tag for the binary tile layout written by {@link #serialize()}. */
+    private static final int MAGIC = 0x51545231; // "QTR1"
+
     private final double[] minXZ;
     private final double[] maxXZ;
+
+    /**
+     * A point used only to {@linkplain Persistable#deserialize(byte[]) deserialize} stored point
+     * chunks (its own state is ignored). Non-null only on trees built as deserialization prototypes.
+     */
+    private final T pointPrototype;
 
     public static final class Node<T> {
         // NAO COLOCA ISSO DENTRO DO NODE, VAI GASTAR MEMORIA DEMAIS.
@@ -61,10 +72,30 @@ public class QuadTree<T extends QuadTreePoint> implements Persistable<QuadTree<T
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
     public QuadTree(double[] minXZ, double[] maxXZ) {
+        this(minXZ, maxXZ, (T) null);
+    }
+
+    /**
+     * Builds a tree with a point {@code prototype} used solely by {@link #deserialize(byte[])} to
+     * rebuild stored points (the prototype's own state is ignored). Use this constructor for the
+     * deserialization prototype handed to {@link Storage} so the store can serialize point-bearing
+     * tiles.
+     */
+    public QuadTree(double[] minXZ, double[] maxXZ, T pointPrototype) {
         this.minXZ = minXZ;
         this.maxXZ = maxXZ;
+        this.pointPrototype = pointPrototype;
         tree.add(new Node<>());
         tree.add(new Node<>(minXZ, maxXZ, 0));
+    }
+
+    /** Builds a tree and bulk-inserts {@code points} (the fast path for a fully-known point set). */
+    public QuadTree(double[] minXZ, double[] maxXZ, List<T> points, T pointPrototype) {
+        this(minXZ, maxXZ, pointPrototype);
+        for (T pt : points) {
+            if (pt.size() != 2) throw new IllegalStateException();
+            update(pt, 1);
+        }
     }
 
     public int numPoints() {
@@ -86,8 +117,9 @@ public class QuadTree<T extends QuadTreePoint> implements Persistable<QuadTree<T
     /**
      * Approximate in-memory footprint, used by {@link Storage}'s byte-budget eviction. Estimated
      * from node count and the total point count (the root node at index 1 holds every inserted
-     * point). {@code serialize}/{@code deserialize} are intentionally left as the throwing defaults,
-     * so a {@code QuadTree}-backed {@code Storage} is cache-only (tiles are never written to disk).
+     * point). Serialization to disk is supported only when the point type is {@link Persistable} and
+     * a point prototype was supplied (see {@link #serialize()} / {@link #deserialize(byte[])});
+     * otherwise a {@code QuadTree}-backed {@code Storage} is cache-only.
      */
     @Override
     public long byteSize() {
@@ -101,6 +133,87 @@ public class QuadTree<T extends QuadTreePoint> implements Persistable<QuadTree<T
         } finally {
             lock.readLock().unlock();
         }
+    }
+
+    /**
+     * Serialize to a flat little-endian byte array: {@code [magic, minXZ, maxXZ, pointCount,
+     * (chunkLen, chunk)...]}, where each point chunk is the point's own {@link Persistable#serialize()}
+     * bytes. Throws {@link UnsupportedOperationException} if the point type is not {@link Persistable}.
+     */
+    @Override
+    public byte[] serialize() {
+        if (!(pointPrototype instanceof Persistable<?> protoPersistable))
+            throw new UnsupportedOperationException(
+                    "QuadTree.serialize requires a Persistable point prototype: " + pointPrototype.getClass() + " ");
+        try {
+            protoPersistable.serialize();
+        } catch (UnsupportedOperationException e) {
+            throw new UnsupportedOperationException(
+                    "QuadTree.serialize requires an implemented Persistable point prototype" + pointPrototype.getClass()
+                            + " ");
+        }
+        lock.readLock().lock();
+        try {
+            final Set<T> points = tree.get(1).points;
+            final byte[][] chunks = new byte[points.size()][];
+            int idx = 0;
+            long payload = 0;
+            for (T pt : points) {
+                if (!(pt instanceof Persistable<?> persistablePoint))
+                    throw new UnsupportedOperationException("QuadTree point type is not Persistable: "
+                            + pt.getClass().getName());
+                final byte[] chunk = persistablePoint.serialize();
+                chunks[idx++] = chunk;
+                payload += Integer.BYTES + chunk.length;
+            }
+            final int header = Integer.BYTES + 4 * Double.BYTES + Integer.BYTES;
+            final ByteBuffer buf = ByteBuffer.allocate((int) (header + payload)).order(ByteOrder.LITTLE_ENDIAN);
+            buf.putInt(MAGIC);
+            buf.putDouble(minXZ[0]).putDouble(minXZ[1]);
+            buf.putDouble(maxXZ[0]).putDouble(maxXZ[1]);
+            buf.putInt(chunks.length);
+            for (byte[] chunk : chunks) {
+                buf.putInt(chunk.length);
+                buf.put(chunk);
+            }
+            return buf.array();
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    /**
+     * Rebuild a tree from bytes produced by {@link #serialize()}, deserializing each point chunk with
+     * this tree's {@link #pointPrototype}. Requires the prototype to be {@link Persistable}.
+     */
+    @Override
+    @SuppressWarnings("unchecked")
+    public QuadTree<T> deserialize(byte[] rawBytes) {
+        if (!(pointPrototype instanceof Persistable<?> protoPersistable))
+            throw new UnsupportedOperationException(
+                    "QuadTree.deserialize requires a Persistable point prototype" + pointPrototype.getClass() + " ");
+        try {
+            protoPersistable.serialize();
+        } catch (UnsupportedOperationException e) {
+            throw new UnsupportedOperationException(
+                    "QuadTree.deserialize requires a Persistable point prototype" + pointPrototype.getClass() + " ");
+        }
+        final ByteBuffer buf = ByteBuffer.wrap(rawBytes).order(ByteOrder.LITTLE_ENDIAN);
+        final int magic = buf.getInt();
+        if (magic != MAGIC)
+            throw new IllegalStateException("incompatible QuadTree tile format (got 0x" + Integer.toHexString(magic)
+                    + "); delete the fractal_terrain tile cache to regenerate");
+        final double[] min = {buf.getDouble(), buf.getDouble()};
+        final double[] max = {buf.getDouble(), buf.getDouble()};
+        final int count = buf.getInt();
+        final QuadTree<T> result = new QuadTree<>(min, max, pointPrototype);
+        for (int i = 0; i < count; i++) {
+            final int len = buf.getInt();
+            final byte[] chunk = new byte[len];
+            buf.get(chunk);
+            result.update((T) protoPersistable.deserialize(chunk), 1);
+        }
+        return result;
     }
 
     // every point should have its own square

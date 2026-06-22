@@ -32,9 +32,8 @@ public class PipelinePreprocessing {
 
     /**
      * Decode a one-hot drainage bitfield into the D8 neighbour index it points at, or {@code -1} if
-     * no direction bit (0..7) is set (a sink / undrained cell). Bits ≥ 8 are ignored, so a packed
-     * {@code riverData} int (see {@link RiverData}, which stuffs a global-river id and spline position
-     * into the upper bytes) can be decoded directly.
+     * no direction bit (0..7) is set (a sink / undrained cell). Bits ≥ 8 are ignored, so a field that
+     * stuffs extra flags into the upper bytes can be decoded directly.
      */
     public static int neighbor(int drainageDirection) {
         for (int i = 0; i < 8; i++) if ((drainageDirection & (1 << i)) != 0) return i;

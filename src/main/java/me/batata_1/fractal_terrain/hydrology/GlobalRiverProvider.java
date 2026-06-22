@@ -17,8 +17,8 @@ import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.math.MarchingSquares;
 import me.batata_1.fractal_terrain.math.Skeletonizer;
 import me.batata_1.fractal_terrain.math.VectorOps;
+import me.batata_1.fractal_terrain.math.ds.CoordPoint;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
-import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
 import me.batata_1.fractal_terrain.storage.TileKey;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
@@ -179,12 +179,12 @@ public class GlobalRiverProvider {
         final float[] elevation = paddedElevation(tileOriginCx, tileOriginCz);
 
         // 2. threshold on the RAW elevation (so the coast stays anchored to true elevation).
-        final boolean[][] upperMask = new boolean[PADDED_SIDE][PADDED_SIDE];
+        final boolean[][] ridgeMask = new boolean[PADDED_SIDE][PADDED_SIDE];
         final boolean[][] lowerMask = new boolean[PADDED_SIDE][PADDED_SIDE];
         for (int pi = 0; pi < PADDED_SIDE; pi++) {
             for (int pj = 0; pj < PADDED_SIDE; pj++) {
                 final float value = elevation[pi * PADDED_SIDE + pj];
-                upperMask[pi][pj] = value >= RIDGE_THRESHOLD;
+                ridgeMask[pi][pj] = value >= RIDGE_THRESHOLD;
                 lowerMask[pi][pj] = value <= COAST_THRESHOLD;
             }
         }
@@ -193,7 +193,7 @@ public class GlobalRiverProvider {
         for (int pi = 0; pi < PADDED_SIDE; pi++) {
             for (int pj = 0; pj < PADDED_SIDE; pj++) {
                 if (pi < PAD + 1 || pi >= PADDED_SIDE - PAD - 1 || pj < PAD + 1 || pj >= PADDED_SIDE - PAD - 1) {
-                    upperMask[pi][pj] = false;
+                    ridgeMask[pi][pj] = false;
                 }
             }
         }
@@ -203,7 +203,6 @@ public class GlobalRiverProvider {
 
         // 4. ridge mask (thinned upper region) + coast mask (border of the lower region).
         //        final boolean[][] ridgeMask = Skeletonizer.thin(upperMask);
-        final boolean[][] ridgeMask = upperMask;
         final boolean[][] coastMask = MarchingSquares.borderMask(lowerMask);
 
         // 5. gradient descent: steepest-descent D8 field over the ramped elevation, then a per-source
@@ -213,7 +212,7 @@ public class GlobalRiverProvider {
         Arrays.fill(uniformWeight, 1f);
         final int[] drainageDirection =
                 PipelinePreprocessing.computeDrainageDirectionCardinal(rampedElevation, uniformWeight, PADDED_SIDE);
-        final QuadTree<QuadTreePoint> coastTree = buildCoastTree(coastMask);
+        final QuadTree<CoordPoint> coastTree = buildCoastTree(coastMask);
         final int[] arrows = new int[PADDED_SIDE * PADDED_SIDE];
         for (int i = 0; i < PADDED_SIDE; i++) {
             for (int j = 0; j < PADDED_SIDE; j++) {
@@ -262,7 +261,7 @@ public class GlobalRiverProvider {
             stages.tileOriginCz = tileOriginCz;
             stages.rawElevation = elevation;
             stages.rampedElevation = rampedElevation;
-            stages.upperMask = upperMask;
+            stages.upperMask = ridgeMask;
             stages.lowerMask = lowerMask;
             stages.ridgeMask = ridgeMask;
             stages.coastMask = coastMask;
@@ -287,7 +286,7 @@ public class GlobalRiverProvider {
             int startPj,
             int[] drainageDirection,
             boolean[][] coastMask,
-            QuadTree<QuadTreePoint> coastTree,
+            QuadTree<CoordPoint> coastTree,
             int[] arrows,
             @Nullable List<List<int[]>> descentPaths) {
         arrows[startPi * PADDED_SIDE + startPj] |= SOURCE_BIT;
@@ -303,7 +302,7 @@ public class GlobalRiverProvider {
             if (direction == -1) {
                 // sink: no downhill neighbour — flag it and reroute toward the nearest coast cell.
                 arrows[pi * PADDED_SIDE + pj] |= SINK_BIT;
-                marchToCoast(pi, pj, coastMask, coastTree, arrows, path);
+                marchToCoast(pi, pj, coastMask, coastTree, arrows, path,drainageDirection);
                 break;
             }
             final int nextPi = pi + NEIGHBOR_OFFSET_X[direction];
@@ -327,15 +326,15 @@ public class GlobalRiverProvider {
      * to find the nearest coastline target when a descent walk stalls in an interior sink. Returns
      * {@code null} when the tile has no coast cells (then a stalled walk simply ends).
      */
-    private @Nullable QuadTree<QuadTreePoint> buildCoastTree(boolean[][] coastMask) {
-        QuadTree<QuadTreePoint> coastTree = null;
+    private @Nullable QuadTree<CoordPoint> buildCoastTree(boolean[][] coastMask) {
+        QuadTree<CoordPoint> coastTree = null;
         for (int pi = 0; pi < PADDED_SIDE; pi++) {
             for (int pj = 0; pj < PADDED_SIDE; pj++) {
                 if (!coastMask[pi][pj]) continue;
                 if (coastTree == null) {
                     coastTree = new QuadTree<>(new double[] {0, 0}, new double[] {PADDED_SIDE, PADDED_SIDE});
                 }
-                coastTree.insertPoint(new QuadTreePoint(new double[] {pi, pj}));
+                coastTree.insertPoint(new CoordPoint(new double[] {pi, pj}));
             }
         }
         return coastTree;
@@ -354,9 +353,10 @@ public class GlobalRiverProvider {
             int sinkPi,
             int sinkPj,
             boolean[][] coastMask,
-            @Nullable QuadTree<QuadTreePoint> coastTree,
+            @Nullable QuadTree<CoordPoint> coastTree,
             int[] arrows,
-            @Nullable List<int[]> path) {
+            @Nullable List<int[]> path,
+            int[] drainageDirection) {
         final double[] target = nearestCoast(coastTree, sinkPi, sinkPj);
         if (target == null) return; // no coastline in this tile — river simply ends.
 
@@ -376,7 +376,8 @@ public class GlobalRiverProvider {
                     bestDirection = d;
                 }
             }
-            if (bestDirection == -1) break; // no neighbour gets closer to the coast.
+            if (bestDirection == -1) break;
+            drainageDirection[pi * PADDED_SIDE + pj] = bestDirection;// no neighbour gets closer to the coast.
             final int nextPi = pi + NEIGHBOR_OFFSET_X[bestDirection];
             final int nextPj = pj + NEIGHBOR_OFFSET_Z[bestDirection];
             arrows[pi * PADDED_SIDE + pj] |= (1 << (OUTGOING_SHIFT + bestDirection));
@@ -394,16 +395,16 @@ public class GlobalRiverProvider {
      * queries against {@code coastTree} (which has no built-in nearest-neighbour search). Returns
      * {@code null} when {@code coastTree} is {@code null} (no coast in the tile).
      */
-    private double @Nullable [] nearestCoast(@Nullable QuadTree<QuadTreePoint> coastTree, int pi, int pj) {
+    private double @Nullable [] nearestCoast(@Nullable QuadTree<CoordPoint> coastTree, int pi, int pj) {
         if (coastTree == null) return null;
         final double[] origin = {pi, pj};
         final double maxRadius = PADDED_SIDE * 1.4143; // padded diagonal, generous upper bound
         for (double radius = 4; radius <= maxRadius; radius *= 2) {
-            final List<QuadTreePoint> candidates = coastTree.getPointsInCircle(origin, radius);
+            final List<CoordPoint> candidates = coastTree.getPointsInCircle(origin, radius);
             if (candidates.isEmpty()) continue;
             double[] nearest = null;
             double nearestDistance = Double.MAX_VALUE;
-            for (QuadTreePoint candidate : candidates) {
+            for (CoordPoint candidate : candidates) {
                 final double distance = VectorOps.distance(origin, candidate.toArray());
                 if (distance < nearestDistance) {
                     nearestDistance = distance;

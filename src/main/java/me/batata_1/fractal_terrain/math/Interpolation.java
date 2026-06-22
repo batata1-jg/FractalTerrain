@@ -24,6 +24,26 @@ public class Interpolation {
         return interpolate(x, z, stepBilinear);
     }
 
+    /**
+     * Bilinear sample of a flat row-major {@code side×side} field at fractional {@code (px, pz)},
+     * clamped to the field edges (indexing {@code field[x * side + z]}).
+     */
+    public static double sampleBilinear(float[] field, double px, double pz, int side) {
+        int x0 = (int) Math.floor(px);
+        int z0 = (int) Math.floor(pz);
+        final double fx = px - x0;
+        final double fz = pz - z0;
+        int x1 = x0 + 1;
+        int z1 = z0 + 1;
+        x0 = Math.clamp(x0, 0, side - 1);
+        x1 = Math.clamp(x1, 0, side - 1);
+        z0 = Math.clamp(z0, 0, side - 1);
+        z1 = Math.clamp(z1, 0, side - 1);
+        final double v0 = field[x0 * side + z0] * (1 - fz) + field[x0 * side + z1] * fz;
+        final double v1 = field[x1 * side + z0] * (1 - fz) + field[x1 * side + z1] * fz;
+        return v0 * (1 - fx) + v1 * fx;
+    }
+
     // xz real coords
     private double interpolate(float x, float z, final Function<Double, Double> step) {
 

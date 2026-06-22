@@ -1,6 +1,7 @@
 package me.batata_1.fractal_terrain.hydrology.meanders;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Objects;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
@@ -27,6 +28,13 @@ public class Channel {
      * direct use), so those callers are unaffected.
      */
     public int startNodeId = -1, endNodeId = -1;
+
+    /**
+     * Per-spline-point bed elevation (native-px scale), aligned to {@link #spline} points. Filled by the
+     * bed-assignment pass in {@code LocalRiverProvider}; {@code null} until assigned. Read by
+     * {@code carveRiver} and {@link RiverNetwork#convertImutableQuadtree}.
+     */
+    public double[] bedElevations;
 
     public Channel(double width, ArrayList<double[]> pts, int channelId) {
         this.width = width;
@@ -103,8 +111,8 @@ public class Channel {
      * */
     public void add(ChannelPt pt, Channel from) {
         this.spline.points().add(pt.toArray());
-        this.spline.velocity().add(from.spline.velocity().get(pt.index));
-        this.spline.acceleration().add(from.spline.acceleration().get(pt.index));
+        this.spline.velocity().add(from.spline.velocity().get(pt.index()));
+        this.spline.acceleration().add(from.spline.acceleration().get(pt.index()));
     }
 
     /**
@@ -146,39 +154,37 @@ public class Channel {
                         .toList()));
     }
 
-    public static class ChannelPt extends QuadTreePoint {
-
-        public final int index, channelId;
-        /** River width (native px) at this point — lerped along the owning channel's start→end taper. */
-        public final double width;
+    /**
+     * A point of a {@link Channel}, indexed in the {@link me.batata_1.fractal_terrain.math.ds.QuadTree}
+     * used by the meander simulation. Carries its in-channel {@code index}, owning {@code channelId},
+     * and the per-point {@code width} (lerped along the channel's start→end taper). Identity is by
+     * {@code channelId} + {@code index} + coordinates (the {@code width} is excluded).
+     */
+    public record ChannelPt(double[] coords, int index, int channelId, double width) implements QuadTreePoint {
 
         public ChannelPt(double[] pt, int id, int channelId) {
             this(pt, id, channelId, 0.0);
         }
 
-        public ChannelPt(double[] pt, int id, int channelId, double width) {
-            super(pt);
-            this.index = id;
-            this.channelId = channelId;
-            this.width = width;
+        @Override
+        public double[] getCoords() {
+            return coords;
         }
 
         @Override
         public String toString() {
-            return "[" + ptCoords.toString() + " " + index + " chId:" + channelId + "]";
+            return "[" + Arrays.toString(coords) + " " + index + " chId:" + channelId + "]";
         }
 
         @Override
         public boolean equals(Object obj) {
             if (!(obj instanceof ChannelPt comp)) return false;
-            return (this.channelId == comp.channelId)
-                    && (this.index == comp.index)
-                    && (this.ptCoords.equals(comp.ptCoords));
+            return channelId == comp.channelId && index == comp.index && Arrays.equals(coords, comp.coords);
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(index, channelId, ptCoords);
+            return Objects.hash(index, channelId, Arrays.hashCode(coords));
         }
     }
 }

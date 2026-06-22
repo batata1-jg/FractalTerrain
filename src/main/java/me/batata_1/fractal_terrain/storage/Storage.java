@@ -4,6 +4,8 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -59,24 +61,45 @@ public class Storage<T extends Persistable<T>> {
     /** Running sum of {@link #cachedEntryByteSizes} values. */
     private long totalCachedBytes = 0;
 
-    /** Serialize capability for this Storage: TRUE = disk-backed, FALSE = cache-only, null = unknown. */
-    private volatile Boolean payloadIsSerializable = null;
+    /** Serialize capability, decided once in the constructor: true = disk-backed, false = cache-only. */
+    private final boolean payloadIsSerializable;
 
     /**
      * @param path persistence directory, or {@code null} for a cache-only Storage that never persists
      *     and never touches the filesystem.
      */
     public Storage(@Nullable String path, String name, int rank, T deserializationPrototype) {
-        if (path == null) {
-            // Cache-only Storage: keep PATH null so the persistence paths short-circuit.
-            payloadIsSerializable = false;
-            PATH = null;
-        } else {
-            PATH = path + "/" + name;
-        }
         this.rank = rank;
         this.deserializationPrototype = deserializationPrototype;
-        if (!Boolean.FALSE.equals(payloadIsSerializable)) bootstrap();
+        if (path == null) {
+            // Cache-only Storage: keep PATH null so the persistence paths short-circuit.
+            PATH = null;
+            payloadIsSerializable = false;
+            return;
+        }
+        PATH = path + "/" + name;
+        // Probe the payload once: if the prototype cannot serialize, this Storage is cache-only and
+        // skips bootstrap entirely (nothing to load, nothing to validate on disk).
+        payloadIsSerializable = probeSerializable(deserializationPrototype);
+        if (payloadIsSerializable) bootstrap();
+    }
+
+    /** True iff {@code prototype.serialize()} succeeds (vs. throwing {@link UnsupportedOperationException}). */
+    private static boolean probeSerializable(Persistable<?> prototype) {
+        try {
+            prototype.serialize();
+            return true;
+        } catch (UnsupportedOperationException e) {
+            return false;
+        }
+    }
+
+    private static void writeBytes(String path, byte[] bytes) throws IOException {
+        Files.write(Path.of(path), bytes);
+    }
+
+    private static byte[] readBytes(String path) throws IOException {
+        return Files.readAllBytes(Path.of(path));
     }
 
     public boolean inStorage(int[] index) {
@@ -114,10 +137,7 @@ public class Storage<T extends Persistable<T>> {
         int curIndex = s.indexOf('_');
         String curString = s;
 
-        if (curIndex == -1) {
-            LOG.error("invalid in tiles dir (no '_')");
-            return null;
-        }
+        if (curIndex == -1) return null;
 
         final int[] ans = new int[rank];
         for (int id = 0; id < rank; id++) {
@@ -146,19 +166,31 @@ public class Storage<T extends Persistable<T>> {
     }
 
     private void bootstrap() {
-        File file = new File(getEntryDir());
-        if (!file.exists()) if (file.mkdirs()) LOG.info("created tile dir in: {}", getEntryDir());
-        String[] createdTiles = file.list();
-        if (createdTiles != null)
-            for (String tile : createdTiles) {
-                final TileKey key = getKeyFromName(tile, rank);
-                if (key == null) {
-                    LOG.error("invalid file, skipping");
-                    continue;
-                }
-                GENERATED_ENTRIES.add(key);
-                payloadIsSerializable = Boolean.TRUE; // on-disk tiles imply a real serializer
+        File dir = new File(getEntryDir());
+        if (!dir.exists()) if (dir.mkdirs()) LOG.info("created tile dir in: {}", getEntryDir());
+        String[] createdTiles = dir.list();
+        if (createdTiles == null) return;
+        for (String tile : createdTiles) {
+            final TileKey key = validatedTileKey(tile);
+            if (key == null) {
+                // Unconventional file in the tile dir: warn and delete it so the cache stays clean.
+                final File bad = new File(dir, tile);
+                LOG.warn("deleting non-conforming tile cache file '{}' in {}", tile, getEntryDir());
+                if (bad.isFile() && !bad.delete()) LOG.warn("failed to delete {}", bad.getAbsolutePath());
+                continue;
             }
+            GENERATED_ENTRIES.add(key);
+        }
+    }
+
+    /** Parse a tile filename to its key, or {@code null} if it does not match the {@code .ser} convention. */
+    private TileKey validatedTileKey(String tile) {
+        if (!tile.endsWith(".ser")) return null;
+        try {
+            return getKeyFromName(tile, rank);
+        } catch (RuntimeException e) {
+            return null; // malformed coordinate token
+        }
     }
 
     public T getEntry(int[] index) {
@@ -268,42 +300,36 @@ public class Storage<T extends Persistable<T>> {
      * to catch that signal and recompute the entry on demand.
      */
     protected void loadInto(TileKey key, CompletableFuture<T> promise) throws EntryNotLoadableException {
-        if (Boolean.FALSE.equals(payloadIsSerializable)) {
+        if (!payloadIsSerializable) {
             // Cache-only Storage (null path or non-serializable payload): nothing persisted to load.
             throw new EntryNotLoadableException("cache-only storage has no persistent entry for " + key);
         }
         if (!GENERATED_ENTRIES.contains(key)) {
             throw new EntryNotLoadableException("tile " + key + " not in storage");
         }
-        final File file = new File(tilePath(key) + ".ser");
-        if (!file.exists()) {
-            throw new EntryNotLoadableException("missing tile file " + file.getAbsolutePath() + " for " + key);
+        final String tileFile = tilePath(key) + ".ser";
+        if (!new File(tileFile).exists()) {
+            throw new EntryNotLoadableException("missing tile file " + tileFile + " for " + key);
         }
         try {
-            final T entry = deserializationPrototype.deserialize(tilePath(key));
+            final T entry = deserializationPrototype.deserialize(readBytes(tileFile));
             recordCachedEntry(key, entry.byteSize());
             promise.complete(entry);
-        } catch (IOException | ClassNotFoundException e) {
+        } catch (IOException | IllegalStateException e) {
             throw new EntryNotLoadableException("failed to deserialize tile " + key, e);
         }
     }
 
     /**
-     * Mark {@code key} as logically existing, persist it when the payload supports serialization
-     * (otherwise fall back to cache-only), and account its size for eviction. Returned for
+     * Mark {@code key} as logically existing, persist it when this Storage is disk-backed (the
+     * serializability was settled in the constructor), and account its size for eviction. Returned for
      * {@code thenApply} chaining. Acquires only {@link #evictionLock} (never a CACHE bin lock).
      */
     protected T persistAndRecord(TileKey key, T entry) {
         GENERATED_ENTRIES.add(key);
-        if (PATH == null) {
-            // Cache-only Storage (no path): never persist, just account the size below.
-            payloadIsSerializable = Boolean.FALSE;
-        } else {
+        if (payloadIsSerializable) {
             try {
-                entry.serialize(tilePath(key));
-                payloadIsSerializable = Boolean.TRUE;
-            } catch (UnsupportedOperationException e) {
-                payloadIsSerializable = Boolean.FALSE; // cache-only payload — skip disk
+                writeBytes(tilePath(key) + ".ser", entry.serialize());
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -353,7 +379,7 @@ public class Storage<T extends Persistable<T>> {
             }
         }
         if (victims.isEmpty()) return;
-        final boolean cacheOnly = Boolean.FALSE.equals(payloadIsSerializable);
+        final boolean cacheOnly = !payloadIsSerializable;
         for (TileKey evictedKey : victims) {
             if (cacheOnly) GENERATED_ENTRIES.remove(evictedKey); // forget BEFORE dropping the cache copy
             CACHE.remove(evictedKey);

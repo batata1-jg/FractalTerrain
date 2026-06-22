@@ -15,17 +15,24 @@ import java.util.Set;
  *   <li>JUNCTION — &ge;1 incoming, exactly 1 outgoing. Created/destroyed by split/merge/prune.</li>
  * </ul>
  */
-public class Node {
+public class Endpoint {
 
-    public enum NodeType {
+    public enum Type {
         SOURCE,
         DRAIN,
         JUNCTION
     }
 
     public final int id;
-    public final NodeType type;
+    public final Type type;
     public double[] coord;
+
+    /**
+     * Bed elevation assigned to this vertex (native-px scale), filled by the bottom-up junction-elevation
+     * pass in {@code LocalRiverProvider}. {@code NaN} until assigned. Used by
+     * {@link RiverNetwork#convertImutableQuadtree} to anchor each channel's per-point bed.
+     */
+    public double elevation = Double.NaN;
 
     /** channelIds whose endNodeId == this.id (many allowed). */
     public final Set<Integer> incoming = new HashSet<>();
@@ -33,7 +40,7 @@ public class Node {
     /** the single channelId whose startNodeId == this.id, or -1 if none. */
     public int outgoing = -1;
 
-    public Node(int id, NodeType type, double[] coord) {
+    public Endpoint(int id, Type type, double[] coord) {
         this.id = id;
         this.type = type;
         this.coord = coord;
@@ -44,7 +51,7 @@ public class Node {
     }
 
     public boolean isSourceOrDrain() {
-        return type == NodeType.SOURCE || type == NodeType.DRAIN;
+        return type == Type.SOURCE || type == Type.DRAIN;
     }
 
     @Override

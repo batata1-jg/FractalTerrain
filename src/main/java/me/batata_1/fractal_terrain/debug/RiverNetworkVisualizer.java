@@ -8,12 +8,11 @@ import java.io.File;
 import java.io.IOException;
 import java.util.List;
 import javax.imageio.ImageIO;
-import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
-import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
-import me.batata_1.fractal_terrain.hydrology.meanders.Node;
+
+import me.batata_1.fractal_terrain.hydrology.meanders.*;
 import me.batata_1.fractal_terrain.math.VectorOps;
+import me.batata_1.fractal_terrain.math.ds.CoordPoint;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
-import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
 
 public class RiverNetworkVisualizer {
 
@@ -45,7 +44,7 @@ public class RiverNetworkVisualizer {
             // c.reSample(0.5);
             for (int i = 0; i < c.spline.points().size(); i++) {
                 double[] pt = c.spline.points().get(i);
-                tree.insertPoint(new QuadTreePoint(VectorOps.scale(pt, scale)));
+                tree.insertPoint(new CoordPoint(VectorOps.scale(pt, scale)));
                 insertPt(migVector[i], migPointGrid, gridSize, scale);
                 insertPt(pt, splinePointGrid, gridSize, scale);
             }
@@ -110,8 +109,8 @@ public class RiverNetworkVisualizer {
             var pts = c.spline.points();
             for (int i = 1; i < pts.size(); i++) drawLine(rgb, size, pts.get(i - 1), pts.get(i), COLOR_CHANNEL);
         }
-        for (Node node : meanders.getNodes()) {
-            drawDot(rgb, size, node.coord, nodeColor(node.type), 2);
+        for (Endpoint endpoint : meanders.getNodes()) {
+            drawDot(rgb, size, endpoint.coord, nodeColor(endpoint.type), 2);
         }
 
         writeImage(rgb, size, folder, name);
@@ -125,25 +124,25 @@ public class RiverNetworkVisualizer {
      */
     public void seeNetwork(
             int gridSize,
-            List<Meanders.NodeSpec> nodeSpecs,
-            List<Meanders.EdgeSpec> edgeSpecs,
+            List<RiverNetwork.NodeSpec> nodeSpecs,
+            List<RiverNetwork.EdgeSpec> edgeSpecs,
             String folder,
             String name) {
         final int size = gridSize * NETWORK_SCALE;
         final int[] rgb = new int[size * size]; // black background
 
-        for (Meanders.EdgeSpec edge : edgeSpecs) {
+        for (RiverNetwork.EdgeSpec edge : edgeSpecs) {
             final List<double[]> pts = edge.pts();
             for (int i = 1; i < pts.size(); i++) drawLine(rgb, size, pts.get(i - 1), pts.get(i), COLOR_CHANNEL);
         }
-        for (Meanders.NodeSpec node : nodeSpecs) {
+        for (RiverNetwork.NodeSpec node : nodeSpecs) {
             drawDot(rgb, size, new double[] {node.x(), node.z()}, nodeColor(node.type()), 2);
         }
 
         writeImage(rgb, size, folder, name);
     }
 
-    private static int nodeColor(Node.NodeType type) {
+    private static int nodeColor(Endpoint.Type type) {
         return switch (type) {
             case SOURCE -> COLOR_SOURCE;
             case DRAIN -> COLOR_DRAIN;

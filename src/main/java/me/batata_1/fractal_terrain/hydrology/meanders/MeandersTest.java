@@ -3,8 +3,8 @@ package me.batata_1.fractal_terrain.hydrology.meanders;
 import java.util.ArrayList;
 import java.util.List;
 import me.batata_1.fractal_terrain.debug.Debug;
-import me.batata_1.fractal_terrain.hydrology.meanders.Meanders.EdgeSpec;
-import me.batata_1.fractal_terrain.hydrology.meanders.Meanders.NodeSpec;
+import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork.EdgeSpec;
+import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork.NodeSpec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,7 +38,7 @@ public class MeandersTest {
         double sx = pts.getFirst()[0], sz = pts.getFirst()[1];
         double dx = pts.getLast()[0], dz = pts.getLast()[1];
         List<NodeSpec> nodeSpecs =
-                List.of(new NodeSpec(sx, sz, Node.NodeType.SOURCE), new NodeSpec(dx, dz, Node.NodeType.DRAIN));
+                List.of(new NodeSpec(sx, sz, Endpoint.Type.SOURCE), new NodeSpec(dx, dz, Endpoint.Type.DRAIN));
         List<EdgeSpec> edgeSpecs = List.of(new EdgeSpec(0, 1, pts, 8.0));
         Meanders sim = new Meanders(grid, gx, gz, nodeSpecs, edgeSpecs);
 
@@ -71,8 +71,8 @@ public class MeandersTest {
     /** One source -> one drain edge from a list of points. */
     private static Meanders oneEdge(ArrayList<double[]> pts, double width) {
         List<NodeSpec> nodeSpecs = List.of(
-                new NodeSpec(pts.getFirst()[0], pts.getFirst()[1], Node.NodeType.SOURCE),
-                new NodeSpec(pts.getLast()[0], pts.getLast()[1], Node.NodeType.DRAIN));
+                new NodeSpec(pts.getFirst()[0], pts.getFirst()[1], Endpoint.Type.SOURCE),
+                new NodeSpec(pts.getLast()[0], pts.getLast()[1], Endpoint.Type.DRAIN));
         List<EdgeSpec> edgeSpecs = List.of(new EdgeSpec(0, 1, pts, width));
         float[] g = zeroGrid();
         return new Meanders(GRID, g, g, nodeSpecs, edgeSpecs);
@@ -99,10 +99,10 @@ public class MeandersTest {
             pts1.add(new double[] {10.0 + i * 5.0, 300.0 + 5.0 * Math.sin(2.0 * Math.PI * i / (n - 1))});
         }
         List<NodeSpec> nodeSpecs = List.of(
-                new NodeSpec(pts.getFirst()[0], pts.getFirst()[1], Node.NodeType.SOURCE),
-                new NodeSpec(pts.getLast()[0], pts.getLast()[1], Node.NodeType.DRAIN),
-                new NodeSpec(pts1.getFirst()[0], pts1.getFirst()[1], Node.NodeType.SOURCE),
-                new NodeSpec(pts1.getLast()[0], pts1.getLast()[1], Node.NodeType.DRAIN));
+                new NodeSpec(pts.getFirst()[0], pts.getFirst()[1], Endpoint.Type.SOURCE),
+                new NodeSpec(pts.getLast()[0], pts.getLast()[1], Endpoint.Type.DRAIN),
+                new NodeSpec(pts1.getFirst()[0], pts1.getFirst()[1], Endpoint.Type.SOURCE),
+                new NodeSpec(pts1.getLast()[0], pts1.getLast()[1], Endpoint.Type.DRAIN));
         List<EdgeSpec> edgeSpecs = List.of(new EdgeSpec(0, 1, pts, width), new EdgeSpec(2, 3, pts1, width));
         float[] g = zeroGrid();
         Meanders sim = new Meanders(GRID, g, g, nodeSpecs, edgeSpecs);
@@ -173,9 +173,9 @@ public class MeandersTest {
         Channel c0 = sim.getChannel(0);
         Channel cN = sim.getChannel(newId);
         check(c0.endNodeId == cN.startNodeId, "redirect=false halves should share a junction");
-        Node shared = sim.getNode(c0.endNodeId);
+        Endpoint shared = sim.getNode(c0.endNodeId);
         check(
-                shared.type == Node.NodeType.JUNCTION && shared.degree() == 2,
+                shared.type == Endpoint.Type.JUNCTION && shared.degree() == 2,
                 "shared node should be a degree-2 junction");
 
         // redirect == true -> two disconnected degree-1 junctions
@@ -185,10 +185,10 @@ public class MeandersTest {
         Channel a1 = sim2.getChannel(0);
         Channel a2 = sim2.getChannel(newId2);
         check(a1.endNodeId != a2.startNodeId, "redirect=true halves must NOT share a node");
-        Node j1 = sim2.getNode(a1.endNodeId);
-        Node j2 = sim2.getNode(a2.startNodeId);
-        check(j1.type == Node.NodeType.JUNCTION && j1.degree() == 1, "redirect=true upstream junction wrong");
-        check(j2.type == Node.NodeType.JUNCTION && j2.degree() == 1, "redirect=true downstream junction wrong");
+        Endpoint j1 = sim2.getNode(a1.endNodeId);
+        Endpoint j2 = sim2.getNode(a2.startNodeId);
+        check(j1.type == Endpoint.Type.JUNCTION && j1.degree() == 1, "redirect=true upstream junction wrong");
+        check(j2.type == Endpoint.Type.JUNCTION && j2.degree() == 1, "redirect=true downstream junction wrong");
         LOG.info("testSplit passed.");
     }
 
@@ -205,7 +205,7 @@ public class MeandersTest {
         check(sim.getChannelCount() == afterSplit - 1, "merge did not remove a channel");
         check(sim.getChannel(newId) == null, "downstream channel should be gone after merge");
         Channel merged = sim.getChannel(0);
-        check(sim.getNode(merged.endNodeId).type == Node.NodeType.DRAIN, "merged channel should end at the drain");
+        check(sim.getNode(merged.endNodeId).type == Endpoint.Type.DRAIN, "merged channel should end at the drain");
 
         // channel now ends at a drain (not a junction) -> merge is a no-op
         check(!sim.merge(0), "merge into a drain should be a no-op");
@@ -223,10 +223,10 @@ public class MeandersTest {
         for (int i = 0; i <= 60; i++) aPts.add(new double[] {250.0, 100.0 + i * 5.0});
 
         List<NodeSpec> nodeSpecs = List.of(
-                new NodeSpec(bPts.getFirst()[0], bPts.getFirst()[1], Node.NodeType.SOURCE),
-                new NodeSpec(bPts.getLast()[0], bPts.getLast()[1], Node.NodeType.DRAIN),
-                new NodeSpec(aPts.getFirst()[0], aPts.getFirst()[1], Node.NodeType.SOURCE),
-                new NodeSpec(aPts.getLast()[0], aPts.getLast()[1], Node.NodeType.DRAIN));
+                new NodeSpec(bPts.getFirst()[0], bPts.getFirst()[1], Endpoint.Type.SOURCE),
+                new NodeSpec(bPts.getLast()[0], bPts.getLast()[1], Endpoint.Type.DRAIN),
+                new NodeSpec(aPts.getFirst()[0], aPts.getFirst()[1], Endpoint.Type.SOURCE),
+                new NodeSpec(aPts.getLast()[0], aPts.getLast()[1], Endpoint.Type.DRAIN));
         List<EdgeSpec> edgeSpecs = List.of(new EdgeSpec(0, 1, bPts, 20.0), new EdgeSpec(2, 3, aPts, 5.0));
         float[] g = zeroGrid();
         return new Meanders(GRID, g, g, nodeSpecs, edgeSpecs);
@@ -238,13 +238,13 @@ public class MeandersTest {
 
         // a confluence junction (degree >= 3) was created
         boolean confluence =
-                sim.getNodes().stream().anyMatch(nd -> nd.type == Node.NodeType.JUNCTION && nd.degree() >= 3);
+                sim.getNodes().stream().anyMatch(nd -> nd.type == Endpoint.Type.JUNCTION && nd.degree() >= 3);
         check(confluence, "no confluence junction created by capture");
 
         // all degree-1 nodes are sources or drains; no degree-2 junction remains (merge ran)
-        for (Node nd : sim.getNodes()) {
+        for (Endpoint nd : sim.getNodes()) {
             if (nd.degree() == 1) check(nd.isSourceOrDrain(), "leaf node " + nd.id + " is a junction");
-            check(!(nd.type == Node.NodeType.JUNCTION && nd.degree() == 2), "leftover degree-2 junction " + nd.id);
+            check(!(nd.type == Endpoint.Type.JUNCTION && nd.degree() == 2), "leftover degree-2 junction " + nd.id);
             // single-outflow invariant
             check(nd.outgoing == -1 || sim.getChannel(nd.outgoing) != null, "dangling outgoing on " + nd.id);
         }
@@ -290,8 +290,8 @@ public class MeandersTest {
     private static void assertEndpointsMatchNodes(Meanders sim, String context) {
         double eps = 1e-9;
         for (Channel ch : sim.getChannels()) {
-            Node start = sim.getNode(ch.startNodeId);
-            Node end = sim.getNode(ch.endNodeId);
+            Endpoint start = sim.getNode(ch.startNodeId);
+            Endpoint end = sim.getNode(ch.endNodeId);
             check(start != null, context + ": channel " + ch.channelId + " has no start node");
             check(end != null, context + ": channel " + ch.channelId + " has no end node");
             double[] first = ch.spline.points().getFirst();
@@ -319,10 +319,10 @@ public class MeandersTest {
 
     /** Follow outgoing edges downstream from the given source node id; true if a drain is reached. */
     private static boolean reachesDrain(Meanders sim, int sourceNodeId) {
-        Node n = sim.getNode(sourceNodeId);
+        Endpoint n = sim.getNode(sourceNodeId);
         int guard = 0;
         while (n != null && guard++ < 100000) {
-            if (n.type == Node.NodeType.DRAIN) return true;
+            if (n.type == Endpoint.Type.DRAIN) return true;
             if (n.outgoing == -1) return false;
             Channel ch = sim.getChannel(n.outgoing);
             if (ch == null) return false;

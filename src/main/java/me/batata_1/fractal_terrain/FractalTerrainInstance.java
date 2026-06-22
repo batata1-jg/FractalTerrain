@@ -49,10 +49,11 @@ public class FractalTerrainInstance {
     private FractalTerrainInstance(MinecraftServer server) {
         this.curServer = server;
         final Path worldPath = server.getWorldPath(LevelResource.ROOT).normalize();
+        // Build order mirrors the dependency graph: global → local → relief → biome.
+        this.globalRiverProvider = new GlobalRiverProvider(worldPath + "/fractal_terrain");
+        this.localRiverProvider = new LocalRiverProvider(worldPath + "/fractal_terrain");
         this.reliefSource = new ReliefProvider(worldPath + "/fractal_terrain");
         this.biomeProvider = new BiomeProvider(worldPath + "/fractal_terrain");
-        this.globalRiverProvider = new GlobalRiverProvider(worldPath + "/fractal_terrain");
-        this.localRiverProvider = new LocalRiverProvider(null);
         final long seed = server.getWorldData().worldGenOptions().seed();
         final ServerLevel world = server.overworld();
         final RegistryAccess dynamicRegistryManager = world.registryAccess();
@@ -87,7 +88,7 @@ public class FractalTerrainInstance {
         getInstance().biomeProvider.getInfiniteTensor().clear();
         getInstance().reliefSource.getInfiniteTensor().clear();
         getInstance().globalRiverProvider.getInfiniteTensor().clear();
-        getInstance().localRiverProvider.getInfiniteTensor().clear();
+        getInstance().localRiverProvider.clearCaches();
         instance = new CompletableFuture<>();
         LOG.info("fractal terrain instance closed");
     }

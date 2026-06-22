@@ -13,28 +13,46 @@ import me.batata_1.fractal_terrain.storage.TileKey;
  * Lazily-computed, infinitely-tiled store whose per-tile payload is a {@link QuadTree} (instead of
  * a {@code FloatTensor}). Mirrors {@link NonIntersectingInfiniteTensor}: non-overlapping tiles keyed
  * by window index, each computed on demand by {@code entryCreatingFunction} and cached in
- * {@link Storage}. Since {@link QuadTree} leaves {@code serialize}/{@code deserialize} as the
- * throwing defaults, the store is <em>cache-only</em> (tiles are recomputed, never read from disk).
+ * {@link Storage}.
  *
- * <p>The {@code getValue} of the tensor variant is replaced by {@link #query}: a single-tile lookup
- * that finds the owning tile for a coordinate and runs a spatial query on its {@code QuadTree},
- * bounded to that tile's logical window.
+ * <p>Whether tiles persist to disk depends on the point type: the store is disk-backed when the
+ * supplied {@code pointPrototype} is {@link me.batata_1.fractal_terrain.storage.Persistable} (e.g.
+ * {@link me.batata_1.fractal_terrain.hydrology.HydrologicalUnit}) and cache-only otherwise (e.g.
+ * a bare coordinate point). {@code Storage}'s constructor decides this once by probing the prototype
+ * tile — which is why the prototype is seeded with one dummy point, so the probe exercises point
+ * serialization.
+ *
+ * <p>The {@code getValue} of the tensor variant is replaced by {@link #getValuesWithin}: a
+ * single-tile lookup that finds the owning tile for a coordinate and runs a spatial query on its
+ * {@code QuadTree}, bounded to that tile's logical window.
  */
 public class NonIntersectingInfiniteQuadTree<T extends QuadTreePoint> extends Storage<QuadTree<T>> {
 
     private final TensorWindow outWindow;
     private final Function<TileKey, QuadTree<T>> entryCreatingFunction;
 
-    public NonIntersectingInfiniteQuadTree(String path, String name, int[] shape, Function<TileKey, QuadTree<T>> f) {
-        super(path, name, shape.length, new QuadTree<>(new double[] {0, 0}, new double[] {0, 0}));
+    public NonIntersectingInfiniteQuadTree(
+            String path, String name, int[] shape, T pointPrototype, Function<TileKey, QuadTree<T>> f) {
+        super(path, name, shape.length, prototypeTree(pointPrototype));
         this.entryCreatingFunction = f;
         this.outWindow = new TensorWindow(shape);
     }
 
     /**
+     * The deserialization prototype tree: it carries the {@code pointPrototype} (used to rebuild
+     * stored point chunks) and is seeded with that one point so {@code Storage}'s serializability
+     * probe actually attempts to serialize a point.
+     */
+    private static <T extends QuadTreePoint> QuadTree<T> prototypeTree(T pointPrototype) {
+        final QuadTree<T> proto = new QuadTree<>(new double[] {0, 0}, new double[] {1, 1}, pointPrototype);
+        proto.insertPoint(pointPrototype);
+        return proto;
+    }
+
+    /**
      * Like {@link NonIntersectingInfiniteTensor#loadInto}: try the base disk-reload path first, and
-     * when it cannot produce the entry (signalled by {@link EntryNotLoadableException} — the common
-     * case here, since this store is cache-only) recompute the tile from {@code entryCreatingFunction}
+     * when it cannot produce the entry (signalled by {@link EntryNotLoadableException} — cache-only,
+     * unpersisted, or a corrupt/missing file) recompute the tile from {@code entryCreatingFunction}
      * on the CALLING thread. Cleanup of a failed claim is handled by {@code fetchEntry}.
      */
     @Override
