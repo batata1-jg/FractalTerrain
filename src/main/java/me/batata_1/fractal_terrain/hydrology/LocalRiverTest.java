@@ -7,6 +7,7 @@ import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
+import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
@@ -39,12 +40,13 @@ public class LocalRiverTest {
     private static final double RIVER_SPLINE_RADIUS = 10;
 
     /** Tiles (tx, tz) to render. */
-    private static final int[][] TILES = {{1, -3}};
-    // {{1, -3}, {1, -4}, {2, -3}, {2, -4}};
+    private static final int[][] TILES =  {{1, -3}};
+//            {{1, -3}, {1, -4}, {2, -3}, {2, -4}};
 
     public static void main(String[] args) throws Exception {
         LOG.info("LocalRiverTest start; output dir = {}", DEBUG_PATH);
         // cleanDir(DEBUG_PATH);
+        Meanders.DEBUG_STEPS = true;
         ModelAssetManager.ensureAssetsReady();
         PipelineModels.load();
         pipeline.updateInstance(420, DEBUG_PATH);
@@ -92,7 +94,7 @@ public class LocalRiverTest {
         if (stages.carveDepthField != null) {
             seeFloat(stages.carveDepthField, RELIEF_PADDED, RELIEF_PADDED, prefix + "03_relief_carve_depth");
         }
-        seeFloat(stages.drainageDirection, RELIEF_PADDED, RELIEF_PADDED, prefix + "04_relief_drainage_dir");
+        seeFloat(stages.riverData, RELIEF_PADDED, RELIEF_PADDED, prefix + "04_relief_river_data");
         seeFloat(channel(stages.result, 0), GRID, GRID, prefix + "05_relief_result_elev");
         seeFloat(channel(stages.result, 7), GRID, GRID, prefix + "06_relief_result_drainage_dir");
         seeFloat(

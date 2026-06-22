@@ -12,6 +12,15 @@ public class Channel {
     public QuinticHermiteSpline spline;
 
     /**
+     * Per-point width profile: the width at spline index 0 ({@code startWidth}) and at the last index
+     * ({@code endWidth}); intermediate points lerp between them by their normalized index. Both default
+     * to {@link #width} so callers that only care about a single width (e.g. the {@link Meanders} sim)
+     * are unaffected. {@code LocalRiverProvider} sets these so widths taper start→end and align where
+     * channels meet (local confluences and the global river).
+     */
+    public double startWidth, endWidth;
+
+    /**
      * Directed-edge endpoints in the {@link Meanders} river-network graph: spline index 0 sits on
      * {@code startNodeId} (upstream), the last index on {@code endNodeId} (downstream); flow goes
      * 0 -> last. {@code -1} means the channel is not part of a graph (e.g. LocalRiverProvider's
@@ -24,6 +33,21 @@ public class Channel {
         this.depth = Math.max(1.0, Math.pow(width / 18.8, 1.0 / 1.41));
         this.spline = QuinticHermiteSpline.createCatmullRom(pts);
         this.channelId = channelId;
+        this.startWidth = width;
+        this.endWidth = width;
+    }
+
+    /** Set the start→end width taper used to assign each {@link ChannelPt}'s per-point width. */
+    public void setWidthProfile(double startWidth, double endWidth) {
+        this.startWidth = startWidth;
+        this.endWidth = endWidth;
+    }
+
+    /** Lerped width at spline index {@code i} (start→end by normalized index). */
+    private double widthAt(int i) {
+        final int size = spline.points().size();
+        final double frac = (size <= 1) ? 0.0 : (double) i / (size - 1);
+        return startWidth + (endWidth - startWidth) * frac;
     }
 
     public double[] computeLocalRates() {
@@ -47,13 +71,13 @@ public class Channel {
     }
 
     public ChannelPt pt(int id) {
-        return new ChannelPt(spline.points().get(id), id, channelId);
+        return new ChannelPt(spline.points().get(id), id, channelId, widthAt(id));
     }
 
     public ChannelPt[] getChannelAsPts() {
         final ChannelPt[] res = new ChannelPt[spline.points().size()];
         for (int i = 0; i < spline.points().size(); i++)
-            res[i] = new ChannelPt(spline.points().get(i), i, channelId);
+            res[i] = new ChannelPt(spline.points().get(i), i, channelId, widthAt(i));
         return res;
     }
 
@@ -125,11 +149,18 @@ public class Channel {
     public static class ChannelPt extends QuadTreePoint {
 
         public final int index, channelId;
+        /** River width (native px) at this point — lerped along the owning channel's start→end taper. */
+        public final double width;
 
         public ChannelPt(double[] pt, int id, int channelId) {
+            this(pt, id, channelId, 0.0);
+        }
+
+        public ChannelPt(double[] pt, int id, int channelId, double width) {
             super(pt);
             this.index = id;
             this.channelId = channelId;
+            this.width = width;
         }
 
         @Override

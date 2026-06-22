@@ -128,7 +128,7 @@ public final class Meanders {
 
     private void stepImpl(int i, Consumer<Channel> migrate) {
         currentStep = i;
-        LOG.info("step {}", i);
+        //  LOG.info("step {}", i);
         quadTree.clear();
         for (Channel ch : new ArrayList<>(channels.values())) {
             ch.reSample(DX);

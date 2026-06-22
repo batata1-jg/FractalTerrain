@@ -1,11 +1,12 @@
-package me.batata_1.fractal_terrain.relief;
+package me.batata_1.fractal_terrain.world.gen.populatenoise;
 
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.math.Interpolation;
-import me.batata_1.fractal_terrain.noise.PhacelleNoiseSampler;
+import me.batata_1.fractal_terrain.relief.ReliefAccessor;
+import me.batata_1.fractal_terrain.relief.RockStrata;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import org.slf4j.Logger;
@@ -26,35 +27,28 @@ public class PopulateNoiseStep {
     private static final Logger LOG = getLogger(PopulateNoiseStep.class);
     private static final BlockState INSIDE_MARGIN_ROCK = Blocks.LIGHT_BLUE_CONCRETE.defaultBlockState();
 
-    private final Interpolation reliefInterpolation;
-    private final Interpolation reliefGradInterpolation;
-    private final Interpolation reliefGradXInterpolation;
-    private final Interpolation reliefGradYInterpolation;
-    private final Interpolation reliefResInterpolation;
-    private final Interpolation reliefBlurredInterpolation;
-    private final RockStrata strata;
-    private final PhacelleNoiseSampler phacelleSampler;
+    private final ReliefAccessor accessor;
 
     public PopulateNoiseStep(final float scale) {
-        reliefInterpolation = new Interpolation(
-                scale, xz -> FractalTerrainInstance.getReliefProvider().getElev(xz));
-        reliefGradInterpolation = new Interpolation(
-                scale, xz -> FractalTerrainInstance.getReliefProvider().getRefinedGrad(xz));
-        reliefResInterpolation = new Interpolation(
-                scale, xz -> FractalTerrainInstance.getReliefProvider().getRes(xz));
-        reliefBlurredInterpolation = new Interpolation(
-                scale, xz -> FractalTerrainInstance.getReliefProvider().getBlurredElev(xz));
-        reliefGradXInterpolation = new Interpolation(
-                scale, xz -> FractalTerrainInstance.getReliefProvider().getGradX(xz));
-        reliefGradYInterpolation = new Interpolation(
-                scale, xz -> FractalTerrainInstance.getReliefProvider().getGradY(xz));
-        strata = RockStrata.AngledPlaneStrata.create(9, 8, rocks);
-        phacelleSampler = new PhacelleNoiseSampler(5, 32F);
+        this.accessor = new ReliefAccessor(
+                new Interpolation(
+                        scale, xz -> FractalTerrainInstance.getReliefProvider().getElev(xz)),
+                new Interpolation(
+                        scale, xz -> FractalTerrainInstance.getReliefProvider().getRefinedGrad(xz)),
+                new Interpolation(
+                        scale, xz -> FractalTerrainInstance.getReliefProvider().getRes(xz)),
+                new Interpolation(
+                        scale, xz -> FractalTerrainInstance.getReliefProvider().getBlurredElev(xz)),
+                new Interpolation(
+                        scale, xz -> FractalTerrainInstance.getReliefProvider().getGradX(xz)),
+                new Interpolation(
+                        scale, xz -> FractalTerrainInstance.getReliefProvider().getGradY(xz)),
+                RockStrata.AngledPlaneStrata.create(9, 8, rocks));
     }
 
     public int getHeight(final int x, final int z) {
         //   final double interpolatedBlurredRelief = reliefBlurredInterpolation.interpolateBilinear(x, z);
-        final double interpolatedRelief = reliefInterpolation.interpolateSmoothStep(x, z);
+        final double interpolatedRelief = accessor.reliefInterpolation().interpolateSmoothStep(x, z);
         //  final double interpolatedGrad = reliefGradInterpolation.interpolateSmoothStep(x, z);
         //  final double strata = this.strata.sample(x, z, interpolatedRelief, interpolatedGrad,
         // interpolatedBlurredRelief);
@@ -88,5 +82,9 @@ public class PopulateNoiseStep {
             return COAST_MARKER_ROCK;
         }
         return state;
+    }
+
+    public ReliefAccessor getReliefAccessor() {
+        return accessor;
     }
 }

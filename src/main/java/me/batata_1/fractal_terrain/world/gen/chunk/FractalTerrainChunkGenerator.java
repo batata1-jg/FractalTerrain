@@ -15,8 +15,9 @@ import java.util.stream.Collectors;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.math.spline.Spline;
-import me.batata_1.fractal_terrain.relief.PopulateNoiseStep;
+import me.batata_1.fractal_terrain.relief.ReliefAccessor;
 import me.batata_1.fractal_terrain.world.biome.source.FractalTerrainBiomeSource;
+import me.batata_1.fractal_terrain.world.gen.populatenoise.PopulateNoiseStep;
 import net.minecraft.*;
 import net.minecraft.core.*;
 import net.minecraft.core.registries.Registries;
@@ -37,6 +38,7 @@ import net.minecraft.world.level.levelgen.blending.Blender;
 import net.minecraft.world.level.levelgen.placement.PlacedFeature;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 
 public final class FractalTerrainChunkGenerator extends ChunkGenerator {
@@ -179,22 +181,25 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
             @NotNull WorldGenRegion region,
             @NotNull StructureManager structures,
             @NotNull RandomState noiseConfig,
-            ChunkAccess chunk) {
-        //        if (!SharedConstants.debugVoidTerrain(chunk.getPos())) {
-        //            WorldGenerationContext heightContext = new WorldGenerationContext(this, region);
-        //            this.buildSurface(
-        //                    chunk,
-        //                    heightContext,
-        //                    noiseConfig,
-        //                    structures,
-        //                    region.getBiomeManager(),
-        //                    region.registryAccess().registryOrThrow(Registries.BIOME),
-        //                    Blender.of(region));
-        //        }
+            @NotNull ChunkAccess chunk) {
+        if (true) return;
+        if (!SharedConstants.debugVoidTerrain(chunk.getPos())) {
+            WorldGenerationContext heightContext = new WorldGenerationContext(this, region);
+            this.buildSurface(
+                    this.populateNoiseStep.getReliefAccessor(),
+                    chunk,
+                    heightContext,
+                    noiseConfig,
+                    structures,
+                    region.getBiomeManager(),
+                    region.registryAccess().registryOrThrow(Registries.BIOME),
+                    Blender.of(region));
+        }
     }
 
     @VisibleForTesting
     public void buildSurface(
+            ReliefAccessor accessor,
             ChunkAccess chunk,
             WorldGenerationContext heightContext,
             RandomState noiseConfig,
@@ -204,12 +209,10 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
             Blender blender) {
         NoiseChunk chunkNoiseSampler = chunk.getOrCreateNoiseChunk((chunkx) -> this.createChunkNoiseSampler(
                 chunkx, structureAccessor, blender, FractalTerrainInstance.getNoiseConfig()));
-        if (chunk.getPos().z == 0 && chunk.getPos().x == 0) {
-            LOG.info(" chunkNoise sampler of 0 ,0 : {}", chunkNoiseSampler);
-            LOG.info(" chunkNoise sampler estiate H : {}", chunkNoiseSampler.preliminarySurfaceLevel(0, 0));
-        }
+        debugSurfaceAtChunk(0, 0, chunk, chunkNoiseSampler);
         FractalTerrainInstance.getSurfaceBuilder()
-                .buildSurface(noiseConfig, biomeAccess, biomeRegistry, heightContext, chunk, chunkNoiseSampler);
+                .buildSurface(
+                        accessor, noiseConfig, biomeAccess, biomeRegistry, heightContext, chunk, chunkNoiseSampler);
     }
 
     private NoiseChunk createChunkNoiseSampler(
@@ -406,4 +409,12 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
     @Override
     public void addDebugScreenInfo(
             @NotNull List<String> text, @NotNull RandomState noiseConfig, @NotNull BlockPos pos) {}
+
+    @TestOnly
+    private static void debugSurfaceAtChunk(int x, int z, ChunkAccess chunk, NoiseChunk chunkNoiseSampler) {
+        if (chunk.getPos().z == x && chunk.getPos().x == z) {
+            LOG.info(" chunkNoise sampler of 0 ,0 : {}", chunkNoiseSampler);
+            LOG.info(" chunkNoise sampler estiate H : {}", chunkNoiseSampler.preliminarySurfaceLevel(0, 0));
+        }
+    }
 }

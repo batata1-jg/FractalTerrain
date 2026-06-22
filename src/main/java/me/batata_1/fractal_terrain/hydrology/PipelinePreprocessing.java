@@ -31,16 +31,10 @@ public class PipelinePreprocessing {
     public static final int[] OPPOSITE_DIRECTION = {3, 2, 1, 0, 5, 4, 7, 6};
 
     /**
-     * Extra drainage-mask bit (above the 8 direction bits 0..7) marking a pixel that belongs to the
-     * global river. Set externally (by {@code ReliefProvider}) — {@link #computeDrainageDirection}
-     * never sets it. {@link #neighbor} only inspects bits 0..7, so this bit does not affect routing.
-     */
-    public static final int GLOBAL_RIVER_BIT = 1 << 8;
-
-    /**
      * Decode a one-hot drainage bitfield into the D8 neighbour index it points at, or {@code -1} if
-     * no direction bit (0..7) is set (a sink / undrained cell). Bits ≥ 8 (e.g.
-     * {@link #GLOBAL_RIVER_BIT}) are ignored.
+     * no direction bit (0..7) is set (a sink / undrained cell). Bits ≥ 8 are ignored, so a packed
+     * {@code riverData} int (see {@link RiverData}, which stuffs a global-river id and spline position
+     * into the upper bytes) can be decoded directly.
      */
     public static int neighbor(int drainageDirection) {
         for (int i = 0; i < 8; i++) if ((drainageDirection & (1 << i)) != 0) return i;

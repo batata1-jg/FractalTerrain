@@ -13,7 +13,7 @@ import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
 import me.batata_1.fractal_terrain.relief.ReliefProvider;
 import me.batata_1.fractal_terrain.world.biome.BiomeProvider;
 import me.batata_1.fractal_terrain.world.gen.chunk.FractalTerrainChunkGenerator;
-import me.batata_1.fractal_terrain.world.gen.surfacebuilder.FractalTerrainSurfaceBuilder;
+import me.batata_1.fractal_terrain.world.gen.surfacebuilder.FractalTerrainSurfaceSystem;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.server.MinecraftServer;
@@ -43,7 +43,7 @@ public class FractalTerrainInstance {
     private final BiomeProvider biomeProvider;
     private final GlobalRiverProvider globalRiverProvider;
     private final LocalRiverProvider localRiverProvider;
-    private final FractalTerrainSurfaceBuilder surfaceBuilder;
+    private final FractalTerrainSurfaceSystem surfaceBuilder;
     private final RandomState noiseConfig;
 
     private FractalTerrainInstance(MinecraftServer server) {
@@ -64,7 +64,7 @@ public class FractalTerrainInstance {
         OctaveSimplexNoiseSampler.init(seed);
         // LOG.info("chunk Generator settings: {}", chunkGenerator.getSettings().value());
         RegistryAccess registryAccess = server.registryAccess();
-        surfaceBuilder = new FractalTerrainSurfaceBuilder(
+        surfaceBuilder = new FractalTerrainSurfaceSystem(
                 this.noiseConfig,
                 Blocks.STONE.defaultBlockState(),
                 63,
@@ -112,7 +112,7 @@ public class FractalTerrainInstance {
         return getInstance().biomeProvider;
     }
 
-    public static FractalTerrainSurfaceBuilder getSurfaceBuilder() {
+    public static FractalTerrainSurfaceSystem getSurfaceBuilder() {
         return getInstance().surfaceBuilder;
     }
 

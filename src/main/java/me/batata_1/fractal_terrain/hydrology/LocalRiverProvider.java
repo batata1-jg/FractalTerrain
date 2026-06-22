@@ -6,6 +6,7 @@ import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.comput
 import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.neighbor;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
@@ -18,19 +19,20 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
 
 /**
- * Detailed (local) river network derived per relief tile from the relief {@code drainageDirection}
- * field. Flow accumulation over the D8 drainage gives each cell a discharge; cells above a flow
- * threshold form the river mask, which is traced — splitting at confluences — into one
- * {@link Channel} per inter-junction segment, widthed from the local flow. Each channel's points are
- * inserted (in global native-px) into a per-tile {@link QuadTree}; the network anchors to the global
- * river because the relief carve already biases drainage toward it.
+ * Detailed (local) river network derived per relief tile from the relief {@code riverData} field
+ * (relief ch7; see {@link RiverData}). Flow accumulation over the D8 drainage (the low byte) gives
+ * each cell a discharge; cells above a flow threshold — <b>excluding global-river pixels</b> — form
+ * the local river mask, traced (splitting at confluences) into one {@link Channel} per inter-junction
+ * segment, widthed from the local flow (start→end taper). The global rivers themselves are
+ * reconstructed separately from {@code riverData} (grouping pixels by id, ordered by spline position,
+ * widths from the packed id→width table) and <b>merged</b> in. Every channel's points are inserted
+ * (in tile-local px) into a per-tile {@link QuadTree}.
  *
  * <p>Storage is a cache-only {@link NonIntersectingInfiniteQuadTree} of {@link Channel.ChannelPt}
- * (one {@code QuadTree} per 512×512 relief tile). A traced segment is kept only when its drainage
- * reaches an outlet — a global-river cell (relief ch7's {@link PipelinePreprocessing#GLOBAL_RIVER_BIT})
- * or the sea ({@code elev < 0}). Border rule: only global-river channels may leave the tile (they are
- * consistent across tiles via the global network); every other channel touching the border is dropped,
- * since the neighbouring tile traces its own matching segment.
+ * (one {@code QuadTree} per 512×512 relief tile). A local segment is kept only when its drainage
+ * reaches an outlet — a global-river cell (id ≠ 0) or the sea ({@code elev < 0}). Border rule: local
+ * channels touching the tile border are dropped (the neighbouring tile traces its own matching
+ * segment); global rivers are allowed to leave (they are consistent across tiles).
  */
 public class LocalRiverProvider {
 
@@ -88,32 +90,33 @@ public class LocalRiverProvider {
         final FloatTensor reliefTile = relief.getTile(tileX, tileZ);
         final int cellCount = GRID * GRID;
 
-        // ch7 = drainageDirection (D8 one-hot bitfield + GLOBAL_RIVER_BIT), stored bit-preserving;
-        // ch0 = carved+filled elevation (used for the sea test in the connectivity filter).
-        final int[] drainageDirection = new int[cellCount];
+        // ch7 = riverData (D8 drainage in the low byte + packed global-river id / spline position /
+        //   width table; see RiverData), stored bit-preserving; ch0 = carved+filled elevation (used
+        //   for the sea test in the connectivity filter).
+        final int[] riverData = new int[cellCount];
         final float[] elev = new float[cellCount];
         for (int i = 0; i < cellCount; i++) {
-            drainageDirection[i] = Float.floatToIntBits(reliefTile.data[7 * cellCount + i]);
+            riverData[i] = Float.floatToIntBits(reliefTile.data[7 * cellCount + i]);
             elev[i] = reliefTile.data[i];
         }
 
-        // 1. flow accumulation; 2. bottom-up outlet connectivity; 3. threshold + prune into a
-        //    river-cell mask. Folding `reaches` into the mask prunes whole subtrees that never drain
-        //    to an outlet before any of them is traced (top-down), and never splits a confluence
-        //    (reaches is downstream-closed upward: if a cell reaches an outlet, so does every cell
-        //    draining into it).
-        final float[] flow = computeFlow(drainageDirection, GRID);
-        final boolean[] reaches = computeReaches(drainageDirection, elev);
+        // 1. flow accumulation; 2. bottom-up outlet connectivity; 3. threshold + prune into a local
+        //    river-cell mask, EXCLUDING global-river pixels (those are reconstructed separately, so a
+        //    local tributary terminates where it meets the global river). Folding `reaches` into the
+        //    mask prunes whole subtrees that never drain to an outlet before any of them is traced.
+        final float[] flow = computeFlow(riverData, GRID);
+        final boolean[] reaches = computeReaches(riverData, elev);
         final boolean[] riverMask = new boolean[cellCount];
-        for (int i = 0; i < cellCount; i++) riverMask[i] = flow[i] >= FLOW_THRESHOLD && reaches[i];
+        for (int i = 0; i < cellCount; i++)
+            riverMask[i] = flow[i] >= FLOW_THRESHOLD && reaches[i] && !RiverData.isGlobalRiver(riverData[i]);
 
-        // Downstream pointer and in-degree restricted to river cells.
+        // Downstream pointer and in-degree restricted to local river cells.
         final int[] downstream = new int[cellCount];
         final int[] inDegree = new int[cellCount];
         for (int cell = 0; cell < cellCount; cell++) {
             downstream[cell] = -1;
             if (!riverMask[cell]) continue;
-            final int direction = neighbor(drainageDirection[cell]);
+            final int direction = neighbor(riverData[cell]);
             if (direction == -1) continue;
             final int next = PipelinePreprocessing.neighborIndex(cell, direction, GRID);
             if (next == -1) continue;
@@ -122,8 +125,8 @@ public class LocalRiverProvider {
             inDegree[next]++;
         }
 
-        // 4. trace each inter-junction segment into a Channel (split at confluences). The river mask is
-        //    already pruned to outlet-reaching cells, so no per-segment outlet check is needed.
+        // 4. trace each inter-junction local segment into a Channel (split at confluences). The river
+        //    mask is already pruned to outlet-reaching cells, so no per-segment outlet check is needed.
         final QuadTree<Channel.ChannelPt> tile =
                 new QuadTree<>(new double[] {-16, -16}, new double[] {GRID + 16, GRID + 16});
         final List<Channel> channels = new ArrayList<>();
@@ -135,12 +138,15 @@ public class LocalRiverProvider {
             if (!isSource && !isJunction) continue; // mid-segment cell — covered by another walk
             final List<Integer> segmentCells = walkSegment(start, downstream, inDegree);
             if (segmentCells.size() < 2) continue;
-            // Only global-river channels may leave the tile; every other channel must stay inside it.
-            if (!isGlobalChannel(start, drainageDirection) && leavesTile(segmentCells)) continue;
-            final Channel channel = buildChannel(segmentCells, flow, tileX, tileZ, channelId++);
+            // Local channels must stay inside the tile; the neighbour tile traces its own border segment.
+            if (leavesTile(segmentCells)) continue;
+            final Channel channel = buildChannel(segmentCells, flow, channelId++);
             if (channel == null) continue;
             channels.add(channel);
         }
+
+        // 5. reconstruct the global rivers from riverData and merge them in.
+        channels.addAll(reconstructGlobalChannels(riverData, channelId));
 
         for (Channel channel : channels) {
             for (Channel.ChannelPt point : channel.getChannelAsPts()) tile.insertPoint(point);
@@ -185,29 +191,20 @@ public class LocalRiverProvider {
     }
 
     /**
-     * Whether the segment lies on the global river, judged by its first (upstream) cell carrying
-     * {@link PipelinePreprocessing#GLOBAL_RIVER_BIT}: a global-river trunk segment's head is itself a
-     * river cell, while a local tributary's source is not.
-     */
-    private boolean isGlobalChannel(int startNode, int[] drainageDirection) {
-        return (drainageDirection[startNode] & PipelinePreprocessing.GLOBAL_RIVER_BIT) != 0;
-    }
-
-    /**
      * Bottom-up outlet connectivity over the whole tile: {@code reaches[c]} is true when cell {@code c}
-     * drains (transitively, along the raw D8 drainage) into an outlet — a cell flagged
-     * {@link PipelinePreprocessing#GLOBAL_RIVER_BIT} (the global river) or a sea cell ({@code elev < 0}).
-     * Computed once by seeding at the outlet cells and reverse-propagating upstream (CSR reverse
-     * adjacency + BFS), in O(n). Cells that stall in an interior sink, exit the tile border, or sit on a
-     * cycle are simply never reached → false, matching the old per-segment downstream walk.
+     * drains (transitively, along the raw D8 drainage) into an outlet — a global-river cell
+     * ({@link RiverData#isGlobalRiver}) or a sea cell ({@code elev < 0}). Computed once by seeding at
+     * the outlet cells and reverse-propagating upstream (CSR reverse adjacency + BFS), in O(n). Cells
+     * that stall in an interior sink, exit the tile border, or sit on a cycle are simply never reached
+     * → false, matching the old per-segment downstream walk.
      */
-    private static boolean[] computeReaches(int[] drainageDirection, float[] elev) {
-        final int n = drainageDirection.length;
+    private static boolean[] computeReaches(int[] riverData, float[] elev) {
+        final int n = riverData.length;
 
         // Per-cell raw D8 downstream pointer (or -1 for a sink / off-grid border exit).
         final int[] down = new int[n];
         for (int c = 0; c < n; c++) {
-            final int dir = neighbor(drainageDirection[c]);
+            final int dir = neighbor(riverData[c]);
             down[c] = (dir == -1) ? -1 : PipelinePreprocessing.neighborIndex(c, dir, GRID);
         }
 
@@ -225,7 +222,7 @@ public class LocalRiverProvider {
         int qHead = 0;
         int qTail = 0;
         for (int c = 0; c < n; c++) {
-            if ((drainageDirection[c] & PipelinePreprocessing.GLOBAL_RIVER_BIT) != 0 || elev[c] < 0) {
+            if (RiverData.isGlobalRiver(riverData[c]) || elev[c] < 0) {
                 reaches[c] = true;
                 queue[qTail++] = c;
             }
@@ -243,8 +240,12 @@ public class LocalRiverProvider {
         return reaches;
     }
 
-    /** Build a resampled {@link Channel} from the segment's cell centres (in global native px). */
-    private @Nullable Channel buildChannel(List<Integer> cells, float[] flow, int tileX, int tileZ, int channelId) {
+    /**
+     * Build a resampled {@link Channel} from the segment's cell centres (tile-local px). The width
+     * tapers from the upstream cell's flow to the downstream cell's flow so it aligns with the
+     * channels it meets at confluences (and, downstream, with the global river).
+     */
+    private @Nullable Channel buildChannel(List<Integer> cells, float[] flow, int channelId) {
         final ArrayList<double[]> points = new ArrayList<>(cells.size());
         float maxFlow = 0;
         for (int cell : cells) {
@@ -253,14 +254,97 @@ public class LocalRiverProvider {
             points.add(new double[] {x + 0.5, z + 0.5});
             maxFlow = Math.max(maxFlow, flow[cell]);
         }
-        final double width = Math.max(MIN_WIDTH, WIDTH_SCALE * maxFlow);
-        final Channel channel = new Channel(width, points, channelId);
+        final double startWidth = Math.max(MIN_WIDTH, WIDTH_SCALE * flow[cells.getFirst()]);
+        final double endWidth = Math.max(MIN_WIDTH, WIDTH_SCALE * flow[cells.getLast()]);
+        final Channel channel = new Channel(Math.max(MIN_WIDTH, WIDTH_SCALE * maxFlow), points, channelId);
+        channel.setWidthProfile(startWidth, endWidth);
         try {
             channel.reSample(RESAMPLE_DIST);
         } catch (RuntimeException degenerate) {
             return null;
         }
         return channel;
+    }
+
+    // -------------------------------------------------------------------------
+    // Global river reconstruction (from the packed riverData)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Rebuild each global river as its own {@link Channel} from {@code riverData}: group global pixels
+     * by id, order each id's pixels by their packed spline position, and taper the width from the
+     * id→width table's {@code startWidth} to {@code endWidth}. Channel ids continue from
+     * {@code firstChannelId} so they don't collide with the local channels.
+     */
+    private List<Channel> reconstructGlobalChannels(int[] riverData, int firstChannelId) {
+        final int riverCount = readGlobalRiverCount(riverData);
+        if (riverCount == 0) return new ArrayList<>();
+
+        final float[] startWidth = new float[riverCount + 1]; // 1-based by id
+        final float[] endWidth = new float[riverCount + 1];
+        readWidthTable(riverData, riverCount, startWidth, endWidth);
+
+        // Collect {splinePosition, cell} per id.
+        final List<ArrayList<int[]>> pixelsById = new ArrayList<>(riverCount + 1);
+        for (int id = 0; id <= riverCount; id++) pixelsById.add(new ArrayList<>());
+        for (int cell = 0; cell < riverData.length; cell++) {
+            final int id = RiverData.riverId(riverData[cell]);
+            if (id == 0 || id > riverCount) continue;
+            pixelsById.get(id).add(new int[] {RiverData.splinePosition(riverData[cell]), cell});
+        }
+
+        final List<Channel> channels = new ArrayList<>();
+        int channelId = firstChannelId;
+        for (int id = 1; id <= riverCount; id++) {
+            final ArrayList<int[]> pixels = pixelsById.get(id);
+            if (pixels.size() < 2) continue;
+            pixels.sort(Comparator.comparingInt(p -> p[0]));
+            final ArrayList<double[]> points = new ArrayList<>(pixels.size());
+            for (int[] p : pixels) {
+                final int cell = p[1];
+                points.add(new double[] {cell / GRID + 0.5, cell % GRID + 0.5});
+            }
+            final double start = Math.max(MIN_WIDTH, startWidth[id]);
+            final double end = Math.max(MIN_WIDTH, endWidth[id]);
+            final Channel channel = new Channel(Math.max(start, end), points, channelId++);
+            channel.setWidthProfile(start, end);
+            try {
+                channel.reSample(RESAMPLE_DIST);
+            } catch (RuntimeException degenerate) {
+                continue;
+            }
+            channels.add(channel);
+        }
+        return channels;
+    }
+
+    /** Read the global-river id count from the first non-global pixel's table slot (0 if none). */
+    private static int readGlobalRiverCount(int[] riverData) {
+        for (int riverDatum : riverData) {
+            if (RiverData.riverId(riverDatum) != 0) continue;
+            return RiverData.upperHalf(riverDatum) & RiverData.MAX_RIVER_ID;
+        }
+        return 0;
+    }
+
+    /**
+     * Read the id→width table: the upper halfwords of the first {@code 1 + 4*riverCount} non-global
+     * pixels (slot 0 = count, then start hi/lo, end hi/lo per id) into the 1-based
+     * {@code startWidth}/{@code endWidth} arrays.
+     */
+    private static void readWidthTable(int[] riverData, int riverCount, float[] startWidth, float[] endWidth) {
+        final int slotCount = 1 + 4 * riverCount;
+        final int[] slots = new int[slotCount];
+        int cursor = 0;
+        for (int i = 0; i < riverData.length && cursor < slotCount; i++) {
+            if (RiverData.riverId(riverData[i]) != 0) continue;
+            slots[cursor++] = RiverData.upperHalf(riverData[i]);
+        }
+        for (int r = 0; r < riverCount; r++) {
+            final int base = 1 + 4 * r;
+            startWidth[r + 1] = RiverData.widthFromSlots(slots[base], slots[base + 1]);
+            endWidth[r + 1] = RiverData.widthFromSlots(slots[base + 2], slots[base + 3]);
+        }
     }
 
     // -------------------------------------------------------------------------

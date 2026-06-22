@@ -4,6 +4,7 @@ import static me.batata_1.fractal_terrain.FractalTerrainConfig.GLOBAL_RIVER_CHAN
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.X;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.Z;
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
+import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.NEIGHBOR_OFFSET_X;
 import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.NEIGHBOR_OFFSET_Z;
 import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.OPPOSITE_DIRECTION;
@@ -21,6 +22,7 @@ import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
 import me.batata_1.fractal_terrain.storage.TileKey;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
+import org.slf4j.Logger;
 
 /**
  * Builds the large-scale ("global") river network off the coarse elevation map, one 64×64 coarse-px
@@ -85,6 +87,7 @@ public class GlobalRiverProvider {
     private static final int PAD = RAMP_WIDTH;
 
     private static final int PADDED_SIDE = TILE_SIZE + 2 * PAD;
+    private static final Logger LOG = getLogger(GlobalRiverProvider.class);
 
     private final NonIntersectingInfiniteTensor riverTiles;
 
@@ -294,6 +297,7 @@ public class GlobalRiverProvider {
         int pi = startPi;
         int pj = startPj;
         for (int step = 0; step < MAX_WALK_STEPS; step++) {
+            if (step == MAX_WALK_STEPS - 1) LOG.warn("max steps reached in walking from source");
             arrows[pi * PADDED_SIDE + pj] |= RIVER_BIT;
             final int direction = PipelinePreprocessing.neighbor(drainageDirection[pi * PADDED_SIDE + pj]);
             if (direction == -1) {
@@ -359,6 +363,7 @@ public class GlobalRiverProvider {
         int pi = sinkPi;
         int pj = sinkPj;
         for (int step = 0; step < MAX_WALK_STEPS; step++) {
+            if (step == MAX_WALK_STEPS - 1) LOG.warn("max steps reached in marching to margin");
             int bestDirection = -1;
             double bestDistance = VectorOps.distance(new double[] {pi, pj}, target);
             for (int d = 4; d < 8; d++) {
@@ -375,7 +380,9 @@ public class GlobalRiverProvider {
             final int nextPi = pi + NEIGHBOR_OFFSET_X[bestDirection];
             final int nextPj = pj + NEIGHBOR_OFFSET_Z[bestDirection];
             arrows[pi * PADDED_SIDE + pj] |= (1 << (OUTGOING_SHIFT + bestDirection));
+            arrows[pi * PADDED_SIDE + pj] |= RIVER_BIT;
             if (path != null) path.add(new int[] {nextPi, nextPj});
+            if ((arrows[nextPi * PADDED_SIDE + nextPj] & RIVER_BIT) != 0) break;
             if (isCoast(arrows[nextPi * PADDED_SIDE + nextPj])) break;
             pi = nextPi;
             pj = nextPj;
