@@ -48,8 +48,6 @@ public class LocalRiverProvider {
 
     // ---- Global-river trace / meander relaxation ----------------------------
     private static final double GATE_OFFSET = 32.0;
-    private static final int BORDER_RAMP_WIDTH = 24;
-    private static final double BORDER_SLOPE = 1e3;
     private static final int RELAX_STEPS = 10;
     private static final double MIN_WIDTH = 1.0;
 
@@ -176,7 +174,6 @@ public class LocalRiverProvider {
         // 5. mark the global-river pixels so the local network excludes them.
         final boolean[] globalMask = rasterizeGlobalMask(sim.getChannels());
 
-        // 6. local network: flow → outlet connectivity → threshold (excluding global) → trace segments.
         final List<Channel> localChannels = traceLocalNetwork(drainage, elev, globalMask, stages);
 
         // 7. assemble the unit tree: global network units + local channel units (tile-local coords).
@@ -232,18 +229,14 @@ public class LocalRiverProvider {
                     }
                 int dcx = ccx, dcz = ccz;
                 double[] drain = null;
+                final double marginInfl = marginInfluence(Math.max(grp.getWidth(ccx, ccz), MIN_WIDTH));
                 if (outDir != -1) {
                     dcx = ccx + PipelinePreprocessing.NEIGHBOR_OFFSET_X[outDir];
                     dcz = ccz + PipelinePreprocessing.NEIGHBOR_OFFSET_Z[outDir];
-                    drain = findDrain(
-                            ccx,
-                            ccz,
-                            outDir,
-                            tileX,
-                            tileZ,
-                            elev,
-                            grp.getElevation(ccx, ccz),
-                            marginInfluence(Math.max(grp.getWidth(ccx, ccz), MIN_WIDTH)));
+                    drain = findDrain(ccx, ccz, outDir, tileX, tileZ, elev, grp.getElevation(ccx, ccz), marginInfl);
+                } else {
+                    // no downstream arrow: the cell terminates at its lowest-elevation interior point.
+                    drain = findLowestInCell(ccx, ccz, tileX, tileZ, elev, marginInfl);
                 }
                 cells.put(cellKey(ccx, ccz), new CellInfo(ccx, ccz, outDir, dcx, dcz, drain));
             }
@@ -262,9 +255,14 @@ public class LocalRiverProvider {
                 final int ccz = tileZ * 2 + b;
                 final CellInfo c = cells.get(cellKey(ccx, ccz));
                 if (c == null) continue;
-                final double cx = PAD + a * COARSE_PX + COARSE_HALF;
-                final double cz = PAD + b * COARSE_PX + COARSE_HALF;
                 final Endpoint.Type type = (c.outDirection() != -1) ? Endpoint.Type.JUNCTION : Endpoint.Type.DRAIN;
+                // a terminal cell drains to its lowest-elevation interior point; otherwise the hub sits at the centre.
+                final double cx = (type == Endpoint.Type.DRAIN && c.drain() != null)
+                        ? c.drain()[0]
+                        : PAD + a * COARSE_PX + COARSE_HALF;
+                final double cz = (type == Endpoint.Type.DRAIN && c.drain() != null)
+                        ? c.drain()[1]
+                        : PAD + b * COARSE_PX + COARSE_HALF;
                 final int idx = addNode(nodeSpecs, cx, cz, type);
                 centerIdx.put(cellKey(ccx, ccz), idx);
                 if (type == Endpoint.Type.DRAIN) boundaryElevByNodeIdx.put(idx, (double) grp.getElevation(ccx, ccz));
@@ -281,7 +279,7 @@ public class LocalRiverProvider {
                 final double[] centreCoord = nodeCoord(nodeSpecs, centre);
                 final double width = Math.max(grp.getWidth(ccx, ccz), MIN_WIDTH);
 
-                if (c.drain() != null) {
+                if (c.outDirection() != -1 && c.drain() != null) {
                     final boolean downOwned =
                             isOwned(tileX, tileZ, c.dcx(), c.dcz()) && cells.containsKey(cellKey(c.dcx(), c.dcz()));
                     final int exitNode;
@@ -319,15 +317,18 @@ public class LocalRiverProvider {
                 }
 
                 if (GlobalRiverProvider.isSource(grp.getArrow(ccx, ccz))) {
-                    final double minX = PAD + a * COARSE_PX;
-                    final double minZ = PAD + b * COARSE_PX;
-                    final double[] seed = sourceSeed(ccx, ccz, minX, minZ, marginInfluence(width));
-                    final int seedNode = addNode(nodeSpecs, seed[0], seed[1], Endpoint.Type.SOURCE);
-                    final double downstreamCoarse =
-                            (c.outDirection() != -1) ? grp.getElevation(c.dcx(), c.dcz()) : grp.getElevation(ccx, ccz);
-                    boundaryElevByNodeIdx.put(
-                            seedNode, Math.max(sampleBilinear(elev, seed[0], seed[1]), downstreamCoarse));
-                    edgeSpecs.add(new RiverNetwork.EdgeSpec(seedNode, centre, pts(seed, centreCoord), width));
+                    addSourceNode(
+                            nodeSpecs,
+                            edgeSpecs,
+                            boundaryElevByNodeIdx,
+                            c,
+                            centre,
+                            centreCoord,
+                            a,
+                            b,
+                            width,
+                            elev,
+                            grp);
                 }
             }
         }
@@ -336,14 +337,42 @@ public class LocalRiverProvider {
             return new Meanders(PADDED, new float[PADDED * PADDED], new float[PADDED * PADDED], nodeSpecs, edgeSpecs);
         }
 
+        // Border confinement is now handled by the Meanders migration (per-channel, width-scaled).
         final float[] gradX = base[2].clone();
         final float[] gradZ = base[3].clone();
-        applyBorderPush(gradX, gradZ);
 
         final Meanders sim = new Meanders(PADDED, gradX, gradZ, nodeSpecs, edgeSpecs);
         sim.relaxLowerGrad(RELAX_STEPS);
         assignBedElevations(sim.getNetwork(), boundaryElevByNodeIdx, cells, base[0], grp, tileX, tileZ);
         return sim;
+    }
+
+    /**
+     * Create the SOURCE node for an owned cell flagged {@code isSource}: place a deterministic interior
+     * seed ({@link #sourceSeed}, kept {@code marginInfluence(width)} clear of the cell edges), record its
+     * boundary bed elevation (the decoded terrain at the seed, floored at the downstream coarse bed), and
+     * wire a seed→centre edge.
+     */
+    private void addSourceNode(
+            List<RiverNetwork.NodeSpec> nodeSpecs,
+            List<RiverNetwork.EdgeSpec> edgeSpecs,
+            Map<Integer, Double> boundaryElevByNodeIdx,
+            CellInfo c,
+            int centre,
+            double[] centreCoord,
+            int a,
+            int b,
+            double width,
+            float[] elev,
+            GlobalRiverProvider grp) {
+        final double minX = PAD + a * COARSE_PX;
+        final double minZ = PAD + b * COARSE_PX;
+        final double[] seed = sourceSeed(c.ccx(), c.ccz(), minX, minZ, marginInfluence(width));
+        final int seedNode = addNode(nodeSpecs, seed[0], seed[1], Endpoint.Type.SOURCE);
+        final double downstreamBed =
+                (c.outDirection() != -1) ? grp.getElevation(c.dcx(), c.dcz()) : grp.getElevation(c.ccx(), c.ccz());
+        boundaryElevByNodeIdx.put(seedNode, Math.max(sampleBilinear(elev, seed[0], seed[1]), downstreamBed));
+        edgeSpecs.add(new RiverNetwork.EdgeSpec(seedNode, centre, pts(seed, centreCoord), width));
     }
 
     /**
@@ -416,9 +445,8 @@ public class LocalRiverProvider {
             bed[0] = startElev;
             for (int i = 1; i < n; i++) {
                 final double frac = (double) i / (n - 1);
-                final double candidate =
-                        Math.max(sampleBilinear(decodedElev, pts.get(i)[0], pts.get(i)[1]), endElev);
-                bed[i] = Math.min(bed[i-1],candidate + (endElev - candidate) * frac);
+                final double candidate = Math.max(sampleBilinear(decodedElev, pts.get(i)[0], pts.get(i)[1]), endElev);
+                bed[i] = Math.min(bed[i - 1], candidate + (endElev - candidate) * frac);
             }
             ch.bedElevations = bed;
         }
@@ -740,24 +768,49 @@ public class LocalRiverProvider {
         return ((long) cx << 32) ^ (cz & 0xffffffffL);
     }
 
-    private void applyBorderPush(float[] gradX, float[] gradZ) {
-        for (int px = 0; px < PADDED; px++) {
-            for (int pz = 0; pz < PADDED; pz++) {
-                final int idx = px * PADDED + pz;
-                if (px < BORDER_RAMP_WIDTH)
-                    gradX[idx] -= (float) (BORDER_SLOPE * (1 - px / (double) BORDER_RAMP_WIDTH));
-                else if (px >= PADDED - BORDER_RAMP_WIDTH)
-                    gradX[idx] += (float) (BORDER_SLOPE * (1 - (PADDED - 1 - px) / (double) BORDER_RAMP_WIDTH));
-                if (pz < BORDER_RAMP_WIDTH)
-                    gradZ[idx] -= (float) (BORDER_SLOPE * (1 - pz / (double) BORDER_RAMP_WIDTH));
-                else if (pz >= PADDED - BORDER_RAMP_WIDTH)
-                    gradZ[idx] += (float) (BORDER_SLOPE * (1 - (PADDED - 1 - pz) / (double) BORDER_RAMP_WIDTH));
-            }
-        }
-    }
-
+    /**
+     * The exit point on the cell's cardinal-arrow edge: the edge pixel whose decoded elevation is closest
+     * to {@code target} (the cell's coarse bed). The exit edge is a constant-Z line (dir 4/5) or a
+     * constant-X line (dir 6/7) on the cell boundary. When that line lies on the tile's outer border the
+     * drain is a hand-off to the neighbour tile and may sit on the seam (only corners are avoided, via
+     * {@link #nearTileCorner}); when the line is interior to the tile the drain must stay clear of the
+     * whole border band ({@link #nearTileBorder}).
+     */
     private double[] findDrain(
             int ccx, int ccz, int dir, int tileX, int tileZ, float[] elev, double target, double marginInfl) {
+        final int minXi = PAD + (ccx - tileX * 2) * COARSE_PX;
+        final int minZi = PAD + (ccz - tileZ * 2) * COARSE_PX;
+        final boolean fixedZ = (dir == 4 || dir == 5); // edge is a constant-Z line
+        final int line = fixedZ ? (dir == 4 ? minZi : minZi + COARSE_PX) : (dir == 6 ? minXi : minXi + COARSE_PX);
+        if (line < 0 || line >= PADDED) return null;
+        final boolean edgeOnSeam = (line == PAD || line == PAD + GRID);
+        final int from = Math.max(0, fixedZ ? minXi : minZi);
+        final int to = Math.min(PADDED, (fixedZ ? minXi : minZi) + COARSE_PX);
+
+        int bestX = -1;
+        int bestZ = -1;
+        double bestDiff = Double.MAX_VALUE;
+        for (int t = from; t < to; t++) {
+            final int xi = fixedZ ? t : line;
+            final int zi = fixedZ ? line : t;
+            if (edgeOnSeam ? nearTileCorner(xi, zi, marginInfl) : nearTileBorder(xi, zi, marginInfl)) continue;
+            final double diff = Math.abs(elev[xi * PADDED + zi] - target);
+            if (diff < bestDiff) {
+                bestDiff = diff;
+                bestX = xi;
+                bestZ = zi;
+            }
+        }
+        if (bestX < 0) return null;
+        return new double[] {bestX, bestZ};
+    }
+
+    /**
+     * The lowest-elevation interior pixel of the cell, or {@code null} if none qualify. Pixels within
+     * {@code marginInfl} of the tile border are skipped so the terminal drain never lands on the outer
+     * band (keeping it clear of the seam shared with the neighbouring tile).
+     */
+    private double[] findLowestInCell(int ccx, int ccz, int tileX, int tileZ, float[] elev, double marginInfl) {
         final int minXi = PAD + (ccx - tileX * 2) * COARSE_PX;
         final int minZi = PAD + (ccz - tileZ * 2) * COARSE_PX;
         final int maxXi = minXi + COARSE_PX;
@@ -765,34 +818,27 @@ public class LocalRiverProvider {
 
         int bestX = -1;
         int bestZ = -1;
-        double bestDiff = Double.MAX_VALUE;
-        if (dir == 4 || dir == 5) {
-            final int lineZ = (dir == 4) ? minZi : maxZi;
-            if (lineZ < 0 || lineZ >= PADDED) return null;
-            for (int xi = Math.max(0, minXi); xi < Math.min(PADDED, maxXi); xi++) {
-                if (nearTileCorner(xi, lineZ, marginInfl)) continue;
-                final double diff = Math.abs(elev[xi * PADDED + lineZ] - target);
-                if (diff < bestDiff) {
-                    bestDiff = diff;
-                    bestX = xi;
-                    bestZ = lineZ;
-                }
-            }
-        } else {
-            final int lineX = (dir == 6) ? minXi : maxXi;
-            if (lineX < 0 || lineX >= PADDED) return null;
+        double bestElev = Double.MAX_VALUE;
+        for (int xi = Math.max(0, minXi); xi < Math.min(PADDED, maxXi); xi++) {
             for (int zi = Math.max(0, minZi); zi < Math.min(PADDED, maxZi); zi++) {
-                if (nearTileCorner(lineX, zi, marginInfl)) continue;
-                final double diff = Math.abs(elev[lineX * PADDED + zi] - target);
-                if (diff < bestDiff) {
-                    bestDiff = diff;
-                    bestX = lineX;
+                if (nearTileBorder(xi, zi, marginInfl)) continue;
+                final double e = elev[xi * PADDED + zi];
+                if (e < bestElev) {
+                    bestElev = e;
+                    bestX = xi;
                     bestZ = zi;
                 }
             }
         }
         if (bestX < 0) return null;
         return new double[] {bestX, bestZ};
+    }
+
+    /** True when {@code (px, pz)} sits within {@code marginInfl} of any of the four tile-interior edges. */
+    private static boolean nearTileBorder(double px, double pz, double marginInfl) {
+        final double lo = PAD;
+        final double hi = PAD + GRID;
+        return px - lo < marginInfl || hi - px < marginInfl || pz - lo < marginInfl || hi - pz < marginInfl;
     }
 
     private static boolean nearTileCorner(double px, double pz, double marginInfl) {

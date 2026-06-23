@@ -36,6 +36,13 @@ public final class Meanders {
     /** max per-step displacement for the valley-seeking migration. */
     private static final double MAX_GRAD_MIGRATION = DX;
 
+    /**
+     * Width of the border margin band kept clear of the grid edge, as a multiple of channel width.
+     * Matches {@code LocalRiverProvider.marginInfluence} (5×width) so a channel's whole carve band stays
+     * inside the grid.
+     */
+    private static final double MARGIN_INFLUENCE_FACTOR = 5.0;
+
     /** When true, step()/manageCollisions() dump per-stage network PNGs into step_&lt;n&gt;/ folders. */
     public static boolean DEBUG_STEPS = false;
 
@@ -164,8 +171,10 @@ public final class Meanders {
                 continue;
             }
             final double rate = Math.clamp(DT * migrationRates[i], -maxMigrationMagnetude, maxMigrationMagnetude);
-            final double[] migrationVector = VectorOps.scale(ch.spline.normal(i), -rate);
-            double[] migratedPoint = VectorOps.add(ch.spline.points().get(i), migrationVector);
+            final double[] point = ch.spline.points().get(i);
+            final double[] migrationVector =
+                    VectorOps.scale(ch.spline.normal(i), -rate * borderDamping(point[0], point[1], ch.width));
+            double[] migratedPoint = VectorOps.add(point, migrationVector);
             Debug.isNan(migratedPoint);
             migratedPoints.add(migratedPoint);
         }
@@ -190,9 +199,24 @@ public final class Meanders {
             final double magnitude = VectorOps.magnitude(displacement);
             if (magnitude > MAX_GRAD_MIGRATION)
                 displacement = VectorOps.scale(displacement, MAX_GRAD_MIGRATION / magnitude);
+            displacement = VectorOps.scale(displacement, borderDamping(point[0], point[1], ch.width));
             migratedPoints.add(VectorOps.add(point, displacement));
         }
         ch.spline = QuinticHermiteSpline.createCatmullRom(migratedPoints);
+    }
+
+    /**
+     * Multiplier in {@code [0, 1]} that fades a migration vector to zero as a point nears the grid border,
+     * so interior points never wander into the margin band. The band is {@code MARGIN_INFLUENCE_FACTOR ×
+     * width} wide, so wider channels are confined further from the edge — keeping their whole carve band
+     * inside the grid. Channel endpoints (sources/drains/junctions) are pinned by the callers, so only they
+     * are allowed to sit near the border.
+     */
+    private double borderDamping(double x, double z, double width) {
+        final double margin = MARGIN_INFLUENCE_FACTOR * width;
+        if (margin <= 0) return 1.0;
+        final double distToBorder = Math.min(Math.min(x, z), Math.min(gridSize - 1 - x, gridSize - 1 - z));
+        return Math.clamp(distToBorder / margin, 0.0, 1.0);
     }
 
     private double[] sampleGradient(double x, double z) {

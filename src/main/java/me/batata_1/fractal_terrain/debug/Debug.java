@@ -1,7 +1,5 @@
 package me.batata_1.fractal_terrain.debug;
 
-import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
-
 import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
 import java.io.*;
@@ -101,9 +99,7 @@ public class Debug {
         }
     }
 
-    public static synchronized void debug() {
-        dumpStorage(pipeline.getCoarse().getStorage(), "precip");
-    }
+    public static synchronized void debug() {}
 
     public static <T extends Persistable<T>> void dumpStorage(Storage<T> storage, String name1) {
         final String debugPath = FractalTerrainConfig.DEFAULT_DEBUG_PATH + "/" + name1;

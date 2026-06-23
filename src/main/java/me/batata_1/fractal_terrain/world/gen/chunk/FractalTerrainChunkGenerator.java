@@ -12,6 +12,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+
+import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.math.spline.Spline;
@@ -182,7 +184,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
             @NotNull StructureManager structures,
             @NotNull RandomState noiseConfig,
             @NotNull ChunkAccess chunk) {
-        if (true) return;
+        if (FractalTerrainConfig.DISABLE_SURFACE_STEP) return;
         if (!SharedConstants.debugVoidTerrain(chunk.getPos())) {
             WorldGenerationContext heightContext = new WorldGenerationContext(this, region);
             this.buildSurface(
@@ -231,7 +233,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
             @NotNull WorldGenLevel worldGenLevel,
             @NotNull ChunkAccess chunkAccess,
             @NotNull StructureManager structureManager) {
-        if (true) return;
+        if (FractalTerrainConfig.DISABLE_BIOME_DECORATION) return;
         ChunkPos chunkPos = chunkAccess.getPos();
         //  if(chunkPos.x!=(-499>>4)||chunkPos.z!=(428>>4)) return;
 

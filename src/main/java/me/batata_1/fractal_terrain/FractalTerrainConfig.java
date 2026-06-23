@@ -13,6 +13,10 @@ public record FractalTerrainConfig() {
     public static final int BINARY_SEARCH_MAX_STEPS = 20;
     public static final String DEFAULT_DEBUG_PATH = "run/debug";
     public static final boolean DEBUG = false;
+    public static final boolean TEST_INSTANCE = false;
+    public static final boolean DEBUG_RIVER_NET = false;
+    public static final boolean DISABLE_BIOME_DECORATION = true;
+    public static final boolean DISABLE_SURFACE_STEP = false;
     public static final int CH = 0;
     public static final int X = 1;
     public static final int Z = 2;

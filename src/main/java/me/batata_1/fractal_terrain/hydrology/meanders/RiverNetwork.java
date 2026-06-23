@@ -10,6 +10,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import me.batata_1.fractal_terrain.FractalTerrainConfig;
+import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.HydrologicalFeature;
 import me.batata_1.fractal_terrain.math.VectorOps;
@@ -78,9 +80,12 @@ public final class RiverNetwork {
             boolean savePreviousStates,
             int maxSavedStates,
             double resampleDist) {
+
         this.gridSize = gridSize;
         this.savePreviousStates = savePreviousStates;
         this.maxSavedStates = maxSavedStates;
+        if (FractalTerrainConfig.DEBUG_RIVER_NET)
+            Debug.river.seeNetwork(gridSize, nodeSpecs, edgeSpecs, "river_network", "_");
 
         for (int i = 0; i < nodeSpecs.size(); i++) {
             NodeSpec ns = nodeSpecs.get(i);
@@ -489,7 +494,8 @@ public final class RiverNetwork {
             if (otherEndpoint != null) {
                 if (otherEndpoint.outgoing == channelId) otherEndpoint.outgoing = -1;
                 otherEndpoint.incoming.remove(channelId);
-                if (otherEndpoint.type == Endpoint.Type.JUNCTION && otherEndpoint.degree() == 1) leafQueue.add(otherEndpoint.id);
+                if (otherEndpoint.type == Endpoint.Type.JUNCTION && otherEndpoint.degree() == 1)
+                    leafQueue.add(otherEndpoint.id);
             }
             if (savePreviousStates && channel != null && channel.numPts() >= 2) {
                 removedPaths.add(new RemovedPath(

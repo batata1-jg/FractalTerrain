@@ -31,7 +31,7 @@ public class ReliefProvider {
     // ---- Geometry / tuning --------------------------------------------------
     private static final int INNER = 512;
     /** DoG band-pass sigmas for the high-frequency res channel. */
-    private static final double RES_DOG_SIGMA1 = 1.0;
+    private static final double RES_DOG_SIGMA1 = 0.0;
 
     private static final double RES_DOG_SIGMA2 = 4.0;
     /** Halo (px) needed so the cropped DoG is free of border artifacts. */

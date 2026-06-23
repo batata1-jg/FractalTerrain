@@ -16,9 +16,6 @@ import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.math.MarchingSquares;
 import me.batata_1.fractal_terrain.math.Skeletonizer;
-import me.batata_1.fractal_terrain.math.VectorOps;
-import me.batata_1.fractal_terrain.math.ds.CoordPoint;
-import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import me.batata_1.fractal_terrain.storage.TileKey;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
@@ -40,25 +37,25 @@ import org.slf4j.Logger;
  *
  * <p>Arrow bitfield (channel 0), using the neighbour ordering of {@link PipelinePreprocessing}. Routing
  * is <b>D4</b> (cardinal neighbours only): drainage uses
- * {@link PipelinePreprocessing#computeDrainageDirectionCardinal} and the sink reroute marches cardinally,
- * so only the cardinal direction bits (4..7) are ever set and every river cell has a single edge-aligned
- * exit. Only the <b>downstream</b> (outgoing) direction is stored — upstream/tributary arrows are derived
- * on demand by scanning a pixel's neighbours (see {@link #ingoingMask(int, int)}), which stays consistent
- * across tile borders and naturally represents the multiple upstream branches at a confluence:
+ * {@link PipelinePreprocessing#computeDrainageDirectionCardinal}, so only the cardinal direction bits
+ * (4..7) are ever set and every river cell has a single edge-aligned exit. Only the <b>downstream</b>
+ * (outgoing) direction is stored — upstream/tributary arrows are derived on demand by scanning a pixel's
+ * neighbours (see {@link #ingoingMask(int, int)}), which stays consistent across tile borders and
+ * naturally represents the multiple upstream branches at a confluence:
  * <pre>
  *   bits  0..7 : outgoing direction mask — which neighbour the river leaves TOWARD (only 4..7 set under D4)
  *   bit   8    : source — this pixel is a ridge seed (river origin)
  *   bit   9    : coast  — this pixel is a river terminus on the coastline
- *   bit   10   : sink   — this pixel was a local minimum that triggered a reroute to the coast
+ *   bit   10   : sink   — (legacy) no longer set; depression filling removed interior sinks
  * </pre>
  *
  * <p>Per-tile pipeline: padded coarse elevation → threshold (upper/lower masks on the RAW elevation)
- * → isolate (an elevation ramp toward the tile border, applied only to a descent-gradient copy) →
- * ridge mask ({@link Skeletonizer#thin}) + coast mask ({@link MarchingSquares#borderMask}) →
- * per-source steepest-descent D4 walk recording outgoing bits (a sink reroutes cardinally to the nearest
- * coast point) → width from a flow-accumulation proxy → packed result tile. Thresholding before the ramp
- * keeps the coast classification anchored to real elevation, while the ramp confines steepest-descent
- * flow inward so rivers do not spill across tile borders.
+ * → isolate (an elevation ramp toward non-ocean tile borders, then a depression fill, on a descent-gradient
+ * copy only) → ridge mask ({@link Skeletonizer#thin}) + coast mask ({@link MarchingSquares#borderMask}) →
+ * per-source steepest-descent D4 walk recording outgoing bits until a coast pixel or border outlet → width
+ * from a flow-accumulation proxy → packed result tile. Thresholding before the ramp keeps the coast
+ * classification anchored to real elevation; the ramp confines flow inward across land borders while the
+ * depression fill guarantees every interior cell drains to an outlet (the ocean borders, left unramped).
  */
 public class GlobalRiverProvider {
 
@@ -198,21 +195,23 @@ public class GlobalRiverProvider {
             }
         }
 
-        // 3. isolate: a ramp rising toward the border on a COPY used only for the descent gradient.
-        final float[] rampedElevation = applyBorderRamp(elevation);
+        // 3. isolate: a ramp rising toward the border on a COPY used only for the descent gradient,
+        //    then a depression fill so every interior cell drains to a border outlet (no interior
+        //    sinks). Only this descent copy is affected — the real elevation is left untouched. The
+        //    ramp leaves ocean border pixels low, so flow exits the tile through the ocean.
+        final float[] rampedElevation = PipelinePreprocessing.fillSinks(applyBorderRamp(elevation), PADDED_SIDE, 0);
 
         // 4. ridge mask (thinned upper region) + coast mask (border of the lower region).
         //        final boolean[][] ridgeMask = Skeletonizer.thin(upperMask);
         final boolean[][] coastMask = MarchingSquares.borderMask(lowerMask);
 
-        // 5. gradient descent: steepest-descent D8 field over the ramped elevation, then a per-source
-        //    walk recording outgoing bits along each path until it reaches a coast pixel. A path that
-        //    stalls in an interior sink is rerouted toward the nearest coast cell (see coastTree).
+        // 5. gradient descent: steepest-descent D4 field over the sink-filled ramped elevation, then a
+        //    per-source walk recording outgoing bits along each path until it reaches a coast pixel or a
+        //    border outlet. Sink filling guarantees the walk never stalls in an interior depression.
         final float[] uniformWeight = new float[PADDED_SIDE * PADDED_SIDE];
         Arrays.fill(uniformWeight, 1f);
         final int[] drainageDirection =
                 PipelinePreprocessing.computeDrainageDirectionCardinal(rampedElevation, uniformWeight, PADDED_SIDE);
-        final QuadTree<CoordPoint> coastTree = buildCoastTree(coastMask);
         final int[] arrows = new int[PADDED_SIDE * PADDED_SIDE];
         for (int i = 0; i < PADDED_SIDE; i++) {
             for (int j = 0; j < PADDED_SIDE; j++) {
@@ -223,7 +222,7 @@ public class GlobalRiverProvider {
         for (int pi = 0; pi < PADDED_SIDE; pi++) {
             for (int pj = 0; pj < PADDED_SIDE; pj++) {
                 if (!ridgeMask[pi][pj]) continue;
-                walkFromSource(pi, pj, drainageDirection, coastMask, coastTree, arrows, descentPaths);
+                walkFromSource(pi, pj, drainageDirection, arrows, descentPaths);
             }
         }
 
@@ -278,17 +277,11 @@ public class GlobalRiverProvider {
      * At each step the exited pixel gets its <b>outgoing</b> bit set (upstream arrows are not stored;
      * they are derived later by scanning neighbours). The seed is flagged {@code source} and a terminal
      * coast pixel is flagged {@code coast}. Bits accumulate (OR) so converging tributaries share pixels.
-     * If the walk stalls in an interior sink (no downhill neighbour), the sink is flagged {@code sink}
-     * and the path is rerouted to the nearest coast cell via {@link #marchToCoast}.
+     * Sink filling on the descent elevation guarantees a downhill neighbour exists until a border outlet
+     * is reached, so a {@code -1} direction simply ends the walk.
      */
     private void walkFromSource(
-            int startPi,
-            int startPj,
-            int[] drainageDirection,
-            boolean[][] coastMask,
-            QuadTree<CoordPoint> coastTree,
-            int[] arrows,
-            @Nullable List<List<int[]>> descentPaths) {
+            int startPi, int startPj, int[] drainageDirection, int[] arrows, @Nullable List<List<int[]>> descentPaths) {
         arrows[startPi * PADDED_SIDE + startPj] |= SOURCE_BIT;
         final List<int[]> path = (descentPaths != null) ? new ArrayList<>() : null;
         if (path != null) path.add(new int[] {startPi, startPj});
@@ -299,12 +292,7 @@ public class GlobalRiverProvider {
             if (step == MAX_WALK_STEPS - 1) LOG.warn("max steps reached in walking from source");
             arrows[pi * PADDED_SIDE + pj] |= RIVER_BIT;
             final int direction = PipelinePreprocessing.neighbor(drainageDirection[pi * PADDED_SIDE + pj]);
-            if (direction == -1) {
-                // sink: no downhill neighbour — flag it and reroute toward the nearest coast cell.
-                arrows[pi * PADDED_SIDE + pj] |= SINK_BIT;
-                marchToCoast(pi, pj, coastMask, coastTree, arrows, path,drainageDirection);
-                break;
-            }
+            if (direction == -1) break; // reached a border outlet — river ends here.
             final int nextPi = pi + NEIGHBOR_OFFSET_X[direction];
             final int nextPj = pj + NEIGHBOR_OFFSET_Z[direction];
             arrows[pi * PADDED_SIDE + pj] |= (1 << (OUTGOING_SHIFT + direction));
@@ -319,101 +307,6 @@ public class GlobalRiverProvider {
             pj = nextPj;
         }
         if (descentPaths != null) descentPaths.add(path);
-    }
-
-    /**
-     * Build a spatial index of every coast cell in {@code coastMask}, in padded-grid pixel coords, used
-     * to find the nearest coastline target when a descent walk stalls in an interior sink. Returns
-     * {@code null} when the tile has no coast cells (then a stalled walk simply ends).
-     */
-    private @Nullable QuadTree<CoordPoint> buildCoastTree(boolean[][] coastMask) {
-        QuadTree<CoordPoint> coastTree = null;
-        for (int pi = 0; pi < PADDED_SIDE; pi++) {
-            for (int pj = 0; pj < PADDED_SIDE; pj++) {
-                if (!coastMask[pi][pj]) continue;
-                if (coastTree == null) {
-                    coastTree = new QuadTree<>(new double[] {0, 0}, new double[] {PADDED_SIDE, PADDED_SIDE});
-                }
-                coastTree.insertPoint(new CoordPoint(new double[] {pi, pj}));
-            }
-        }
-        return coastTree;
-    }
-
-    /**
-     * Reroute a stalled descent from sink {@code (sinkPi, sinkPj)} to the coast: find the nearest coast
-     * cell ({@link #nearestCoast}) and march <b>D4</b> (cardinal neighbours only) toward it, at each step
-     * taking the in-bounds cardinal neighbour that most reduces the Euclidean distance to the target and
-     * setting the current cell's outgoing bit. Restricting to cardinals keeps the rerouted arrows
-     * edge-aligned, consistent with the cardinal drainage field. Stops when a coast cell is entered
-     * (flagged {@code coast}), when no neighbour gets closer, or after {@link #MAX_WALK_STEPS}. A no-op
-     * when the tile has no coast cells.
-     */
-    private void marchToCoast(
-            int sinkPi,
-            int sinkPj,
-            boolean[][] coastMask,
-            @Nullable QuadTree<CoordPoint> coastTree,
-            int[] arrows,
-            @Nullable List<int[]> path,
-            int[] drainageDirection) {
-        final double[] target = nearestCoast(coastTree, sinkPi, sinkPj);
-        if (target == null) return; // no coastline in this tile — river simply ends.
-
-        int pi = sinkPi;
-        int pj = sinkPj;
-        for (int step = 0; step < MAX_WALK_STEPS; step++) {
-            if (step == MAX_WALK_STEPS - 1) LOG.warn("max steps reached in marching to margin");
-            int bestDirection = -1;
-            double bestDistance = VectorOps.distance(new double[] {pi, pj}, target);
-            for (int d = 4; d < 8; d++) {
-                final int nextPi = pi + NEIGHBOR_OFFSET_X[d];
-                final int nextPj = pj + NEIGHBOR_OFFSET_Z[d];
-                if (nextPi < 0 || nextPj < 0 || nextPi >= PADDED_SIDE || nextPj >= PADDED_SIDE) continue;
-                final double distance = VectorOps.distance(new double[] {nextPi, nextPj}, target);
-                if (distance < bestDistance) {
-                    bestDistance = distance;
-                    bestDirection = d;
-                }
-            }
-            if (bestDirection == -1) break;
-            drainageDirection[pi * PADDED_SIDE + pj] = bestDirection;// no neighbour gets closer to the coast.
-            final int nextPi = pi + NEIGHBOR_OFFSET_X[bestDirection];
-            final int nextPj = pj + NEIGHBOR_OFFSET_Z[bestDirection];
-            arrows[pi * PADDED_SIDE + pj] |= (1 << (OUTGOING_SHIFT + bestDirection));
-            arrows[pi * PADDED_SIDE + pj] |= RIVER_BIT;
-            if (path != null) path.add(new int[] {nextPi, nextPj});
-            if ((arrows[nextPi * PADDED_SIDE + nextPj] & RIVER_BIT) != 0) break;
-            if (isCoast(arrows[nextPi * PADDED_SIDE + nextPj])) break;
-            pi = nextPi;
-            pj = nextPj;
-        }
-    }
-
-    /**
-     * Nearest coast cell to {@code (pi, pj)} in padded-grid coords, found by expanding-radius circle
-     * queries against {@code coastTree} (which has no built-in nearest-neighbour search). Returns
-     * {@code null} when {@code coastTree} is {@code null} (no coast in the tile).
-     */
-    private double @Nullable [] nearestCoast(@Nullable QuadTree<CoordPoint> coastTree, int pi, int pj) {
-        if (coastTree == null) return null;
-        final double[] origin = {pi, pj};
-        final double maxRadius = PADDED_SIDE * 1.4143; // padded diagonal, generous upper bound
-        for (double radius = 4; radius <= maxRadius; radius *= 2) {
-            final List<CoordPoint> candidates = coastTree.getPointsInCircle(origin, radius);
-            if (candidates.isEmpty()) continue;
-            double[] nearest = null;
-            double nearestDistance = Double.MAX_VALUE;
-            for (CoordPoint candidate : candidates) {
-                final double distance = VectorOps.distance(origin, candidate.toArray());
-                if (distance < nearestDistance) {
-                    nearestDistance = distance;
-                    nearest = candidate.toArray();
-                }
-            }
-            return nearest;
-        }
-        return null;
     }
 
     /** Pulls the padded coarse slice and normalizes elevation by the blend weight (channel 6). */
@@ -436,17 +329,20 @@ public class GlobalRiverProvider {
      * Return a copy of {@code elevation} with a ramp added that rises toward the padded-grid border:
      * border pixels gain {@link #RAMP_HEIGHT}, decaying linearly to 0 at {@link #RAMP_WIDTH} pixels
      * inward. This pushes steepest-descent flow inward so rivers terminate within the tile rather than
-     * spilling across its borders. The central 64×64 region is left untouched (real elevation).
+     * spilling across its borders. <b>Ocean pixels ({@code elevation < 0}) are left untouched</b>: the
+     * ocean is already a natural border, so flow is allowed to exit the tile through it. The central
+     * 64×64 region is left untouched (real elevation).
      */
     private float[] applyBorderRamp(float[] elevation) {
         final float[] ramped = elevation.clone();
         for (int pi = 0; pi < PADDED_SIDE; pi++) {
             for (int pj = 0; pj < PADDED_SIDE; pj++) {
+                final int idx = pi * PADDED_SIDE + pj;
                 final int distanceToBorder =
                         Math.min(Math.min(pi, pj), Math.min(PADDED_SIDE - 1 - pi, PADDED_SIDE - 1 - pj));
                 if (distanceToBorder >= RAMP_WIDTH) continue;
-                final float rise = RAMP_HEIGHT * (RAMP_WIDTH - distanceToBorder) / (float) RAMP_WIDTH;
-                ramped[pi * PADDED_SIDE + pj] += rise;
+                if (elevation[idx] < 0) continue; // ocean acts as a natural border — don't raise it.
+                ramped[idx] += RAMP_HEIGHT * (RAMP_WIDTH - distanceToBorder) / (float) RAMP_WIDTH;
             }
         }
         return ramped;

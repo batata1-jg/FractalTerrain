@@ -1,4 +1,4 @@
-package me.batata_1.fractal_terrain.hydrology;
+package me.batata_1.fractal_terrain.debug.tests;
 
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 
@@ -6,6 +6,7 @@ import java.io.File;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.debug.Debug;
+import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.ml.models.ModelAssetManager;
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;

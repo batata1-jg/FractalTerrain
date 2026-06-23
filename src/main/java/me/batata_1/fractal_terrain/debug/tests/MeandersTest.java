@@ -1,8 +1,11 @@
-package me.batata_1.fractal_terrain.hydrology.meanders;
+package me.batata_1.fractal_terrain.debug.tests;
 
 import java.util.ArrayList;
 import java.util.List;
 import me.batata_1.fractal_terrain.debug.Debug;
+import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
+import me.batata_1.fractal_terrain.hydrology.meanders.Endpoint;
+import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
 import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork.EdgeSpec;
 import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork.NodeSpec;
 import org.slf4j.Logger;

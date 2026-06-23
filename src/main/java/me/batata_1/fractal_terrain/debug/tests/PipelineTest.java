@@ -1,4 +1,4 @@
-package me.batata_1.fractal_terrain.ml.pipeline;
+package me.batata_1.fractal_terrain.debug.tests;
 
 import java.util.concurrent.atomic.AtomicLong;
 

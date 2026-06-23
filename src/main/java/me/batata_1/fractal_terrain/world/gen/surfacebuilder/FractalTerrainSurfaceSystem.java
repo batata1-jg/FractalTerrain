@@ -11,6 +11,7 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeManager;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.BlockColumn;
@@ -39,7 +40,7 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
     private final NormalNoise surfaceSecondaryNoise;
     private final SurfaceRules.RuleSource surfaceRules;
     private final float fallOf = 10;
-    private final int minDepth = 0;
+    private final int minDepth = -1;
     private final int maxDepth = 10;
 
     public FractalTerrainSurfaceSystem(
@@ -140,26 +141,37 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
                 this, noiseConfig, chunk, chunkNoiseSampler, biomeAccess::getBiome, biomeRegistry, heightContext);
         SurfaceRules.SurfaceRule blockStateRule = surfaceRules.apply(materialRuleContext);
         BlockPos.MutableBlockPos mutable2 = new BlockPos.MutableBlockPos();
+        final int bottomY = chunk.getMinBuildHeight();
 
         for (int dx = 0; dx < 16; ++dx) {
             for (int dz = 0; dz < 16; ++dz) {
                 final int x = startX + dx;
                 final int z = startZ + dz;
-                final int surface_height = chunk.getHeight(Heightmap.Types.WORLD_SURFACE_WG, dx, dz) + 1;
                 mutable.setX(x).setZ(z);
                 materialRuleContext.updateXZ(x, z);
-                int stoneDepthAbove = 0;
+                final int surface_height = chunk.getHeight(Heightmap.Types.WORLD_SURFACE_WG, dx, dz);
+                int relief_height=0; //terrain h without water
+                for(int y=surface_height ; y>=bottomY ; y--) if(blockColumn.getBlock(y).getFluidState().isEmpty()) {
+                    relief_height = y;
+                    break;
+                }
+             //   if(x==328&&z==383) LOG.error("HEIGHT {}",relief_height);
+                int stoneDepthAbove = -10;
+                int stoneDepthBellow = 0;
                 int fluid_height = Integer.MIN_VALUE;
                 int s = Integer.MAX_VALUE;
-                int bottomY = chunk.getMinBuildHeight();
                 final int sedimentLayerDepth = sedimentDepth(x, z, accessor);
 
                 for (int d = 0; d <= sedimentLayerDepth; d++) {
-                    final int y = surface_height - d;
-                    materialRuleContext.updateY(stoneDepthAbove, -Integer.MAX_VALUE, fluid_height, x, y, z);
-                    BlockState blockState2 = blockStateRule.tryApply(x, y, z);
-                    if (blockState2 != null) {
-                        blockColumn.setBlock(y, blockState2);
+                    final int y = relief_height - d;
+                    stoneDepthAbove = d;
+                    stoneDepthBellow = relief_height + 128 - d;
+                    final int seaH = seaLevel - relief_height + 62;
+                    fluid_height = seaH;
+                    materialRuleContext.updateY(stoneDepthAbove, stoneDepthBellow , fluid_height, x, y, z);
+                    BlockState newBlockState = blockStateRule.tryApply(x, y, z);
+                    if (newBlockState != null) {
+                        blockColumn.setBlock(y, newBlockState);
                     }
                 }
             }
@@ -179,7 +191,7 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
         }
 
         @Override
-        public void setBlock(int y, BlockState state) {
+        public void setBlock(int y, @NotNull BlockState state) {
             LevelHeightAccessor heightLimitView = chunk.getHeightAccessorForGeneration();
             if (y >= heightLimitView.getMinBuildHeight() && y < heightLimitView.getMaxBuildHeight()) {
                 chunk.setBlockState(mutable.setY(y), state, false);

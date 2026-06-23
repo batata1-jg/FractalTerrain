@@ -5,6 +5,7 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import me.batata_1.fractal_terrain.debug.InstanceStageDumper;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;
@@ -21,6 +22,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.storage.LevelResource;
+import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 
 public class FractalTerrainInstance {
@@ -131,5 +133,21 @@ public class FractalTerrainInstance {
 
     public static LocalRiverProvider getLocalRiverProvider() {
         return getInstance().localRiverProvider;
+    }
+
+    /**
+     * Debug aid: recompute {@code (tileX, tileZ)} through every provider that exposes {@code debugStages}
+     * (global river, local river, relief) and dump a PNG of each intermediate stage under
+     * {@code <DEFAULT_DEBUG_PATH>/instance/}, one subdirectory per provider. The tile pair is forwarded to
+     * each provider in its own tile grid (see {@link InstanceStageDumper}).
+     */
+    @TestOnly
+    public static void dumpDebugStages(int tileX, int tileZ) {
+        final FractalTerrainInstance inst = getInstance();
+        final String root = FractalTerrainConfig.DEFAULT_DEBUG_PATH + "/instance";
+        LOG.info("dumping instance debug stages for tile ({},{}) to {}", tileX, tileZ, root);
+        InstanceStageDumper.dump(
+                root, tileX, tileZ, inst.globalRiverProvider, inst.localRiverProvider, inst.reliefSource);
+        LOG.info("instance debug stages dumped to {}", root);
     }
 }

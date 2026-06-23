@@ -1,6 +1,5 @@
 package me.batata_1.fractal_terrain;
 
-import static me.batata_1.fractal_terrain.debug.Debug.debug;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import me.batata_1.fractal_terrain.ml.models.ModelAssetManager;
@@ -55,7 +54,7 @@ public class FractalTerrain implements ModInitializer {
             if (!(chunkGenerator instanceof FractalTerrainChunkGenerator)) return;
             if (world.dimension() != Level.OVERWORLD) return;
             FractalTerrainInstance.init(server);
-            debug();
+            if (FractalTerrainConfig.TEST_INSTANCE) FractalTerrainInstance.dumpDebugStages(-1, -1);
         });
 
         ServerLifecycleEvents.SERVER_STOPPED.register((MinecraftServer server) -> {

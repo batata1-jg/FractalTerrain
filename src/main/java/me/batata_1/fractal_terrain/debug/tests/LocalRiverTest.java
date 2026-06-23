@@ -1,4 +1,4 @@
-package me.batata_1.fractal_terrain.hydrology;
+package me.batata_1.fractal_terrain.debug.tests;
 
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 
@@ -7,6 +7,9 @@ import java.util.ArrayList;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.debug.Debug;
+import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
+import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
+import me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing;
 import me.batata_1.fractal_terrain.hydrology.meanders.*;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.ml.models.ModelAssetManager;
@@ -34,7 +37,11 @@ public class LocalRiverTest {
     private static final int PAD = 1;
 
     /** Tiles (tx, tz) to render. */
-    private static final int[][] TILES = {{1, -3}, {1, -4}, {0, -3}, {0, -4}};
+    private static final int[][] TILES = {
+        {-1, -2},
+         {-1,-1},{0,-1},{0,-2}
+        //            {1, -4}, {0, -3}, {0, -4}
+    };
 
     public static void main(String[] args) {
         LOG.info("LocalRiverTest start; output dir = {}", DEBUG_PATH);
@@ -57,7 +64,17 @@ public class LocalRiverTest {
         LOG.info("Dumping tile ({},{}) river={}", tx, tz, GlobalRiverProvider.isRiver(globalRivers.getArrow(tx, tz)));
         final String prefix = "tile_tx" + tx + "_tz" + tz + "_";
 
-        final LocalRiverProvider.Stages stages = provider.debugStages(tx, tz);
+        // Dump the global-river cell profile first: it reads only GlobalRiverProvider, so it survives
+        // even if the Meanders build inside debugStages below throws.
+        globalRiverNetworkCellProfile(globalRivers, tx, tz);
+
+        final LocalRiverProvider.Stages stages;
+        try {
+            stages = provider.debugStages(tx, tz);
+        } catch (RuntimeException e) {
+            LOG.warn("tile ({},{}): debugStages failed ({}); cell profile above still dumped", tx, tz, e.toString(), e);
+            return;
+        }
         seeFloat(stages.flow, GRID, GRID, prefix + "01_flow");
         seeFloat(maskToFloat(stages.riverMask), GRID, GRID, prefix + "02_river_mask");
         seeFloat(stages.carvedElevation, GRID, GRID, prefix + "03_carved_elev");
@@ -70,6 +87,62 @@ public class LocalRiverTest {
                 stages.channels.size(),
                 stages.localChannels.size());
         checkMonotonicElevations(stages.network, tx, tz);
+    }
+
+    /** Cardinal direction labels for arrow bits 4..7 (see {@code PipelinePreprocessing.NEIGHBOR_OFFSET_*}). */
+    private static final String[] DIRECTION_NAME = {"", "", "", "", "-Z", "+Z", "-X", "+X"};
+
+    /**
+     * Log the 4×4 grid of global-river cells covering relief tile {@code (tx, tz)} — the same window
+     * {@code LocalRiverProvider.buildGlobalNetwork} reads (relative offsets {@code a,b ∈ [-1,2]}, so the
+     * inner 2×2 are the tile's owned cells). For each cell logs its coarse-cell coordinates, the
+     * source/sink/coast/river flags, width, bed elevation, and the downstream cell its outgoing arrow
+     * points to. Reads only {@link GlobalRiverProvider}, so it runs independently of the (possibly
+     * failing) {@code Meanders} build.
+     */
+    private static void globalRiverNetworkCellProfile(GlobalRiverProvider grp, int tx, int tz) {
+        LOG.info(
+                "global-river cell profile for relief tile ({},{}) [coarse cells {}..{} x {}..{}]:",
+                tx,
+                tz,
+                tx * 2 - 1,
+                tx * 2 + 2,
+                tz * 2 - 1,
+                tz * 2 + 2);
+        for (int a = -1; a <= 2; a++) {
+            for (int b = -1; b <= 2; b++) {
+                final int ccx = tx * 2 + a;
+                final int ccz = tz * 2 + b;
+                final int arrow = grp.getArrow(ccx, ccz);
+                final boolean owned = a >= 0 && a <= 1 && b >= 0 && b <= 1;
+                LOG.info(
+                        "  cell ({},{}){} arrow=0x{} river={} source={} sink={} coast={} width={} elev={} {}",
+                        ccx,
+                        ccz,
+                        owned ? " [owned]" : "",
+                        Integer.toHexString(arrow),
+                        GlobalRiverProvider.isRiver(arrow),
+                        GlobalRiverProvider.isSource(arrow),
+                        GlobalRiverProvider.isSink(arrow),
+                        GlobalRiverProvider.isCoast(arrow),
+                        grp.getWidth(ccx, ccz),
+                        grp.getElevation(ccx, ccz),
+                        downstreamCellLabel(ccx, ccz, arrow));
+            }
+        }
+    }
+
+    /** Resolve a cell's outgoing cardinal arrow to a "points to (dcx,dcz)" label, or "(no outgoing)". */
+    private static String downstreamCellLabel(int ccx, int ccz, int arrow) {
+        final int outMask = GlobalRiverProvider.outgoingMask(arrow);
+        for (int d = 4; d <= 7; d++) {
+            if ((outMask & (1 << d)) != 0) {
+                final int dcx = ccx + PipelinePreprocessing.NEIGHBOR_OFFSET_X[d];
+                final int dcz = ccz + PipelinePreprocessing.NEIGHBOR_OFFSET_Z[d];
+                return "-> points to (" + dcx + "," + dcz + ") dir=" + DIRECTION_NAME[d];
+            }
+        }
+        return "-> (no outgoing)";
     }
 
     /**

@@ -26,6 +26,8 @@ public class PopulateNoiseStep {
     private static final double MARKER_THRESHOLD = 0.8;
     private static final Logger LOG = getLogger(PopulateNoiseStep.class);
     private static final BlockState INSIDE_MARGIN_ROCK = Blocks.LIGHT_BLUE_CONCRETE.defaultBlockState();
+    private static final BlockState BEDROCK = Blocks.BEDROCK.defaultBlockState();
+    private static final BlockState DEEPSLATE = Blocks.DEEPSLATE.defaultBlockState();
 
     private final ReliefAccessor accessor;
 
@@ -60,8 +62,8 @@ public class PopulateNoiseStep {
     }
 
     public BlockState fillRocks(int x, int y, int z) {
-        // final double v = fillRocksPredicate.query((float) x, (float) z);
-        // return toRock(v);
+        if (y <= -128) return BEDROCK;
+        if (y <= -64) return DEEPSLATE;
         return DEFAULT_ROCK;
     }
 
