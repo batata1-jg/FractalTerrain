@@ -256,7 +256,8 @@ public class LocalRiverProvider {
                 final CellInfo c = cells.get(cellKey(ccx, ccz));
                 if (c == null) continue;
                 final Endpoint.Type type = (c.outDirection() != -1) ? Endpoint.Type.JUNCTION : Endpoint.Type.DRAIN;
-                // a terminal cell drains to its lowest-elevation interior point; otherwise the hub sits at the centre.
+                // a lastPointElev cell drains to its lowest-elevation interior point; otherwise the hub sits at the
+                // centre.
                 final double cx = (type == Endpoint.Type.DRAIN && c.drain() != null)
                         ? c.drain()[0]
                         : PAD + a * COARSE_PX + COARSE_HALF;
@@ -343,7 +344,7 @@ public class LocalRiverProvider {
 
         final Meanders sim = new Meanders(PADDED, gradX, gradZ, nodeSpecs, edgeSpecs);
         sim.relaxLowerGrad(RELAX_STEPS);
-        assignBedElevations(sim.getNetwork(), boundaryElevByNodeIdx, cells, base[0], grp, tileX, tileZ);
+        assignBedElevations(sim.getNetwork(), boundaryElevByNodeIdx, base[0]);
         return sim;
     }
 
@@ -377,24 +378,25 @@ public class LocalRiverProvider {
 
     /**
      * Bottom-up bed assignment: set source/drain node elevations from boundary conditions, propagate
-     * junction elevations leaves→drains (Kahn) as the min terminal of the incoming channels, then
+     * junction elevations leaves→drains (Kahn) as the min lastPointElev of the incoming channels, then
      * recompute each channel's per-point bed as a lerp from its start elevation toward its end
      * elevation, floored each step at {@code max(decoded, endElev)}. Writes {@link Endpoint#elevation} and
      * {@link Channel#bedElevations}.
+     *
+     * <p>Each channel's per-point elevation is floored at the bed of the terminal {@code DRAIN} it
+     * ultimately flows into (not the local coarse cell), so a whole source→junction→drain path is
+     * monotone non-increasing down to a single, path-consistent minimum. The drain bed of every node is
+     * resolved once up front by {@link #resolveDrainElevations} rather than re-scanned per junction.
      */
     private void assignBedElevations(
-            RiverNetwork network,
-            Map<Integer, Double> boundaryElevByNodeIdx,
-            Map<Long, CellInfo> cells,
-            float[] decodedElev,
-            GlobalRiverProvider grp,
-            int tileX,
-            int tileZ) {
+            RiverNetwork network, Map<Integer, Double> boundaryElevByNodeIdx, float[] decodedElev) {
         for (Endpoint endpoint : network.getNodes()) {
             if (endpoint.type == Endpoint.Type.SOURCE || endpoint.type == Endpoint.Type.DRAIN) {
                 endpoint.elevation = boundaryElevByNodeIdx.getOrDefault(endpoint.id, 0.0);
             }
         }
+
+        final Map<Integer, Double> drainElevByNodeId = resolveDrainElevations(network);
 
         final Map<Integer, Integer> pendingIncoming = new HashMap<>();
         final Map<Integer, Double> junctionElev = new HashMap<>();
@@ -408,22 +410,22 @@ public class LocalRiverProvider {
             }
         }
 
+        // calculate the correct elevations for the junctions, and sources
         while (!ready.isEmpty()) {
             final Channel ch = network.getChannel(ready.poll());
             if (ch == null) continue;
             final Endpoint startEndpoint = network.getNode(ch.startNodeId);
             final double startElev = (startEndpoint != null) ? startEndpoint.elevation : 0.0;
-            double terminal = Double.isNaN(startElev) ? Double.POSITIVE_INFINITY : startElev;
+            double lastPointElev = Double.isNaN(startElev) ? Double.POSITIVE_INFINITY : startElev;
+            final double terminalDrainElev = drainElevByNodeId.getOrDefault(ch.endNodeId, Double.NaN);
+            final double drainFloor = Double.isNaN(terminalDrainElev) ? Double.NEGATIVE_INFINITY : terminalDrainElev;
             for (double[] p : ch.spline.points()) {
-                terminal = Math.clamp(
-                        sampleBilinear(decodedElev, p[0], p[1]),
-                        downstreamCoarse(p, cells, grp, tileX, tileZ),
-                        terminal);
+                lastPointElev = Math.clamp(sampleBilinear(decodedElev, p[0], p[1]), drainFloor, lastPointElev);
             }
             final Endpoint endEndpoint = network.getNode(ch.endNodeId);
             if (endEndpoint == null) continue;
             if (endEndpoint.type == Endpoint.Type.JUNCTION) {
-                junctionElev.merge(endEndpoint.id, terminal, Math::min);
+                junctionElev.merge(endEndpoint.id, lastPointElev, Math::min);
                 final int remaining = pendingIncoming.merge(endEndpoint.id, -1, Integer::sum);
                 if (remaining == 0) {
                     endEndpoint.elevation = junctionElev.get(endEndpoint.id);
@@ -452,13 +454,41 @@ public class LocalRiverProvider {
         }
     }
 
-    private double downstreamCoarse(
-            double[] p, Map<Long, CellInfo> cells, GlobalRiverProvider grp, int tileX, int tileZ) {
-        final int cellA = tileX * 2 + (int) Math.floor((p[0] - PAD) / COARSE_PX);
-        final int cellB = tileZ * 2 + (int) Math.floor((p[1] - PAD) / COARSE_PX);
-        final CellInfo ci = cells.get(cellKey(cellA, cellB));
-        if (ci != null && ci.outDirection() != -1) return grp.getElevation(ci.dcx(), ci.dcz());
-        return grp.getElevation(cellA, cellB);
+    /**
+     * For every node, the bed elevation of the unique downstream {@code DRAIN} it ultimately flows into.
+     * The network is a single-outflow dendritic in-tree, so following {@link Endpoint#outgoing} edges from
+     * any node reaches exactly one drain. Each downstream walk memoizes every node it touches (including
+     * the drain itself), so the whole network is resolved in O(nodes) total instead of re-walking per
+     * junction. Unreachable nodes (broken topology) map to {@code NaN}.
+     */
+    private static Map<Integer, Double> resolveDrainElevations(RiverNetwork network) {
+        final Map<Integer, Double> drainElevByNodeId = new HashMap<>();
+        final ArrayDeque<Integer> pathToDrain = new ArrayDeque<>();
+        for (Endpoint start : network.getNodes()) {
+            if (drainElevByNodeId.containsKey(start.id)) continue;
+            pathToDrain.clear();
+            int currentId = start.id;
+            double drainElev = Double.NaN;
+            while (currentId != -1) {
+                final Double memoized = drainElevByNodeId.get(currentId);
+                if (memoized != null) {
+                    drainElev = memoized;
+                    break;
+                }
+                final Endpoint current = network.getNode(currentId);
+                if (current == null) break;
+                if (current.type == Endpoint.Type.DRAIN) {
+                    drainElev = current.elevation;
+                    drainElevByNodeId.put(currentId, drainElev);
+                    break;
+                }
+                pathToDrain.push(currentId);
+                final Channel outgoing = network.getChannel(current.outgoing);
+                currentId = (outgoing == null) ? -1 : outgoing.endNodeId;
+            }
+            for (int nodeId : pathToDrain) drainElevByNodeId.put(nodeId, drainElev);
+        }
+        return drainElevByNodeId;
     }
 
     // -------------------------------------------------------------------------
@@ -807,7 +837,7 @@ public class LocalRiverProvider {
 
     /**
      * The lowest-elevation interior pixel of the cell, or {@code null} if none qualify. Pixels within
-     * {@code marginInfl} of the tile border are skipped so the terminal drain never lands on the outer
+     * {@code marginInfl} of the tile border are skipped so the lastPointElev drain never lands on the outer
      * band (keeping it clear of the seam shared with the neighbouring tile).
      */
     private double[] findLowestInCell(int ccx, int ccz, int tileX, int tileZ, float[] elev, double marginInfl) {

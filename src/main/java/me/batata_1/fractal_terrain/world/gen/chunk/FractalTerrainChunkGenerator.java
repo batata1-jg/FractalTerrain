@@ -12,7 +12,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
-
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.debug.Debug;
@@ -154,7 +153,8 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
                         state = WATER;
                     } else {
                         state = populateNoiseStep.fillRocks(xx, y, zz);
-                        state = populateNoiseStep.placeRiver(state, xx, reliefHeight - y, zz);
+                        if (FractalTerrainConfig.DEBUG_RIVER_PIPELINE)
+                            state = populateNoiseStep.debugRiver(state, xx, reliefHeight - y, zz);
                     }
 
                     chunk.setBlockState(mutable, state, false);

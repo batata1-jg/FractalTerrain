@@ -69,7 +69,7 @@ public class PopulateNoiseStep {
 
     private final ThreadLocal<double[]> mutableCoordsXZ = ThreadLocal.withInitial(() -> new double[2]);
 
-    public BlockState placeRiver(BlockState state, int xx, int distFromSurface, int zz) {
+    public BlockState debugRiver(BlockState state, int xx, int distFromSurface, int zz) {
         if (distFromSurface != 0) return state;
         final int coarseX = Math.floorDiv(xx, 256 * 5);
         final int coarseZ = Math.floorDiv(zz, 256 * 5);

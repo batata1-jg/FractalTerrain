@@ -11,7 +11,6 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeManager;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.BlockColumn;
@@ -150,12 +149,13 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
                 mutable.setX(x).setZ(z);
                 materialRuleContext.updateXZ(x, z);
                 final int surface_height = chunk.getHeight(Heightmap.Types.WORLD_SURFACE_WG, dx, dz);
-                int relief_height=0; //terrain h without water
-                for(int y=surface_height ; y>=bottomY ; y--) if(blockColumn.getBlock(y).getFluidState().isEmpty()) {
-                    relief_height = y;
-                    break;
-                }
-             //   if(x==328&&z==383) LOG.error("HEIGHT {}",relief_height);
+                int relief_height = 0; // terrain h without water
+                for (int y = surface_height; y >= bottomY; y--)
+                    if (blockColumn.getBlock(y).getFluidState().isEmpty()) {
+                        relief_height = y;
+                        break;
+                    }
+                //   if(x==328&&z==383) LOG.error("HEIGHT {}",relief_height);
                 int stoneDepthAbove = -10;
                 int stoneDepthBellow = 0;
                 int fluid_height = Integer.MIN_VALUE;
@@ -166,9 +166,9 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
                     final int y = relief_height - d;
                     stoneDepthAbove = d;
                     stoneDepthBellow = relief_height + 128 - d;
-                    final int seaH = seaLevel - relief_height + 62;
+                    final int seaH = seaLevel - relief_height + 61;
                     fluid_height = seaH;
-                    materialRuleContext.updateY(stoneDepthAbove, stoneDepthBellow , fluid_height, x, y, z);
+                    materialRuleContext.updateY(stoneDepthAbove, stoneDepthBellow, fluid_height, x, y, z);
                     BlockState newBlockState = blockStateRule.tryApply(x, y, z);
                     if (newBlockState != null) {
                         blockColumn.setBlock(y, newBlockState);
