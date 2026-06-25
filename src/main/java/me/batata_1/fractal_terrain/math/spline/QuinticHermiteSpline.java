@@ -116,7 +116,7 @@ public record QuinticHermiteSpline(
         final double absDxy = VectorOps.magnitude(dxy);
         if (absDxy < 1e-8) return 0;
         final double[] ddxy = secondDerivative(t);
-        return VectorOps.cross2D(dxy, ddxy) / absDxy * absDxy * absDxy;
+        return VectorOps.cross2D(dxy, ddxy) / (absDxy * absDxy * absDxy);
     }
 
     public double curvature(int t) {

@@ -402,7 +402,7 @@ public class GlobalRiverProvider {
 
         // rivers should always be lower
         for (int i = 0; i < n; i++) {
-           // riverElev[i] -= 50;
+            // riverElev[i] -= 50;
             if (riverElev[i] < 0) riverElev[i] = 0;
             riverElev[i] = (float) Math.pow(riverElev[i], 0.9);
         }

@@ -5,26 +5,84 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
+import me.batata_1.fractal_terrain.debug.Infinite3DVisualizer;
 import net.fabricmc.loader.api.FabricLoader;
 
 public record FractalTerrainConfig() {
 
+    // ──────────────────────────────────────────────────────────────────────────
+    // Algorithm tuning
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /** Hard cap on spline resampling iterations, guarding against runaway geometry. */
     public static final int MAX_SPLINE_LENGTH = (int) 1e4;
+    /** Iteration cap for the spline arc-length binary search. */
     public static final int BINARY_SEARCH_MAX_STEPS = 20;
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Tensor layout (axis indices and per-stage channel counts)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /** Tensor axis indices for {@code [channel, x, z]} tile keys. */
+    public static final int CH = 0;
+
+    public static final int X = 1;
+    public static final int Z = 2;
+
+    /** Channel counts per pipeline stage. */
+    public static final int DECODER_CHANNELS = 8;
+
+    public static final int RELIEF_CHANNELS = 7;
+    public static final int BIOME_CHANNELS = 6;
+    public static final int GLOBAL_RIVER_CHANNELS = 3;
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Debug flags & logging
+    // ──────────────────────────────────────────────────────────────────────────
+
     public static final String DEFAULT_DEBUG_PATH = "run/debug";
     public static final boolean DEBUG = false;
     public static final boolean TEST_INSTANCE = false;
     public static final boolean DEBUG_RIVER_NET = false;
-    public static final boolean DISABLE_BIOME_DECORATION = false;
-    public static final boolean DISABLE_SURFACE_STEP = false;
-    public static final boolean DEBUG_RIVER_PIPELINE = false;
-    public static final int CH = 0;
-    public static final int X = 1;
-    public static final int Z = 2;
-    public static final int DECODER_CHANNELS = 8;
-    public static final int RELIEF_CHANNELS = 7;
-    public static final int BIOME_CHANNELS = 6;
-    public static final int GLOBAL_RIVER_CHANNELS = 3;
+    public static final boolean DEBUG_MANAGE_COLLISIONS = false;
+    public static final boolean DEBUG_CROSSING_WINNER = false;
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 3D visualizer (debug terrain projection — see Infinite3DVisualizer)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    public static final boolean DISABLE_3D_VISUALIZER = true;
+
+    /**
+     * Drives the elevation each visualizer column is raised to ({@link Infinite3DVisualizer#debugElevController}).
+     * Available {@link Infinite3DVisualizer.DebugModes}:
+     * <ul>
+     *   <li>{@code RELIEF} — decoded relief elevation channel.</li>
+     *   <li>{@code COARSE} — coarse-stage elevation channel.</li>
+     * </ul>
+     */
+    public static final Infinite3DVisualizer.DebugModes VIZ_H_CONTROL_MODE = Infinite3DVisualizer.DebugModes.RELIEF;
+
+    /**
+     * Drives the block painted at each visualizer position ({@link Infinite3DVisualizer#debugPaintController}).
+     * Available {@link Infinite3DVisualizer.DebugPaintModes}:
+     * <ul>
+     *   <li>{@code RIVER_NET} — global/local river + coast markers.</li>
+     *   <li>{@code PV} — peaks-and-valleys bands quantized from biome weirdness.</li>
+     * </ul>
+     */
+    public static final Infinite3DVisualizer.DebugPaintModes VIZ_PAINT_CONTROL_MODE =
+            Infinite3DVisualizer.DebugPaintModes.PV;
+
+    /** Generation steps suppressed while the visualizer is active. */
+    public static final boolean DISABLE_BIOME_DECORATION = true || !DISABLE_3D_VISUALIZER;
+
+    public static final boolean DISABLE_SURFACE_STEP = false || !DISABLE_3D_VISUALIZER;
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Property-file config (defaults backing the readers below)
+    // ──────────────────────────────────────────────────────────────────────────
+
     private static final String FILE_NAME = "terrain-diffusion-mc.properties";
     private static final String RESOURCE_PATH = "/" + FILE_NAME;
     private static final Properties PROPERTIES = new Properties();

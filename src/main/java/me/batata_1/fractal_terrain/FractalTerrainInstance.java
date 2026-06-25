@@ -5,6 +5,7 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import me.batata_1.fractal_terrain.debug.Infinite3DVisualizer;
 import me.batata_1.fractal_terrain.debug.InstanceStageDumper;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
@@ -47,6 +48,7 @@ public class FractalTerrainInstance {
     private final LocalRiverProvider localRiverProvider;
     private final FractalTerrainSurfaceSystem surfaceBuilder;
     private final RandomState noiseConfig;
+    private final Infinite3DVisualizer viz;
 
     private FractalTerrainInstance(MinecraftServer server) {
         this.curServer = server;
@@ -73,8 +75,9 @@ public class FractalTerrainInstance {
                 63,
                 this.noiseConfig.random,
                 chunkGenerator.getSettings().value().surfaceRule());
-
         LOG.info("fractal terrain instance created");
+        if (FractalTerrainConfig.DISABLE_3D_VISUALIZER) viz = null;
+        else viz = new Infinite3DVisualizer();
     }
 
     public static synchronized void init(MinecraftServer server) {
@@ -149,5 +152,10 @@ public class FractalTerrainInstance {
         InstanceStageDumper.dump(
                 root, tileX, tileZ, inst.globalRiverProvider, inst.localRiverProvider, inst.reliefSource);
         LOG.info("instance debug stages dumped to {}", root);
+    }
+
+    @TestOnly
+    public static Infinite3DVisualizer getInfinite3DVisualizer() {
+        return getInstance().viz;
     }
 }

@@ -107,6 +107,7 @@ public final class Meanders {
     private void stepImpl(int i, Consumer<Channel> migrate) {
         currentStep = i;
         network.beginStep();
+        dumpNetwork("00_original");
         for (Channel ch : network.getChannels()) {
             ch.reSample(DX);
             ch.spline = QuinticHermiteSpline.createCatmullRom(ch.spline.points());
@@ -115,7 +116,9 @@ public final class Meanders {
             network.manageCutoffs(ch, i);
         }
         dumpNetwork("01_migrated");
+
         network.manageCollisions(i);
+        dumpNetwork("04_managed");
         for (Channel ch : network.getChannels()) {
             ch.reSample(DX);
             ch.spline = QuinticHermiteSpline.createCatmullRom(ch.spline.points());
@@ -209,14 +212,17 @@ public final class Meanders {
      * Multiplier in {@code [0, 1]} that fades a migration vector to zero as a point nears the grid border,
      * so interior points never wander into the margin band. The band is {@code MARGIN_INFLUENCE_FACTOR ×
      * width} wide, so wider channels are confined further from the edge — keeping their whole carve band
-     * inside the grid. Channel endpoints (sources/drains/junctions) are pinned by the callers, so only they
-     * are allowed to sit near the border.
+     * inside the grid. An inner padding of the same {@code margin} width sits flush against the border where
+     * damping is hard-zero (the channel never migrates there); beyond it the multiplier ramps from 0 to 1
+     * over another {@code margin}. Channel endpoints (sources/drains/junctions) are pinned by the callers, so
+     * only they are allowed to sit near the border.
      */
     private double borderDamping(double x, double z, double width) {
         final double margin = MARGIN_INFLUENCE_FACTOR * width;
         if (margin <= 0) return 1.0;
         final double distToBorder = Math.min(Math.min(x, z), Math.min(gridSize - 1 - x, gridSize - 1 - z));
-        return Math.clamp(distToBorder / margin, 0.0, 1.0);
+        // Inner padding [0, margin]: hard-zero. Beyond it, ramp 0→1 over the next margin.
+        return Math.clamp((distToBorder - margin) / margin, 0.0, 1.0);
     }
 
     private double[] sampleGradient(double x, double z) {

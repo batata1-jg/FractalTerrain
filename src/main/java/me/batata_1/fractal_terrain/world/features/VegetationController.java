@@ -10,6 +10,6 @@ public class VegetationController {
     }
 
     public static float densityAt(int x, int z) {
-        return 0;
+        return 1;
     }
 }

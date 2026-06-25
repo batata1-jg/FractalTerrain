@@ -18,12 +18,12 @@ public class MeandersTest {
     private static final int GRID = 512;
 
     public static void main(String[] args) {
-        // Meanders.DEBUG_STEPS = true;
+        testSplit();
+        testMerge();
+        testCollisionCapture();
+        testSameContactPointCapture();
+        testNodeChannelEndpointsLineUp();
         testMeanders();
-        //  testSplit();
-        //  testMerge();
-        //   testCollisionCapture();
-        //   testNodeChannelEndpointsLineUp();
         LOG.info("ALL MEANDERS TESTS PASSED.");
     }
 
@@ -257,6 +257,59 @@ public class MeandersTest {
         // the narrow channel's source still reaches a drain (captured into b)
         check(reachesDrain(sim, 2), "captured narrow source no longer reaches a drain");
         LOG.info("testCollisionCapture passed.");
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // 4b. same-contact-point capture: TWO narrow channels captured into one wide trunk at ONE point
+    // -----------------------------------------------------------------------------------------
+    /** Wide trunk + two narrow channels (one vertical, one diagonal) all meeting exactly at (250,256). */
+    private static Meanders sameContactPointInstance() {
+        ArrayList<double[]> trunk = new ArrayList<>();
+        for (int i = 0; i <= 60; i++) trunk.add(new double[] {100.0 + i * 5.0, 256.0}); // vertex 30 == (250,256)
+
+        ArrayList<double[]> narrowA = new ArrayList<>();
+        for (int i = 0; i <= 24; i++) narrowA.add(new double[] {250.0, 196.0 + i * 5.0}); // vertex 12 == (250,256)
+
+        ArrayList<double[]> narrowB = new ArrayList<>();
+        for (int i = 0; i <= 24; i++)
+            narrowB.add(new double[] {190.0 + i * 5.0, 196.0 + i * 5.0}); // vertex 12 == (250,256)
+
+        List<NodeSpec> nodeSpecs = List.of(
+                new NodeSpec(trunk.getFirst()[0], trunk.getFirst()[1], Endpoint.Type.SOURCE),
+                new NodeSpec(trunk.getLast()[0], trunk.getLast()[1], Endpoint.Type.DRAIN),
+                new NodeSpec(narrowA.getFirst()[0], narrowA.getFirst()[1], Endpoint.Type.SOURCE),
+                new NodeSpec(narrowA.getLast()[0], narrowA.getLast()[1], Endpoint.Type.DRAIN),
+                new NodeSpec(narrowB.getFirst()[0], narrowB.getFirst()[1], Endpoint.Type.SOURCE),
+                new NodeSpec(narrowB.getLast()[0], narrowB.getLast()[1], Endpoint.Type.DRAIN));
+        List<EdgeSpec> edgeSpecs = List.of(
+                new EdgeSpec(0, 1, trunk, 20.0), new EdgeSpec(2, 3, narrowA, 5.0), new EdgeSpec(4, 5, narrowB, 5.0));
+        float[] g = zeroGrid();
+        return new Meanders(GRID, g, g, nodeSpecs, edgeSpecs);
+    }
+
+    private static void testSameContactPointCapture() {
+        Meanders sim = sameContactPointInstance();
+        sim.manageCollisions();
+
+        // Both narrow channels contact the trunk at the SAME point -> they cluster with the trunk and
+        // are captured into ONE junction collecting the trunk's upstream plus both tributaries
+        // (degree >= 4). The old TreeMap-by-position grouping silently dropped one of the two crossings.
+        boolean bigConfluence =
+                sim.getNodes().stream().anyMatch(nd -> nd.type == Endpoint.Type.JUNCTION && nd.degree() >= 4);
+        check(bigConfluence, "two same-point tributaries did not form a single >=degree-4 confluence");
+
+        for (Endpoint nd : sim.getNodes()) {
+            if (nd.degree() == 1) check(nd.isSourceOrDrain(), "leaf node " + nd.id + " is a junction");
+            check(!(nd.type == Endpoint.Type.JUNCTION && nd.degree() == 2), "leftover degree-2 junction " + nd.id);
+            check(nd.outgoing == -1 || sim.getChannel(nd.outgoing) != null, "dangling outgoing on " + nd.id);
+        }
+
+        // every source still reaches a drain -> no crossing was dropped
+        check(reachesDrain(sim, 0), "trunk source no longer reaches a drain");
+        check(reachesDrain(sim, 2), "narrow A source (captured) no longer reaches a drain");
+        check(reachesDrain(sim, 4), "narrow B source (captured) no longer reaches a drain");
+        assertEndpointsMatchNodes(sim, "same-contact-point capture");
+        LOG.info("testSameContactPointCapture passed.");
     }
 
     // -----------------------------------------------------------------------------------------

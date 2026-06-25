@@ -15,7 +15,7 @@ public abstract class SteepSlopePredicateMixin {
 
     private static final Logger LOG = Debug.getLogger(SteepSlopePredicateMixin.class);
     private final Interpolation interpolation = new Interpolation(
-            1.0F, xz -> FractalTerrainInstance.getReliefProvider().getRefinedGrad(xz));
+            5.0F, xz -> FractalTerrainInstance.getReliefProvider().getRefinedGrad(xz));
     private final float threshold = 4;
 
     @Inject(method = "compute", at = @At("HEAD"))

@@ -1,5 +1,7 @@
 package me.batata_1.fractal_terrain.hydrology.meanders;
 
+import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
+
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -17,6 +19,7 @@ import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.HydrologicalFeatur
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
+import org.slf4j.Logger;
 
 /**
  * The river-network graph and all topology/geometry it owns: a directed dendritic in-tree whose edges
@@ -45,6 +48,8 @@ public final class RiverNetwork {
     private static final int CLUSTER_GAP = 3;
     /** Floor on the resample spacing used when converting features to {@link HydrologicalUnit}s. */
     private static final double MIN_CONVERT_SPACING = 0.5;
+
+    private static final Logger LOG = getLogger(RiverNetwork.class);
 
     private final int gridSize;
     private final QuadTree<Channel.ChannelPt> quadTree =
@@ -266,6 +271,9 @@ public final class RiverNetwork {
 
     public void manageCollisions(int step) {
         List<Crossing> crossings = detectCrossings();
+        if (FractalTerrainConfig.DEBUG_MANAGE_COLLISIONS) {
+            LOG.info("crossing list: {}", Arrays.toString(crossings.toArray()));
+        }
         segmentAndResolve(crossings);
         pruneDanglingJunctionLeaves(step);
         deleteOrphanDrains();
@@ -347,12 +355,20 @@ public final class RiverNetwork {
         return false;
     }
 
-    private int decideWinner(Crossing crossing) {
-        if (reachesDownstream(crossing.channelIdA(), crossing.channelIdB())) return 1;
-        if (reachesDownstream(crossing.channelIdB(), crossing.channelIdA())) return 0;
-        if (crossing.widthA() > crossing.widthB()) return 0;
-        if (crossing.widthB() > crossing.widthA()) return 1;
-        return crossing.channelIdA() < crossing.channelIdB() ? 0 : 1;
+    /**
+     * Total order over channels used to pick the trunk of a contact cluster: the strongest channel
+     * wins. Precedence: an already-downstream channel beats its upstream, then wider beats narrower,
+     * then lower id wins (so the order is strict for distinct ids). Returns {@code >0} when
+     * {@code idA} is stronger, {@code <0} when {@code idB} is stronger, {@code 0} only when equal.
+     */
+    private int compareChannels(int idA, int idB) {
+        if (idA == idB) return 0;
+        if (reachesDownstream(idA, idB)) return -1; // idB is downstream of idA -> idB stronger
+        if (reachesDownstream(idB, idA)) return 1; // idA is downstream of idB -> idA stronger
+        final double widthA = channels.get(idA).width;
+        final double widthB = channels.get(idB).width;
+        if (widthA != widthB) return widthA > widthB ? 1 : -1;
+        return idA < idB ? 1 : -1; // lower id wins
     }
 
     private boolean reachesDownstream(int ancestorId, int descendantId) {
@@ -370,108 +386,111 @@ public final class RiverNetwork {
         return false;
     }
 
+    /** A planned split of a channel: which contact cluster it belongs to and whether it is the trunk. */
+    private record PlanEntry(long clusterRoot, boolean isTrunk) {}
+
+    /** A captured channel's upstream junction (created by a {@code redirect=true} split) and its cluster. */
+    private record Capture(int upstreamJunctionId, long clusterRoot) {}
+
+    /** Packs a {@code (channelId, position)} contact endpoint into a single union-find key. */
+    private static long endpointKey(int channelId, int position) {
+        return ((long) channelId << 32) | (position & 0xffffffffL);
+    }
+
+    private static long ufFind(Map<Long, Long> parent, long key) {
+        long root = key;
+        long step = parent.getOrDefault(root, root);
+        while (step != root) {
+            root = step;
+            step = parent.getOrDefault(root, root);
+        }
+        long cursor = key; // path compression
+        while (cursor != root) {
+            long next = parent.getOrDefault(cursor, cursor);
+            parent.put(cursor, root);
+            cursor = next;
+        }
+        return root;
+    }
+
+    private static void ufUnion(Map<Long, Long> parent, long a, long b) {
+        long rootA = ufFind(parent, a);
+        long rootB = ufFind(parent, b);
+        if (rootA != rootB) parent.put(rootA, rootB);
+    }
+
+    /**
+     * Stream-capture resolution. Channels that contact each other at one physical point form a
+     * <em>cluster</em> (union-find over {@code (channelId, position)} endpoints); the cluster's
+     * strongest channel under {@link #compareChannels} is the trunk and flows through, while every
+     * other member is captured into the trunk's junction. This single rule covers a lone crossing,
+     * the multi-tributary confluence, and the mixed win/lose case uniformly — all junctions are built
+     * by {@link #split}.
+     */
     private void segmentAndResolve(List<Crossing> crossings) {
-        final int crossingCount = crossings.size();
-        final int[] winnerSide = new int[crossingCount];
-        for (int crossingIdx = 0; crossingIdx < crossingCount; crossingIdx++)
-            winnerSide[crossingIdx] = decideWinner(crossings.get(crossingIdx));
+        if (crossings.isEmpty()) return;
 
-        Map<Integer, TreeMap<Integer, Integer>> splitsByChannel = new HashMap<>();
-        for (int crossingIdx = 0; crossingIdx < crossingCount; crossingIdx++) {
-            Crossing crossing = crossings.get(crossingIdx);
-            splitsByChannel
-                    .computeIfAbsent(crossing.channelIdA(), channelId -> new TreeMap<>())
-                    .put(crossing.posA(), crossingIdx);
-            splitsByChannel
-                    .computeIfAbsent(crossing.channelIdB(), channelId -> new TreeMap<>())
-                    .put(crossing.posB(), crossingIdx);
+        // 1. Cluster contacts that meet at the same physical point.
+        Map<Long, Long> parent = new HashMap<>();
+        for (Crossing crossing : crossings)
+            ufUnion(
+                    parent,
+                    endpointKey(crossing.channelIdA(), crossing.posA()),
+                    endpointKey(crossing.channelIdB(), crossing.posB()));
+
+        Map<Long, Map<Integer, Integer>> clusters = new HashMap<>(); // root -> (channelId -> position)
+        for (Crossing crossing : crossings) {
+            long root = ufFind(parent, endpointKey(crossing.channelIdA(), crossing.posA()));
+            Map<Integer, Integer> members = clusters.computeIfAbsent(root, k -> new HashMap<>());
+            members.putIfAbsent(crossing.channelIdA(), crossing.posA());
+            members.putIfAbsent(crossing.channelIdB(), crossing.posB());
         }
 
-        final int[] winnerJunctionId = new int[crossingCount];
-        final int[] loserUpstreamJunctionId = new int[crossingCount];
-        final int[] loserUpstreamSegmentId = new int[crossingCount];
-        Arrays.fill(winnerJunctionId, -1);
-        Arrays.fill(loserUpstreamJunctionId, -1);
-        Arrays.fill(loserUpstreamSegmentId, -1);
+        // 2. Per cluster: the trunk is the strongest channel; everyone else is captured into it.
+        Map<Integer, TreeMap<Integer, PlanEntry>> splitPlan = new HashMap<>(); // channelId -> (position -> plan)
+        for (Map.Entry<Long, Map<Integer, Integer>> entry : clusters.entrySet()) {
+            final long root = entry.getKey();
+            final Map<Integer, Integer> members = entry.getValue();
+            int trunk = -1;
+            for (int channelId : members.keySet())
+                if (trunk == -1 || compareChannels(channelId, trunk) > 0) trunk = channelId;
+            if (FractalTerrainConfig.DEBUG_CROSSING_WINNER) LOG.info("cluster {} -> trunk {}", members.keySet(), trunk);
+            for (Map.Entry<Integer, Integer> member : members.entrySet())
+                splitPlan
+                        .computeIfAbsent(member.getKey(), k -> new TreeMap<>())
+                        .put(member.getValue(), new PlanEntry(root, member.getKey() == trunk));
+        }
 
-        for (Map.Entry<Integer, TreeMap<Integer, Integer>> entry : splitsByChannel.entrySet()) {
+        // 3. Split each channel at its planned positions, DESCENDING so positions stay valid.
+        Map<Long, Integer> trunkJunction = new HashMap<>();
+        List<Capture> captures = new ArrayList<>();
+        for (Map.Entry<Integer, TreeMap<Integer, PlanEntry>> entry : splitPlan.entrySet()) {
             final int channelId = entry.getKey();
-            Channel originalChannel = channels.get(channelId);
-            final List<Integer> splitPositions =
-                    new ArrayList<>(entry.getValue().keySet());
-            final List<Integer> crossingAtPosition =
-                    new ArrayList<>(entry.getValue().values());
-            final int splitCount = splitPositions.size();
-            final int upstreamNodeId = originalChannel.startNodeId;
-            final int downstreamNodeId = originalChannel.endNodeId;
-            final int lastIndex = originalChannel.numPts() - 1;
-
-            final int[] segmentIds = new int[splitCount + 1];
-            int rangeStart = 0;
-            for (int segmentIndex = 0; segmentIndex <= splitCount; segmentIndex++) {
-                final int startIndex = rangeStart;
-                final int endIndex = (segmentIndex < splitCount) ? splitPositions.get(segmentIndex) : lastIndex;
-                ArrayList<double[]> segmentPoints = new ArrayList<>();
-                for (int i = startIndex; i <= endIndex; i++)
-                    segmentPoints.add(originalChannel.spline.points().get(i));
-                final int segmentId = (segmentIndex == 0) ? channelId : nextChannelId++;
-                Channel segment = new Channel(originalChannel.width, segmentPoints, segmentId);
-                channels.put(segmentId, segment);
-                segmentIds[segmentIndex] = segmentId;
-                rangeStart = endIndex;
-            }
-
-            channels.get(segmentIds[0]).startNodeId = upstreamNodeId;
-            channels.get(segmentIds[splitCount]).endNodeId = downstreamNodeId;
-            Endpoint downstreamEndpoint = nodes.get(downstreamNodeId);
-            downstreamEndpoint.incoming.remove(channelId);
-            downstreamEndpoint.incoming.add(segmentIds[splitCount]);
-
-            for (int boundary = 0; boundary < splitCount; boundary++) {
-                final int crossingIdx = crossingAtPosition.get(boundary);
-                final int upstreamSegmentId = segmentIds[boundary];
-                final int downstreamSegmentId = segmentIds[boundary + 1];
-                final double[] junctionCoord = originalChannel
-                        .spline
-                        .points()
-                        .get(splitPositions.get(boundary))
-                        .clone();
-                Crossing crossing = crossings.get(crossingIdx);
-                final boolean channelWins = (channelId == crossing.channelIdA() && winnerSide[crossingIdx] == 0)
-                        || (channelId == crossing.channelIdB() && winnerSide[crossingIdx] == 1);
-                if (channelWins) {
-                    Endpoint winnerJunction = newNode(junctionCoord);
-                    channels.get(upstreamSegmentId).endNodeId = winnerJunction.id;
-                    channels.get(downstreamSegmentId).startNodeId = winnerJunction.id;
-                    winnerJunction.incoming.add(upstreamSegmentId);
-                    winnerJunction.outgoing = downstreamSegmentId;
-                    winnerJunctionId[crossingIdx] = winnerJunction.id;
-                } else {
-                    Endpoint loserUpstreamJunction = newNode(junctionCoord);
-                    Endpoint loserDownstreamJunction = newNode(junctionCoord.clone());
-                    channels.get(upstreamSegmentId).endNodeId = loserUpstreamJunction.id;
-                    loserUpstreamJunction.incoming.add(upstreamSegmentId);
-                    channels.get(downstreamSegmentId).startNodeId = loserDownstreamJunction.id;
-                    loserDownstreamJunction.outgoing = downstreamSegmentId;
-                    loserUpstreamJunctionId[crossingIdx] = loserUpstreamJunction.id;
-                    loserUpstreamSegmentId[crossingIdx] = upstreamSegmentId;
-                }
+            for (Map.Entry<Integer, PlanEntry> planned :
+                    entry.getValue().descendingMap().entrySet()) {
+                final PlanEntry plan = planned.getValue();
+                if (split(channelId, planned.getKey(), !plan.isTrunk()) == -1) continue;
+                final int junctionId = channels.get(channelId).endNodeId;
+                if (plan.isTrunk()) trunkJunction.put(plan.clusterRoot(), junctionId);
+                else captures.add(new Capture(junctionId, plan.clusterRoot()));
             }
         }
 
-        for (int crossingIdx = 0; crossingIdx < crossingCount; crossingIdx++) {
-            final int winnerJunction = winnerJunctionId[crossingIdx];
-            final int loserJunction = loserUpstreamJunctionId[crossingIdx];
-            final int loserSegment = loserUpstreamSegmentId[crossingIdx];
-            if (winnerJunction == -1 || loserJunction == -1 || loserSegment == -1) continue;
-            Channel tributary = channels.get(loserSegment);
-            tributary.endNodeId = winnerJunction;
-            nodes.get(winnerJunction).incoming.add(loserSegment);
+        // 4. Redirect every captured upstream segment into its cluster trunk's junction.
+        for (Capture capture : captures) {
+            final Integer trunkJunctionId = trunkJunction.get(capture.clusterRoot());
+            if (trunkJunctionId == null) continue; // trunk was not a through-junction (rare cross-cluster)
+            Endpoint capturedJunction = nodes.get(capture.upstreamJunctionId());
+            if (capturedJunction == null || capturedJunction.incoming.isEmpty()) continue;
+            final int tributaryId = capturedJunction.incoming.iterator().next();
+            Channel tributary = channels.get(tributaryId);
+            Endpoint trunkEndpoint = nodes.get(trunkJunctionId);
+            tributary.endNodeId = trunkJunctionId;
+            trunkEndpoint.incoming.add(tributaryId);
             ArrayList<double[]> tributaryPoints = tributary.spline.points();
-            tributaryPoints.set(
-                    tributaryPoints.size() - 1, nodes.get(winnerJunction).coord.clone());
+            tributaryPoints.set(tributaryPoints.size() - 1, trunkEndpoint.coord.clone());
             tributary.spline = QuinticHermiteSpline.createCatmullRom(tributaryPoints);
-            nodes.remove(loserJunction);
+            nodes.remove(capture.upstreamJunctionId());
         }
     }
 
@@ -497,7 +516,7 @@ public final class RiverNetwork {
                 if (otherEndpoint.type == Endpoint.Type.JUNCTION && otherEndpoint.degree() == 1)
                     leafQueue.add(otherEndpoint.id);
             }
-            if (savePreviousStates && channel != null && channel.numPts() >= 2) {
+            if (savePreviousStates && channel.numPts() >= 2) {
                 removedPaths.add(new RemovedPath(
                         HydrologicalFeature.ABANDONED_RIVER,
                         new ArrayList<>(channel.spline.points()),

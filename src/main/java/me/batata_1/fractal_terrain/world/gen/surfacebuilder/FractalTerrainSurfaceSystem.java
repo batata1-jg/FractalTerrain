@@ -38,7 +38,7 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
     private final NormalNoise surfaceNoise;
     private final NormalNoise surfaceSecondaryNoise;
     private final SurfaceRules.RuleSource surfaceRules;
-    private final float fallOf = 10;
+    private final float fallOf = 25;
     private final int minDepth = -1;
     private final int maxDepth = 10;
 

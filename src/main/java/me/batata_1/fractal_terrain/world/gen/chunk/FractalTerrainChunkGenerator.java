@@ -123,17 +123,19 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         if (k <= 0) {
             return CompletableFuture.completedFuture(chunk);
         }
+        if (!FractalTerrainConfig.DISABLE_3D_VISUALIZER)
+            return CompletableFuture.supplyAsync(
+                    Util.name(() -> this.debugDoFill(chunk), () -> "fractal_terrain_debug_viz"), executor);
         return CompletableFuture.supplyAsync(
-                Util.name(() -> this.populateNoise(chunk), () -> "fractal_terrain_chunk_generator"), executor);
+                Util.name(() -> this.doFill(chunk), () -> "fractal_terrain_chunk_generator"), executor);
     }
 
-    private ChunkAccess populateNoise(final ChunkAccess chunk) {
+    private ChunkAccess doFill(final ChunkAccess chunk) {
         final ChunkPos chunkPos = chunk.getPos();
         final int startingX = chunkPos.getMinBlockX();
         final int startingZ = chunkPos.getMinBlockZ();
         final int seaLevel = settings.value().seaLevel() - 1;
         final int bottom = settings.value().noiseSettings().minY();
-        //  populateNoiseStep.ensureTilesForChunk(startingX, startingZ);
         final int[] reliefBaseHeight = getBaseHeightArr(startingX, startingZ);
         final Heightmap oceanHeightmap = chunk.getOrCreateHeightmapUnprimed(Heightmap.Types.OCEAN_FLOOR_WG);
         final Heightmap surfaceHeightmap = chunk.getOrCreateHeightmapUnprimed(Heightmap.Types.WORLD_SURFACE_WG);
@@ -153,9 +155,39 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
                         state = WATER;
                     } else {
                         state = populateNoiseStep.fillRocks(xx, y, zz);
-                        if (FractalTerrainConfig.DEBUG_RIVER_PIPELINE)
-                            state = populateNoiseStep.debugRiver(state, xx, reliefHeight - y, zz);
                     }
+
+                    chunk.setBlockState(mutable, state, false);
+                    surfaceHeightmap.update(xx & 0xF, y, zz & 0xF, state);
+                    oceanHeightmap.update(xx & 0xF, y, zz & 0xF, state);
+                    mutable.set(xx, y, zz);
+                    chunk.markPosForPostprocessing(mutable);
+                }
+            }
+        }
+        return chunk;
+    }
+
+    private ChunkAccess debugDoFill(final ChunkAccess chunk) {
+        final ChunkPos chunkPos = chunk.getPos();
+        final int startingX = chunkPos.getMinBlockX();
+        final int startingZ = chunkPos.getMinBlockZ();
+        final int bottom = settings.value().noiseSettings().minY();
+        final Heightmap oceanHeightmap = chunk.getOrCreateHeightmapUnprimed(Heightmap.Types.OCEAN_FLOOR_WG);
+        final Heightmap surfaceHeightmap = chunk.getOrCreateHeightmapUnprimed(Heightmap.Types.WORLD_SURFACE_WG);
+        final BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+        for (int dx = 0; dx < 16; dx++) {
+            for (int dz = 0; dz < 16; dz++) {
+                final int xx = startingX + dx;
+                final int zz = startingZ + dz;
+                mutable.set(xx, bottom, zz);
+                BlockState state;
+                final int surfaceH =
+                        FractalTerrainInstance.getInfinite3DVisualizer().debugElevController(xx, zz);
+                for (int y = bottom; y <= surfaceH; y++) {
+                    mutable.setY(y);
+
+                    state = FractalTerrainInstance.getInfinite3DVisualizer().debugPaintController(xx, y, zz);
 
                     chunk.setBlockState(mutable, state, false);
                     surfaceHeightmap.update(xx & 0xF, y, zz & 0xF, state);

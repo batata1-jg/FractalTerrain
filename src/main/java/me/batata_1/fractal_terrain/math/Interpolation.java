@@ -47,8 +47,8 @@ public class Interpolation {
     // xz real coords
     private double interpolate(float x, float z, final Function<Double, Double> step) {
 
-        x /= interpolation_scale * 5;
-        z /= interpolation_scale * 5;
+        x /= interpolation_scale;
+        z /= interpolation_scale;
 
         final int[] xs = {(int) Math.floor(x), (int) Math.ceil(x)};
         final int[] zs = {(int) Math.floor(z), (int) Math.ceil(z)};

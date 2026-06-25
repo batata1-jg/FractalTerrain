@@ -47,8 +47,12 @@ import org.jetbrains.annotations.TestOnly;
 public class LocalRiverProvider {
 
     // ---- Global-river trace / meander relaxation ----------------------------
-    private static final double GATE_OFFSET = 32.0;
-    private static final int RELAX_STEPS = 10;
+    private static final double GATE_JITTER = 24.0;
+    private static final int MAX_RELAX_STEPS = 50;
+    // Relaxation steps scale with the elevation of the tile's primary owned cell (2*tileCoords):
+    // a baseline at sea level plus a per-elevation increment, so higher terrain relaxes more.
+    private static final int MIN_RELAX_STEPS = 5;
+    private static final double RELAX_STEPS_PER_ELEV = 0.2;
     private static final double MIN_WIDTH = 1.0;
 
     // ---- Carving / sink filling ---------------------------------------------
@@ -280,6 +284,7 @@ public class LocalRiverProvider {
                 final double[] centreCoord = nodeCoord(nodeSpecs, centre);
                 final double width = Math.max(grp.getWidth(ccx, ccz), MIN_WIDTH);
 
+                // drains to another cell. Places the channel that connects the center to the drainage point
                 if (c.outDirection() != -1 && c.drain() != null) {
                     final boolean downOwned =
                             isOwned(tileX, tileZ, c.dcx(), c.dcz()) && cells.containsKey(cellKey(c.dcx(), c.dcz()));
@@ -290,12 +295,14 @@ public class LocalRiverProvider {
                         exitNode = addNode(nodeSpecs, c.drain()[0], c.drain()[1], Endpoint.Type.DRAIN);
                         boundaryElevByNodeIdx.put(exitNode, (double) grp.getElevation(c.dcx(), c.dcz()));
                     }
-                    final int ox = PipelinePreprocessing.NEIGHBOR_OFFSET_X[c.outDirection()];
-                    final int oz = PipelinePreprocessing.NEIGHBOR_OFFSET_Z[c.outDirection()];
                     edgeSpecs.add(new RiverNetwork.EdgeSpec(
-                            centre, exitNode, pts(centreCoord, gateInside(c.drain(), ox, oz), c.drain()), width));
+                            centre,
+                            exitNode,
+                            pts(centreCoord, gateInside(centreCoord, c.drain(), ccx, ccz), c.drain()),
+                            width));
                 }
 
+                // places the edges that connects sources/junctions in the boarders to the center of the cell
                 for (int d = 4; d <= 7; d++) {
                     final int ox = PipelinePreprocessing.NEIGHBOR_OFFSET_X[d];
                     final int oz = PipelinePreprocessing.NEIGHBOR_OFFSET_Z[d];
@@ -313,7 +320,7 @@ public class LocalRiverProvider {
                     edgeSpecs.add(new RiverNetwork.EdgeSpec(
                             entryNode,
                             centre,
-                            pts(n.drain(), gateInside(n.drain(), ox, oz), centreCoord),
+                            pts(n.drain(), gateInside(centreCoord, n.drain(), ccx, ccz), centreCoord),
                             Math.max(grp.getWidth(n.ccx(), n.ccz()), MIN_WIDTH)));
                 }
 
@@ -335,17 +342,48 @@ public class LocalRiverProvider {
         }
 
         if (edgeSpecs.isEmpty()) {
-            return new Meanders(PADDED, new float[PADDED * PADDED], new float[PADDED * PADDED], nodeSpecs, edgeSpecs);
+            final Meanders empty =
+                    new Meanders(PADDED, new float[PADDED * PADDED], new float[PADDED * PADDED], nodeSpecs, edgeSpecs);
+            clearBuildState(cells, nodeSpecs, edgeSpecs, centerIdx, edgeNodeIdx, boundaryElevByNodeIdx);
+            return empty;
         }
 
         // Border confinement is now handled by the Meanders migration (per-channel, width-scaled).
         final float[] gradX = base[2].clone();
         final float[] gradZ = base[3].clone();
 
+        // Relaxation steps vary with the elevation of the tile's primary owned cell (2*tileCoords):
+        // higher terrain gets more steps, capped at MAX_RELAX_STEPS.
+        final CellInfo primaryCell = cells.get(cellKey(tileX * 2, tileZ * 2));
+        final double primaryElev = (primaryCell != null) ? grp.getElevation(primaryCell.ccx(), primaryCell.ccz()) : 0.0;
+        final int relaxSteps = MIN_RELAX_STEPS + (int) Math.round(Math.max(0.0, primaryElev) * RELAX_STEPS_PER_ELEV);
+
         final Meanders sim = new Meanders(PADDED, gradX, gradZ, nodeSpecs, edgeSpecs);
-        sim.relaxLowerGrad(RELAX_STEPS);
+        sim.relaxLowerGrad(Math.min(relaxSteps, MAX_RELAX_STEPS));
         assignBedElevations(sim.getNetwork(), boundaryElevByNodeIdx, base[0]);
+        clearBuildState(cells, nodeSpecs, edgeSpecs, centerIdx, edgeNodeIdx, boundaryElevByNodeIdx);
         return sim;
+    }
+
+    /**
+     * Release the transient build scaffolding accumulated by {@link #buildGlobalNetwork}. Everything here
+     * has already been consumed (the {@link Meanders}/{@link RiverNetwork} copies the node/edge specs and
+     * {@code assignBedElevations} drains the boundary-elevation map), so clearing them frees the references
+     * before the (returned) sim is handed back.
+     */
+    private static void clearBuildState(
+            Map<Long, CellInfo> cells,
+            List<RiverNetwork.NodeSpec> nodeSpecs,
+            List<RiverNetwork.EdgeSpec> edgeSpecs,
+            Map<Long, Integer> centerIdx,
+            Map<EdgeKey, Integer> edgeNodeIdx,
+            Map<Integer, Double> boundaryElevByNodeIdx) {
+        cells.clear();
+        nodeSpecs.clear();
+        edgeSpecs.clear();
+        centerIdx.clear();
+        edgeNodeIdx.clear();
+        boundaryElevByNodeIdx.clear();
     }
 
     /**
@@ -760,8 +798,26 @@ public class LocalRiverProvider {
         return list;
     }
 
-    private static double[] gateInside(double[] e, int offsetX, int offsetZ) {
-        return new double[] {e[0] - offsetX * GATE_OFFSET, e[1] - offsetZ * GATE_OFFSET};
+    /**
+     * Gate point steering a channel between the cell centre and an edge drain point. Returns the midpoint between
+     * {@code centre} and the edge {@code side} point, displaced by a small deterministic offset keyed on the cell
+     * coordinates (so the jitter is stable across rebuilds and consistent for both flanking tiles).
+     */
+    private static double[] gateInside(double[] centre, double[] side, int ccx, int ccz) {
+        final double mx = 0.5 * (centre[0] + side[0]);
+        final double mz = 0.5 * (centre[1] + side[1]);
+        final long h = cellHash(ccx, ccz);
+        final double angle = (h & 0xFFFFL) / 65536.0 * 2.0 * Math.PI;
+        final double mag = ((h >>> 16) & 0xFFFFL) / 65536.0 * GATE_JITTER;
+        return new double[] {mx + Math.cos(angle) * mag, mz + Math.sin(angle) * mag};
+    }
+
+    /** Deterministic 64-bit hash of a cell coordinate pair (SplitMix64 finalizer). */
+    private static long cellHash(int ccx, int ccz) {
+        long z = (((long) ccx) << 32) ^ (ccz & 0xFFFFFFFFL);
+        z = (z ^ (z >>> 30)) * 0xBF58476D1CE4E5B9L;
+        z = (z ^ (z >>> 27)) * 0x94D049BB133111EBL;
+        return z ^ (z >>> 31);
     }
 
     private static boolean isOwned(int tileX, int tileZ, int ccx, int ccz) {
