@@ -6,7 +6,6 @@ import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 import java.util.Arrays;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
-import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
@@ -17,6 +16,20 @@ import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.DensityFunctions;
 import org.jetbrains.annotations.NotNull;
 
+/**
+ * Builds the per-tile vanilla biome-parameter field consumed by {@code FractalTerrainBiomeSource}.
+ * See {@code worldgeneration101.md} ("Biomes → Overworld Biomes").
+ *
+ * <p>Vanilla resolves an Overworld biome from six parameters — continentalness, erosion, temperature,
+ * humidity (vegetation), weirdness, and depth. The first five are horizontal: {@link ClimateVariableTransform}
+ * derives them from the diffusion model's climate + relief channels into a cached 512×512 tile (one channel
+ * each, see {@link BiomeChannels}). Depth is vertical and supplied directly from block Y by a
+ * {@code yClampedGradient} density function (wiki: depth ≈ 0 at the surface, rising downward), so it is not
+ * stored in a tile channel.
+ *
+ * <p>{@link #sampler} wires these channels into a {@link Climate.Sampler} in vanilla's
+ * {@code temperature, humidity, continentalness, erosion, depth, weirdness} order.
+ */
 public class BiomeProvider {
 
     /** Native-px e-folding distance of the river-humidity falloff (tunable). */
@@ -58,17 +71,25 @@ public class BiomeProvider {
     /** Scale-5 bilinear sampler over the weirdness channel; backs {@link #getWeirdness(int, int)}. */
     private final Interpolation weirdnessInterpolation;
 
-    private enum BiomeChannels{
-        TEMPERATURE(2),
-        HUMIDITY(3),
+    /**
+     * Tile-channel index for each vanilla biome parameter, matching the layout written by
+     * {@link ClimateVariableTransform#transform}. {@link #DEPTH} is vertical (from block Y) and has
+     * no tile channel, so it carries the sentinel {@code -1}.
+     */
+    private enum BiomeChannels {
         CONTINENTALNESS(0),
         EROSION(1),
-        DEPTH(-1),
-        WEIRDNESS(4);
-        final int val;
-        private BiomeChannels(int val) {this.val = val;}
-    }
+        TEMPERATURE(2),
+        HUMIDITY(3),
+        WEIRDNESS(4),
+        DEPTH(-1);
 
+        final int channel;
+
+        BiomeChannels(int channel) {
+            this.channel = channel;
+        }
+    }
 
     public BiomeProvider(String path) {
         final_tiles = new NonIntersectingInfiniteTensor(
@@ -97,18 +118,19 @@ public class BiomeProvider {
 
                     FloatTensor t = new FloatTensor(entries, new int[] {BIOME_CHANNELS, 512, 512});
 
-                  //  Debug.seeTile(t, x, z, "final_biomes");
+                    //  Debug.seeTile(t, x, z, "final_biomes");
                     return t;
                 });
-        // T H C E D W SpawnTarget
+        // Vanilla Climate.Sampler order: temperature, humidity, continentalness, erosion, depth, weirdness.
         final float scale = 1;
         sampler = new Climate.Sampler(
-                new BiomeProviderDensity(scale, BiomeChannels.TEMPERATURE.val),
-                new BiomeProviderDensity(scale, BiomeChannels.HUMIDITY.val),
-                new BiomeProviderDensity(scale, BiomeChannels.CONTINENTALNESS.val),
-                new ErosionDensity(scale, BiomeChannels.EROSION.val),
+                new BiomeProviderDensity(scale, BiomeChannels.TEMPERATURE.channel),
+                new BiomeProviderDensity(scale, BiomeChannels.HUMIDITY.channel),
+                new BiomeProviderDensity(scale, BiomeChannels.CONTINENTALNESS.channel),
+                new ErosionDensity(scale, BiomeChannels.EROSION.channel),
+                // Depth: vertical parameter, 0 at the surface rising downward (worldgeneration101.md).
                 DensityFunctions.yClampedGradient(-64, 63, -1, 0),
-                new BiomeProviderDensity(scale, BiomeChannels.WEIRDNESS.val),
+                new BiomeProviderDensity(scale, BiomeChannels.WEIRDNESS.channel),
                 List.of());
 
         weirdnessInterpolation = new Interpolation(scale * 5, mutablePos -> {
@@ -249,9 +271,15 @@ public class BiomeProvider {
         }
     }
 
-
-    //TODO: handle E5
+    /**
+     * Erosion density that nudges values out of vanilla's shattered band (erosion level 5,
+     * ≈0.45–0.55) until shattered biomes are handled. See {@code worldgeneration101.md}
+     * ("Shattered biomes") and {@link ClimateVariableTransform#isShatteredErosion}.
+     */
     private static class ErosionDensity implements DensityFunction.SimpleFunction {
+
+        // Shattered (erosion level 5) avoidance band and the push applied to escape it.
+        private static final double SHATTERED_LO = 0.44, SHATTERED_HI = 0.55, SHATTERED_PUSH = 0.15;
 
         private final Interpolation interpolation;
 
@@ -271,14 +299,14 @@ public class BiomeProvider {
                 final int x = pos.blockX();
                 final int z = pos.blockZ();
                 densities[i] = interpolation.interpolateBilinear(x, z);
-                if(0.44<densities[i]&&densities[i]<0.55) densities[i] += 0.15;
+                if (SHATTERED_LO < densities[i] && densities[i] < SHATTERED_HI) densities[i] += SHATTERED_PUSH;
             }
         }
 
         @Override
         public double compute(FunctionContext pos) {
             double densities = interpolation.interpolateBilinear(pos.blockX(), pos.blockZ());
-            if(0.44<densities&&densities<0.55) densities += 0.15;
+            if (SHATTERED_LO < densities && densities < SHATTERED_HI) densities += SHATTERED_PUSH;
             return densities;
         }
 

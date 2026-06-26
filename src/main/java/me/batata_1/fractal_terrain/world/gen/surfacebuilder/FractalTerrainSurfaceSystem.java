@@ -3,8 +3,12 @@ package me.batata_1.fractal_terrain.world.gen.surfacebuilder;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import java.util.Objects;
+
 import me.batata_1.fractal_terrain.mixin.MaterialRuleContextAccessor;
 import me.batata_1.fractal_terrain.relief.ReliefAccessor;
+import me.batata_1.fractal_terrain.world.biome.Continentalness;
+import me.batata_1.fractal_terrain.world.biome.ErosionLevel;
+import me.batata_1.fractal_terrain.world.biome.PeaksValleys;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Registry;
 import net.minecraft.world.level.ChunkPos;
@@ -69,10 +73,30 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
         return (int) (Math.floor(baseValue * steps + 0.5));
     }
 
+    private final ThreadLocal<Integer> mutableDepth = ThreadLocal.withInitial(()-> 0);
     private int sedimentDepth(final int x, final int z, ReliefAccessor accessor) {
         final float grad = (float) (accessor.reliefGradInterpolation().interpolateBilinear(x, z));
         final float normDepth = 1 / (1 + grad * grad / fallOf);
-        return quantize(normDepth, maxDepth - minDepth) + minDepth;
+        mutableDepth.set(quantize(normDepth, maxDepth - minDepth) + minDepth);
+        highErosionPvFactor(x,z,accessor);
+        return mutableDepth.get();
+    }
+
+    private void highErosionPvFactor(int x, int z, ReliefAccessor accessor) {
+        int erosionLvl = ErosionLevel.erosionLevel((float) accessor.erosion().interpolateBilinear(x,z));
+        Continentalness c = Continentalness.of((float) accessor.continentalness().interpolateBilinear(x,z));
+        PeaksValleys pv = PeaksValleys.of((float) accessor.erosion().interpolateBilinear(x,z));
+        if(erosionLvl==0||erosionLvl==1) {
+            switch (pv) {
+                case PEAKS -> mutableDepth.set(50);
+                case HIGH -> {
+                    if(erosionLvl==0) mutableDepth.set(50);
+                }
+                default -> {
+                    if(c.equals(Continentalness.COAST)) mutableDepth.set(50);
+                }
+            }
+        }
     }
 
     static final BlockState GRASS_BLOCK = Blocks.GRASS_BLOCK.defaultBlockState();
@@ -83,44 +107,6 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
         return DIRT;
     }
 
-    private void buildSurface(
-            final int x,
-            final int z,
-            final ChunkAccess chunk,
-            final int dx,
-            final int dz,
-            final int[] reliefBaseHeight) {
-        final int surfaceHeight = reliefBaseHeight[((dx << 4) + dz)];
-    }
-
-    private BlockState topLayer(final int x, final int z) {
-        return applyTerrainGradient(x, z);
-    }
-
-    private static final BlockState[] terrainGradient = {
-        Blocks.OBSIDIAN.defaultBlockState(),
-        Blocks.BLACKSTONE.defaultBlockState(),
-        Blocks.POLISHED_BLACKSTONE.defaultBlockState(),
-        Blocks.SMOOTH_BASALT.defaultBlockState(),
-        Blocks.COBBLED_DEEPSLATE.defaultBlockState(),
-        Blocks.CYAN_TERRACOTTA.defaultBlockState(),
-        Blocks.DEEPSLATE.defaultBlockState(),
-        Blocks.TUFF.defaultBlockState(),
-        Blocks.COBBLESTONE.defaultBlockState(),
-        Blocks.STONE.defaultBlockState(),
-        Blocks.ANDESITE.defaultBlockState(),
-        Blocks.DIORITE.defaultBlockState(),
-        Blocks.CALCITE.defaultBlockState(),
-        Blocks.SNOW_BLOCK.defaultBlockState()
-    };
-
-    public BlockState applyTerrainGradient(final int x, final int z) {
-        final int colors = terrainGradient.length - 1;
-        //        final int idx = (int) (Math.floor(
-        //                (Math.tanh(reliefResInterpolation.interpolateBilinear(x, z) / 15.0) * 0.5 + 0.5) * colors +
-        // 0.5));
-        return terrainGradient[0];
-    }
 
     public void buildSurface(
             ReliefAccessor accessor,

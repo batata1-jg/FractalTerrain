@@ -9,4 +9,9 @@ public record ReliefAccessor(
         Interpolation reliefGradYInterpolation,
         Interpolation reliefResInterpolation,
         Interpolation reliefBlurredInterpolation,
-        RockStrata strata) {}
+        RockStrata strata,
+        Interpolation continentalness,
+        Interpolation erosion,
+        Interpolation temperature,
+        Interpolation vegetation,
+        Interpolation weirdness) {}

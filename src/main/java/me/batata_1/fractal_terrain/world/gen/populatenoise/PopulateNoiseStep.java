@@ -26,6 +26,8 @@ public class PopulateNoiseStep {
 
     private final ReliefAccessor accessor;
 
+
+    //TODO: fix this, the new interpolations are all wrong
     public PopulateNoiseStep(final float scale) {
         final float interpolationScale = scale * 5;
         this.accessor = new ReliefAccessor(
@@ -41,7 +43,17 @@ public class PopulateNoiseStep {
                         .getGradX(xz)),
                 new Interpolation(interpolationScale, xz -> FractalTerrainInstance.getReliefProvider()
                         .getGradY(xz)),
-                RockStrata.AngledPlaneStrata.create(9, 8, rocks));
+                RockStrata.AngledPlaneStrata.create(9, 8, rocks),
+                new Interpolation(interpolationScale, xz -> FractalTerrainInstance.getReliefProvider()
+                        .getElev(xz)),
+                new Interpolation(interpolationScale, xz -> FractalTerrainInstance.getReliefProvider()
+                        .getElev(xz)),
+                new Interpolation(interpolationScale, xz -> FractalTerrainInstance.getReliefProvider()
+                        .getElev(xz)),
+                new Interpolation(interpolationScale, xz -> FractalTerrainInstance.getReliefProvider()
+                        .getElev(xz)),
+                new Interpolation(interpolationScale, xz -> FractalTerrainInstance.getReliefProvider()
+                        .getElev(xz)));
     }
 
     public int getHeight(final int x, final int z) {
