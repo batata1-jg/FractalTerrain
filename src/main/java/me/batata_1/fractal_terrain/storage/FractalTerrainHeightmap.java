@@ -46,10 +46,10 @@ public record FractalTerrainHeightmap(float[][] data) {
         GRAD_X(pos -> fillBilinear(pos, getReliefProvider()::getGradX)),
         GRAD_Y(pos -> fillBilinear(pos, getReliefProvider()::getGradY)),
         CONTINENTALNESS(pos -> fillBilinear(pos, getBiomeProvider()::getContinentalness)),
-        EROSION(pos -> fillBilinear(pos, getBiomeProvider()::getErosion)),
+        EROSION(getBiomeProvider()::fillErosion),
         TEMPERATURE(pos -> fillBilinear(pos, getBiomeProvider()::getTemperature)),
         VEGETATION(pos -> fillBilinear(pos, getBiomeProvider()::getVegetation)),
-        WEIRDNESS(pos -> fillBilinear(pos, getBiomeProvider()::getWeirdness));
+        WEIRDNESS(getBiomeProvider()::fillWeirdness);
 
         private static final float SCALE = 5.0f;
 

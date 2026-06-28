@@ -3,6 +3,7 @@ package me.batata_1.fractal_terrain.math.ds;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import me.batata_1.fractal_terrain.storage.Persistable;
@@ -71,7 +72,7 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
      * leaf-scan / descend) through {@link #LOG}. Compile-time constant: when {@code false} the JIT
      * removes the guarded branches, so production queries pay nothing.
      */
-    private static final boolean DEBUG_QUERY = true;
+    private static final boolean DEBUG_QUERY = false;
 
     /**
      * When {@code true}, the constructor runs {@link #validate()} after freezing the tree and throws on
@@ -79,6 +80,21 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
      * production (validation is O(nodes + points)).
      */
     private static final boolean VALIDATE_ON_BUILD = false;
+
+    /**
+     * When {@code true}, {@link #getPointsInBox} / {@link #getPointsInCircle} validate their arguments —
+     * and the points they return — for NaN coordinates, logging a warning for each offence. A NaN in a
+     * query argument silently yields a meaningless result (every {@link QuadTreeShape} comparison against
+     * NaN is {@code false}), so this catches it. Compile-time constant: zero cost when {@code false}.
+     */
+    private static final boolean CHECK_QUERY_NAN = false;
+
+    /**
+     * When {@code true}, the constructor logs the root-cell alignment — the point bounding box, how many
+     * times the cell size had to double, and the resulting {@code (rootOriginX, rootOriginZ, rootSize)} —
+     * via {@link #LOG}. Compile-time constant: zero cost when {@code false}.
+     */
+    private static final boolean DEBUG_BUILD = false;
 
     /** Format tag for the binary tile layout written by {@link #serialize()} ("IQT1"). */
     private static final int MAGIC = 0x49515431;
@@ -153,6 +169,17 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
         final ArrayList<T> sorted = new ArrayList<>(inputPoints);
         sorted.removeIf(Objects::isNull);
 
+        // Reject non-finite point coordinates up front. A NaN or infinity poisons the alignment loop
+        // below — NaN makes every `floor(coord/m0)` comparison true forever (it never converges), and an
+        // infinity drives m0 to overflow — and corrupts every downstream findSection / bounds compare.
+        for (final T p : sorted) {
+            final double px = p.get(X);
+            final double pz = p.get(Z);
+            if (!Double.isFinite(px) || !Double.isFinite(pz))
+                throw new IllegalArgumentException(
+                        "ImmutableQuadTree input point has non-finite coordinates (" + px + ", " + pz + "): " + p);
+        }
+
         // Snap the root to a power-of-two aligned cell containing every point, so the absolute
         // findSection tiling matches recursive bisection at every level. Alignment is derived from the
         // point bbox only — the supplied min/max is coverage metadata (it may be unbounded ±INF).
@@ -170,12 +197,42 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
                 highZ = Math.max(highZ, p.get(Z));
             }
             double m0 = 1.0;
-            while (Math.floor(lowX / m0) != Math.floor(highX / m0) || Math.floor(lowZ / m0) != Math.floor(highZ / m0)) {
-                m0 *= 2.0;
-            }
-            this.rootSize = m0;
-            this.rootOriginX = Math.floor(lowX / m0) * m0;
-            this.rootOriginZ = Math.floor(lowZ / m0) * m0;
+            int doublings = 0;
+
+            double width = highX - lowX;
+            double height = highZ - lowZ;
+//            while (((int) Math.floor(lowX / m0)) != ((int) Math.floor(highX / m0)) || ((int) Math.floor(lowZ / m0)) != ((int) Math.floor(highZ / m0))) {
+//                m0 *= 2.0;
+//                doublings++;
+//                if(doublings>30) {
+//                    LOG.error("doubles more than 30 tiles, area is becoming large. Condition: {} != {} || {} != {}",
+//                            ((int) Math.floor(lowX / m0)) , ((int) Math.floor(highX / m0)) , ((int) Math.floor(lowZ / m0)) , ((int) Math.floor(highZ / m0)));
+//                    throw new IllegalArgumentException("ImmutableQuadTree point spread too large to align a"
+//                            + " power-of-two root cell (size overflowed); bbox x=[" + lowX + "," + highX + "] z=["
+//                            + lowZ + "," + highZ + "] doublings: " + doublings);
+//                }
+//                // Guard against doubling past the finite double range: with finite (pre-checked) inputs the
+//                // loop converges long before this, so an overflow means the point spread is unrepresentable.
+//                if (Double.isInfinite(m0))
+//                    throw new IllegalArgumentException("ImmutableQuadTree point spread too large to align a"
+//                            + " power-of-two root cell (size overflowed); bbox x=[" + lowX + "," + highX + "] z=["
+//                            + lowZ + "," + highZ + "] doublings: " + doublings);
+//            }
+            this.rootSize = Math.max(width,height) + 10.0;
+            this.rootOriginX = lowX - 5.0;
+            this.rootOriginZ = lowZ - 5.0;
+            if (DEBUG_BUILD)
+                LOG.info(
+                        "ImmutableQuadTree align: {} pts, bbox x=[{},{}] z=[{},{}] -> root=[{},{})+{} ({} doublings)",
+                        sorted.size(),
+                        lowX,
+                        highX,
+                        lowZ,
+                        highZ,
+                        rootOriginX,
+                        rootOriginZ,
+                        rootSize,
+                        doublings);
         }
 
         sorted.sort(this::comparator);
@@ -260,15 +317,19 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
 
     public List<T> getPointsInBox(final double[] b, final double[] d) {
         if (b.length != 2 || d.length != 2) throw new IllegalStateException();
+        if (CHECK_QUERY_NAN) checkBoxQueryNaN(b, d);
         final List<T> out = new ArrayList<>();
         query(new QuadTreeShape.QuadTreeBox(b, d), out);
+        if (CHECK_QUERY_NAN) checkResultNaN("getPointsInBox", out);
         return out;
     }
 
     public List<T> getPointsInCircle(final double[] center, final double r) {
         if (center.length != 2) throw new IllegalStateException();
+        if (CHECK_QUERY_NAN) checkCircleQueryNaN(center, r);
         final List<T> out = new ArrayList<>();
         query(new QuadTreeShape.QuadTreeCircle(center, r), out);
+        if (CHECK_QUERY_NAN) checkResultNaN("getPointsInCircle", out);
         return out;
     }
 
@@ -344,6 +405,66 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
     }
 
     // -------------------------------------------------------------------------
+    // NaN / non-finite query guards (see CHECK_QUERY_NAN)
+    // -------------------------------------------------------------------------
+
+    /** True if any coordinate in {@code coords} is NaN. */
+    public static boolean containsNaN(final double[] coords) {
+        for (final double v : coords) if (Double.isNaN(v)) return true;
+        return false;
+    }
+
+    /**
+     * Validates a box query's lower corner {@code b} and extent {@code d} for NaN coordinates, logging a
+     * warning for each offending argument. Returns {@code true} when a NaN was found (the box query is
+     * then meaningless — every {@link QuadTreeShape} comparison against NaN is {@code false}).
+     */
+    public boolean checkBoxQueryNaN(final double[] b, final double[] d) {
+        boolean bad = false;
+        if (containsNaN(b)) {
+            LOG.warn("getPointsInBox: NaN in corner {}", Arrays.toString(b));
+            bad = true;
+        }
+        if (containsNaN(d)) {
+            LOG.warn("getPointsInBox: NaN in extent {}", Arrays.toString(d));
+            bad = true;
+        }
+        return bad;
+    }
+
+    /**
+     * Validates a circle query's {@code center} and {@code radius} for NaN, logging a warning for each
+     * offence. Returns {@code true} when a NaN was found (the circle query is then meaningless).
+     */
+    public boolean checkCircleQueryNaN(final double[] center, final double radius) {
+        boolean bad = false;
+        if (containsNaN(center)) {
+            LOG.warn("getPointsInCircle: NaN in center {}", Arrays.toString(center));
+            bad = true;
+        }
+        if (Double.isNaN(radius)) {
+            LOG.warn("getPointsInCircle: NaN radius");
+            bad = true;
+        }
+        return bad;
+    }
+
+    /**
+     * Scans query results for points that carry a NaN coordinate (i.e. corrupt indexed data, not a bad
+     * query), logging each. Returns the number of offending points.
+     */
+    public int checkResultNaN(final String where, final List<T> out) {
+        int count = 0;
+        for (final T pt : out) {
+            if (pt != null && containsNaN(pt.getCoords())) {
+                LOG.warn("{}: result point has NaN coords: {}", where, pt);
+                count++;
+            }
+        }
+        return count;
+    }
+
+    // -------------------------------------------------------------------------
     // Debugging / self-checking (see DEBUG_QUERY, VALIDATE_ON_BUILD)
     // -------------------------------------------------------------------------
 
@@ -359,11 +480,15 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
      *       slice start);
      *   <li>every point physically lies inside its leaf node's square {@code [ox, ox+size) ×
      *       [oz, oz+size)} — i.e. the build's quadrant sort agreed with {@link #findSection};
-     *   <li>the root count equals the total number of stored points.
+     *   <li>the root count equals the total number of stored points;
+     *   <li>the computed root square ({@code rootOriginX}, {@code rootOriginZ}, {@code rootSize}) is
+     *       finite and {@code rootSize > 0} — a single NaN/∞ point coordinate poisons the alignment math
+     *       and silently breaks every quadrant decision.
      * </ul>
      */
     public boolean validate() {
         final List<String> errors = new ArrayList<>();
+        checkRootConstants(errors);
         if (nodes.length == 0) {
             if (points.length != 0) errors.add("empty node array but " + points.length + " points");
         } else {
@@ -379,6 +504,23 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
             return false;
         }
         return true;
+    }
+
+    /**
+     * Validates the computed root square and the supplied coverage window for non-finite values. A NaN or
+     * infinity in any point coordinate propagates into {@code rootOriginX}/{@code rootOriginZ}/
+     * {@code rootSize} (the alignment loop in the constructor never terminates cleanly), after which every
+     * {@link #findSection} call and bound comparison is garbage — so this is the first thing to check.
+     * Appends a message per offence to {@code errors}.
+     */
+    private void checkRootConstants(final List<String> errors) {
+        if (!Double.isFinite(rootOriginX)) errors.add("rootOriginX is not finite: " + rootOriginX);
+        if (!Double.isFinite(rootOriginZ)) errors.add("rootOriginZ is not finite: " + rootOriginZ);
+        if (!Double.isFinite(rootSize)) errors.add("rootSize is not finite: " + rootSize);
+        else if (rootSize <= 0.0) errors.add("rootSize must be > 0 but is " + rootSize);
+        // min/max are caller-supplied coverage metadata and may legitimately be ±INF, so only NaN is wrong.
+        if (containsNaN(min)) errors.add("min coverage window has NaN: " + Arrays.toString(min));
+        if (containsNaN(max)) errors.add("max coverage window has NaN: " + Arrays.toString(max));
     }
 
     /** {@link #validate()} variant that throws {@link IllegalStateException} instead of returning false. */

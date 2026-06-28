@@ -11,10 +11,12 @@ import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import net.minecraft.util.KeyDispatchDataCodec;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.DensityFunctions;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.TestOnly;
 
 /**
  * Builds the per-tile vanilla biome-parameter field consumed by {@code FractalTerrainBiomeSource}.
@@ -29,8 +31,15 @@ import org.jetbrains.annotations.NotNull;
  *
  * <p>{@link #sampler} wires these channels into a {@link Climate.Sampler} in vanilla's
  * {@code temperature, humidity, continentalness, erosion, depth, weirdness} order.
+ *
+ * <p>Class layout: constants → fields → channel enum → constructor → private helpers → per-chunk
+ * {@code fill*} producers → nested {@link DensityFunction} implementations → public accessors (last).
  */
 public class BiomeProvider {
+
+    // -------------------------------------------------------------------------
+    // Constants
+    // -------------------------------------------------------------------------
 
     /** Native-px e-folding distance of the river-humidity falloff (tunable). */
     private static final double HUMIDITY_FALLOFF = 32.0;
@@ -65,11 +74,36 @@ public class BiomeProvider {
     /** Biome-tile channel holding weirdness (matches the sampler wiring below: {@code T H C E D W}). */
     private static final int WEIRDNESS_CHANNEL = 4;
 
+    /**
+     * Scale (multiplied by the per-sampler {@code scale}) used for the <em>magnitude</em>-preserving
+     * weirdness interpolation — same as the other channels, so the overall terrain shape is kept smooth.
+     */
+    private static final double WEIRDNESS_VALUE_SCALE = 5.0;
+
+    /**
+     * Scale used for the weirdness <em>sign</em> interpolation. Finer than {@link #WEIRDNESS_VALUE_SCALE}
+     * so the sign flips far more rapidly across the world: terrain only reads |weirdness| (PV folding), so
+     * a fast-flipping sign multiplies biome diversity without reshaping the landscape.
+     */
+    private static final double WEIRDNESS_SIGN_SCALE = 1.0;
+
+    // -------------------------------------------------------------------------
+    // Fields
+    // -------------------------------------------------------------------------
+
     private final NonIntersectingInfiniteTensor final_tiles;
     public final Climate.Sampler sampler;
 
+    private final DensityFunction erosionDensity;
+    private final DensityFunction weirdnessDensity;
+
     /** Scale-5 bilinear sampler over the weirdness channel; backs {@link #getWeirdness(int, int)}. */
+    @TestOnly
     private final Interpolation weirdnessInterpolation;
+
+    // -------------------------------------------------------------------------
+    // Channel → density wiring
+    // -------------------------------------------------------------------------
 
     /** Produces the {@link DensityFunction} that turns a stored tile channel into per-block values. */
     @FunctionalInterface
@@ -83,15 +117,16 @@ public class BiomeProvider {
      * turns its channel into a {@link DensityFunction}: most channels interpolate bilinearly
      * ({@link BiomeProviderDensity}), but {@link #EROSION} needs a different creator
      * ({@link ErosionDensity}) because interpolating across the negative→positive erosion range would
-     * sweep values through the shattered band (level 5, ≈0.45–0.55). {@link #DEPTH} is vertical (from
-     * block Y), has no tile channel (sentinel {@code -1}), and its creator returns a y-gradient.
+     * sweep values through the shattered band (level 5, ≈0.45–0.55), and {@link #WEIRDNESS} uses
+     * {@link WeirdnessDensity} (value × rapidly-flipping sign). {@link #DEPTH} is vertical (from block Y),
+     * has no tile channel (sentinel {@code -1}), and its creator returns a y-gradient.
      */
     private enum BiomeChannels {
         CONTINENTALNESS(0, BiomeProviderDensity::new),
         EROSION(1, ErosionDensity::new),
         TEMPERATURE(2, BiomeProviderDensity::new),
         HUMIDITY(3, BiomeProviderDensity::new),
-        WEIRDNESS(4, BiomeProviderDensity::new),
+        WEIRDNESS(4, WeirdnessDensity::new),
         DEPTH(-1, (scale, ch) -> DensityFunctions.yClampedGradient(-64, 63, -1, 0));
 
         final int channel;
@@ -106,6 +141,10 @@ public class BiomeProvider {
             return factory.create(scale, channel);
         }
     }
+
+    // -------------------------------------------------------------------------
+    // Construction
+    // -------------------------------------------------------------------------
 
     public BiomeProvider(String path) {
         final_tiles = new NonIntersectingInfiniteTensor(
@@ -138,13 +177,15 @@ public class BiomeProvider {
         // Vanilla Climate.Sampler order: temperature, humidity, continentalness, erosion, depth, weirdness.
         // Each channel produces its own density via its creator (DEPTH's is the vertical y-gradient).
         final float scale = 1;
+        erosionDensity = BiomeChannels.EROSION.density(scale);
+        weirdnessDensity = BiomeChannels.WEIRDNESS.density(scale);
         sampler = new Climate.Sampler(
                 BiomeChannels.TEMPERATURE.density(scale),
                 BiomeChannels.HUMIDITY.density(scale),
                 BiomeChannels.CONTINENTALNESS.density(scale),
-                BiomeChannels.EROSION.density(scale),
+                erosionDensity,
                 BiomeChannels.DEPTH.density(scale),
-                BiomeChannels.WEIRDNESS.density(scale),
+                weirdnessDensity,
                 List.of());
 
         weirdnessInterpolation = new Interpolation(scale * 5, mutablePos -> {
@@ -153,9 +194,9 @@ public class BiomeProvider {
         });
     }
 
-    public NonIntersectingInfiniteTensor getInfiniteTensor() {
-        return final_tiles;
-    }
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
 
     /**
      * Per-coarse-cell distance-to-shore for biome tile {@code (tileX, tileZ)}, as a {@link #DSHORE_GRID}×
@@ -216,47 +257,6 @@ public class BiomeProvider {
         return distShore;
     }
 
-    /** Bilinearly-interpolated weirdness at block {@code (x, z)} (scale-5 sampling of channel 4). */
-    public double getWeirdness(int x, int z) {
-        return weirdnessInterpolation.interpolateBilinear(x, z);
-    }
-
-    /**
-     * Raw biome-tile channel read at scaled-grid {@code xz} (reads {@code xz[X]}/{@code xz[Z]}, clobbers
-     * {@code xz[CH]}), matching the relief getter contract. These back the climate {@code
-     * FractalTerrainHeightmap.Types} entries: the heightmap supplies its own bilinear interpolation around
-     * these point samples (just like the relief getters), so no interpolation happens here.
-     */
-    private Float biomeChannel(final int[] xz, final int ch) {
-        xz[CH] = ch;
-        return final_tiles.getValue(xz);
-    }
-
-    /** Continentalness ({@link BiomeChannels#CONTINENTALNESS}) at scaled-grid {@code xz}. */
-    public Float getContinentalness(final int[] xz) {
-        return biomeChannel(xz, BiomeChannels.CONTINENTALNESS.channel);
-    }
-
-    /** Erosion ({@link BiomeChannels#EROSION}) at scaled-grid {@code xz}. */
-    public Float getErosion(final int[] xz) {
-        return biomeChannel(xz, BiomeChannels.EROSION.channel);
-    }
-
-    /** Temperature ({@link BiomeChannels#TEMPERATURE}) at scaled-grid {@code xz}. */
-    public Float getTemperature(final int[] xz) {
-        return biomeChannel(xz, BiomeChannels.TEMPERATURE.channel);
-    }
-
-    /** Vegetation/humidity ({@link BiomeChannels#HUMIDITY}) at scaled-grid {@code xz}. */
-    public Float getVegetation(final int[] xz) {
-        return biomeChannel(xz, BiomeChannels.HUMIDITY.channel);
-    }
-
-    /** Weirdness ({@link BiomeChannels#WEIRDNESS}) at scaled-grid {@code xz}. */
-    public Float getWeirdness(final int[] xz) {
-        return biomeChannel(xz, BiomeChannels.WEIRDNESS.channel);
-    }
-
     /**
      * River-humidity PDF for biome tile {@code (tileX, tileZ)}: for each of the 512×512 pixels, the
      * nearest local-river distance is mapped through an exponential falloff (closer ⇒ more humid).
@@ -277,6 +277,29 @@ public class BiomeProvider {
         return vegPdf;
     }
 
+    // -------------------------------------------------------------------------
+    // Per-chunk channel producers (consumed by FractalTerrainHeightmap)
+    // -------------------------------------------------------------------------
+
+    /** Erosion for the 16×16 blocks of {@code pos}, indexed {@code x*16 + z} (see {@link ErosionDensity}). */
+    public float[] fillErosion(ChunkPos pos) {
+        final float[] res = new float[1 << 8];
+        ((ErosionDensity) erosionDensity).fillArray(res, pos);
+        return res;
+    }
+
+    /** Weirdness for the 16×16 blocks of {@code pos}, indexed {@code x*16 + z} (see {@link WeirdnessDensity}). */
+    public float[] fillWeirdness(ChunkPos pos) {
+        final float[] res = new float[1 << 8];
+        ((WeirdnessDensity) weirdnessDensity).fillArray(res, pos);
+        return res;
+    }
+
+    // -------------------------------------------------------------------------
+    // Nested density functions
+    // -------------------------------------------------------------------------
+
+    /** Plain bilinear interpolation of a stored biome channel. */
     private static class BiomeProviderDensity implements DensityFunction.SimpleFunction {
 
         private final Interpolation interpolation;
@@ -294,9 +317,7 @@ public class BiomeProvider {
 
             for (int i = 0; i < densities.length; i++) {
                 final FunctionContext pos = applier.forIndex(i);
-                final int x = pos.blockX();
-                final int z = pos.blockZ();
-                densities[i] = interpolation.interpolateBilinear(x, z);
+                densities[i] = interpolation.interpolateBilinear(pos.blockX(), pos.blockZ());
             }
         }
 
@@ -340,24 +361,35 @@ public class BiomeProvider {
             });
         }
 
+        private double sample(int x, int z) {
+            double res = interpolation.interpolateBilinear(x, z);
+            if (SHATTERED_LO < res && res < SHATTERED_HI) res += SHATTERED_PUSH;
+            return res;
+        }
+
         @Override
         public void fillArray(double[] densities, @NotNull ContextProvider applier) {
             if (densities.length == 0) return;
 
             for (int i = 0; i < densities.length; i++) {
                 final FunctionContext pos = applier.forIndex(i);
-                final int x = pos.blockX();
-                final int z = pos.blockZ();
-                densities[i] = interpolation.interpolateBilinear(x, z);
-                if (SHATTERED_LO < densities[i] && densities[i] < SHATTERED_HI) densities[i] += SHATTERED_PUSH;
+                densities[i] = sample(pos.blockX(), pos.blockZ());
+            }
+        }
+
+        public void fillArray(float[] erosionMap, ChunkPos pos) {
+            final int startX = pos.getMinBlockX();
+            final int startZ = pos.getMinBlockZ();
+            for (int x = 0; x < 16; x++) {
+                for (int z = 0; z < 16; z++) {
+                    erosionMap[x * 16 + z] = (float) sample(startX + x, startZ + z);
+                }
             }
         }
 
         @Override
         public double compute(FunctionContext pos) {
-            double densities = interpolation.interpolateBilinear(pos.blockX(), pos.blockZ());
-            if (SHATTERED_LO < densities && densities < SHATTERED_HI) densities += SHATTERED_PUSH;
-            return densities;
+            return sample(pos.blockX(), pos.blockZ());
         }
 
         @Override
@@ -374,5 +406,123 @@ public class BiomeProvider {
         public KeyDispatchDataCodec<? extends DensityFunction> codec() {
             return null;
         }
+    }
+
+    /**
+     * Weirdness density built from <b>two</b> interpolations of the same channel that are multiplied:
+     *
+     * <ul>
+     *   <li>{@link #valueInterpolation} — the actual weirdness values at {@link #WEIRDNESS_VALUE_SCALE}
+     *       (smooth), which carries the <em>magnitude</em>;
+     *   <li>{@link #signInterpolation} — the {@link Math#signum sign} of the weirdness values at the finer
+     *       {@link #WEIRDNESS_SIGN_SCALE}, which flips rapidly across space.
+     * </ul>
+     *
+     * <p>{@link #sample} returns {@code value × sign}. The terrain reads only the magnitude of weirdness
+     * (PV = {@code 1 − |3·|weirdness| − 2|}), so keeping the magnitude smooth preserves the overall
+     * landscape shape, while the rapidly-flipping sign — which only biome selection cares about — scatters
+     * the world into many more weirdness-folded biome bands.
+     */
+    private static class WeirdnessDensity implements DensityFunction.SimpleFunction {
+
+        private final Interpolation valueInterpolation;
+        private final Interpolation signInterpolation;
+
+        public WeirdnessDensity(final float scale, final int ch) {
+            valueInterpolation = new Interpolation((float) (scale * WEIRDNESS_VALUE_SCALE), mutablePos -> {
+                mutablePos[CH] = ch;
+                return Math.abs(FractalTerrainInstance.getBiomeProvider().final_tiles.getValue(mutablePos));
+            });
+            signInterpolation = new Interpolation((float) (scale * WEIRDNESS_SIGN_SCALE), mutablePos -> {
+                mutablePos[CH] = ch;
+                return Math.signum(FractalTerrainInstance.getBiomeProvider().final_tiles.getValue(mutablePos));
+            });
+        }
+
+        /** Smooth magnitude × rapidly-flipping sign (see the class javadoc). */
+        private double sample(int x, int z) {
+            if( signInterpolation.interpolateBilinear(x,z)>=0) return valueInterpolation.interpolateBilinear(x,z);
+            return -valueInterpolation.interpolateBilinear(x,z);
+        }
+
+        @Override
+        public void fillArray(double[] densities, @NotNull ContextProvider applier) {
+            if (densities.length == 0) return;
+
+            for (int i = 0; i < densities.length; i++) {
+                final FunctionContext pos = applier.forIndex(i);
+                densities[i] = sample(pos.blockX(), pos.blockZ());
+            }
+        }
+
+        public void fillArray(float[] weirdnessMap, ChunkPos pos) {
+            final int startX = pos.getMinBlockX();
+            final int startZ = pos.getMinBlockZ();
+            for (int x = 0; x < 16; x++) {
+                for (int z = 0; z < 16; z++) {
+                    weirdnessMap[x * 16 + z] = (float) sample(startX + x, startZ + z);
+                }
+            }
+        }
+
+        @Override
+        public double compute(FunctionContext pos) {
+            return sample(pos.blockX(), pos.blockZ());
+        }
+
+        @Override
+        public double minValue() {
+            return 0;
+        }
+
+        @Override
+        public double maxValue() {
+            return 0;
+        }
+
+        @Override
+        public KeyDispatchDataCodec<? extends DensityFunction> codec() {
+            return null;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Accessors (kept last)
+    // -------------------------------------------------------------------------
+
+    public NonIntersectingInfiniteTensor getInfiniteTensor() {
+        return final_tiles;
+    }
+
+    /**
+     * Raw biome-tile channel read at scaled-grid {@code xz} (reads {@code xz[X]}/{@code xz[Z]}, clobbers
+     * {@code xz[CH]}), matching the relief getter contract. These back the climate {@code
+     * FractalTerrainHeightmap.Types} entries: the heightmap supplies its own bilinear interpolation around
+     * these point samples (just like the relief getters), so no interpolation happens here.
+     */
+    private Float biomeChannel(final int[] xz, final int ch) {
+        xz[CH] = ch;
+        return final_tiles.getValue(xz);
+    }
+
+    /** Continentalness ({@link BiomeChannels#CONTINENTALNESS}) at scaled-grid {@code xz}. */
+    public Float getContinentalness(final int[] xz) {
+        return biomeChannel(xz, BiomeChannels.CONTINENTALNESS.channel);
+    }
+
+    /** Temperature ({@link BiomeChannels#TEMPERATURE}) at scaled-grid {@code xz}. */
+    public Float getTemperature(final int[] xz) {
+        return biomeChannel(xz, BiomeChannels.TEMPERATURE.channel);
+    }
+
+    /** Vegetation/humidity ({@link BiomeChannels#HUMIDITY}) at scaled-grid {@code xz}. */
+    public Float getVegetation(final int[] xz) {
+        return biomeChannel(xz, BiomeChannels.HUMIDITY.channel);
+    }
+
+    /** Bilinearly-interpolated weirdness at block {@code (x, z)} (scale-5 sampling of channel 4). */
+    @TestOnly
+    public double getWeirdness(int x, int z) {
+        return weirdnessInterpolation.interpolateBilinear(x, z);
     }
 }

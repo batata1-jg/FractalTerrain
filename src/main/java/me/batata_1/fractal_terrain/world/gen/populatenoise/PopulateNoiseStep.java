@@ -39,10 +39,9 @@ public class PopulateNoiseStep {
         final int seaLevel = settings.seaLevel();
         final int bottom = settings.noiseSettings().minY();
         final float[] interpolatedElevs = heightmap.get(Types.ELEVATION);
-        for(int pos=0 ; pos<16 ; pos++) {
+        for(int pos=0 ; pos< (1<<8) ; pos++) {
             final float interpolatedElev = interpolatedElevs[pos];
-
-            interpolatedElevs[pos] = Math.max(bottom,interpolatedElev) + seaLevel;
+            interpolatedElevs[pos] = Math.max(bottom,interpolatedElev) + seaLevel - 1;
         }
     }
 

@@ -9,6 +9,7 @@ import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
 import me.batata_1.fractal_terrain.world.biome.parameters.Continentalness;
 import me.batata_1.fractal_terrain.world.biome.parameters.ErosionLevel;
+import me.batata_1.fractal_terrain.world.biome.parameters.HumidityLevel;
 import me.batata_1.fractal_terrain.world.biome.parameters.PeaksValleys;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Registry;
@@ -74,31 +75,46 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
         return (int) (Math.floor(baseValue * steps + 0.5));
     }
 
-    private final ThreadLocal<Integer> mutableDepth = ThreadLocal.withInitial(() -> 0);
+    private float humidityBasedFalloff(int x , int z , FractalTerrainHeightmap h)  {
+        float humidity = h.get(Types.VEGETATION,x,z);
+        return (Math.clamp(humidity,-1,1)+1)*10;
+    }
 
     private int sedimentDepth(final int x, final int z, FractalTerrainHeightmap h ) {
         final float grad = h.get(Types.REFINED_GRAD,x,z);
-        final float normDepth = 1 / (1 + grad * grad / fallOf);
-        mutableDepth.set(quantize(normDepth, maxDepth - minDepth) + minDepth);
-        highErosionPvFactor(x, z, h);
-        return mutableDepth.get();
+        final float normDepth = (float) (1 / (1 + grad * grad / Math.pow(humidityBasedFalloff(x,z,h),2) ));
+       // float depth = quantize(normDepth, maxDepth - minDepth) + minDepth;
+        float depth = normDepth;
+        depth = highErosionPvFactor(depth,x, z, h);
+        depth = correctHighHumidity(depth,x,z,h);
+        return (int) depth;
     }
 
-    private void highErosionPvFactor(int x, int z, FractalTerrainHeightmap h) {
+    private float correctHighHumidity(float depth, int x, int z, FractalTerrainHeightmap h) {
+        float humidity = h.get(Types.VEGETATION,x,z);
+        if(HumidityLevel.of(humidity).equals(HumidityLevel.LEVEL_4)) return Math.max(depth,1);
+        return depth;
+    }
+
+    private float highErosionPvFactor(float depth, int x, int z, FractalTerrainHeightmap h) {
         int erosionLvl = ErosionLevel.erosionLevel(h.get(Types.EROSION,x,z));
+       // if(x==&&z==) LOG.info("erosions level of {} {} : {}",x,z,erosionLvl);
         Continentalness c = Continentalness.of(h.get(Types.CONTINENTALNESS,x,z));
-        PeaksValleys pv = PeaksValleys.of(h.get(Types.EROSION,x,z));
+        PeaksValleys pv = PeaksValleys.of(h.get(Types.WEIRDNESS,x,z));
         if (erosionLvl == 0 || erosionLvl == 1) {
             switch (pv) {
-                case PEAKS -> mutableDepth.set(50);
+                case PEAKS -> {
+                    return 50;
+                }
                 case HIGH -> {
-                    if (erosionLvl == 0) mutableDepth.set(50);
+                    if (erosionLvl == 0) return 50;
                 }
                 default -> {
-                    if (c.equals(Continentalness.COAST)) mutableDepth.set(50);
+                    if (c.equals(Continentalness.COAST)) return 50;
                 }
             }
         }
+        return depth;
     }
 
     static final BlockState GRASS_BLOCK = Blocks.GRASS_BLOCK.defaultBlockState();
@@ -137,7 +153,6 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
                 mutable.setX(x).setZ(z);
                 materialRuleContext.updateXZ(x, z);
                 int relief_height = (int) heightmaps.get(Types.ELEVATION,dx,dz);
-                //   if(x==328&&z==383) LOG.error("HEIGHT {}",relief_height);
                 int stoneDepthAbove = -10;
                 int stoneDepthBellow = 0;
                 int fluid_height = Integer.MIN_VALUE;

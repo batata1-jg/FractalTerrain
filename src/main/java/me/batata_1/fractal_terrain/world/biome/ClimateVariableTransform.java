@@ -547,6 +547,8 @@ public class ClimateVariableTransform {
                 + (1 - gradInfluence) * flatErosion
                 + veryFlatFactor;
 
+        if(elevVal > 750) erosion = Math.max(erosion-0.3f,-1);
+
         // Erosion level 5 = shattered terrain: jitter it out of the band for now.
         if (isShatteredErosion(erosion)) erosion = 0.15f + temperatureVar * 0.12f;
         // Near sea level: force flat (high erosion).
@@ -681,6 +683,7 @@ public class ClimateVariableTransform {
         float weirdSign = ocean ? -1 : Math.signum(weirdnessNoise);
         float peakBias = (elevVal < ELEV_PEAK_MIN) ? 0 : (float) Math.pow(gradInfluence, 0.5f);
         if (600 < elevVal) peakBias = Math.min(0.75f, peakBias);
+        if (700 < elevVal) peakBias = Math.min(0.95f,peakBias);
         float weirdness = (resWeird * (1 - peakBias) + peakBias * WEIRD_PEAK_VALUE) * weirdSign;
         if (isValley(weirdness)) weirdness = 0.06f;
         biome[WEIRDNESS] = weirdness;
