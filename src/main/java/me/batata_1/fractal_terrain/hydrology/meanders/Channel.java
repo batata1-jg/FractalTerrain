@@ -32,7 +32,7 @@ public class Channel {
     /**
      * Per-spline-point bed elevation (native-px scale), aligned to {@link #spline} points. Filled by the
      * bed-assignment pass in {@code LocalRiverProvider}; {@code null} until assigned. Read by
-     * {@code carveRiver} and {@link RiverNetwork#convertImutableQuadtree}.
+     * {@code carveRiver} and {@link RiverNetwork#convertImmutableQuadtree}.
      */
     public double[] bedElevations;
 

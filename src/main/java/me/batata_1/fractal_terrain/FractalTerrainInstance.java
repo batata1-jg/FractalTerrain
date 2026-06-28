@@ -13,8 +13,10 @@ import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import me.batata_1.fractal_terrain.ml.pipeline.WorldPipeline;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
 import me.batata_1.fractal_terrain.relief.ReliefProvider;
+import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmapCache;
 import me.batata_1.fractal_terrain.world.biome.BiomeProvider;
 import me.batata_1.fractal_terrain.world.gen.chunk.FractalTerrainChunkGenerator;
+import me.batata_1.fractal_terrain.world.gen.populatenoise.PopulateNoiseStep;
 import me.batata_1.fractal_terrain.world.gen.surfacebuilder.FractalTerrainSurfaceSystem;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.Registries;
@@ -46,7 +48,9 @@ public class FractalTerrainInstance {
     private final BiomeProvider biomeProvider;
     private final GlobalRiverProvider globalRiverProvider;
     private final LocalRiverProvider localRiverProvider;
+    private final PopulateNoiseStep populateNoiseStep;
     private final FractalTerrainSurfaceSystem surfaceBuilder;
+    private final FractalTerrainHeightmapCache heightmapCache;
     private final RandomState noiseConfig;
     private final Infinite3DVisualizer viz;
 
@@ -63,11 +67,14 @@ public class FractalTerrainInstance {
         final RegistryAccess dynamicRegistryManager = world.registryAccess();
         final FractalTerrainChunkGenerator chunkGenerator =
                 (FractalTerrainChunkGenerator) world.getChunkSource().getGenerator();
+        this.populateNoiseStep = new PopulateNoiseStep(chunkGenerator.getSettings().value());
+        this.heightmapCache = new FractalTerrainHeightmapCache(world.getChunkSource());
         this.noiseConfig = RandomState.create(
                 chunkGenerator.getSettings().value(), dynamicRegistryManager.lookupOrThrow(Registries.NOISE), seed);
         pipeline.updateInstance(seed, worldPath + "/fractal_terrain");
         OctaveSimplexNoiseSampler.init(seed);
         // LOG.info("chunk Generator settings: {}", chunkGenerator.getSettings().value());
+
         RegistryAccess registryAccess = server.registryAccess();
         surfaceBuilder = new FractalTerrainSurfaceSystem(
                 this.noiseConfig,
@@ -94,6 +101,7 @@ public class FractalTerrainInstance {
         getInstance().reliefSource.getInfiniteTensor().clear();
         getInstance().globalRiverProvider.getInfiniteTensor().clear();
         getInstance().localRiverProvider.clearCaches();
+        getInstance().heightmapCache.clear();
         instance = new CompletableFuture<>();
         LOG.info("fractal terrain instance closed");
     }
@@ -104,6 +112,10 @@ public class FractalTerrainInstance {
         } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public static PopulateNoiseStep getPopulateNoiseStep() {
+        return getInstance().populateNoiseStep;
     }
 
     public static ReliefProvider getReliefProvider() {
@@ -120,6 +132,10 @@ public class FractalTerrainInstance {
 
     public static FractalTerrainSurfaceSystem getSurfaceBuilder() {
         return getInstance().surfaceBuilder;
+    }
+
+    public static FractalTerrainHeightmapCache getHeightmapCache() {
+        return getInstance().heightmapCache;
     }
 
     public static boolean exists() {

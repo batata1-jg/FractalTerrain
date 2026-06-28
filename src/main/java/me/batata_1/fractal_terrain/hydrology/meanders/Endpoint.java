@@ -30,7 +30,7 @@ public class Endpoint {
     /**
      * Bed elevation assigned to this vertex (native-px scale), filled by the bottom-up junction-elevation
      * pass in {@code LocalRiverProvider}. {@code NaN} until assigned. Used by
-     * {@link RiverNetwork#convertImutableQuadtree} to anchor each channel's per-point bed.
+     * {@link RiverNetwork#convertImmutableQuadtree} to anchor each channel's per-point bed.
      */
     public double elevation = Double.NaN;
 

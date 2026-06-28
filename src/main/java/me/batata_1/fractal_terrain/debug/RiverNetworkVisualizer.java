@@ -6,12 +6,13 @@ import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import javax.imageio.ImageIO;
 import me.batata_1.fractal_terrain.hydrology.meanders.*;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.CoordPoint;
-import me.batata_1.fractal_terrain.math.ds.QuadTree;
+import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
 
 public class RiverNetworkVisualizer {
 
@@ -34,7 +35,7 @@ public class RiverNetworkVisualizer {
         final double samplingDist = Meanders.DX;
         final double[] curPt = new double[2];
         final double detectDist = Meanders.DX;
-        var tree = new QuadTree<>(new double[] {-INF, -INF}, new double[] {INF, INF});
+        final List<CoordPoint> treePoints = new ArrayList<>();
 
         for (Channel c : meanders.getChannels()) {
             DEBUG_LOGGER.info("channel {}", c.channelId);
@@ -43,11 +44,12 @@ public class RiverNetworkVisualizer {
             // c.reSample(0.5);
             for (int i = 0; i < c.spline.points().size(); i++) {
                 double[] pt = c.spline.points().get(i);
-                tree.insertPoint(new CoordPoint(VectorOps.scale(pt, scale)));
+                treePoints.add(new CoordPoint(VectorOps.scale(pt, scale)));
                 insertPt(migVector[i], migPointGrid, gridSize, scale);
                 insertPt(pt, splinePointGrid, gridSize, scale);
             }
         }
+        var tree = new ImmutableQuadTree<>(new double[] {-INF, -INF}, new double[] {INF, INF}, treePoints);
 
         for (int x = 0; x < gridSize; x++) {
             for (int z = 0; z < gridSize; z++) {
@@ -60,8 +62,6 @@ public class RiverNetworkVisualizer {
                 if (!pts.isEmpty()) grid[id] = 1;
             }
         }
-
-        tree.clear();
 
         File dir = new File(debugPath);
         dir.mkdirs();

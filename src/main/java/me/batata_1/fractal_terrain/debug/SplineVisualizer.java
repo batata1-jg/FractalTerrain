@@ -6,13 +6,14 @@ import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import javax.imageio.ImageIO;
 import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.CoordPoint;
-import me.batata_1.fractal_terrain.math.ds.QuadTree;
+import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 
 public class SplineVisualizer {
@@ -48,10 +49,11 @@ public class SplineVisualizer {
 
         final double[] curPt = new double[2];
         final double detectDist = Meanders.DX;
-        var tree = new QuadTree<>(new double[] {-INF, -INF}, new double[] {INF, INF});
+        final List<CoordPoint> treePoints = new ArrayList<>();
 
         for (double i = 0; i < spline.getSize() + beyond; i += resolution)
-            tree.insertPoint(new CoordPoint(spline.sample(i)));
+            treePoints.add(new CoordPoint(spline.sample(i)));
+        var tree = new ImmutableQuadTree<>(new double[] {-INF, -INF}, new double[] {INF, INF}, treePoints);
 
         for (int x = 0; x < (int) WH[0]; x++) {
             for (int z = 0; z < (int) WH[1]; z++) {
@@ -64,8 +66,6 @@ public class SplineVisualizer {
                 if (!pts.isEmpty()) grid[id] = 1;
             }
         }
-
-        tree.clear();
 
         File dir = new File(debugPath);
         dir.mkdirs();

@@ -3,12 +3,13 @@ package me.batata_1.fractal_terrain.world.gen.surfacebuilder;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import java.util.Objects;
-
+import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.mixin.MaterialRuleContextAccessor;
-import me.batata_1.fractal_terrain.relief.ReliefAccessor;
-import me.batata_1.fractal_terrain.world.biome.Continentalness;
-import me.batata_1.fractal_terrain.world.biome.ErosionLevel;
-import me.batata_1.fractal_terrain.world.biome.PeaksValleys;
+import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
+import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
+import me.batata_1.fractal_terrain.world.biome.parameters.Continentalness;
+import me.batata_1.fractal_terrain.world.biome.parameters.ErosionLevel;
+import me.batata_1.fractal_terrain.world.biome.parameters.PeaksValleys;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Registry;
 import net.minecraft.world.level.ChunkPos;
@@ -73,27 +74,28 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
         return (int) (Math.floor(baseValue * steps + 0.5));
     }
 
-    private final ThreadLocal<Integer> mutableDepth = ThreadLocal.withInitial(()-> 0);
-    private int sedimentDepth(final int x, final int z, ReliefAccessor accessor) {
-        final float grad = (float) (accessor.reliefGradInterpolation().interpolateBilinear(x, z));
+    private final ThreadLocal<Integer> mutableDepth = ThreadLocal.withInitial(() -> 0);
+
+    private int sedimentDepth(final int x, final int z, FractalTerrainHeightmap h ) {
+        final float grad = h.get(Types.REFINED_GRAD,x,z);
         final float normDepth = 1 / (1 + grad * grad / fallOf);
         mutableDepth.set(quantize(normDepth, maxDepth - minDepth) + minDepth);
-        highErosionPvFactor(x,z,accessor);
+        highErosionPvFactor(x, z, h);
         return mutableDepth.get();
     }
 
-    private void highErosionPvFactor(int x, int z, ReliefAccessor accessor) {
-        int erosionLvl = ErosionLevel.erosionLevel((float) accessor.erosion().interpolateBilinear(x,z));
-        Continentalness c = Continentalness.of((float) accessor.continentalness().interpolateBilinear(x,z));
-        PeaksValleys pv = PeaksValleys.of((float) accessor.erosion().interpolateBilinear(x,z));
-        if(erosionLvl==0||erosionLvl==1) {
+    private void highErosionPvFactor(int x, int z, FractalTerrainHeightmap h) {
+        int erosionLvl = ErosionLevel.erosionLevel(h.get(Types.EROSION,x,z));
+        Continentalness c = Continentalness.of(h.get(Types.CONTINENTALNESS,x,z));
+        PeaksValleys pv = PeaksValleys.of(h.get(Types.EROSION,x,z));
+        if (erosionLvl == 0 || erosionLvl == 1) {
             switch (pv) {
                 case PEAKS -> mutableDepth.set(50);
                 case HIGH -> {
-                    if(erosionLvl==0) mutableDepth.set(50);
+                    if (erosionLvl == 0) mutableDepth.set(50);
                 }
                 default -> {
-                    if(c.equals(Continentalness.COAST)) mutableDepth.set(50);
+                    if (c.equals(Continentalness.COAST)) mutableDepth.set(50);
                 }
             }
         }
@@ -107,9 +109,7 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
         return DIRT;
     }
 
-
     public void buildSurface(
-            ReliefAccessor accessor,
             RandomState noiseConfig,
             BiomeManager biomeAccess,
             Registry<Biome> biomeRegistry,
@@ -118,6 +118,8 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
             NoiseChunk chunkNoiseSampler) {
         final BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
         final ChunkPos chunkPos = chunk.getPos();
+        final FractalTerrainHeightmap heightmaps =
+                FractalTerrainInstance.getHeightmapCache().getOrCompute(chunkPos);
         int startX = chunkPos.getMinBlockX();
         int startZ = chunkPos.getMinBlockZ();
         BlockColumn blockColumn = new SurfaceBuilderBlockCollum(chunk, mutable, chunkPos);
@@ -134,19 +136,13 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
                 final int z = startZ + dz;
                 mutable.setX(x).setZ(z);
                 materialRuleContext.updateXZ(x, z);
-                final int surface_height = chunk.getHeight(Heightmap.Types.WORLD_SURFACE_WG, dx, dz);
-                int relief_height = 0; // terrain h without water
-                for (int y = surface_height; y >= bottomY; y--)
-                    if (blockColumn.getBlock(y).getFluidState().isEmpty()) {
-                        relief_height = y;
-                        break;
-                    }
+                int relief_height = (int) heightmaps.get(Types.ELEVATION,dx,dz);
                 //   if(x==328&&z==383) LOG.error("HEIGHT {}",relief_height);
                 int stoneDepthAbove = -10;
                 int stoneDepthBellow = 0;
                 int fluid_height = Integer.MIN_VALUE;
                 int s = Integer.MAX_VALUE;
-                final int sedimentLayerDepth = sedimentDepth(x, z, accessor);
+                final int sedimentLayerDepth = sedimentDepth(dx, dz, heightmaps);
 
                 for (int d = 0; d <= sedimentLayerDepth; d++) {
                     final int y = relief_height - d;

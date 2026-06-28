@@ -68,4 +68,41 @@ public class Interpolation {
 
         return Mth.lerp2(step.apply(deltaX), step.apply(deltaZ), nodes[0], nodes[1], nodes[2], nodes[3]);
     }
+
+    public static double interpolateBilinear(
+            float x, float z, int[] mutableNodePos, float[] mutableNodes, final Function<int[], Float> f) {
+        return interpolate(x, z, mutableNodePos, mutableNodes, f, stepBilinear);
+    }
+
+    public static double interpolateSmoothStep(
+            float x, float z, int[] mutableNodePos, float[] mutableNodes, final Function<int[], Float> f) {
+        return interpolate(x, z, mutableNodePos, mutableNodes, f, stepSmoothstep);
+    }
+
+    private static double interpolate(
+            float x,
+            float z,
+            int[] mutableNodePos,
+            float[] mutableNodes,
+            final Function<int[], Float> f,
+            final Function<Double, Double> step) {
+
+        final int[] xs = {(int) Math.floor(x), (int) Math.ceil(x)};
+        final int[] zs = {(int) Math.floor(z), (int) Math.ceil(z)};
+
+        for (int i = 0; i < 2; i++) {
+            for (int j = 0; j < 2; j++) {
+                mutableNodePos[1] = xs[j];
+                mutableNodePos[2] = zs[i];
+                mutableNodes[2 * i + j] = f.apply(mutableNodePos);
+            }
+        }
+
+        final double deltaX = x - Math.floor(x);
+        final double deltaZ = z - Math.floor(z);
+
+        return Mth.lerp2(
+                step.apply(deltaX), step.apply(deltaZ), mutableNodes[0], mutableNodes[1], mutableNodes[2],
+                mutableNodes[3]);
+    }
 }

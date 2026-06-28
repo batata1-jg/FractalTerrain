@@ -20,7 +20,7 @@ import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteQuadTre
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import me.batata_1.fractal_terrain.math.VectorOps;
-import me.batata_1.fractal_terrain.math.ds.QuadTree;
+import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
 import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 import me.batata_1.fractal_terrain.relief.DecoderChannels;
@@ -82,7 +82,7 @@ public class LocalRiverProvider {
     private @Nullable GlobalRiverProvider globalRiverOverride;
 
     /** Both per-tile artifacts produced by one {@link #buildTile}. */
-    private record TileResult(QuadTree<HydrologicalUnit> units, FloatTensor carved) {}
+    private record TileResult(ImmutableQuadTree<HydrologicalUnit> units, FloatTensor carved) {}
 
     public LocalRiverProvider(String path) {
         units = new NonIntersectingInfiniteQuadTree<>(
@@ -120,7 +120,7 @@ public class LocalRiverProvider {
         return pending.computeIfAbsent(new TileKey(new int[] {tileX, tileZ}), k -> buildTile(tileX, tileZ, null));
     }
 
-    private QuadTree<HydrologicalUnit> buildUnitsTile(TileKey key) {
+    private ImmutableQuadTree<HydrologicalUnit> buildUnitsTile(TileKey key) {
         final int tileX = key.get(0);
         final int tileZ = key.get(1);
         final TileResult result = buildOnce(tileX, tileZ);
@@ -136,7 +136,7 @@ public class LocalRiverProvider {
         final int tileZ = key.get(2);
         final TileResult result = buildOnce(tileX, tileZ);
         final int[] unitsKey = {tileX, tileZ};
-        final CompletableFuture<QuadTree<HydrologicalUnit>> claim = units.claimForCompute(unitsKey);
+        final CompletableFuture<ImmutableQuadTree<HydrologicalUnit>> claim = units.claimForCompute(unitsKey);
         if (claim != null) units.fulfillClaim(unitsKey, claim, result.units());
         pending.remove(new TileKey(new int[] {tileX, tileZ}));
         return result.carved();
@@ -182,10 +182,10 @@ public class LocalRiverProvider {
 
         // 7. assemble the unit tree: global network units + local channel units (tile-local coords).
         final RiverNetwork.ElevationSampler decodedSampler = (x, z) -> sampleBilinear(base[0], x, z);
-        final QuadTree<HydrologicalUnit> tree = sim.getNetwork()
-                .convertImutableQuadtree(
-                        0, decodedSampler, PAD, PAD, new double[] {-16, -16}, new double[] {GRID + 16, GRID + 16});
-        for (Channel ch : localChannels) addLocalChannelUnits(tree, ch, elev);
+        final List<HydrologicalUnit> unitPoints = sim.getNetwork().collectUnits(0, decodedSampler, PAD, PAD);
+        for (Channel ch : localChannels) addLocalChannelUnits(unitPoints, ch, elev);
+        final ImmutableQuadTree<HydrologicalUnit> tree = new ImmutableQuadTree<>(
+                new double[] {-16, -16}, new double[] {GRID + 16, GRID + 16}, unitPoints, HydrologicalUnit.PROTOTYPE);
 
         if (stages != null) {
             stages.channels = new ArrayList<>(sim.getChannels());
@@ -543,9 +543,7 @@ public class LocalRiverProvider {
 
     private void carveGlobalRivers(float[] elevation, List<Channel> channels) {
         if (channels.isEmpty()) return;
-        final QuadTree<RiverSample> index = new QuadTree<>(
-                new double[] {-COARSE_PX * 4, -COARSE_PX * 4},
-                new double[] {PADDED + COARSE_PX * 4, PADDED + COARSE_PX * 4});
+        final List<RiverSample> samples = new ArrayList<>();
         for (Channel ch : channels) {
             if (ch.bedElevations == null || ch.numPts() < 2) continue;
             final QuinticHermiteSpline spline = ch.spline;
@@ -564,10 +562,14 @@ public class LocalRiverProvider {
                     final double[] point = spline.sample(i + frac);
                     final double width = startWidth + (endWidth - startWidth) * frac;
                     final double bed = startBed + (endBed - startBed) * frac;
-                    index.insertPoint(new RiverSample(new double[] {point[0], point[1]}, width, bed));
+                    samples.add(new RiverSample(new double[] {point[0], point[1]}, width, bed));
                 }
             }
         }
+        final ImmutableQuadTree<RiverSample> index = new ImmutableQuadTree<>(
+                new double[] {-COARSE_PX * 4, -COARSE_PX * 4},
+                new double[] {PADDED + COARSE_PX * 4, PADDED + COARSE_PX * 4},
+                samples);
 
         for (int pi = 0; pi < PADDED; pi++) {
             for (int pj = 0; pj < PADDED; pj++) {
@@ -598,7 +600,6 @@ public class LocalRiverProvider {
                 elevation[idx] = (float) (bedElev + (orig - bedElev) * frac);
             }
         }
-        index.clear();
     }
 
     private static double[] pointWidths(Channel ch) {
@@ -758,7 +759,7 @@ public class LocalRiverProvider {
     }
 
     /** Resample a local channel at {@code dx = width/2} and add its points as RIVER {@link HydrologicalUnit}s. */
-    private void addLocalChannelUnits(QuadTree<HydrologicalUnit> tree, Channel ch, float[] elev) {
+    private void addLocalChannelUnits(List<HydrologicalUnit> out, Channel ch, float[] elev) {
         final double dx = Math.max(ch.width / 2.0, 0.5);
         final QuinticHermiteSpline resampled;
         try {
@@ -773,7 +774,7 @@ public class LocalRiverProvider {
             final double frac = (n <= 1) ? 0.0 : (double) i / (n - 1);
             final double w = ch.startWidth + (ch.endWidth - ch.startWidth) * frac;
             final double bed = sampleLocal(elev, p[0], p[1]);
-            tree.insertPoint(new HydrologicalUnit(HydrologicalFeature.RIVER, null, List.of(p[0], p[1]), w, bed, 0));
+            out.add(new HydrologicalUnit(HydrologicalFeature.RIVER, null, List.of(p[0], p[1]), w, bed, 0));
         }
     }
 

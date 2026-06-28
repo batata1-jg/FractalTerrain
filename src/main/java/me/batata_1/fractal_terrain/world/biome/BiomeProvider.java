@@ -71,23 +71,39 @@ public class BiomeProvider {
     /** Scale-5 bilinear sampler over the weirdness channel; backs {@link #getWeirdness(int, int)}. */
     private final Interpolation weirdnessInterpolation;
 
+    /** Produces the {@link DensityFunction} that turns a stored tile channel into per-block values. */
+    @FunctionalInterface
+    private interface DensityFactory {
+        DensityFunction create(float scale, int channel);
+    }
+
     /**
-     * Tile-channel index for each vanilla biome parameter, matching the layout written by
-     * {@link ClimateVariableTransform#transform}. {@link #DEPTH} is vertical (from block Y) and has
-     * no tile channel, so it carries the sentinel {@code -1}.
+     * Tile-channel index plus per-channel density creator for each vanilla biome parameter, matching the
+     * layout written by {@link ClimateVariableTransform#transform}. Each constant owns the strategy that
+     * turns its channel into a {@link DensityFunction}: most channels interpolate bilinearly
+     * ({@link BiomeProviderDensity}), but {@link #EROSION} needs a different creator
+     * ({@link ErosionDensity}) because interpolating across the negative→positive erosion range would
+     * sweep values through the shattered band (level 5, ≈0.45–0.55). {@link #DEPTH} is vertical (from
+     * block Y), has no tile channel (sentinel {@code -1}), and its creator returns a y-gradient.
      */
     private enum BiomeChannels {
-        CONTINENTALNESS(0),
-        EROSION(1),
-        TEMPERATURE(2),
-        HUMIDITY(3),
-        WEIRDNESS(4),
-        DEPTH(-1);
+        CONTINENTALNESS(0, BiomeProviderDensity::new),
+        EROSION(1, ErosionDensity::new),
+        TEMPERATURE(2, BiomeProviderDensity::new),
+        HUMIDITY(3, BiomeProviderDensity::new),
+        WEIRDNESS(4, BiomeProviderDensity::new),
+        DEPTH(-1, (scale, ch) -> DensityFunctions.yClampedGradient(-64, 63, -1, 0));
 
         final int channel;
+        final DensityFactory factory;
 
-        BiomeChannels(int channel) {
+        BiomeChannels(int channel, DensityFactory factory) {
             this.channel = channel;
+            this.factory = factory;
+        }
+
+        DensityFunction density(float scale) {
+            return factory.create(scale, channel);
         }
     }
 
@@ -116,21 +132,19 @@ public class BiomeProvider {
                     System.arraycopy(biomeVariables, 0, entries, 0, 5 * TILE_PIXELS);
                     System.arraycopy(vegPdf, 0, entries, 5 * TILE_PIXELS, TILE_PIXELS);
 
-                    FloatTensor t = new FloatTensor(entries, new int[] {BIOME_CHANNELS, 512, 512});
-
                     //  Debug.seeTile(t, x, z, "final_biomes");
-                    return t;
+                    return new FloatTensor(entries, new int[] {BIOME_CHANNELS, 512, 512});
                 });
         // Vanilla Climate.Sampler order: temperature, humidity, continentalness, erosion, depth, weirdness.
+        // Each channel produces its own density via its creator (DEPTH's is the vertical y-gradient).
         final float scale = 1;
         sampler = new Climate.Sampler(
-                new BiomeProviderDensity(scale, BiomeChannels.TEMPERATURE.channel),
-                new BiomeProviderDensity(scale, BiomeChannels.HUMIDITY.channel),
-                new BiomeProviderDensity(scale, BiomeChannels.CONTINENTALNESS.channel),
-                new ErosionDensity(scale, BiomeChannels.EROSION.channel),
-                // Depth: vertical parameter, 0 at the surface rising downward (worldgeneration101.md).
-                DensityFunctions.yClampedGradient(-64, 63, -1, 0),
-                new BiomeProviderDensity(scale, BiomeChannels.WEIRDNESS.channel),
+                BiomeChannels.TEMPERATURE.density(scale),
+                BiomeChannels.HUMIDITY.density(scale),
+                BiomeChannels.CONTINENTALNESS.density(scale),
+                BiomeChannels.EROSION.density(scale),
+                BiomeChannels.DEPTH.density(scale),
+                BiomeChannels.WEIRDNESS.density(scale),
                 List.of());
 
         weirdnessInterpolation = new Interpolation(scale * 5, mutablePos -> {
@@ -205,6 +219,42 @@ public class BiomeProvider {
     /** Bilinearly-interpolated weirdness at block {@code (x, z)} (scale-5 sampling of channel 4). */
     public double getWeirdness(int x, int z) {
         return weirdnessInterpolation.interpolateBilinear(x, z);
+    }
+
+    /**
+     * Raw biome-tile channel read at scaled-grid {@code xz} (reads {@code xz[X]}/{@code xz[Z]}, clobbers
+     * {@code xz[CH]}), matching the relief getter contract. These back the climate {@code
+     * FractalTerrainHeightmap.Types} entries: the heightmap supplies its own bilinear interpolation around
+     * these point samples (just like the relief getters), so no interpolation happens here.
+     */
+    private Float biomeChannel(final int[] xz, final int ch) {
+        xz[CH] = ch;
+        return final_tiles.getValue(xz);
+    }
+
+    /** Continentalness ({@link BiomeChannels#CONTINENTALNESS}) at scaled-grid {@code xz}. */
+    public Float getContinentalness(final int[] xz) {
+        return biomeChannel(xz, BiomeChannels.CONTINENTALNESS.channel);
+    }
+
+    /** Erosion ({@link BiomeChannels#EROSION}) at scaled-grid {@code xz}. */
+    public Float getErosion(final int[] xz) {
+        return biomeChannel(xz, BiomeChannels.EROSION.channel);
+    }
+
+    /** Temperature ({@link BiomeChannels#TEMPERATURE}) at scaled-grid {@code xz}. */
+    public Float getTemperature(final int[] xz) {
+        return biomeChannel(xz, BiomeChannels.TEMPERATURE.channel);
+    }
+
+    /** Vegetation/humidity ({@link BiomeChannels#HUMIDITY}) at scaled-grid {@code xz}. */
+    public Float getVegetation(final int[] xz) {
+        return biomeChannel(xz, BiomeChannels.HUMIDITY.channel);
+    }
+
+    /** Weirdness ({@link BiomeChannels#WEIRDNESS}) at scaled-grid {@code xz}. */
+    public Float getWeirdness(final int[] xz) {
+        return biomeChannel(xz, BiomeChannels.WEIRDNESS.channel);
     }
 
     /**

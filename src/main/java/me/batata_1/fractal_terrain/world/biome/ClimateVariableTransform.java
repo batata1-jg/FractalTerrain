@@ -3,6 +3,7 @@ package me.batata_1.fractal_terrain.world.biome;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import me.batata_1.fractal_terrain.math.spline.Spline;
 import me.batata_1.fractal_terrain.noise.FastNoiseLite;
+import me.batata_1.fractal_terrain.world.biome.parameters.*;
 
 /**
  * Maps the diffusion model's coarse climate + relief channels onto the vanilla Overworld
@@ -679,7 +680,7 @@ public class ClimateVariableTransform {
         float resWeird = WEIRD_RES_W * (WEIRD_RES_BASE + Math.clamp(resScaled, -1 + 0.05f, WEIRD_RES_CLAMP_HI));
         float weirdSign = ocean ? -1 : Math.signum(weirdnessNoise);
         float peakBias = (elevVal < ELEV_PEAK_MIN) ? 0 : (float) Math.pow(gradInfluence, 0.5f);
-        if( 600 < elevVal) peakBias = Math.min(0.75f,peakBias);
+        if (600 < elevVal) peakBias = Math.min(0.75f, peakBias);
         float weirdness = (resWeird * (1 - peakBias) + peakBias * WEIRD_PEAK_VALUE) * weirdSign;
         if (isValley(weirdness)) weirdness = 0.06f;
         biome[WEIRDNESS] = weirdness;

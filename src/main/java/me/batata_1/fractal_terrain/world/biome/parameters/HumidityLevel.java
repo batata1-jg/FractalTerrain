@@ -1,4 +1,4 @@
-package me.batata_1.fractal_terrain.world.biome;
+package me.batata_1.fractal_terrain.world.biome.parameters;
 
 import me.batata_1.fractal_terrain.math.Range;
 

@@ -17,6 +17,7 @@ import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.HydrologicalFeature;
 import me.batata_1.fractal_terrain.math.VectorOps;
+import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 import org.slf4j.Logger;
@@ -37,8 +38,8 @@ import org.slf4j.Logger;
  * {@link HydrologicalFeature#OXBOW_LAKE}), plus bounded network snapshots. The relaxation phase runs
  * with recording disabled, so it produces no history.
  *
- * <p>{@link #convertImutableQuadtree} packages the current network (plus recorded removed features) into
- * an immutable {@link QuadTree} of {@link HydrologicalUnit}s, resampling every feature at
+ * <p>{@link #convertImmutableQuadtree} packages the current network (plus recorded removed features) into
+ * an {@link ImmutableQuadTree} of {@link HydrologicalUnit}s, resampling every feature at
  * {@code dx = width/2} so wider features carry proportionally fewer points.
  */
 public final class RiverNetwork {
@@ -75,7 +76,7 @@ public final class RiverNetwork {
 
     private record Crossing(int channelIdA, int posA, int channelIdB, int posB, double widthA, double widthB) {}
 
-    /** A geometry removed from the active network, retained for {@link #convertImutableQuadtree}. */
+    /** A geometry removed from the active network, retained for {@link #convertImmutableQuadtree}. */
     private record RemovedPath(HydrologicalFeature type, ArrayList<double[]> pts, double width, int time) {}
 
     public RiverNetwork(
@@ -438,6 +439,7 @@ public final class RiverNetwork {
                     endpointKey(crossing.channelIdA(), crossing.posA()),
                     endpointKey(crossing.channelIdB(), crossing.posB()));
 
+        // all of the channels that cross into another channel
         Map<Long, Map<Integer, Integer>> clusters = new HashMap<>(); // root -> (channelId -> position)
         for (Crossing crossing : crossings) {
             long root = ufFind(parent, endpointKey(crossing.channelIdA(), crossing.posA()));
@@ -587,8 +589,19 @@ public final class RiverNetwork {
      * @param min lower bound (in emitted coordinates) of the returned tree
      * @param max upper bound (in emitted coordinates) of the returned tree
      */
-    public QuadTree<HydrologicalUnit> convertImutableQuadtree(
+    public ImmutableQuadTree<HydrologicalUnit> convertImmutableQuadtree(
             int time, ElevationSampler decodedElev, double offsetX, double offsetZ, double[] min, double[] max) {
+        return new ImmutableQuadTree<>(
+                min, max, collectUnits(time, decodedElev, offsetX, offsetZ), HydrologicalUnit.PROTOTYPE);
+    }
+
+    /**
+     * Collect the network's {@link HydrologicalUnit}s (active channels plus recorded removed
+     * features) as a mutable list, so a caller can append further units (e.g. the local-channel
+     * network) before freezing them into a single {@link ImmutableQuadTree}. See
+     * {@link #convertImmutableQuadtree} for the coordinate / bed-elevation conventions.
+     */
+    public List<HydrologicalUnit> collectUnits(int time, ElevationSampler decodedElev, double offsetX, double offsetZ) {
         final List<HydrologicalUnit> units = new ArrayList<>();
         for (Channel ch : channels.values()) {
             final double startElev = nodeElevation(ch.startNodeId);
@@ -623,7 +636,7 @@ public final class RiverNetwork {
                     offsetX,
                     offsetZ);
         }
-        return new QuadTree<>(min, max, units, HydrologicalUnit.PROTOTYPE);
+        return units;
     }
 
     private static void addFeatureUnits(

@@ -27,7 +27,7 @@ public class GlobalRiverTest {
     private static final String DEBUG_PATH = FractalTerrainConfig.DEFAULT_DEBUG_PATH + "/global_river";
 
     /** Tiles (tx, tz) to render. */
-    private static final int[][] TILES = {{-1, -1}};
+    private static final int[][] TILES = {{0, -1}};
 
     public static void main(String[] args) throws Exception {
         LOG.info("GlobalRiverTest start; output dir = {}", DEBUG_PATH);

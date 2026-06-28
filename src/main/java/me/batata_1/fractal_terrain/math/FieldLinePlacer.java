@@ -1,7 +1,7 @@
 package me.batata_1.fractal_terrain.math;
 
 import java.util.List;
-import me.batata_1.fractal_terrain.math.ds.QuadTree;
+import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
 import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
 
 /**
@@ -59,7 +59,7 @@ public class FieldLinePlacer {
      * after the {@link #normalizeByFwidth} pass. The supplied trees must be in the same coordinate
      * frame that {@code (row*resolution, col*resolution)} addresses.
      */
-    public float[] apply(QuadTree<QuadTreePoint> ridgePoints, QuadTree<QuadTreePoint> valleyPoints) {
+    public float[] apply(ImmutableQuadTree<QuadTreePoint> ridgePoints, ImmutableQuadTree<QuadTreePoint> valleyPoints) {
         return normalizeByFwidth(applyRaw(ridgePoints, valleyPoints), outputWidth(), outputHeight());
     }
 
@@ -67,7 +67,8 @@ public class FieldLinePlacer {
      * Raw {@code sin(netAngle * frequency)} field, BEFORE the fwidth normalization. Exposed so debug
      * harnesses can visualise the pre-normalization image; production callers use {@link #apply}.
      */
-    public float[] applyRaw(QuadTree<QuadTreePoint> ridgePoints, QuadTree<QuadTreePoint> valleyPoints) {
+    public float[] applyRaw(
+            ImmutableQuadTree<QuadTreePoint> ridgePoints, ImmutableQuadTree<QuadTreePoint> valleyPoints) {
         final int outH = outputHeight();
         final int outW = outputWidth();
         final float[] rawField = new float[outH * outW];
