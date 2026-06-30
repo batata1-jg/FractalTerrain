@@ -34,7 +34,6 @@ public abstract class PlacedFeatureMixin {
                     stream = stream.flatMap(
                             (blockPosx) -> placementModifier.getPositions(placementContext, randomSource, blockPosx));
                 }
-                // TODO:check if nextfloat returns between 0 and 1
                 if (VegetationController.densityAt(blockPos.getX(), blockPos.getZ()) < randomSource.nextFloat())
                     stream = Stream.of();
                 MutableBoolean mutableBoolean = new MutableBoolean();

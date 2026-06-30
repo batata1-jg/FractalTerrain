@@ -5,7 +5,11 @@ import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+
+import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
+import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
@@ -71,21 +75,22 @@ public class BiomeProvider {
     /** Minimum blend weight before a coarse pixel is treated as present (matches the pipeline). */
     private static final float COARSE_WEIGHT_EPS = 1e-6f;
 
-    /** Biome-tile channel holding weirdness (matches the sampler wiring below: {@code T H C E D W}). */
-    private static final int WEIRDNESS_CHANNEL = 4;
+    // --- tile channel layout ------------------------------------------------------
+    // Each stored tile is [0..4] biome params, [5] river-humidity PDF (reserved), and — only while the 3D
+    // visualizer runs — [6] a debug distance-to-shore field. The tensor is declared with TILE_CHANNELS so
+    // every channel (including the debug one) is addressable; getDistShore reads DEBUG_DSHORE_CHANNEL.
 
-    /**
-     * Scale (multiplied by the per-sampler {@code scale}) used for the <em>magnitude</em>-preserving
-     * weirdness interpolation — same as the other channels, so the overall terrain shape is kept smooth.
-     */
-    private static final double WEIRDNESS_VALUE_SCALE = 5.0;
+    /** Biome-parameter channels {@link ClimateVariableTransform#transform} returns (continentalness…weirdness). */
+    private static final int PARAM_CHANNELS = 5;
 
-    /**
-     * Scale used for the weirdness <em>sign</em> interpolation. Finer than {@link #WEIRDNESS_VALUE_SCALE}
-     * so the sign flips far more rapidly across the world: terrain only reads |weirdness| (PV folding), so
-     * a fast-flipping sign multiplies biome diversity without reshaping the landscape.
-     */
-    private static final double WEIRDNESS_SIGN_SCALE = 1.0;
+    /** Whether each tile carries the extra debug distance-to-shore channel (only while the visualizer runs). */
+    private static final boolean DEBUG_DSHORE_CHANNEL_ON = !DISABLE_3D_VISUALIZER;
+
+    /** Index of the appended debug distance-to-shore channel (after the {@link FractalTerrainConfig#BIOME_CHANNELS} real ones). */
+    private static final int DEBUG_DSHORE_CHANNEL = BIOME_CHANNELS;
+
+    /** Channels stored per tile: the real {@link FractalTerrainConfig#BIOME_CHANNELS}, plus the debug channel when active. */
+    private static final int TILE_CHANNELS = DEBUG_DSHORE_CHANNEL_ON ? BIOME_CHANNELS + 1 : BIOME_CHANNELS;
 
     // -------------------------------------------------------------------------
     // Fields
@@ -148,7 +153,7 @@ public class BiomeProvider {
 
     public BiomeProvider(String path) {
         final_tiles = new NonIntersectingInfiniteTensor(
-                path, "final_biome_tiles", new int[] {BIOME_CHANNELS, 512, 512}, key -> {
+                path, "final_biome_tiles", new int[] {TILE_CHANNELS, 512, 512}, key -> {
                     int x = key.get(X);
                     int z = key.get(Z);
                     FloatTensor reliefTensor = FractalTerrainInstance.getReliefProvider()
@@ -159,20 +164,25 @@ public class BiomeProvider {
                     final float[] grad = Arrays.copyOfRange(reliefTensor.data, 4 << 18, 5 << 18);
                     final float[] lowFreqGrad = Arrays.copyOfRange(reliefTensor.data, 5 << 18, 6 << 18);
                     final float[] res = Arrays.copyOfRange(reliefTensor.data, 6 << 18, 7 << 18);
-                    final float[] vegPdf = new float[512 * 512];
+                    final float[] vegPdf = new float[TILE_PIXELS];
                     final float[] climate = pipeline.getClimate(x, z, elev);
                     final int[] coarseDistShore = computeCoarseDistShore(x, z);
+                    // While the visualizer runs, also capture the per-pixel dist-to-shore for the debug channel.
+                    final float[] distShoreDebug = DEBUG_DSHORE_CHANNEL_ON ? new float[TILE_PIXELS] : null;
                     final float[] biomeVariables = ClimateVariableTransform.transform(
-                            x, z, elev, grad, lowFreqGrad, climate, res, vegPdf, coarseDistShore);
+                            x, z, elev, grad, lowFreqGrad, climate, res, vegPdf, coarseDistShore, distShoreDebug);
 
-                    // Channels 0..4 from the climate transform; channel 5 = river-humidity PDF (reserved,
-                    // not read by the sampler yet).
-                    final float[] entries = new float[BIOME_CHANNELS * TILE_PIXELS];
-                    System.arraycopy(biomeVariables, 0, entries, 0, 5 * TILE_PIXELS);
-                    System.arraycopy(vegPdf, 0, entries, 5 * TILE_PIXELS, TILE_PIXELS);
-
-                    //  Debug.seeTile(t, x, z, "final_biomes");
-                    return new FloatTensor(entries, new int[] {BIOME_CHANNELS, 512, 512});
+                    // Channel layout: [0..4] biome params, [5] river-humidity PDF (reserved, unused by the
+                    // sampler), [6] debug dist-to-shore (only while the visualizer runs).
+                    final float[] entries = new float[TILE_CHANNELS * TILE_PIXELS];
+                    System.arraycopy(biomeVariables, 0, entries, 0, PARAM_CHANNELS * TILE_PIXELS);
+                    System.arraycopy(vegPdf, 0, entries, PARAM_CHANNELS * TILE_PIXELS, TILE_PIXELS);
+                    if (distShoreDebug != null) {
+                        System.arraycopy(distShoreDebug, 0, entries, DEBUG_DSHORE_CHANNEL * TILE_PIXELS, TILE_PIXELS);
+                    }
+                   // FloatTensor t = new FloatTensor(entries, new int[] {TILE_CHANNELS, 512, 512});
+                 //  ;; Debug.seeTile(t, x, z, "final_biomes");
+                    return new FloatTensor(entries, new int[] {TILE_CHANNELS, 512, 512});
                 });
         // Vanilla Climate.Sampler order: temperature, humidity, continentalness, erosion, depth, weirdness.
         // Each channel produces its own density via its creator (DEPTH's is the vertical y-gradient).
@@ -188,8 +198,8 @@ public class BiomeProvider {
                 weirdnessDensity,
                 List.of());
 
-        weirdnessInterpolation = new Interpolation(scale * 5, mutablePos -> {
-            mutablePos[CH] = WEIRDNESS_CHANNEL;
+        weirdnessInterpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
+            mutablePos[CH] = BiomeChannels.WEIRDNESS.channel;
             return final_tiles.getValue(mutablePos);
         });
     }
@@ -214,11 +224,31 @@ public class BiomeProvider {
         final int tileCx = tileX * COARSE_CELLS_PER_TILE;
         final int tileCz = tileZ * COARSE_CELLS_PER_TILE;
 
-        // Elevation slice must cover each grid cell's full search window: grid spans [tileC-1, tileC+3),
-        // each cell reaches ±SHORE_SEARCH_RADIUS ⇒ slice spans [tileC-1-R, tileC+3+R) = sliceSide cells.
-        final int sliceSide = DSHORE_GRID + 2 * SHORE_SEARCH_RADIUS;
-        final int ci0 = tileCx - 1 - SHORE_SEARCH_RADIUS;
-        final int cj0 = tileCz - 1 - SHORE_SEARCH_RADIUS;
+        // Fill the grid one cell at a time. Grid cell (gx, gz) is the coarse cell at coarse-px
+        // (tileCx - 1 + gx, tileCz - 1 + gz): the -1 puts grid index 0 on the halo ring, so the 2×2 owned
+        // cells land at grid indices 1..2 (matching the +1 halo-skip in ClimateVariableTransform's bilinear).
+        final int[] distShore = new int[DSHORE_GRID * DSHORE_GRID];
+        for (int gx = 0; gx < DSHORE_GRID; gx++) {
+            for (int gz = 0; gz < DSHORE_GRID; gz++) {
+                distShore[gx * DSHORE_GRID + gz] = calculateCell(tileCx - 1 + gx, tileCz - 1 + gz);
+            }
+        }
+        return distShore;
+    }
+
+    /**
+     * Distance-to-shore for one coarse cell (1 coarse px) at coarse-pixel {@code (cellCx, cellCz)}. Pulls its
+     * own {@code (2·SHORE_SEARCH_RADIUS+1)²} coarse slice centred on the cell — {@code ci0}/{@code cj0} are
+     * just {@code cell − SHORE_SEARCH_RADIUS}, with no halo (∓1) correction, since the caller already encodes
+     * the halo in the cell coordinate it passes — and returns the Manhattan distance (in coarse cells) to the
+     * nearest ocean cell within that 9×9 window, biased so a cell adjacent to ocean reads {@code 0}:
+     * {@link #SHORE_DIST_OCEAN} when the cell itself is ocean, {@code 0..7} for increasing land distance, and
+     * {@link #SHORE_DIST_NO_OCEAN} when no ocean lies within the window.
+     */
+    private static int calculateCell(int cellCx, int cellCz) {
+        final int sliceSide = 2 * SHORE_SEARCH_RADIUS + 1;
+        final int ci0 = cellCx - SHORE_SEARCH_RADIUS;
+        final int cj0 = cellCz - SHORE_SEARCH_RADIUS;
         final FloatTensor slice = pipeline.getCoarseSlice(ci0, cj0, ci0 + sliceSide, cj0 + sliceSide);
 
         // Weight-normalize coarse elevation (channel 0 / channel 6); ocean ⇒ value < 0.
@@ -229,32 +259,20 @@ public class BiomeProvider {
             elev[px] = (w > COARSE_WEIGHT_EPS) ? slice.data[px] / w : 0f;
         }
 
-        // Offset from the slice origin to the grid origin (the slice adds R cells of search halo).
-        final int gridOffset = SHORE_SEARCH_RADIUS;
-        final int[] distShore = new int[DSHORE_GRID * DSHORE_GRID];
-        for (int gx = 0; gx < DSHORE_GRID; gx++) {
-            for (int gz = 0; gz < DSHORE_GRID; gz++) {
-                final int si = gx + gridOffset;
-                final int sj = gz + gridOffset;
-                int dist;
-                if (elev[si * sliceSide + sj] < 0f) {
-                    dist = SHORE_DIST_OCEAN;
-                } else {
-                    int minManhattan = Integer.MAX_VALUE;
-                    for (int dx = -SHORE_SEARCH_RADIUS; dx <= SHORE_SEARCH_RADIUS; dx++) {
-                        for (int dz = -SHORE_SEARCH_RADIUS; dz <= SHORE_SEARCH_RADIUS; dz++) {
-                            if (elev[(si + dx) * sliceSide + (sj + dz)] < 0f) {
-                                minManhattan = Math.min(minManhattan, Math.abs(dx) + Math.abs(dz));
-                            }
-                        }
-                    }
-                    // Adjacent ocean (Manhattan 1) ⇒ shore 0; corner ocean (Manhattan 8) ⇒ 7.
-                    dist = (minManhattan == Integer.MAX_VALUE) ? SHORE_DIST_NO_OCEAN : minManhattan - 1;
+        // The target cell sits at the slice centre.
+        final int si = SHORE_SEARCH_RADIUS;
+        final int sj = SHORE_SEARCH_RADIUS;
+        if (elev[si * sliceSide + sj] < 0f) return SHORE_DIST_OCEAN;
+        int minManhattan = Integer.MAX_VALUE;
+        for (int dx = -SHORE_SEARCH_RADIUS; dx <= SHORE_SEARCH_RADIUS; dx++) {
+            for (int dz = -SHORE_SEARCH_RADIUS; dz <= SHORE_SEARCH_RADIUS; dz++) {
+                if (elev[(si + dx) * sliceSide + (sj + dz)] < 0f) {
+                    minManhattan = Math.min(minManhattan, Math.abs(dx) + Math.abs(dz));
                 }
-                distShore[gx * DSHORE_GRID + gz] = dist;
             }
         }
-        return distShore;
+        // Adjacent ocean (Manhattan 1) ⇒ shore 0; corner ocean (Manhattan 8) ⇒ 7.
+        return (minManhattan == Integer.MAX_VALUE) ? SHORE_DIST_NO_OCEAN : minManhattan - 1;
     }
 
     /**
@@ -305,7 +323,7 @@ public class BiomeProvider {
         private final Interpolation interpolation;
 
         public BiomeProviderDensity(final float scale, final int ch) {
-            interpolation = new Interpolation(scale * 5, mutablePos -> {
+            interpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
                 mutablePos[CH] = ch;
                 return FractalTerrainInstance.getBiomeProvider().final_tiles.getValue(mutablePos);
             });
@@ -355,7 +373,7 @@ public class BiomeProvider {
         private final Interpolation interpolation;
 
         public ErosionDensity(final float scale, final int ch) {
-            interpolation = new Interpolation(scale * 5, mutablePos -> {
+            interpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
                 mutablePos[CH] = ch;
                 return FractalTerrainInstance.getBiomeProvider().final_tiles.getValue(mutablePos);
             });
@@ -409,19 +427,18 @@ public class BiomeProvider {
     }
 
     /**
-     * Weirdness density built from <b>two</b> interpolations of the same channel that are multiplied:
+     * Weirdness density built from <b>two</b> interpolations of the same channel that are combined:
      *
      * <ul>
-     *   <li>{@link #valueInterpolation} — the actual weirdness values at {@link #WEIRDNESS_VALUE_SCALE}
-     *       (smooth), which carries the <em>magnitude</em>;
-     *   <li>{@link #signInterpolation} — the {@link Math#signum sign} of the weirdness values at the finer
-     *       {@link #WEIRDNESS_SIGN_SCALE}, which flips rapidly across space.
+     *   <li>{@link #valueInterpolation} — the magnitude {@code |weirdness|}, which carries the value;
+     *   <li>{@link #signInterpolation} — the {@link Math#signum sign} of the weirdness, which picks the
+     *       peaks-or-valleys side.
      * </ul>
      *
      * <p>{@link #sample} returns {@code value × sign}. The terrain reads only the magnitude of weirdness
      * (PV = {@code 1 − |3·|weirdness| − 2|}), so keeping the magnitude smooth preserves the overall
-     * landscape shape, while the rapidly-flipping sign — which only biome selection cares about — scatters
-     * the world into many more weirdness-folded biome bands.
+     * landscape shape, while the sign — which only biome selection cares about — scatters the world into
+     * more weirdness-folded biome bands.
      */
     private static class WeirdnessDensity implements DensityFunction.SimpleFunction {
 
@@ -429,11 +446,11 @@ public class BiomeProvider {
         private final Interpolation signInterpolation;
 
         public WeirdnessDensity(final float scale, final int ch) {
-            valueInterpolation = new Interpolation((float) (scale * WEIRDNESS_VALUE_SCALE), mutablePos -> {
+            valueInterpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
                 mutablePos[CH] = ch;
                 return Math.abs(FractalTerrainInstance.getBiomeProvider().final_tiles.getValue(mutablePos));
             });
-            signInterpolation = new Interpolation((float) (scale * WEIRDNESS_SIGN_SCALE), mutablePos -> {
+            signInterpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
                 mutablePos[CH] = ch;
                 return Math.signum(FractalTerrainInstance.getBiomeProvider().final_tiles.getValue(mutablePos));
             });
@@ -524,5 +541,18 @@ public class BiomeProvider {
     @TestOnly
     public double getWeirdness(int x, int z) {
         return weirdnessInterpolation.interpolateBilinear(x, z);
+    }
+
+    /**
+     * Per-pixel distance-to-shore at scaled-grid {@code xz} (reads {@code xz[X]}/{@code xz[Z]}, clobbers
+     * {@code xz[CH]}), backing the {@code DIST_SHORE} 3D visualizer
+     * ({@link me.batata_1.fractal_terrain.debug.Infinite3DVisualizer}). Reads the {@link #DEBUG_DSHORE_CHANNEL}
+     * each tile appends while the visualizer runs — the per-pixel signal {@link ClimateVariableTransform#transform}
+     * bilinearly upscales from the coarse grid, i.e. what actually drives the coast biomes. Only meaningful
+     * while the visualizer is enabled ({@link #DEBUG_DSHORE_CHANNEL_ON}).
+     */
+    @TestOnly
+    public Float getDistShore(int[] xz) {
+        return biomeChannel(xz, DEBUG_DSHORE_CHANNEL);
     }
 }

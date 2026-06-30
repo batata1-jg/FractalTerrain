@@ -83,9 +83,9 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
     private int sedimentDepth(final int x, final int z, FractalTerrainHeightmap h ) {
         final float grad = h.get(Types.REFINED_GRAD,x,z);
         final float normDepth = (float) (1 / (1 + grad * grad / Math.pow(humidityBasedFalloff(x,z,h),2) ));
-       // float depth = quantize(normDepth, maxDepth - minDepth) + minDepth;
-        float depth = normDepth;
-        depth = highErosionPvFactor(depth,x, z, h);
+        float depth = quantize(normDepth, maxDepth - minDepth) + minDepth;
+       // float depth = normDepth;
+        depth = highErosionPvFactor(depth,x,z,h);
         depth = correctHighHumidity(depth,x,z,h);
         return (int) depth;
     }
@@ -153,17 +153,17 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
                 mutable.setX(x).setZ(z);
                 materialRuleContext.updateXZ(x, z);
                 int relief_height = (int) heightmaps.get(Types.ELEVATION,dx,dz);
-                int stoneDepthAbove = -10;
-                int stoneDepthBellow = 0;
-                int fluid_height = Integer.MIN_VALUE;
-                int s = Integer.MAX_VALUE;
+                int stoneDepthAbove;
+                int stoneDepthBellow;
+                int fluid_height;
                 final int sedimentLayerDepth = sedimentDepth(dx, dz, heightmaps);
 
                 for (int d = 0; d <= sedimentLayerDepth; d++) {
                     final int y = relief_height - d;
-                    stoneDepthAbove = d;
+                    stoneDepthAbove = d+1;
                     stoneDepthBellow = relief_height + 128 - d;
-                    final int seaH = seaLevel - relief_height + 61;
+                    //64
+                    final int seaH = 2*seaLevel - relief_height;
                     fluid_height = seaH;
                     materialRuleContext.updateY(stoneDepthAbove, stoneDepthBellow, fluid_height, x, y, z);
                     BlockState newBlockState = blockStateRule.tryApply(x, y, z);

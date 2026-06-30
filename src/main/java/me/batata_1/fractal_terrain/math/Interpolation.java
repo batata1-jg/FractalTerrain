@@ -6,7 +6,7 @@ import net.minecraft.util.Mth;
 public class Interpolation {
 
     private static final Function<Double, Double> stepBilinear = x -> x;
-    private static final Function<Double, Double> stepSmoothstep = x -> 3 * (x * x) - 2 * (x * x * x);
+    public static final Function<Double, Double> stepSmoothstep = x -> 3 * (x * x) - 2 * (x * x * x);
 
     private final float interpolation_scale;
     private final Function<int[], Float> f;
@@ -33,6 +33,22 @@ public class Interpolation {
         int z0 = (int) Math.floor(pz);
         final double fx = px - x0;
         final double fz = pz - z0;
+        int x1 = x0 + 1;
+        int z1 = z0 + 1;
+        x0 = Math.clamp(x0, 0, side - 1);
+        x1 = Math.clamp(x1, 0, side - 1);
+        z0 = Math.clamp(z0, 0, side - 1);
+        z1 = Math.clamp(z1, 0, side - 1);
+        final double v0 = field[x0 * side + z0] * (1 - fz) + field[x0 * side + z1] * fz;
+        final double v1 = field[x1 * side + z0] * (1 - fz) + field[x1 * side + z1] * fz;
+        return v0 * (1 - fx) + v1 * fx;
+    }
+
+    public static double sampleSmoothStep(float[] field, double px, double pz, int side) {
+        int x0 = (int) Math.floor(px);
+        int z0 = (int) Math.floor(pz);
+        final double fx = stepSmoothstep.apply(px - x0);
+        final double fz = stepSmoothstep.apply(pz - z0);
         int x1 = x0 + 1;
         int z1 = z0 + 1;
         x0 = Math.clamp(x0, 0, side - 1);

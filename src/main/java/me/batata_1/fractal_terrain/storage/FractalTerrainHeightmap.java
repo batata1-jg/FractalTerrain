@@ -4,6 +4,8 @@ import static me.batata_1.fractal_terrain.FractalTerrainInstance.getBiomeProvide
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.getReliefProvider;
 
 import java.util.function.Function;
+
+import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import net.minecraft.world.level.ChunkPos;
 
@@ -51,8 +53,6 @@ public record FractalTerrainHeightmap(float[][] data) {
         VEGETATION(pos -> fillBilinear(pos, getBiomeProvider()::getVegetation)),
         WEIRDNESS(getBiomeProvider()::fillWeirdness);
 
-        private static final float SCALE = 5.0f;
-
         private static float[] fillBilinear(ChunkPos chunkPos, Function<int[], Float> f) {
             final float[] heights = new float[1 << 8];
             final int startingX = chunkPos.getMinBlockX();
@@ -64,7 +64,7 @@ public record FractalTerrainHeightmap(float[][] data) {
                     mutableCoords[0] = dx + startingX;
                     mutableCoords[1] = dz + startingZ;
                     heights[(dx << 4) + dz] = (float) Interpolation.interpolateBilinear(
-                            (dx + startingX) / SCALE, (dz + startingZ) / SCALE, mutableCoords, mutableNodes, f);
+                            (dx + startingX) / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION, (dz + startingZ) / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION, mutableCoords, mutableNodes, f);
                 }
             }
             return heights;
@@ -79,7 +79,7 @@ public record FractalTerrainHeightmap(float[][] data) {
             for (int dx = 0; dx < 16; dx++) {
                 for (int dz = 0; dz < 16; dz++) {
                     heights[(dx << 4) + dz] = (float) Interpolation.interpolateSmoothStep(
-                            (dx + startingX) / SCALE, (dz + startingZ) / SCALE, mutableCoords, mutableNodes, f);
+                            (dx + startingX) / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION, (dz + startingZ) / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION, mutableCoords, mutableNodes, f);
                 }
             }
             return heights;

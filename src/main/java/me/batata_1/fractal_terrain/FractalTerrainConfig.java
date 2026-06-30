@@ -10,6 +10,8 @@ import net.fabricmc.loader.api.FabricLoader;
 
 public record FractalTerrainConfig() {
 
+    public static final float GLOBAL_SCALE_CORRECTION = 5f;
+
     // ──────────────────────────────────────────────────────────────────────────
     // Algorithm tuning
     // ──────────────────────────────────────────────────────────────────────────
@@ -47,6 +49,9 @@ public record FractalTerrainConfig() {
     public static final boolean DEBUG_MANAGE_COLLISIONS = false;
     public static final boolean DEBUG_CROSSING_WINNER = false;
 
+    /** Logs every distance-to-shore grid cell (coarse-px coordinate + value) as a biome tile is built. */
+    public static final boolean DEBUG_DSHORE = false;
+
     // ──────────────────────────────────────────────────────────────────────────
     // 3D visualizer (debug terrain projection — see Infinite3DVisualizer)
     // ──────────────────────────────────────────────────────────────────────────
@@ -61,7 +66,7 @@ public record FractalTerrainConfig() {
      *   <li>{@code COARSE} — coarse-stage elevation channel.</li>
      * </ul>
      */
-    public static final Infinite3DVisualizer.DebugModes VIZ_H_CONTROL_MODE = Infinite3DVisualizer.DebugModes.RELIEF;
+    public static final Infinite3DVisualizer.DebugModes VIZ_H_CONTROL_MODE = Infinite3DVisualizer.DebugModes.DIST_SHORE;
 
     /**
      * Drives the block painted at each visualizer position ({@link Infinite3DVisualizer#debugPaintController}).
@@ -87,10 +92,9 @@ public record FractalTerrainConfig() {
     private static final String RESOURCE_PATH = "/" + FILE_NAME;
     private static final Properties PROPERTIES = new Properties();
     private static final String DEFAULT_INFERENCE_DEVICE = "gpu";
-    private static final boolean DEFAULT_OFFLOAD_MODELS = true;
-    private static final boolean DEFAULT_VALIDATE_MODEL = true;
+    private static final boolean DEFAULT_OFFLOAD_MODELS = false;
+    private static final boolean DEFAULT_VALIDATE_MODEL = false;
     private static final int DEFAULT_EXPLORER_PORT = 19801;
-    private static final int DEFAULT_TILE_SIZE = 256;
 
     static {
         loadDefaults();
@@ -120,15 +124,6 @@ public record FractalTerrainConfig() {
         return readBoolean("validate_model", DEFAULT_VALIDATE_MODEL);
     }
 
-    /** Region side length in blocks. Must be a positive power of 2 (128, 256, 512, ...). */
-    public static int tileSize() {
-        int configuredTileSize = readInt("tile_size", DEFAULT_TILE_SIZE);
-        if (configuredTileSize <= 0 || !isPowerOfTwo(configuredTileSize)) {
-            System.err.println("Invalid tile_size: " + configuredTileSize + ", using default " + DEFAULT_TILE_SIZE);
-            return DEFAULT_TILE_SIZE;
-        }
-        return configuredTileSize;
-    }
 
     private static void loadDefaults() {
         boolean loadedFromResource = false;
@@ -145,7 +140,6 @@ public record FractalTerrainConfig() {
         if (!loadedFromResource) {
             PROPERTIES.setProperty("inference.device", DEFAULT_INFERENCE_DEVICE);
             PROPERTIES.setProperty("validate_model", String.valueOf(DEFAULT_VALIDATE_MODEL));
-            PROPERTIES.setProperty("tile_size", String.valueOf(DEFAULT_TILE_SIZE));
         }
     }
 
@@ -207,9 +201,5 @@ public record FractalTerrainConfig() {
             System.err.println("Invalid int for " + key + ": " + value + ", using default " + defaultValue);
             return defaultValue;
         }
-    }
-
-    private static boolean isPowerOfTwo(int value) {
-        return (value & (value - 1)) == 0;
     }
 }

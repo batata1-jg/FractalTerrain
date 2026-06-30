@@ -27,7 +27,7 @@ public abstract class SteepSlopePredicateMixin {
             final int x = thisObject.context.blockX;
             final int z = thisObject.context.blockZ;
             final float slope = FractalTerrainInstance.getHeightmapCache().getOrCompute(new ChunkPos(x>>4,z>>4)).get(FractalTerrainHeightmap.Types.REFINED_GRAD,x&15,z&15);
-            cir.setReturnValue(slope>=4);
+            cir.setReturnValue(slope>=35);
         }
     }
 }
