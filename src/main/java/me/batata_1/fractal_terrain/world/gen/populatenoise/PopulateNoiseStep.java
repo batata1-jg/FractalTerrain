@@ -2,6 +2,8 @@ package me.batata_1.fractal_terrain.world.gen.populatenoise;
 
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
+import me.batata_1.fractal_terrain.FractalTerrainInstance;
+import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
 import net.minecraft.world.level.ChunkPos;
@@ -18,7 +20,6 @@ public class PopulateNoiseStep {
     private static final BlockState DEEPSLATE = Blocks.DEEPSLATE.defaultBlockState();
     private final NoiseGeneratorSettings settings;
 
-
     public PopulateNoiseStep(NoiseGeneratorSettings settings) {
         this.settings = settings;
     }
@@ -33,15 +34,27 @@ public class PopulateNoiseStep {
      * height, and clamping the lowest point to {@code bottomY}. {@link #settings} carries the sea level
      * and {@code minY} those tweaks need.
      *
-     * <p>STUB: currently a pass-through that returns the raw interpolated ELEVATION unchanged.
+     * <p>It also applies the per-pixel hydrology refinement: {@link HydrologyProfileCarver#carve} pulls
+     * the raw elevation toward nearby river channel/floodplain profiles, and the carve delta
+     * ({@code refined − raw}) is recorded into the {@link Types#RIVER_DIFFERENCE} heightmap so the surface
+     * painter can place water where the river carved below the original terrain.
      */
     public void updateToFinalElev(ChunkPos chunkPos, FractalTerrainHeightmap heightmap) {
         final int seaLevel = settings.seaLevel();
         final int bottom = settings.noiseSettings().minY();
         final float[] interpolatedElevs = heightmap.get(Types.ELEVATION);
-        for(int pos=0 ; pos< (1<<8) ; pos++) {
-            final float interpolatedElev = interpolatedElevs[pos];
-            interpolatedElevs[pos] = Math.max(bottom,interpolatedElev) + seaLevel - 1;
+        final float[] riverDifference = heightmap.get(Types.RIVER_DIFFERENCE);
+        final HydrologyProfileCarver carver = FractalTerrainInstance.getHydrologyCarver();
+        final int startX = chunkPos.getMinBlockX();
+        final int startZ = chunkPos.getMinBlockZ();
+        for (int dx = 0; dx < 16; dx++) {
+            for (int dz = 0; dz < 16; dz++) {
+                final int pos = (dx << 4) + dz;
+                final float preCarveElev = interpolatedElevs[pos];
+                final float refinedElev = carver.carve(startX + dx, startZ + dz, preCarveElev);
+                riverDifference[pos] = refinedElev - preCarveElev;
+                interpolatedElevs[pos] = Math.max(bottom, refinedElev) + seaLevel - 1;
+            }
         }
     }
 

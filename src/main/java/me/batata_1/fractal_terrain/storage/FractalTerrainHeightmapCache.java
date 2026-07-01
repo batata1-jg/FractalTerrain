@@ -61,4 +61,8 @@ public final class FractalTerrainHeightmapCache {
     public void clear() {
         CACHE.clear();
     }
+
+    public int getSize() {
+        return CACHE.size();
+    }
 }

@@ -1,8 +1,10 @@
 package me.batata_1.fractal_terrain.hydrology;
 
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.GLOBAL_RIVER_CHANNELS;
+import static me.batata_1.fractal_terrain.FractalTerrainConfig.GLOBAL_WIDTH_COORD_SCALE;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.X;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.Z;
+import static me.batata_1.fractal_terrain.FractalTerrainConfig.widthFromFlow;
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.NEIGHBOR_OFFSET_X;
@@ -349,11 +351,14 @@ public class GlobalRiverProvider {
     }
 
     /**
-     * Map a sqrt-scaled flow-accumulation value to a river width. Kept small and tunable: width grows
-     * with upstream drainage, giving large rivers downstream and thin tributaries near the ridges.
+     * Map a flow-accumulation value to a global-river width. Uses the shared
+     * {@link me.batata_1.fractal_terrain.FractalTerrainConfig#widthFromFlow width law} (identical to the
+     * local network) and then multiplies by {@link GLOBAL_WIDTH_COORD_SCALE} to convert the coarse-px flow
+     * width into native px. Width grows with upstream drainage: large rivers downstream, thin tributaries
+     * near the ridges.
      */
     private static float globalRiverWidth(float flowAccumulation) {
-        return (float) Math.sqrt(flowAccumulation);
+        return (float) (widthFromFlow(flowAccumulation) * GLOBAL_WIDTH_COORD_SCALE);
     }
 
     /** Divisor in the coarse→native elevation scale map ({@code nativeElev = coarseElev² / SCALE}). */

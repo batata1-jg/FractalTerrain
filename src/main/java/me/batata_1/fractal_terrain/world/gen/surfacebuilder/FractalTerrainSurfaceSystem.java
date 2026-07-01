@@ -75,32 +75,32 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
         return (int) (Math.floor(baseValue * steps + 0.5));
     }
 
-    private float humidityBasedFalloff(int x , int z , FractalTerrainHeightmap h)  {
-        float humidity = h.get(Types.VEGETATION,x,z);
-        return (Math.clamp(humidity,-1,1)+1)*10;
+    private float humidityBasedFalloff(int x, int z, FractalTerrainHeightmap h) {
+        float humidity = h.get(Types.VEGETATION, x, z);
+        return (Math.clamp(humidity, -1, 1) + 1) * 10;
     }
 
-    private int sedimentDepth(final int x, final int z, FractalTerrainHeightmap h ) {
-        final float grad = h.get(Types.REFINED_GRAD,x,z);
-        final float normDepth = (float) (1 / (1 + grad * grad / Math.pow(humidityBasedFalloff(x,z,h),2) ));
+    private int sedimentDepth(final int x, final int z, FractalTerrainHeightmap h) {
+        final float grad = h.get(Types.REFINED_GRAD, x, z);
+        final float normDepth = (float) (1 / (1 + grad * grad / Math.pow(humidityBasedFalloff(x, z, h), 2)));
         float depth = quantize(normDepth, maxDepth - minDepth) + minDepth;
-       // float depth = normDepth;
-        depth = highErosionPvFactor(depth,x,z,h);
-        depth = correctHighHumidity(depth,x,z,h);
+        // float depth = normDepth;
+        depth = highErosionPvFactor(depth, x, z, h);
+        depth = correctHighHumidity(depth, x, z, h);
         return (int) depth;
     }
 
     private float correctHighHumidity(float depth, int x, int z, FractalTerrainHeightmap h) {
-        float humidity = h.get(Types.VEGETATION,x,z);
-        if(HumidityLevel.of(humidity).equals(HumidityLevel.LEVEL_4)) return Math.max(depth,1);
+        float humidity = h.get(Types.VEGETATION, x, z);
+        if (HumidityLevel.of(humidity).equals(HumidityLevel.LEVEL_4)) return Math.max(depth, 1);
         return depth;
     }
 
     private float highErosionPvFactor(float depth, int x, int z, FractalTerrainHeightmap h) {
-        int erosionLvl = ErosionLevel.erosionLevel(h.get(Types.EROSION,x,z));
-       // if(x==&&z==) LOG.info("erosions level of {} {} : {}",x,z,erosionLvl);
-        Continentalness c = Continentalness.of(h.get(Types.CONTINENTALNESS,x,z));
-        PeaksValleys pv = PeaksValleys.of(h.get(Types.WEIRDNESS,x,z));
+        int erosionLvl = ErosionLevel.erosionLevel(h.get(Types.EROSION, x, z));
+        // if(x==&&z==) LOG.info("erosions level of {} {} : {}",x,z,erosionLvl);
+        Continentalness c = Continentalness.of(h.get(Types.CONTINENTALNESS, x, z));
+        PeaksValleys pv = PeaksValleys.of(h.get(Types.WEIRDNESS, x, z));
         if (erosionLvl == 0 || erosionLvl == 1) {
             switch (pv) {
                 case PEAKS -> {
@@ -152,7 +152,7 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
                 final int z = startZ + dz;
                 mutable.setX(x).setZ(z);
                 materialRuleContext.updateXZ(x, z);
-                int relief_height = (int) heightmaps.get(Types.ELEVATION,dx,dz);
+                int relief_height = (int) heightmaps.get(Types.ELEVATION, dx, dz);
                 int stoneDepthAbove;
                 int stoneDepthBellow;
                 int fluid_height;
@@ -160,10 +160,10 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
 
                 for (int d = 0; d <= sedimentLayerDepth; d++) {
                     final int y = relief_height - d;
-                    stoneDepthAbove = d+1;
+                    stoneDepthAbove = d + 1;
                     stoneDepthBellow = relief_height + 128 - d;
-                    //64
-                    final int seaH = 2*seaLevel - relief_height;
+                    // 64
+                    final int seaH = 2 * seaLevel - relief_height;
                     fluid_height = seaH;
                     materialRuleContext.updateY(stoneDepthAbove, stoneDepthBellow, fluid_height, x, y, z);
                     BlockState newBlockState = blockStateRule.tryApply(x, y, z);

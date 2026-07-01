@@ -70,4 +70,43 @@ public class NonIntersectingInfiniteQuadTree<T extends QuadTreePoint> extends St
         final ImmutableQuadTree<T> entry = getEntry(outWindow.getSinglePixelIntersection(coords));
         return entry.getPointsInCircle(outWindow.getPerWindowCoord(coords), radius);
     }
+
+    /** Receives one tile's contribution to a {@link #forEachTileWithin} query. */
+    public interface TileVisitor<T extends QuadTreePoint> {
+        /**
+         * @param originX world X of the tile's local {@code (0,0)} corner — add to a point's tile-local
+         *     coord to get its world coord
+         * @param originZ world Z of the tile's local {@code (0,0)} corner
+         * @param tileLocalPoints the points this tile returned for the circle query (tile-local coords)
+         */
+        void visit(int originX, int originZ, List<T> tileLocalPoints);
+    }
+
+    /**
+     * Visit every tile whose window overlaps the world-space circle ({@code coords ± radius}). Unlike
+     * {@link #getValuesWithin} (single owning tile, tile-local results), this spans tile borders: for each
+     * overlapping tile the {@code visitor} receives the tile's world origin and the tile-local points from
+     * a circle query centred at {@code coords − origin}, so a caller can translate the points into one
+     * world frame and merge them. Tiles are computed on demand, exactly like {@link #getValuesWithin}.
+     */
+    public void forEachTileWithin(final double[] coords, final double radius, final TileVisitor<T> visitor) {
+        final int[][] pixelRange = {
+            {(int) Math.floor(coords[0] - radius), (int) Math.ceil(coords[0] + radius) + 1},
+            {(int) Math.floor(coords[1] - radius), (int) Math.ceil(coords[1] + radius) + 1}
+        };
+        final int[] lo = outWindow.getLowestIntersection(pixelRange);
+        final int[] hi = outWindow.getHighestIntersection(pixelRange);
+        final double[] localCenter = new double[2];
+        for (int tileX = lo[0]; tileX <= hi[0]; tileX++) {
+            for (int tileZ = lo[1]; tileZ <= hi[1]; tileZ++) {
+                final int originX = tileX * outWindow.stride[0] + outWindow.offset[0];
+                final int originZ = tileZ * outWindow.stride[1] + outWindow.offset[1];
+                final ImmutableQuadTree<T> entry = getEntry(new int[] {tileX, tileZ});
+                localCenter[0] = coords[0] - originX;
+                localCenter[1] = coords[1] - originZ;
+                final List<T> local = entry.getPointsInCircle(localCenter, radius);
+                if (!local.isEmpty()) visitor.visit(originX, originZ, local);
+            }
+        }
+    }
 }

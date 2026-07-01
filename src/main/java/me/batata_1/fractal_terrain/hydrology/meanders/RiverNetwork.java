@@ -592,7 +592,7 @@ public final class RiverNetwork {
     public ImmutableQuadTree<HydrologicalUnit> convertImmutableQuadtree(
             int time, ElevationSampler decodedElev, double offsetX, double offsetZ, double[] min, double[] max) {
         return new ImmutableQuadTree<>(
-                min, max, collectUnits(time, decodedElev, offsetX, offsetZ), HydrologicalUnit.PROTOTYPE);
+                min, max, collectUnits(time, decodedElev, offsetX, offsetZ, new int[] {0}), HydrologicalUnit.PROTOTYPE);
     }
 
     /**
@@ -600,8 +600,14 @@ public final class RiverNetwork {
      * features) as a mutable list, so a caller can append further units (e.g. the local-channel
      * network) before freezing them into a single {@link ImmutableQuadTree}. See
      * {@link #convertImmutableQuadtree} for the coordinate / bed-elevation conventions.
+     *
+     * <p>{@code nextFeatureId} is a single-element mutable counter threaded by the caller so the global
+     * network and any units appended afterwards (e.g. the local channels) share one tile-unique
+     * {@link HydrologicalUnit#id() id} space — every point of one feature gets the same id, and the
+     * counter advances once per feature.
      */
-    public List<HydrologicalUnit> collectUnits(int time, ElevationSampler decodedElev, double offsetX, double offsetZ) {
+    public List<HydrologicalUnit> collectUnits(
+            int time, ElevationSampler decodedElev, double offsetX, double offsetZ, int[] nextFeatureId) {
         final List<HydrologicalUnit> units = new ArrayList<>();
         for (Channel ch : channels.values()) {
             final double startElev = nodeElevation(ch.startNodeId);
@@ -618,7 +624,8 @@ public final class RiverNetwork {
                     time,
                     decodedElev,
                     offsetX,
-                    offsetZ);
+                    offsetZ,
+                    nextFeatureId);
         }
         for (RemovedPath rp : removedPaths) {
             final QuinticHermiteSpline spline = QuinticHermiteSpline.createCatmullRom(rp.pts());
@@ -634,7 +641,8 @@ public final class RiverNetwork {
                     rp.time(),
                     decodedElev,
                     offsetX,
-                    offsetZ);
+                    offsetZ,
+                    nextFeatureId);
         }
         return units;
     }
@@ -651,7 +659,8 @@ public final class RiverNetwork {
             int time,
             ElevationSampler decodedElev,
             double offsetX,
-            double offsetZ) {
+            double offsetZ,
+            int[] nextFeatureId) {
         if (spline.getSize() < 2) return;
         final double dx = Math.max(width / 2.0, MIN_CONVERT_SPACING);
         final QuinticHermiteSpline resampled;
@@ -663,6 +672,7 @@ public final class RiverNetwork {
         final List<double[]> pts = resampled.points();
         final int n = pts.size();
         final double anchorEnd = Double.isNaN(endElev) ? 0.0 : endElev;
+        final int featureId = nextFeatureId[0]++;
         for (int i = 0; i < n; i++) {
             final double[] p = pts.get(i);
             final double frac = (n == 1) ? 0.0 : (double) i / (n - 1);
@@ -675,7 +685,16 @@ public final class RiverNetwork {
                 final double candidate = Math.max(decodedElev.sample(p[0], p[1]), anchorEnd);
                 bed = candidate + (anchorEnd - candidate) * frac;
             }
-            out.add(new HydrologicalUnit(type, null, List.of(p[0] - offsetX, p[1] - offsetZ), w, bed, time));
+            final double[] nrm = resampled.normal(i);
+            out.add(new HydrologicalUnit(
+                    type,
+                    null,
+                    List.of(p[0] - offsetX, p[1] - offsetZ),
+                    List.of(nrm[0], nrm[1]),
+                    w,
+                    bed,
+                    time,
+                    featureId));
         }
     }
 

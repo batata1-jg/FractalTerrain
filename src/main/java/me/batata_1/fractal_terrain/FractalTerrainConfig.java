@@ -83,6 +83,7 @@ public record FractalTerrainConfig() {
     public static final boolean DISABLE_BIOME_DECORATION = true || !DISABLE_3D_VISUALIZER;
 
     public static final boolean DISABLE_SURFACE_STEP = false || !DISABLE_3D_VISUALIZER;
+    public static final boolean TEST_HEIGHT_MAP = false;
 
     // ──────────────────────────────────────────────────────────────────────────
     // Property-file config (defaults backing the readers below)
@@ -104,6 +105,71 @@ public record FractalTerrainConfig() {
         }
     }
 
+    // ──────────────────────────────────────────────────────────────────────────
+    // Hydrology — river width & carve-profile tuning (all property-overridable).
+    // Declared after the static block so PROPERTIES is already populated.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /** Floor on every river width, in native pixels. */
+    public static final double MIN_WIDTH = readDouble("hydrology.min_width", 1.0);
+
+    /** Scale on {@code sqrt(flow)} shared by the global and local networks (see {@link #widthFromFlow}). */
+    public static final double WIDTH_FLOW_SCALE = 0.2f;
+
+    /**
+     * Multiplier applied to <em>global</em>-river widths only, converting their coarse-px flow widths into
+     * native px. (Local widths already come out in native px, so they use {@link #widthFromFlow} directly.)
+     */
+    public static final double GLOBAL_WIDTH_COORD_SCALE = 10f;
+
+    /**
+     * Floodplain half-extent (native px) = {@code FLOODPLAIN_BASE + FLOODPLAIN_WIDTH_FACTOR · width}. This
+     * is the <em>flat</em> band carved at floodplain elevation; the blend to decoded terrain starts only
+     * past it. Kept very tunable — a later plan adds noise to make this vary.
+     */
+    public static final double FLOODPLAIN_BASE = readDouble("hydrology.floodplain_base", 4.0);
+
+    public static final double FLOODPLAIN_WIDTH_FACTOR = readDouble("hydrology.floodplain_width_factor", 2.0);
+
+    /** Width of the blend-to-decoded band beyond the floodplain (native px). */
+    public static final double INFLUENCE_BLEND_LEN = readDouble("hydrology.influence_blend_len", 16.0);
+
+    /**
+     * Hard cap (native px) on any river's influence radius — also the radius the cross-tile unit query
+     * uses. Bounds the per-pixel carve/paint work and the query span; rivers whose computed
+     * {@link #maxRiverInfluence} would exceed this are clamped to it.
+     */
+    public static final double MAX_INFLUENCE_RADIUS = readDouble("hydrology.max_influence_radius", 128.0);
+
+    /**
+     * Max {@code |intended bed − decoded|} a point may carve. Beyond this the point is treated as
+     * <em>uncarvable</em> and excluded from the carve/merge entirely (so we never leave isolated holes or
+     * trenches); its hydrological unit still records the intended bed elevation.
+     */
+    public static final double MAX_CARVE_DELTA = readDouble("hydrology.max_carve_delta", 48.0);
+
+    /** Floodplain half-extent for a river of the given width (native px). */
+    public static double floodPlainLength(double width) {
+        return FLOODPLAIN_BASE + FLOODPLAIN_WIDTH_FACTOR * width;
+    }
+
+    /**
+     * Outer influence radius for a river of the given width: floodplain + blend band (native px), clamped
+     * to {@link #MAX_INFLUENCE_RADIUS}. Beyond this radius a river no longer affects a pixel.
+     */
+    public static double maxRiverInfluence(double width) {
+        return Math.min(MAX_INFLUENCE_RADIUS, floodPlainLength(width) + INFLUENCE_BLEND_LEN);
+    }
+
+    /**
+     * The single river-width law shared by the global and local networks:
+     * {@code max(MIN_WIDTH, WIDTH_FLOW_SCALE · sqrt(max(0, rawFlow)))}. Global callers additionally
+     * multiply the result by {@link #GLOBAL_WIDTH_COORD_SCALE} to convert coarse-px flow into native px.
+     */
+    public static double widthFromFlow(double rawFlow) {
+        return Math.max(MIN_WIDTH, WIDTH_FLOW_SCALE * Math.log(Math.max(0.0, rawFlow)));
+    }
+
     /** Inference device: "cpu", "gpu", or "auto" (try GPU then fall back to CPU). */
     public static String inferenceDevice() {
         return readString("inference.device", DEFAULT_INFERENCE_DEVICE);
@@ -123,7 +189,6 @@ public record FractalTerrainConfig() {
     public static boolean validateModel() {
         return readBoolean("validate_model", DEFAULT_VALIDATE_MODEL);
     }
-
 
     private static void loadDefaults() {
         boolean loadedFromResource = false;
@@ -199,6 +264,17 @@ public record FractalTerrainConfig() {
             return Integer.parseInt(value);
         } catch (NumberFormatException e) {
             System.err.println("Invalid int for " + key + ": " + value + ", using default " + defaultValue);
+            return defaultValue;
+        }
+    }
+
+    private static double readDouble(String key, double defaultValue) {
+        String value = PROPERTIES.getProperty(key);
+        if (value == null) return defaultValue;
+        try {
+            return Double.parseDouble(value.trim());
+        } catch (NumberFormatException e) {
+            System.err.println("Invalid double for " + key + ": " + value + ", using default " + defaultValue);
             return defaultValue;
         }
     }

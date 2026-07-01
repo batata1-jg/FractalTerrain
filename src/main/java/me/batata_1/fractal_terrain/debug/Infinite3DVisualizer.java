@@ -1,8 +1,6 @@
 package me.batata_1.fractal_terrain.debug;
 
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.CH;
-import static me.batata_1.fractal_terrain.FractalTerrainConfig.X;
-import static me.batata_1.fractal_terrain.FractalTerrainConfig.Z;
 
 import java.util.function.Function;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
@@ -27,8 +25,8 @@ public class Infinite3DVisualizer {
         COARSE(1.0f, 1.0f, 256.0f, xz -> FractalTerrainInstance.getInfinite3DVisualizer()
                 .getCoarse(xz)),
 
-        DIST_SHORE(10.0f, 1.0f, 5.0f, xz -> (float) FractalTerrainInstance.getBiomeProvider()
-                .getDistShore(xz));
+        DIST_SHORE(10.0f, 1.0f, 5.0f, xz ->
+                (float) FractalTerrainInstance.getBiomeProvider().getDistShore(xz));
         final float scale;
         final float elevationBias;
         final Interpolation interp;

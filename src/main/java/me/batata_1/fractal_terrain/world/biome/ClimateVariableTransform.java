@@ -1,5 +1,7 @@
 package me.batata_1.fractal_terrain.world.biome;
 
+import static me.batata_1.fractal_terrain.world.biome.parameters.PeaksValleys.PEAKS;
+
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import me.batata_1.fractal_terrain.math.spline.Spline;
@@ -8,8 +10,6 @@ import me.batata_1.fractal_terrain.world.biome.parameters.*;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static me.batata_1.fractal_terrain.world.biome.parameters.PeaksValleys.PEAKS;
 
 /**
  * Maps the diffusion model's coarse climate + relief channels onto the vanilla Overworld
@@ -170,7 +170,7 @@ public class ClimateVariableTransform {
     private static final FastNoiseLite TEMP_NOISE, TEMP_NOISE_FINE;
     private static final FastNoiseLite PRECIP_NOISE;
     private static final FastNoiseLite CONTINENTAL_NOISE, WEIRDENSS_NOISE;
-    private static final FastNoiseLite TEMP_VAR_NOISE, VEG_VAR_NOISE , CONT_VAR_NOISE;
+    private static final FastNoiseLite TEMP_VAR_NOISE, VEG_VAR_NOISE, CONT_VAR_NOISE;
 
     static {
         TEMP_NOISE = makeFnl(12345, 1f / 500f, 3, 2f, 0.5f);
@@ -180,7 +180,7 @@ public class ClimateVariableTransform {
         WEIRDENSS_NOISE = makeFnl(5467, 1f / 128f, 5, 2f, 0.5f);
         TEMP_VAR_NOISE = makeFnl(346, 1f / 256f, 2, 0.25f, 0.1f);
         VEG_VAR_NOISE = makeFnl(46754794, 1f / 256f, 2, 0.25f, 0.1f);
-        CONT_VAR_NOISE = makeFnl(235609,1f / 256f, 2, 0.25f, 0.1f);
+        CONT_VAR_NOISE = makeFnl(235609, 1f / 256f, 2, 0.25f, 0.1f);
     }
 
     // Temperature noise = coarse·0.4 + fine·0.2 (°C-scale perturbation).
@@ -409,8 +409,8 @@ public class ClimateVariableTransform {
                 for (int gz = 0; gz < DSHORE_GRID; gz++) {
                     LOG.info(
                             "dshore cell coarsePx=({}, {}) value={}",
-                            originCx + gx-1,
-                            originCz + gz-1,
+                            originCx + gx - 1,
+                            originCz + gz - 1,
                             coarseDistShore[gx * DSHORE_GRID + gz]);
                 }
             }
@@ -428,7 +428,7 @@ public class ClimateVariableTransform {
         for (int r = 0; r < TILE_SIZE; r++) {
             for (int c = 0; c < TILE_SIZE; c++) {
                 int idx = r * TILE_SIZE + c;
-                float nx = (z0<<9) + c, ny = (x0<<9) + r;
+                float nx = (z0 << 9) + c, ny = (x0 << 9) + r;
 
                 float tempNoiseCoarse = TEMP_NOISE.GetNoise(nx, ny);
                 float tempNoiseFine = TEMP_NOISE_FINE.GetNoise(nx, ny);
@@ -443,7 +443,7 @@ public class ClimateVariableTransform {
 
                 vegetationVar[idx] = VEG_VAR_NOISE.GetNoise(nx, ny);
                 temperatureVar[idx] = TEMP_VAR_NOISE.GetNoise(nx, ny);
-                continentalnessVar[idx] = CONT_VAR_NOISE.GetNoise(nx,ny);
+                continentalnessVar[idx] = CONT_VAR_NOISE.GetNoise(nx, ny);
             }
         }
 
@@ -473,12 +473,20 @@ public class ClimateVariableTransform {
 
                 // Per-pixel distance to shore, bilinearly upscaled from the coarse grid. dx=X axis, dz=Z axis;
                 // +COARSE_CELL_HALF shifts a pixel onto its coarse-cell centre. Drives the coast override.
-                double shoreGx = 1+(dx / (double) COARSE_CELL_PX);
-                double shoreGz = 1+(dz / (double) COARSE_CELL_PX);
+                double shoreGx = 1 + (dx / (double) COARSE_CELL_PX);
+                double shoreGz = 1 + (dz / (double) COARSE_CELL_PX);
                 float distShore = (float) Interpolation.sampleSmoothStep(distShoreGrid, shoreGx, shoreGz, DSHORE_GRID);
 
                 computeContinentalness(
-                        biome, ocean, rescaledElev, continentNoise[idx], tStd, pCV, tempNoise[idx], distShore,continentalnessVar[idx]);
+                        biome,
+                        ocean,
+                        rescaledElev,
+                        continentNoise[idx],
+                        tStd,
+                        pCV,
+                        tempNoise[idx],
+                        distShore,
+                        continentalnessVar[idx]);
                 computeErosion(
                         biome,
                         elevVal,
@@ -495,7 +503,7 @@ public class ClimateVariableTransform {
 
                 // Cross-parameter post-process: may rewrite erosion/weirdness at the coast.
                 stonyCliffaceCondition(biome);
-                erosionBufferZone(biome,elevVal);
+                erosionBufferZone(biome, elevVal);
 
                 out[idx] = biome[CONTINENTALNESS];
                 out[TILE_SIZE_SQUARED + idx] = biome[EROSION];
@@ -507,8 +515,6 @@ public class ClimateVariableTransform {
         }
         return out;
     }
-
-
 
     /**
      * Continentalness: ocean depth vs. inland region (worldgeneration101.md "Continentalness").
@@ -542,30 +548,30 @@ public class ClimateVariableTransform {
             else pCvCont = MEAN_FAR_INLAND;
             continentalness = (tStdCont + pCvCont + elevCont) / CONT_TERM_COUNT;
             // Close to shore: pull toward the coast region so beaches resolve. Far from shore: pull inland.
-            continentalness = increaseVarietyOnCoasts(continentalness,contVarNoise,distShore);
+            continentalness = increaseVarietyOnCoasts(continentalness, contVarNoise, distShore);
             if (5 < distShore) continentalness = MEAN_FAR_INLAND * 0.2f + continentalness * 0.8f;
         }
-        biome[CONTINENTALNESS] = continentalness + 0.04f*continentNoise;
+        biome[CONTINENTALNESS] = continentalness + 0.04f * continentNoise;
     }
 
     private static float increaseVarietyOnCoasts(float continentalness, float contVarNoise, float distShore) {
         float c1 = continentalness;
-        final float mid=-1f;
+        final float mid = -1f;
         final float halfLen = 3f;
-        if ( mid-halfLen < distShore && distShore < mid+halfLen ) {
-            final float weight = 1-Math.abs(distShore - mid)/halfLen;
-            c1 = MEAN_COAST * weight + c1 * (1-weight);
+        if (mid - halfLen < distShore && distShore < mid + halfLen) {
+            final float weight = 1 - Math.abs(distShore - mid) / halfLen;
+            c1 = MEAN_COAST * weight + c1 * (1 - weight);
         }
         float c2 = continentalness;
-        final float mid2=-1.5f;
+        final float mid2 = -1.5f;
         final float halfLen2 = 2f;
-        if ( mid2-halfLen2 < distShore && distShore < mid2+halfLen2 ) {
-            final float weight = 1-Math.abs(distShore - mid2)/halfLen2;
-            c2 = MEAN_COAST * weight + c2 * (1-weight);
+        if (mid2 - halfLen2 < distShore && distShore < mid2 + halfLen2) {
+            final float weight = 1 - Math.abs(distShore - mid2) / halfLen2;
+            c2 = MEAN_COAST * weight + c2 * (1 - weight);
         }
         if (distShore < -0.3) c2 = MEAN_COAST * 0.5f + c2 * 0.5f;
-        float normNoise = (Math.clamp(contVarNoise,-1,1)+1)*0.5f;
-        return c1*normNoise + (1-normNoise)*c2;
+        float normNoise = (Math.clamp(contVarNoise, -1, 1) + 1) * 0.5f;
+        return c1 * normNoise + (1 - normNoise) * c2;
     }
 
     /**
@@ -604,7 +610,7 @@ public class ClimateVariableTransform {
                 + (1 - gradInfluence) * flatErosion
                 + veryFlatFactor;
 
-        if(elevVal > 750) erosion = Math.max(erosion-0.3f,-1);
+        if (elevVal > 750) erosion = Math.max(erosion - 0.3f, -1);
 
         // Erosion level 5 = shattered terrain: jitter it out of the band for now.
         if (isShatteredErosion(erosion)) erosion = 0.15f + temperatureVar * 0.12f;
@@ -740,11 +746,11 @@ public class ClimateVariableTransform {
         float weirdSign = ocean ? -1 : Math.signum(weirdnessNoise);
         float peakBias = (elevVal < ELEV_PEAK_MIN) ? 0 : (float) Math.pow(gradInfluence, 0.5f);
         if (600 < elevVal) peakBias = Math.min(0.75f, peakBias);
-        if (700 < elevVal) peakBias = Math.min(0.95f,peakBias);
-        float peakValue = 0.5f * (1-peakBias) + 0.666f * peakBias;
+        if (700 < elevVal) peakBias = Math.min(0.95f, peakBias);
+        float peakValue = 0.5f * (1 - peakBias) + 0.666f * peakBias;
         float weirdness = (resWeird * (1 - peakBias) + peakBias * peakValue) * weirdSign;
         if (isValley(weirdness)) weirdness = 0.06f;
-        if(elevVal<0) weirdness = 0.06f;
+        if (elevVal < 0) weirdness = 0.06f;
         biome[WEIRDNESS] = weirdness;
     }
 
@@ -755,8 +761,8 @@ public class ClimateVariableTransform {
      */
     private static void stonyCliffaceCondition(float[] biome) {
         float cont = biome[CONTINENTALNESS];
-        float t = Math.abs(cont-Continentalness.COAST.mid());
-        if (t > 0.12 ) return;
+        float t = Math.abs(cont - Continentalness.COAST.mid());
+        if (t > 0.12) return;
         PeaksValleys pv = PeaksValleys.of(biome[WEIRDNESS]);
         if (pv == PEAKS || pv == PeaksValleys.HIGH) {
             biome[EROSION] = ErosionLevel.LEVEL_1.range.mid();
@@ -764,14 +770,15 @@ public class ClimateVariableTransform {
         }
     }
 
-    private static void erosionBufferZone(float[] biome,float elevVal) {
+    private static void erosionBufferZone(float[] biome, float elevVal) {
         float erosion = biome[EROSION];
         float weirdness = biome[WEIRDNESS];
         PeaksValleys pv = PeaksValleys.of(weirdness);
-        if(elevVal>510) {
-            biome[EROSION] = Math.min(ErosionLevel.LEVEL_1.range.max(),erosion);
+        if (elevVal > 510) {
+            biome[EROSION] = Math.min(ErosionLevel.LEVEL_1.range.max(), erosion);
             switch (pv) {
-                case MID, LOW, VALLEYS -> biome[WEIRDNESS] = Math.signum(weirdness) * Math.max(Math.abs(weirdness),0.4f);
+                case MID, LOW, VALLEYS ->
+                    biome[WEIRDNESS] = Math.signum(weirdness) * Math.max(Math.abs(weirdness), 0.4f);
             }
         }
     }

@@ -15,7 +15,6 @@ import java.util.stream.Collectors;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.debug.Debug;
-import me.batata_1.fractal_terrain.math.spline.Spline;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
 import me.batata_1.fractal_terrain.world.biome.source.FractalTerrainBiomeSource;
 import me.batata_1.fractal_terrain.world.gen.populatenoise.PopulateNoiseStep;
@@ -91,7 +90,6 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         return biomeSource;
     }
 
-
     @Override
     public @NotNull CompletableFuture<ChunkAccess> fillFromNoise(
             @NotNull Executor executor,
@@ -119,7 +117,9 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         final int startingZ = chunkPos.getMinBlockZ();
         final int seaLevel = settings.value().seaLevel();
         final int bottom = settings.value().noiseSettings().minY();
-        final float[] reliefBaseHeight = FractalTerrainInstance.getHeightmapCache().getOrCompute(chunkPos).get(FractalTerrainHeightmap.Types.ELEVATION);
+        final FractalTerrainHeightmap heightmaps =
+                FractalTerrainInstance.getHeightmapCache().getOrCompute(chunkPos);
+        final float[] reliefBaseHeight = heightmaps.get(FractalTerrainHeightmap.Types.ELEVATION);
         final Heightmap oceanHeightmap = chunk.getOrCreateHeightmapUnprimed(Heightmap.Types.OCEAN_FLOOR_WG);
         final Heightmap surfaceHeightmap = chunk.getOrCreateHeightmapUnprimed(Heightmap.Types.WORLD_SURFACE_WG);
         final BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
@@ -128,7 +128,11 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
                 final int xx = startingX + dx;
                 final int zz = startingZ + dz;
                 final int reliefHeight = (int) reliefBaseHeight[(dx << 4) + dz];
-                final int aboveWaterHeight = Math.max(reliefHeight, seaLevel);
+                // River water: where the carve lowered the terrain, fill the channel up to the pre-carve
+                // surface (the painter reads RIVER_DIFFERENCE); combined with the sea-level ocean fill.
+                final int riverWaterTop =
+                        FractalTerrainInstance.getHydrologyPainter().riverWaterTop(heightmaps, dx, dz, reliefHeight);
+                final int aboveWaterHeight = Math.max(Math.max(reliefHeight, seaLevel), riverWaterTop);
                 mutable.set(xx, bottom, zz);
                 BlockState state;
                 for (int y = bottom; y <= aboveWaterHeight; y++) {
@@ -394,8 +398,10 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         return settings.value().noiseSettings().minY();
     }
 
-    private int getHeight(int x , int z) {
-        return (int) FractalTerrainInstance.getHeightmapCache().getOrCompute(new ChunkPos(x>>4,z>>4)).get(FractalTerrainHeightmap.Types.ELEVATION,x&15,z&15);
+    private int getHeight(int x, int z) {
+        return (int) FractalTerrainInstance.getHeightmapCache()
+                .getOrCompute(new ChunkPos(x >> 4, z >> 4))
+                .get(FractalTerrainHeightmap.Types.ELEVATION, x & 15, z & 15);
     }
 
     @Override
@@ -405,7 +411,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
             Heightmap.@NotNull Types heightmap,
             @NotNull LevelHeightAccessor world,
             @NotNull RandomState noiseConfig) {
-        return getHeight(x,z);
+        return getHeight(x, z);
     }
 
     @Override
@@ -414,7 +420,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         BlockState[] blockStates =
                 // can be negative
                 new BlockState
-                        [getHeight(x,z) - settings.value().noiseSettings().minY()];
+                        [getHeight(x, z) - settings.value().noiseSettings().minY()];
         Arrays.fill(blockStates, DEFAUT);
         return new NoiseColumn(settings.value().noiseSettings().minY(), blockStates);
     }

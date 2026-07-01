@@ -38,7 +38,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p><b>Node squares &amp; traversal coordinates ({@code ox}, {@code oz}, {@code size}).</b> Node
  * bounds are never stored (see {@link #nodes}); instead every recursive walk — construction
- * ({@link #buildInto}), queries ({@link #queryRec}), and validation ({@link #validateRec}) — threads
+ * ({@link #buildInto}), queries ({@link #query}), and validation ({@link #validateRec}) — threads
  * the current node's square explicitly through three parameters: {@code ox} and {@code oz} are the
  * coordinates of the square's <em>lower corner</em> (minimum X and minimum Z), and {@code size} is its
  * side length, so the square spans the half-open box {@code [ox, ox + size) × [oz, oz + size)}. The
@@ -48,7 +48,7 @@ import org.slf4j.LoggerFactory;
  * same arithmetic {@link #findSection} uses, bounds can be recomputed on the fly rather than stored.
  *
  * <p><b>Debugging.</b> Two zero-overhead-when-off aids are built in: flip {@link #DEBUG_QUERY} to
- * {@code true} for an indented per-node trace of {@link #queryRec} (prune / accept / leaf-scan /
+ * {@code true} for an indented per-node trace of {@link #query} (prune / accept / leaf-scan /
  * descend decisions), and call {@link #validate()} (or set {@link #VALIDATE_ON_BUILD}) to assert the
  * frozen structure is internally consistent — counts, contiguous point slices, and points-within-square.
  * {@link #debugPrint()} dumps the whole node tree. Both flags are compile-time constants, so when
@@ -201,24 +201,33 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
 
             double width = highX - lowX;
             double height = highZ - lowZ;
-//            while (((int) Math.floor(lowX / m0)) != ((int) Math.floor(highX / m0)) || ((int) Math.floor(lowZ / m0)) != ((int) Math.floor(highZ / m0))) {
-//                m0 *= 2.0;
-//                doublings++;
-//                if(doublings>30) {
-//                    LOG.error("doubles more than 30 tiles, area is becoming large. Condition: {} != {} || {} != {}",
-//                            ((int) Math.floor(lowX / m0)) , ((int) Math.floor(highX / m0)) , ((int) Math.floor(lowZ / m0)) , ((int) Math.floor(highZ / m0)));
-//                    throw new IllegalArgumentException("ImmutableQuadTree point spread too large to align a"
-//                            + " power-of-two root cell (size overflowed); bbox x=[" + lowX + "," + highX + "] z=["
-//                            + lowZ + "," + highZ + "] doublings: " + doublings);
-//                }
-//                // Guard against doubling past the finite double range: with finite (pre-checked) inputs the
-//                // loop converges long before this, so an overflow means the point spread is unrepresentable.
-//                if (Double.isInfinite(m0))
-//                    throw new IllegalArgumentException("ImmutableQuadTree point spread too large to align a"
-//                            + " power-of-two root cell (size overflowed); bbox x=[" + lowX + "," + highX + "] z=["
-//                            + lowZ + "," + highZ + "] doublings: " + doublings);
-//            }
-            this.rootSize = Math.max(width,height) + 10.0;
+            //            while (((int) Math.floor(lowX / m0)) != ((int) Math.floor(highX / m0)) || ((int)
+            // Math.floor(lowZ / m0)) != ((int) Math.floor(highZ / m0))) {
+            //                m0 *= 2.0;
+            //                doublings++;
+            //                if(doublings>30) {
+            //                    LOG.error("doubles more than 30 tiles, area is becoming large. Condition: {} != {} ||
+            // {} != {}",
+            //                            ((int) Math.floor(lowX / m0)) , ((int) Math.floor(highX / m0)) , ((int)
+            // Math.floor(lowZ / m0)) , ((int) Math.floor(highZ / m0)));
+            //                    throw new IllegalArgumentException("ImmutableQuadTree point spread too large to align
+            // a"
+            //                            + " power-of-two root cell (size overflowed); bbox x=[" + lowX + "," + highX +
+            // "] z=["
+            //                            + lowZ + "," + highZ + "] doublings: " + doublings);
+            //                }
+            //                // Guard against doubling past the finite double range: with finite (pre-checked) inputs
+            // the
+            //                // loop converges long before this, so an overflow means the point spread is
+            // unrepresentable.
+            //                if (Double.isInfinite(m0))
+            //                    throw new IllegalArgumentException("ImmutableQuadTree point spread too large to align
+            // a"
+            //                            + " power-of-two root cell (size overflowed); bbox x=[" + lowX + "," + highX +
+            // "] z=["
+            //                            + lowZ + "," + highZ + "] doublings: " + doublings);
+            //            }
+            this.rootSize = Math.max(width, height) + 10.0;
             this.rootOriginX = lowX - 5.0;
             this.rootOriginZ = lowZ - 5.0;
             if (DEBUG_BUILD)
@@ -337,57 +346,100 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
         return getPointsInBox(b, d).stream().map(QuadTreePoint::toArray).toList();
     }
 
+    /**
+     * Iterative query walk (an explicit stack replaces the old recursion). Each stack frame is the
+     * 6-tuple {@code (idx, ox, oz, size, depth, pointsStart)} the recursive walk used to thread —
+     * {@code (ox, oz, size)} is the node's square (lower corner + side; see the class javadoc) and
+     * {@code pointsStart} is the start of its contiguous slice in {@link #points}. Frames live in six
+     * parallel primitive stacks (no per-node object allocation), and the two corner arrays
+     * {@code lo}/{@code hi} are reused across the whole walk (the {@link QuadTreeShape} implementations
+     * only read them), so a query allocates nothing per node. Semantics are identical to the recursive
+     * form: {@code notIntersect} prune → {@code contains} bulk-accept → leaf-scan vs. push the 4 children
+     * with running {@code childStart} accumulation. Set {@link #DEBUG_QUERY} to trace each decision.
+     */
     private void query(final QuadTreeShape shape, final List<T> out) {
         if (nodes.length == 0) return;
-        queryRec(shape, 0, rootOriginX, rootOriginZ, rootSize, 0, 0, out);
-    }
 
-    /**
-     * Recursive query walk. {@code (ox, oz, size)} is the current node's square (lower corner + side;
-     * see the class javadoc); {@code pointsStart} is the start of this node's contiguous slice in
-     * {@link #points}. Set {@link #DEBUG_QUERY} to trace each node's decision.
-     */
-    private void queryRec(
-            final QuadTreeShape shape,
-            final int idx,
-            final double ox,
-            final double oz,
-            final double size,
-            final int depth,
-            final int pointsStart,
-            final List<T> out) {
-        final Node n = nodes[idx];
-        if (DEBUG_QUERY) trace(depth, "visit node[%d] square=[%.3f,%.3f)+%.3f count=%d", idx, ox, oz, size, n.count);
-        if (n.count == 0) return;
-        final double[] p0 = {ox, oz};
-        final double[] p1 = {ox + size, oz + size};
-        if (shape.notIntersect(p0, p1)) {
-            if (DEBUG_QUERY) trace(depth, "  prune (disjoint from query shape)");
-            return;
-        }
-        if (shape.contains(p0, p1)) {
-            if (DEBUG_QUERY) trace(depth, "  accept whole node (%d pts)", n.count);
-            collect(pointsStart, pointsStart + n.count, out);
-            return;
-        }
-        final boolean leaf = n.count <= maxPointsNode || depth == maxDepth;
-        if (leaf) {
-            if (DEBUG_QUERY) trace(depth, "  leaf-scan %d pts", n.count);
-            for (int i = pointsStart; i < pointsStart + n.count; i++) {
-                final T pt = points[i];
-                if (pt != null && shape.contains(pt)) out.add(pt);
+        // Stack depth is bounded by the DFS frontier (≤ 3·maxDepth + 4); 64 covers the defaults and
+        // grows on demand. Six parallel arrays hold the frame tuple.
+        int capacity = 64;
+        int[] idxStack = new int[capacity];
+        double[] oxStack = new double[capacity];
+        double[] ozStack = new double[capacity];
+        double[] sizeStack = new double[capacity];
+        int[] depthStack = new int[capacity];
+        int[] startStack = new int[capacity];
+
+        idxStack[0] = 0;
+        oxStack[0] = rootOriginX;
+        ozStack[0] = rootOriginZ;
+        sizeStack[0] = rootSize;
+        depthStack[0] = 0;
+        startStack[0] = 0;
+        int sp = 1;
+
+        final double[] lo = new double[2];
+        final double[] hi = new double[2];
+
+        while (sp > 0) {
+            sp--;
+            final int idx = idxStack[sp];
+            final double ox = oxStack[sp];
+            final double oz = ozStack[sp];
+            final double size = sizeStack[sp];
+            final int depth = depthStack[sp];
+            final int pointsStart = startStack[sp];
+
+            final Node n = nodes[idx];
+            if (DEBUG_QUERY)
+                trace(depth, "visit node[%d] square=[%.3f,%.3f)+%.3f count=%d", idx, ox, oz, size, n.count);
+            if (n.count == 0) continue;
+            lo[0] = ox;
+            lo[1] = oz;
+            hi[0] = ox + size;
+            hi[1] = oz + size;
+            if (shape.notIntersect(lo, hi)) {
+                if (DEBUG_QUERY) trace(depth, "  prune (disjoint from query shape)");
+                continue;
             }
-            return;
-        }
-        if (DEBUG_QUERY) trace(depth, "  descend into 4 children @ base %d", n.id);
-        final double cs = size / 2.0;
-        int childStart = pointsStart;
-        for (int k = 0; k < 4; k++) {
-            final int childIdx = n.id + k;
-            final int qx = k >> 1;
-            final int qz = k & 1;
-            queryRec(shape, childIdx, ox + qx * cs, oz + qz * cs, cs, depth + 1, childStart, out);
-            childStart += nodes[childIdx].count;
+            if (shape.contains(lo, hi)) {
+                if (DEBUG_QUERY) trace(depth, "  accept whole node (%d pts)", n.count);
+                collect(pointsStart, pointsStart + n.count, out);
+                continue;
+            }
+            final boolean leaf = n.count <= maxPointsNode || depth == maxDepth;
+            if (leaf) {
+                if (DEBUG_QUERY) trace(depth, "  leaf-scan %d pts", n.count);
+                for (int i = pointsStart; i < pointsStart + n.count; i++) {
+                    final T pt = points[i];
+                    if (pt != null && shape.contains(pt)) out.add(pt);
+                }
+                continue;
+            }
+            if (DEBUG_QUERY) trace(depth, "  descend into 4 children @ base %d", n.id);
+
+            if (sp + 4 > capacity) {
+                capacity <<= 1;
+                idxStack = Arrays.copyOf(idxStack, capacity);
+                oxStack = Arrays.copyOf(oxStack, capacity);
+                ozStack = Arrays.copyOf(ozStack, capacity);
+                sizeStack = Arrays.copyOf(sizeStack, capacity);
+                depthStack = Arrays.copyOf(depthStack, capacity);
+                startStack = Arrays.copyOf(startStack, capacity);
+            }
+            final double cs = size / 2.0;
+            int childStart = pointsStart;
+            for (int k = 0; k < 4; k++) {
+                final int childIdx = n.id + k;
+                idxStack[sp] = childIdx;
+                oxStack[sp] = ox + (k >> 1) * cs;
+                ozStack[sp] = oz + (k & 1) * cs;
+                sizeStack[sp] = cs;
+                depthStack[sp] = depth + 1;
+                startStack[sp] = childStart;
+                sp++;
+                childStart += nodes[childIdx].count;
+            }
         }
     }
 
@@ -556,8 +608,8 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
                 final double x = pt.get(X);
                 final double z = pt.get(Z);
                 if (x < ox || x >= ox + size || z < oz || z >= oz + size)
-                    errors.add("point (" + x + "," + z + ") outside leaf node[" + idx + "] square [" + ox + ","
-                            + oz + ")+" + size);
+                    errors.add("point (" + x + "," + z + ") outside leaf node[" + idx + "] square [" + ox + "," + oz
+                            + ")+" + size);
             }
             return n.count;
         }
@@ -577,8 +629,7 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
             childStart += nodes[childIdx].count;
             sum += nodes[childIdx].count;
         }
-        if (sum != n.count)
-            errors.add("internal node[" + idx + "] count " + n.count + " != sum of children " + sum);
+        if (sum != n.count) errors.add("internal node[" + idx + "] count " + n.count + " != sum of children " + sum);
         return n.count;
     }
 

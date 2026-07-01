@@ -5,11 +5,8 @@ import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
-
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
-import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
@@ -180,8 +177,8 @@ public class BiomeProvider {
                     if (distShoreDebug != null) {
                         System.arraycopy(distShoreDebug, 0, entries, DEBUG_DSHORE_CHANNEL * TILE_PIXELS, TILE_PIXELS);
                     }
-                   // FloatTensor t = new FloatTensor(entries, new int[] {TILE_CHANNELS, 512, 512});
-                 //  ;; Debug.seeTile(t, x, z, "final_biomes");
+                    // FloatTensor t = new FloatTensor(entries, new int[] {TILE_CHANNELS, 512, 512});
+                    //  ;; Debug.seeTile(t, x, z, "final_biomes");
                     return new FloatTensor(entries, new int[] {TILE_CHANNELS, 512, 512});
                 });
         // Vanilla Climate.Sampler order: temperature, humidity, continentalness, erosion, depth, weirdness.
@@ -448,18 +445,20 @@ public class BiomeProvider {
         public WeirdnessDensity(final float scale, final int ch) {
             valueInterpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
                 mutablePos[CH] = ch;
-                return Math.abs(FractalTerrainInstance.getBiomeProvider().final_tiles.getValue(mutablePos));
+                return Math.abs(
+                        FractalTerrainInstance.getBiomeProvider().final_tiles.getValue(mutablePos));
             });
             signInterpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
                 mutablePos[CH] = ch;
-                return Math.signum(FractalTerrainInstance.getBiomeProvider().final_tiles.getValue(mutablePos));
+                return Math.signum(
+                        FractalTerrainInstance.getBiomeProvider().final_tiles.getValue(mutablePos));
             });
         }
 
         /** Smooth magnitude × rapidly-flipping sign (see the class javadoc). */
         private double sample(int x, int z) {
-            if( signInterpolation.interpolateBilinear(x,z)>=0) return valueInterpolation.interpolateBilinear(x,z);
-            return -valueInterpolation.interpolateBilinear(x,z);
+            if (signInterpolation.interpolateBilinear(x, z) >= 0) return valueInterpolation.interpolateBilinear(x, z);
+            return -valueInterpolation.interpolateBilinear(x, z);
         }
 
         @Override

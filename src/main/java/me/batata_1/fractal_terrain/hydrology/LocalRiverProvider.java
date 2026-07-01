@@ -6,12 +6,14 @@ import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.neighb
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.HydrologicalFeature;
 import me.batata_1.fractal_terrain.hydrology.meanders.*;
@@ -53,7 +55,7 @@ public class LocalRiverProvider {
     // a baseline at sea level plus a per-elevation increment, so higher terrain relaxes more.
     private static final int MIN_RELAX_STEPS = 5;
     private static final double RELAX_STEPS_PER_ELEV = 0.2;
-    private static final double MIN_WIDTH = 1.0;
+    private static final double MIN_WIDTH = FractalTerrainConfig.MIN_WIDTH;
 
     // ---- Carving / sink filling ---------------------------------------------
     private static final double MAX_CARVE_DIST = 64.0;
@@ -62,7 +64,6 @@ public class LocalRiverProvider {
 
     // ---- Local network ------------------------------------------------------
     private static final float FLOW_THRESHOLD = 40f;
-    private static final double WIDTH_SCALE = 0.15;
     private static final double RESAMPLE_DIST = 2.0;
     private static final double QUERY_RADIUS = 1.0;
 
@@ -181,9 +182,12 @@ public class LocalRiverProvider {
         final List<Channel> localChannels = traceLocalNetwork(drainage, elev, globalMask, stages);
 
         // 7. assemble the unit tree: global network units + local channel units (tile-local coords).
+        //    A shared feature-id counter gives global rivers and the local network one tile-unique id space.
         final RiverNetwork.ElevationSampler decodedSampler = (x, z) -> sampleBilinear(base[0], x, z);
-        final List<HydrologicalUnit> unitPoints = sim.getNetwork().collectUnits(0, decodedSampler, PAD, PAD);
-        for (Channel ch : localChannels) addLocalChannelUnits(unitPoints, ch, elev);
+        final int[] nextFeatureId = {0};
+        final List<HydrologicalUnit> unitPoints =
+                sim.getNetwork().collectUnits(0, decodedSampler, PAD, PAD, nextFeatureId);
+        for (Channel ch : localChannels) addLocalChannelUnits(unitPoints, ch, elev, nextFeatureId);
         final ImmutableQuadTree<HydrologicalUnit> tree = new ImmutableQuadTree<>(
                 new double[] {-16, -16}, new double[] {GRID + 16, GRID + 16}, unitPoints, HydrologicalUnit.PROTOTYPE);
 
@@ -746,9 +750,9 @@ public class LocalRiverProvider {
             points.add(new double[] {(double) cell / GRID + 0.5, cell % GRID + 0.5});
             maxFlow = Math.max(maxFlow, flow[cell]);
         }
-        final double startWidth = Math.max(MIN_WIDTH, WIDTH_SCALE * flow[cells.getFirst()]);
-        final double endWidth = Math.max(MIN_WIDTH, WIDTH_SCALE * flow[cells.getLast()]);
-        final Channel channel = new Channel(Math.max(MIN_WIDTH, WIDTH_SCALE * maxFlow), points, channelId);
+        final double startWidth = FractalTerrainConfig.widthFromFlow(flow[cells.getFirst()]);
+        final double endWidth = FractalTerrainConfig.widthFromFlow(flow[cells.getLast()]);
+        final Channel channel = new Channel(FractalTerrainConfig.widthFromFlow(maxFlow), points, channelId);
         channel.setWidthProfile(startWidth, endWidth);
         try {
             channel.reSample(RESAMPLE_DIST);
@@ -758,8 +762,12 @@ public class LocalRiverProvider {
         return channel;
     }
 
-    /** Resample a local channel at {@code dx = width/2} and add its points as RIVER {@link HydrologicalUnit}s. */
-    private void addLocalChannelUnits(List<HydrologicalUnit> out, Channel ch, float[] elev) {
+    /**
+     * Resample a local channel at {@code dx = width/2} and add its points as RIVER
+     * {@link HydrologicalUnit}s, stamping each with the channel normal and a shared feature id pulled from
+     * {@code nextFeatureId} (one id per channel, advancing the counter).
+     */
+    private void addLocalChannelUnits(List<HydrologicalUnit> out, Channel ch, float[] elev, int[] nextFeatureId) {
         final double dx = Math.max(ch.width / 2.0, 0.5);
         final QuinticHermiteSpline resampled;
         try {
@@ -769,12 +777,22 @@ public class LocalRiverProvider {
         }
         final List<double[]> pts = resampled.points();
         final int n = pts.size();
+        final int featureId = nextFeatureId[0]++;
         for (int i = 0; i < n; i++) {
             final double[] p = pts.get(i);
             final double frac = (n <= 1) ? 0.0 : (double) i / (n - 1);
             final double w = ch.startWidth + (ch.endWidth - ch.startWidth) * frac;
             final double bed = sampleLocal(elev, p[0], p[1]);
-            out.add(new HydrologicalUnit(HydrologicalFeature.RIVER, null, List.of(p[0], p[1]), w, bed, 0));
+            final double[] nrm = resampled.normal(i);
+            out.add(new HydrologicalUnit(
+                    HydrologicalFeature.RIVER,
+                    null,
+                    List.of(p[0], p[1]),
+                    List.of(nrm[0], nrm[1]),
+                    w,
+                    bed,
+                    0,
+                    featureId));
         }
     }
 
@@ -970,6 +988,44 @@ public class LocalRiverProvider {
     /** True when a hydrological feature lies within {@link #QUERY_RADIUS} of {@code coords}. */
     public boolean insideMargin(double[] coords) {
         return !units.getValuesWithin(coords, QUERY_RADIUS).isEmpty();
+    }
+
+    /**
+     * Gather every hydrological unit whose feature influences {@code pt} (a point in the relief-pixel
+     * frame), re-stamped into world coords and returned as a flat array <b>sorted by
+     * {@link HydrologicalUnit#id() id}</b> — the universal iterate primitive both
+     * {@link me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver} and the painter consume
+     * (walk equal-id runs via
+     * {@link me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile#forEachIdRun}).
+     *
+     * <p>A unit is kept when {@code pt} lies within that unit's own
+     * {@link FractalTerrainConfig#maxRiverInfluence influence} radius. The query spans tile borders (a
+     * river within influence may live in a neighbouring tile); stored coords are tile-local, so each is
+     * translated to the common world frame by adding its owning tile's origin before the distance test.
+     */
+    public HydrologicalUnit[] queryInfluence(double[] pt) {
+        final List<HydrologicalUnit> hits = new ArrayList<>();
+        units.forEachTileWithin(pt, FractalTerrainConfig.MAX_INFLUENCE_RADIUS, (originX, originZ, local) -> {
+            for (HydrologicalUnit u : local) {
+                final double worldX = u.coord().get(0) + originX;
+                final double worldZ = u.coord().get(1) + originZ;
+                final double influence = FractalTerrainConfig.maxRiverInfluence(u.width());
+                final double dx = worldX - pt[0];
+                final double dz = worldZ - pt[1];
+                if (dx * dx + dz * dz > influence * influence) continue;
+                hits.add(new HydrologicalUnit(
+                        u.type(),
+                        u.rosgenType(),
+                        List.of(worldX, worldZ),
+                        u.normal(),
+                        u.width(),
+                        u.elevation(),
+                        u.time(),
+                        u.id()));
+            }
+        });
+        hits.sort(Comparator.comparingInt(HydrologicalUnit::id));
+        return hits.toArray(new HydrologicalUnit[0]);
     }
 
     // -------------------------------------------------------------------------

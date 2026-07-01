@@ -9,6 +9,7 @@ import me.batata_1.fractal_terrain.world.biome.source.FractalTerrainBiomeSource;
 import me.batata_1.fractal_terrain.world.gen.chunk.FractalTerrainChunkGenerator;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
 import net.fabricmc.fabric.api.event.registry.DynamicRegistryView;
 import net.minecraft.core.Registry;
@@ -44,7 +45,6 @@ public class FractalTerrain implements ModInitializer {
 
         ModelAssetManager.ensureAssetsReady();
         PipelineModels.load();
-
         ServerWorldEvents.LOAD.register((MinecraftServer server, ServerLevel world) -> {
             final ChunkGenerator chunkGenerator =
                     server.overworld().getChunkSource().getGenerator();
@@ -62,6 +62,13 @@ public class FractalTerrain implements ModInitializer {
                     server.overworld().getChunkSource().getGenerator();
             if (!(chunkGenerator instanceof FractalTerrainChunkGenerator)) return;
             FractalTerrainInstance.close();
+        });
+
+        ServerTickEvents.START_SERVER_TICK.register((server) -> {
+            if (FractalTerrainConfig.TEST_HEIGHT_MAP) {
+                int sz = FractalTerrainInstance.getHeightmapCache().getSize();
+                LOG.info("cur cache sz = {}", sz);
+            }
         });
     }
 }

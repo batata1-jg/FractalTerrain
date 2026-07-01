@@ -11,21 +11,32 @@ import me.batata_1.fractal_terrain.storage.Persistable;
  * A single point of a hydrological feature — a river (with its Rosgen channel type), an abandoned
  * river, or an oxbow lake. It is the queryable, persistable unit stored in
  * {@link me.batata_1.fractal_terrain.hydrology.LocalRiverProvider}'s tiled quadtree: it carries its
- * world coordinate plus the local channel {@code width}, bed {@code elevation}, and the simulation
- * {@code time} (meander step) at which it was recorded.
+ * tile-local coordinate, the channel {@code normal} (unit perpendicular to the centreline at this
+ * point, used to project query points across the channel), the local channel {@code width}, bed
+ * {@code elevation}, the simulation {@code time} (meander step) at which it was recorded, and an
+ * {@code id} grouping every point of the same feature.
  *
- * <p>It deliberately carries no channel id or in-channel index — features are resampled before
- * conversion, so per-point identity is not needed downstream.
+ * <p>The {@code id} groups the points that belong to one hydrological feature so the carve/paint
+ * query can gather and merge them per feature. It is <em>not necessarily a channel id</em> — it is a
+ * tile-unique feature key assigned at unit-assembly time (global rivers and the local network share a
+ * single id space). {@code normal} may be {@code null} when no meaningful tangent exists.
  *
  * <p>{@link RosgenType} is inert for now: it is stored but no behaviour keys off it yet.
  */
 public record HydrologicalUnit(
-        HydrologicalFeature type, RosgenType rosgenType, List<Double> coord, double width, double elevation, int time)
+        HydrologicalFeature type,
+        RosgenType rosgenType,
+        List<Double> coord,
+        List<Double> normal,
+        double width,
+        double elevation,
+        int time,
+        int id)
         implements QuadTreePoint, Persistable<HydrologicalUnit> {
 
     /** Dummy point that makes the unit tree serializable (probed once by Storage). */
     public static final HydrologicalUnit PROTOTYPE =
-            new HydrologicalUnit(HydrologicalFeature.RIVER, null, List.of(0.0, 0.0), 0, 0, 0);
+            new HydrologicalUnit(HydrologicalFeature.RIVER, null, List.of(0.0, 0.0), null, 0, 0, 0, 0);
 
     /** Kind of hydrological feature this point belongs to. */
     public enum HydrologicalFeature {
@@ -51,8 +62,18 @@ public record HydrologicalUnit(
 
     @Override
     public long byteSize() {
-        // type ordinal + rosgen ordinal + coord count + (coord doubles) + width + elevation + time
-        return 4L + 4L + 4L + (long) coord.size() * Double.BYTES + Double.BYTES + Double.BYTES + 4L;
+        // type + rosgen + coordCount + coord doubles + normalCount + normal doubles + width + elev + time + id
+        final long normalDoubles = (normal == null ? 0L : (long) normal.size()) * Double.BYTES;
+        return 4L
+                + 4L
+                + 4L
+                + (long) coord.size() * Double.BYTES
+                + 4L
+                + normalDoubles
+                + Double.BYTES
+                + Double.BYTES
+                + 4L
+                + 4L;
     }
 
     @Override
@@ -63,9 +84,13 @@ public record HydrologicalUnit(
         buf.putInt(rosgenType == null ? -1 : rosgenType.ordinal());
         buf.putInt(coord.size());
         for (double c : coord) buf.putDouble(c);
+        // normal: count -1 marks a null normal, otherwise the doubles follow.
+        buf.putInt(normal == null ? -1 : normal.size());
+        if (normal != null) for (double c : normal) buf.putDouble(c);
         buf.putDouble(width);
         buf.putDouble(elevation);
         buf.putInt(time);
+        buf.putInt(id);
         return buf.array();
     }
 
@@ -78,9 +103,18 @@ public record HydrologicalUnit(
         final int coordCount = buf.getInt();
         final List<Double> coords = new ArrayList<>(coordCount);
         for (int i = 0; i < coordCount; i++) coords.add(buf.getDouble());
+        final int normalCount = buf.getInt();
+        final List<Double> normalVec;
+        if (normalCount < 0) {
+            normalVec = null;
+        } else {
+            normalVec = new ArrayList<>(normalCount);
+            for (int i = 0; i < normalCount; i++) normalVec.add(buf.getDouble());
+        }
         final double w = buf.getDouble();
         final double e = buf.getDouble();
         final int t = buf.getInt();
-        return new HydrologicalUnit(featureType, rosgen, coords, w, e, t);
+        final int featureId = buf.getInt();
+        return new HydrologicalUnit(featureType, rosgen, coords, normalVec, w, e, t, featureId);
     }
 }

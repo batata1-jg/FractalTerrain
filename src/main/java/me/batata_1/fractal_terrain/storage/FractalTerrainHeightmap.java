@@ -4,7 +4,6 @@ import static me.batata_1.fractal_terrain.FractalTerrainInstance.getBiomeProvide
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.getReliefProvider;
 
 import java.util.function.Function;
-
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import net.minecraft.world.level.ChunkPos;
@@ -51,7 +50,11 @@ public record FractalTerrainHeightmap(float[][] data) {
         EROSION(getBiomeProvider()::fillErosion),
         TEMPERATURE(pos -> fillBilinear(pos, getBiomeProvider()::getTemperature)),
         VEGETATION(pos -> fillBilinear(pos, getBiomeProvider()::getVegetation)),
-        WEIRDNESS(getBiomeProvider()::fillWeirdness);
+        WEIRDNESS(getBiomeProvider()::fillWeirdness),
+        // Special (like ELEVATION): zero-filled here, then populated by the second pass
+        // (PopulateNoiseStep#updateToFinalElev) as carve(x,z) − pre-carve elevation. Negative where the
+        // river carved below the original terrain; the surface painter places water there.
+        RIVER_DIFFERENCE(pos -> new float[1 << 8]);
 
         private static float[] fillBilinear(ChunkPos chunkPos, Function<int[], Float> f) {
             final float[] heights = new float[1 << 8];
@@ -64,7 +67,11 @@ public record FractalTerrainHeightmap(float[][] data) {
                     mutableCoords[0] = dx + startingX;
                     mutableCoords[1] = dz + startingZ;
                     heights[(dx << 4) + dz] = (float) Interpolation.interpolateBilinear(
-                            (dx + startingX) / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION, (dz + startingZ) / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION, mutableCoords, mutableNodes, f);
+                            (dx + startingX) / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION,
+                            (dz + startingZ) / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION,
+                            mutableCoords,
+                            mutableNodes,
+                            f);
                 }
             }
             return heights;
@@ -79,7 +86,11 @@ public record FractalTerrainHeightmap(float[][] data) {
             for (int dx = 0; dx < 16; dx++) {
                 for (int dz = 0; dz < 16; dz++) {
                     heights[(dx << 4) + dz] = (float) Interpolation.interpolateSmoothStep(
-                            (dx + startingX) / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION, (dz + startingZ) / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION, mutableCoords, mutableNodes, f);
+                            (dx + startingX) / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION,
+                            (dz + startingZ) / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION,
+                            mutableCoords,
+                            mutableNodes,
+                            f);
                 }
             }
             return heights;

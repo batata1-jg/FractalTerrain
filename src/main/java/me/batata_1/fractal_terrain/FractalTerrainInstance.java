@@ -9,6 +9,8 @@ import me.batata_1.fractal_terrain.debug.Infinite3DVisualizer;
 import me.batata_1.fractal_terrain.debug.InstanceStageDumper;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
+import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver;
+import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfilePainter;
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import me.batata_1.fractal_terrain.ml.pipeline.WorldPipeline;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
@@ -48,6 +50,8 @@ public class FractalTerrainInstance {
     private final BiomeProvider biomeProvider;
     private final GlobalRiverProvider globalRiverProvider;
     private final LocalRiverProvider localRiverProvider;
+    private final HydrologyProfileCarver hydrologyCarver;
+    private final HydrologyProfilePainter hydrologyPainter;
     private final PopulateNoiseStep populateNoiseStep;
     private final FractalTerrainSurfaceSystem surfaceBuilder;
     private final FractalTerrainHeightmapCache heightmapCache;
@@ -60,6 +64,8 @@ public class FractalTerrainInstance {
         // Build order mirrors the dependency graph: global → local → relief → biome.
         this.globalRiverProvider = new GlobalRiverProvider(worldPath + "/fractal_terrain");
         this.localRiverProvider = new LocalRiverProvider(worldPath + "/fractal_terrain");
+        this.hydrologyCarver = new HydrologyProfileCarver(this.localRiverProvider);
+        this.hydrologyPainter = new HydrologyProfilePainter(this.localRiverProvider);
         this.reliefSource = new ReliefProvider(worldPath + "/fractal_terrain");
         this.biomeProvider = new BiomeProvider(worldPath + "/fractal_terrain");
         final long seed = server.getWorldData().worldGenOptions().seed();
@@ -67,7 +73,8 @@ public class FractalTerrainInstance {
         final RegistryAccess dynamicRegistryManager = world.registryAccess();
         final FractalTerrainChunkGenerator chunkGenerator =
                 (FractalTerrainChunkGenerator) world.getChunkSource().getGenerator();
-        this.populateNoiseStep = new PopulateNoiseStep(chunkGenerator.getSettings().value());
+        this.populateNoiseStep =
+                new PopulateNoiseStep(chunkGenerator.getSettings().value());
         this.heightmapCache = new FractalTerrainHeightmapCache(world.getChunkSource());
         this.noiseConfig = RandomState.create(
                 chunkGenerator.getSettings().value(), dynamicRegistryManager.lookupOrThrow(Registries.NOISE), seed);
@@ -152,6 +159,14 @@ public class FractalTerrainInstance {
 
     public static LocalRiverProvider getLocalRiverProvider() {
         return getInstance().localRiverProvider;
+    }
+
+    public static HydrologyProfileCarver getHydrologyCarver() {
+        return getInstance().hydrologyCarver;
+    }
+
+    public static HydrologyProfilePainter getHydrologyPainter() {
+        return getInstance().hydrologyPainter;
     }
 
     /**

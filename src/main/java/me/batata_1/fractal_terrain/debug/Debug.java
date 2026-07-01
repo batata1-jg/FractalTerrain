@@ -29,6 +29,7 @@ public class Debug {
     public static final RiverNetworkVisualizer river =
             new RiverNetworkVisualizer(FractalTerrainConfig.DEFAULT_DEBUG_PATH);
     public static final SplineVisualizer spline = new SplineVisualizer(FractalTerrainConfig.DEFAULT_DEBUG_PATH);
+    public static final NoiseVisualizer noise = new NoiseVisualizer(FractalTerrainConfig.DEFAULT_DEBUG_PATH);
 
     public static Logger getLogger(Class<?> clazz) {
         return LoggerFactory.getLogger("fractal_terrain/" + clazz.toString());

@@ -118,7 +118,11 @@ public class Interpolation {
         final double deltaZ = z - Math.floor(z);
 
         return Mth.lerp2(
-                step.apply(deltaX), step.apply(deltaZ), mutableNodes[0], mutableNodes[1], mutableNodes[2],
+                step.apply(deltaX),
+                step.apply(deltaZ),
+                mutableNodes[0],
+                mutableNodes[1],
+                mutableNodes[2],
                 mutableNodes[3]);
     }
 }
