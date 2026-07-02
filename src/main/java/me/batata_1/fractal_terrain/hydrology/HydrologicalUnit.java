@@ -2,8 +2,8 @@ package me.batata_1.fractal_terrain.hydrology;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Arrays;
+import java.util.Objects;
 import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
 import me.batata_1.fractal_terrain.storage.Persistable;
 
@@ -21,13 +21,18 @@ import me.batata_1.fractal_terrain.storage.Persistable;
  * tile-unique feature key assigned at unit-assembly time (global rivers and the local network share a
  * single id space). {@code normal} may be {@code null} when no meaningful tangent exists.
  *
+ * <p>{@code coord} and {@code normal} are primitive {@code double[]} (treated as immutable — never
+ * mutate them after construction): {@link #getCoords()} returns the backing array directly, so tree
+ * construction and every query point-scan pay no boxing or copying. Because records compare array
+ * components by reference, {@link #equals} / {@link #hashCode} are overridden to compare contents.
+ *
  * <p>{@link RosgenType} is inert for now: it is stored but no behaviour keys off it yet.
  */
 public record HydrologicalUnit(
         HydrologicalFeature type,
         RosgenType rosgenType,
-        List<Double> coord,
-        List<Double> normal,
+        double[] coord,
+        double[] normal,
         double width,
         double elevation,
         int time,
@@ -36,7 +41,7 @@ public record HydrologicalUnit(
 
     /** Dummy point that makes the unit tree serializable (probed once by Storage). */
     public static final HydrologicalUnit PROTOTYPE =
-            new HydrologicalUnit(HydrologicalFeature.RIVER, null, List.of(0.0, 0.0), null, 0, 0, 0, 0);
+            new HydrologicalUnit(HydrologicalFeature.RIVER, null, new double[] {0.0, 0.0}, null, 0, 0, 0, 0);
 
     /** Kind of hydrological feature this point belongs to. */
     public enum HydrologicalFeature {
@@ -55,19 +60,47 @@ public record HydrologicalUnit(
 
     @Override
     public double[] getCoords() {
-        final double[] out = new double[coord.size()];
-        for (int i = 0; i < out.length; i++) out[i] = coord.get(i);
-        return out;
+        return coord;
+    }
+
+    // Records compare array components by reference; these compare contents instead.
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof HydrologicalUnit other)) return false;
+        return type == other.type
+                && rosgenType == other.rosgenType
+                && Arrays.equals(coord, other.coord)
+                && Arrays.equals(normal, other.normal)
+                && Double.compare(width, other.width) == 0
+                && Double.compare(elevation, other.elevation) == 0
+                && time == other.time
+                && id == other.id;
+    }
+
+    @Override
+    public int hashCode() {
+        int result = Objects.hash(type, rosgenType, width, elevation, time, id);
+        result = 31 * result + Arrays.hashCode(coord);
+        result = 31 * result + Arrays.hashCode(normal);
+        return result;
+    }
+
+    @Override
+    public String toString() {
+        return "HydrologicalUnit[type=" + type + ", rosgenType=" + rosgenType + ", coord="
+                + Arrays.toString(coord) + ", normal=" + Arrays.toString(normal) + ", width=" + width
+                + ", elevation=" + elevation + ", time=" + time + ", id=" + id + "]";
     }
 
     @Override
     public long byteSize() {
         // type + rosgen + coordCount + coord doubles + normalCount + normal doubles + width + elev + time + id
-        final long normalDoubles = (normal == null ? 0L : (long) normal.size()) * Double.BYTES;
+        final long normalDoubles = (normal == null ? 0L : (long) normal.length) * Double.BYTES;
         return 4L
                 + 4L
                 + 4L
-                + (long) coord.size() * Double.BYTES
+                + (long) coord.length * Double.BYTES
                 + 4L
                 + normalDoubles
                 + Double.BYTES
@@ -82,10 +115,10 @@ public record HydrologicalUnit(
         final ByteBuffer buf = ByteBuffer.allocate(bytes).order(ByteOrder.LITTLE_ENDIAN);
         buf.putInt(type.ordinal());
         buf.putInt(rosgenType == null ? -1 : rosgenType.ordinal());
-        buf.putInt(coord.size());
+        buf.putInt(coord.length);
         for (double c : coord) buf.putDouble(c);
         // normal: count -1 marks a null normal, otherwise the doubles follow.
-        buf.putInt(normal == null ? -1 : normal.size());
+        buf.putInt(normal == null ? -1 : normal.length);
         if (normal != null) for (double c : normal) buf.putDouble(c);
         buf.putDouble(width);
         buf.putDouble(elevation);
@@ -101,15 +134,15 @@ public record HydrologicalUnit(
         final int rosgenOrdinal = buf.getInt();
         final RosgenType rosgen = rosgenOrdinal < 0 ? null : RosgenType.values()[rosgenOrdinal];
         final int coordCount = buf.getInt();
-        final List<Double> coords = new ArrayList<>(coordCount);
-        for (int i = 0; i < coordCount; i++) coords.add(buf.getDouble());
+        final double[] coords = new double[coordCount];
+        for (int i = 0; i < coordCount; i++) coords[i] = buf.getDouble();
         final int normalCount = buf.getInt();
-        final List<Double> normalVec;
+        final double[] normalVec;
         if (normalCount < 0) {
             normalVec = null;
         } else {
-            normalVec = new ArrayList<>(normalCount);
-            for (int i = 0; i < normalCount; i++) normalVec.add(buf.getDouble());
+            normalVec = new double[normalCount];
+            for (int i = 0; i < normalCount; i++) normalVec[i] = buf.getDouble();
         }
         final double w = buf.getDouble();
         final double e = buf.getDouble();

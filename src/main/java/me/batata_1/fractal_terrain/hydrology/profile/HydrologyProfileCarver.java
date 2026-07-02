@@ -1,20 +1,34 @@
 package me.batata_1.fractal_terrain.hydrology.profile;
 
+import java.util.ArrayList;
+import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
-import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
+import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
+import me.batata_1.fractal_terrain.math.VectorOps;
+import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
+import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
+import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 
 /**
- * The elevation side of the hydrology profile. Given a world position and its pre-carve (decoded)
- * elevation, it queries the per-tile river network ({@link LocalRiverProvider#queryInfluence}) and pulls
- * the terrain toward each nearby feature's channel bed / floodplain / blend profile (see
- * {@link RosgenProfile}), merging multiple features by distance.
+ * The elevation side of the hydrology profile. Two carve stages live here:
  *
- * <p>This is the per-pixel <em>refinement</em> applied in {@code PopulateNoiseStep} on top of the
- * tile-precomputed carve; {@code RIVER_DIFFERENCE = carve(...) − preCarveElev}. It is the carving twin of
- * {@code HydrologyProfilePainter} and shares the {@link HydrologyProfile} iterate primitive.
+ * <ul>
+ *   <li><b>Per-pixel refinement</b> ({@link #carve}, {@link #carveAtPixel}, {@link #carvePrefetched}) —
+ *       queries the per-tile river network ({@link LocalRiverProvider#queryInfluence}) and merges every
+ *       influencing unit's {@link HydrologyProfile#computeForUnit} elevation in one flat
+ *       distance-weighted average. Applied in {@code PopulateNoiseStep} on top of the tile pre-carve;
+ *       {@code RIVER_DIFFERENCE = carve(...) − preCarveElev}.</li>
+ *   <li><b>Tile-level pre-carve</b> ({@link #carveGlobalRivers}, static) — the ch0 carve run once per
+ *       relief tile by {@code LocalRiverProvider.buildTile}, pulling the decoded elevation toward the
+ *       global-river channel beds.</li>
+ * </ul>
+ *
+ * All geometry is in the relief-pixel frame; only {@link #carve} converts from world/block coordinates
+ * (divide by {@link FractalTerrainConfig#GLOBAL_SCALE_CORRECTION}). This is the carving twin of
+ * {@code HydrologyProfilePainter}.
  */
 public final class HydrologyProfileCarver {
 
@@ -29,6 +43,10 @@ public final class HydrologyProfileCarver {
         this(FractalTerrainInstance.getLocalRiverProvider());
     }
 
+    // -------------------------------------------------------------------------
+    // Per-pixel refinement (flat distance-weighted merge over all units)
+    // -------------------------------------------------------------------------
+
     /**
      * Refined elevation at world/block coordinates {@code (worldBlockX, worldBlockZ)} whose pre-carve
      * (decoded) elevation is {@code preCarveElev}. World coords are converted into the relief-pixel frame
@@ -42,57 +60,160 @@ public final class HydrologyProfileCarver {
     }
 
     /**
-     * Carve at a point already in the relief-pixel frame. Each influencing feature (id-run) contributes a
-     * target elevation from its {@link RosgenProfile}; contributions are merged as a distance-weighted
-     * average (weight 1 at the channel, 0 at the feature's influence radius), so a lone feature reproduces
-     * its profile exactly and overlapping features blend smoothly.
+     * Carve at a point already in the relief-pixel frame: query the influencing units, then merge via
+     * {@link #carvePrefetched}.
      */
     public float carveAtPixel(double pixelX, double pixelZ, double decodedElev) {
         final HydrologicalUnit[] units = localRiver.queryInfluence(new double[] {pixelX, pixelZ});
-        if (units.length == 0) return (float) decodedElev;
-
-        // [weightedElevationSum, weightTotal] — boxed so the lambda can accumulate.
-        final double[] accumulator = {0.0, 0.0};
-        final double[] queryPoint = {pixelX, pixelZ};
-        HydrologyProfile.forEachIdRun(units, queryPoint, (run, start, end, nearestIdx, nearestDist) -> {
-            final HydrologicalUnit nearest = run[nearestIdx];
-            final double influence = FractalTerrainConfig.maxRiverInfluence(nearest.width());
-            if (nearestDist >= influence) return;
-            // Uncarvable: if this feature's intended bed is too far from the decoded terrain, skip it
-            // entirely (its influence does not pull neighbours), so we never gouge holes or trenches.
-            if (Math.abs(nearest.elevation() - decodedElev) > FractalTerrainConfig.MAX_CARVE_DELTA) return;
-
-            final double featureElev = featureElevation(pixelX, pixelZ, nearest, decodedElev);
-            final double weight = 1.0 - nearestDist / influence;
-            accumulator[0] += featureElev * weight;
-            accumulator[1] += weight;
-        });
-
-        if (accumulator[1] == 0.0) return (float) decodedElev;
-        return (float) (accumulator[0] / accumulator[1]);
+        return carvePrefetched(units, pixelX, pixelZ, decodedElev);
     }
 
     /**
-     * Target elevation for a single feature: project the query point onto the line through the unit's
-     * coordinate along its normal, take the perpendicular distance as the profile parameter, and add the
-     * {@link RosgenProfile} delta to the reference elevation {@code min(unit.elevation, decodedElev)}.
+     * One cross-tile influence query serving a whole chunk of carve calls: gathers every unit that could
+     * influence <em>any</em> point within {@code chunkRadiusPx} of {@code (centerPixelX, centerPixelZ)}
+     * (a unit is kept when the center lies within {@code maxRiverInfluence(unit.width()) +
+     * chunkRadiusPx}). Feed the result to {@link #carvePrefetched} for each block — one tree query per
+     * chunk instead of one per block. All arguments are in the relief-pixel frame.
      */
-    private static double featureElevation(double pixelX, double pixelZ, HydrologicalUnit unit, double decodedElev) {
-        final double unitX = unit.coord().get(0);
-        final double unitZ = unit.coord().get(1);
-        final double projectedDist;
-        if (unit.normal() != null) {
-            final double nx = unit.normal().get(0);
-            final double nz = unit.normal().get(1);
-            projectedDist = Math.abs((pixelX - unitX) * nx + (pixelZ - unitZ) * nz);
-        } else {
-            projectedDist = Math.hypot(pixelX - unitX, pixelZ - unitZ);
+    public HydrologicalUnit[] prefetchChunk(double centerPixelX, double centerPixelZ, double chunkRadiusPx) {
+        return localRiver.queryInfluence(new double[] {centerPixelX, centerPixelZ}, chunkRadiusPx);
+    }
+
+    /**
+     * The merge core, over an already-gathered unit array (world relief-pixel coords, e.g. from
+     * {@link #prefetchChunk}). <b>Every</b> influencing unit contributes its
+     * {@link HydrologyProfile#computeForUnit} elevation, weighted linearly by distance: weight 1 when the
+     * point sits on the unit, 0 at that unit's own
+     * {@link FractalTerrainConfig#maxRiverInfluence influence} radius. Contributions from all units of
+     * all features are merged in one flat weighted average — a lone straight channel averages many
+     * near-identical contributions (≈ its exact profile), and river intersections blend smoothly because
+     * every channel's units participate. Returns {@code decodedElev} unchanged when no unit reaches the
+     * point.
+     */
+    public float carvePrefetched(HydrologicalUnit[] units, double pixelX, double pixelZ, double decodedElev) {
+        double weightedElevSum = 0.0;
+        double weightSum = 0.0;
+        for (final HydrologicalUnit unit : units) {
+            final double influenceRadius = FractalTerrainConfig.maxRiverInfluence(unit.width());
+            final double[] unitCoord = unit.coord();
+            final double dist = Math.hypot(pixelX - unitCoord[0], pixelZ - unitCoord[1]);
+            if (dist >= influenceRadius) continue; // outside this unit's reach
+            final double weight = 1.0 - dist / influenceRadius; // 1 at the unit, 0 at the influence edge
+            weightedElevSum += HydrologyProfile.computeForUnit(pixelX, pixelZ, unit, decodedElev) * weight;
+            weightSum += weight;
         }
-        final double referenceElev = Math.min(unit.elevation(), decodedElev);
-        final RosgenType type = unit.rosgenType() == null ? RosgenType.A : unit.rosgenType();
-        final double floodPlainLength = FractalTerrainConfig.floodPlainLength(unit.width());
-        final double delta = RosgenProfile.of(type)
-                .elevationDelta(projectedDist, unit.width(), floodPlainLength, decodedElev - referenceElev);
-        return referenceElev + delta;
+        if (weightSum == 0.0) return (float) decodedElev;
+        return (float) (weightedElevSum / weightSum);
+    }
+
+    // -------------------------------------------------------------------------
+    // Tile-level global-river pre-carve (moved from LocalRiverProvider)
+    // -------------------------------------------------------------------------
+
+    /** Query radius for nearby river samples during the tile pre-carve (native px). */
+    private static final double MAX_CARVE_DIST = 64.0;
+
+    /** Densification interval along the channel splines (native px). */
+    private static final double CARVE_SAMPLE_SPACING = 2.0;
+
+    /** Slack around the tile grid for the sample index bounds (channels may overshoot the pad). */
+    private static final double CARVE_INDEX_SLACK = 1024.0;
+
+    /** A densified river sample carrying its interpolated width + bed elevation. */
+    private record RiverSample(double[] coords, double width, double bedElev) implements QuadTreePoint {
+        @Override
+        public double[] getCoords() {
+            return coords;
+        }
+    }
+
+    /**
+     * Tile-level global-river carve (the ch0 pre-carve, distinct from the per-pixel refinement above):
+     * densify each channel spline into {@link RiverSample}s every {@link #CARVE_SAMPLE_SPACING} px, index
+     * them in an {@link ImmutableQuadTree}, and pull every grid pixel within
+     * {@link FractalTerrainConfig#floodPlainInfluence floodPlainInfluence(width)} of its nearest sample
+     * toward that sample's bed (full bed inside {@code width/2}, linear blend back to the original
+     * terrain at {@code floodPlainInfluence}). {@link FractalTerrainConfig#MAX_CARVE_DELTA} lives
+     * <em>here only</em>: a pixel whose {@code |original − bed|} exceeds it is uncarvable and skipped, so
+     * isolated deep beds never gouge holes or trenches. Static so {@code LocalRiverProvider.buildTile}
+     * and future callers share one implementation.
+     *
+     * @param elevation flattened row-major {@code paddedSize × paddedSize} grid, carved in place
+     * @param channels global channels with {@code bedElevations} assigned
+     * @param paddedSize grid side length ({@code LocalRiverProvider} passes {@code PADDED} = 514)
+     */
+    public static void carveGlobalRivers(float[] elevation, List<Channel> channels, int paddedSize) {
+        if (channels.isEmpty()) return;
+        final List<RiverSample> samples = new ArrayList<>();
+        for (Channel ch : channels) {
+            if (ch.bedElevations == null || ch.numPts() < 2) continue;
+            final QuinticHermiteSpline spline = ch.spline;
+            final int segments = ch.numPts() - 1;
+            final double[] pointWidths = pointWidths(ch);
+            for (int i = 0; i < segments; i++) {
+                final double segLength = VectorOps.distance(
+                        spline.points().get(i), spline.points().get(i + 1));
+                final int sampleCount = Math.max(1, (int) Math.ceil(segLength / CARVE_SAMPLE_SPACING));
+                final double startWidth = pointWidths[i];
+                final double endWidth = pointWidths[i + 1];
+                final double startBed = ch.bedElevations[i];
+                final double endBed = ch.bedElevations[i + 1];
+                for (int s = 0; s <= sampleCount; s++) {
+                    final double frac = (double) s / sampleCount;
+                    final double[] point = spline.sample(i + frac);
+                    final double width = startWidth + (endWidth - startWidth) * frac;
+                    final double bed = startBed + (endBed - startBed) * frac;
+                    samples.add(new RiverSample(new double[] {point[0], point[1]}, width, bed));
+                }
+            }
+        }
+        final ImmutableQuadTree<RiverSample> index = new ImmutableQuadTree<>(
+                new double[] {-CARVE_INDEX_SLACK, -CARVE_INDEX_SLACK},
+                new double[] {paddedSize + CARVE_INDEX_SLACK, paddedSize + CARVE_INDEX_SLACK},
+                samples);
+
+        for (int pi = 0; pi < paddedSize; pi++) {
+            for (int pj = 0; pj < paddedSize; pj++) {
+                final int idx = pi * paddedSize + pj;
+                if (elevation[idx] < 0) continue;
+                final double[] pixel = {pi, pj};
+                final List<RiverSample> nearby = index.getPointsInCircle(pixel, MAX_CARVE_DIST);
+                if (nearby.isEmpty()) continue;
+                double nearestDist = Double.MAX_VALUE;
+                double width = 0;
+                double bedElev = 0;
+                for (RiverSample sample : nearby) {
+                    final double dist = VectorOps.distance(pixel, sample.coords());
+                    if (dist < nearestDist) {
+                        nearestDist = dist;
+                        width = sample.width();
+                        bedElev = sample.bedElev();
+                    }
+                }
+                if (nearestDist >= MAX_CARVE_DIST) continue;
+                // Uncarvable pixel: the intended bed is too far below/above the current terrain —
+                // carving would gouge an isolated hole or trench. MAX_CARVE_DELTA applies ONLY here.
+                if (Math.abs(elevation[idx] - bedElev) > FractalTerrainConfig.MAX_CARVE_DELTA) continue;
+                final double bedHalfWidth = width * 0.5;
+                final double floodPlainInfluence = FractalTerrainConfig.floodPlainInfluence(width);
+                if (nearestDist >= floodPlainInfluence) continue;
+                final float orig = elevation[idx];
+                final double frac = (nearestDist <= bedHalfWidth)
+                        ? 0.0
+                        : Math.min(1.0, (nearestDist - bedHalfWidth) / (floodPlainInfluence - bedHalfWidth));
+                elevation[idx] = (float) (bedElev + (orig - bedElev) * frac);
+            }
+        }
+    }
+
+    /** Per-point widths lerped along the channel's start→end taper. */
+    private static double[] pointWidths(Channel ch) {
+        final int n = ch.numPts();
+        final double[] w = new double[n];
+        for (int i = 0; i < n; i++) {
+            final double frac = (n == 1) ? 0.0 : (double) i / (n - 1);
+            w[i] = ch.startWidth + (ch.endWidth - ch.startWidth) * frac;
+        }
+        return w;
     }
 }

@@ -1,8 +1,10 @@
 package me.batata_1.fractal_terrain.infinitetensor;
 
 import com.google.common.base.Function;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.LongAdder;
 import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
 import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
 import me.batata_1.fractal_terrain.storage.EntryNotLoadableException;
@@ -27,6 +29,45 @@ import me.batata_1.fractal_terrain.storage.TileKey;
  * {@code ImmutableQuadTree}, bounded to that tile's logical window.
  */
 public class NonIntersectingInfiniteQuadTree<T extends QuadTreePoint> extends Storage<ImmutableQuadTree<T>> {
+
+    /**
+     * Compile-time query-stats toggle: when {@code true} every query method counts calls, tiles visited,
+     * tiles with hits, points delivered, and early exits into the static {@link LongAdder}s below (shared
+     * across all instances). Read them via {@link #statsString()} and reset via {@link #resetStats()}.
+     * When {@code false} the JIT removes all counting, so production queries pay nothing.
+     */
+    public static final boolean DEBUG_QUERY_STATS = false;
+
+    private static final LongAdder STAT_GET_VALUES_CALLS = new LongAdder();
+    private static final LongAdder STAT_FOR_EACH_TILE_CALLS = new LongAdder();
+    private static final LongAdder STAT_ANY_VALUE_CALLS = new LongAdder();
+    private static final LongAdder STAT_TILES_VISITED = new LongAdder();
+    private static final LongAdder STAT_TILES_WITH_HITS = new LongAdder();
+    private static final LongAdder STAT_POINTS_DELIVERED = new LongAdder();
+    private static final LongAdder STAT_ANY_VALUE_EARLY_EXITS = new LongAdder();
+
+    /** One line per {@link #DEBUG_QUERY_STATS} counter (all zeros when the toggle is off). */
+    public static String statsString() {
+        return "NonIntersectingInfiniteQuadTree query stats:"
+                + "\n  getValuesWithin calls:   " + STAT_GET_VALUES_CALLS.sum()
+                + "\n  forEachTileWithin calls: " + STAT_FOR_EACH_TILE_CALLS.sum()
+                + "\n  anyValueWithin calls:    " + STAT_ANY_VALUE_CALLS.sum()
+                + "\n  tiles visited:           " + STAT_TILES_VISITED.sum()
+                + "\n  tiles with hits:         " + STAT_TILES_WITH_HITS.sum()
+                + "\n  points delivered:        " + STAT_POINTS_DELIVERED.sum()
+                + "\n  anyValue early exits:    " + STAT_ANY_VALUE_EARLY_EXITS.sum();
+    }
+
+    /** Zeroes every {@link #DEBUG_QUERY_STATS} counter. */
+    public static void resetStats() {
+        STAT_GET_VALUES_CALLS.reset();
+        STAT_FOR_EACH_TILE_CALLS.reset();
+        STAT_ANY_VALUE_CALLS.reset();
+        STAT_TILES_VISITED.reset();
+        STAT_TILES_WITH_HITS.reset();
+        STAT_POINTS_DELIVERED.reset();
+        STAT_ANY_VALUE_EARLY_EXITS.reset();
+    }
 
     private final TensorWindow outWindow;
     private final Function<TileKey, ImmutableQuadTree<T>> entryCreatingFunction;
@@ -67,8 +108,11 @@ public class NonIntersectingInfiniteQuadTree<T extends QuadTreePoint> extends St
 
     /** The (re)computed {@link ImmutableQuadTree} for the tile owning {@code (queryX, queryZ)}. */
     public List<T> getValuesWithin(final double[] coords, final double radius) {
+        if (DEBUG_QUERY_STATS) STAT_GET_VALUES_CALLS.increment();
         final ImmutableQuadTree<T> entry = getEntry(outWindow.getSinglePixelIntersection(coords));
-        return entry.getPointsInCircle(outWindow.getPerWindowCoord(coords), radius);
+        final List<T> result = entry.getPointsInCircle(outWindow.getPerWindowCoord(coords), radius);
+        if (DEBUG_QUERY_STATS) STAT_POINTS_DELIVERED.add(result.size());
+        return result;
     }
 
     /** Receives one tile's contribution to a {@link #forEachTileWithin} query. */
@@ -88,8 +132,51 @@ public class NonIntersectingInfiniteQuadTree<T extends QuadTreePoint> extends St
      * overlapping tile the {@code visitor} receives the tile's world origin and the tile-local points from
      * a circle query centred at {@code coords − origin}, so a caller can translate the points into one
      * world frame and merge them. Tiles are computed on demand, exactly like {@link #getValuesWithin}.
+     *
+     * <p>The list handed to the visitor is <b>one reused buffer</b> (cleared between tiles) — the visitor
+     * must copy out anything it needs and must not retain the list beyond the visit.
      */
     public void forEachTileWithin(final double[] coords, final double radius, final TileVisitor<T> visitor) {
+        if (DEBUG_QUERY_STATS) STAT_FOR_EACH_TILE_CALLS.increment();
+        final int[][] pixelRange = {
+            {(int) Math.floor(coords[0] - radius), (int) Math.ceil(coords[0] + radius) + 1},
+            {(int) Math.floor(coords[1] - radius), (int) Math.ceil(coords[1] + radius) + 1}
+        };
+        final int[] lo = outWindow.getLowestIntersection(pixelRange);
+        final int[] hi = outWindow.getHighestIntersection(pixelRange);
+        final double[] localCenter = new double[2];
+        final List<T> local = new ArrayList<>(64); // reused across tiles; cleared per tile
+        for (int tileX = lo[0]; tileX <= hi[0]; tileX++) {
+            for (int tileZ = lo[1]; tileZ <= hi[1]; tileZ++) {
+                if (DEBUG_QUERY_STATS) STAT_TILES_VISITED.increment();
+                final int originX = tileX * outWindow.stride[0] + outWindow.offset[0];
+                final int originZ = tileZ * outWindow.stride[1] + outWindow.offset[1];
+                final ImmutableQuadTree<T> entry = getEntry(new int[] {tileX, tileZ});
+                localCenter[0] = coords[0] - originX;
+                localCenter[1] = coords[1] - originZ;
+                local.clear();
+                entry.getPointsInCircle(localCenter, radius, local);
+                if (!local.isEmpty()) {
+                    if (DEBUG_QUERY_STATS) {
+                        STAT_TILES_WITH_HITS.increment();
+                        STAT_POINTS_DELIVERED.add(local.size());
+                    }
+                    visitor.visit(originX, originZ, local);
+                }
+            }
+        }
+    }
+
+    /**
+     * Cross-tile twin of {@link #forEachTileWithin} that stops at the first accepted point: true iff some
+     * point within {@code radius} of {@code coords} (world frame) passes {@code test}. The test runs in
+     * the tile-local frame, but distances are translation-invariant, so the {@code distSqToCenter} it
+     * receives equals the world-frame squared distance — no coordinate re-stamping is needed. Allocates
+     * no result list (delegates to {@link ImmutableQuadTree#anyPointInCircle} per tile).
+     */
+    public boolean anyValueWithin(
+            final double[] coords, final double radius, final ImmutableQuadTree.PointTest<T> test) {
+        if (DEBUG_QUERY_STATS) STAT_ANY_VALUE_CALLS.increment();
         final int[][] pixelRange = {
             {(int) Math.floor(coords[0] - radius), (int) Math.ceil(coords[0] + radius) + 1},
             {(int) Math.floor(coords[1] - radius), (int) Math.ceil(coords[1] + radius) + 1}
@@ -99,14 +186,18 @@ public class NonIntersectingInfiniteQuadTree<T extends QuadTreePoint> extends St
         final double[] localCenter = new double[2];
         for (int tileX = lo[0]; tileX <= hi[0]; tileX++) {
             for (int tileZ = lo[1]; tileZ <= hi[1]; tileZ++) {
+                if (DEBUG_QUERY_STATS) STAT_TILES_VISITED.increment();
                 final int originX = tileX * outWindow.stride[0] + outWindow.offset[0];
                 final int originZ = tileZ * outWindow.stride[1] + outWindow.offset[1];
                 final ImmutableQuadTree<T> entry = getEntry(new int[] {tileX, tileZ});
                 localCenter[0] = coords[0] - originX;
                 localCenter[1] = coords[1] - originZ;
-                final List<T> local = entry.getPointsInCircle(localCenter, radius);
-                if (!local.isEmpty()) visitor.visit(originX, originZ, local);
+                if (entry.anyPointInCircle(localCenter, radius, test)) {
+                    if (DEBUG_QUERY_STATS) STAT_ANY_VALUE_EARLY_EXITS.increment();
+                    return true;
+                }
             }
         }
+        return false;
     }
 }

@@ -1,5 +1,6 @@
 package me.batata_1.fractal_terrain.hydrology.profile;
 
+import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
@@ -8,13 +9,12 @@ import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
 /**
  * The block/biome/vegetation side of the hydrology profile — the painting twin of
  * {@link HydrologyProfileCarver}. Where the carver lowers elevation, the painter decides what to place:
- * river water (from the {@link Types#RIVER_DIFFERENCE} the carver wrote), and (later) river-aware biome
- * parameters and a vegetation PDF. It shares the same {@link HydrologyProfile} iterate primitive and the
- * same per-tile river query.
+ * river water (from the {@link Types#RIVER_DIFFERENCE} the carver wrote), channel membership
+ * ({@link #insideChannel}), and (later) river-aware biome parameters and a vegetation PDF. It shares the
+ * same {@link HydrologyProfile} core and the same per-tile river query.
  */
 public final class HydrologyProfilePainter {
 
-    @SuppressWarnings("unused") // retained for the upcoming biome / vegetation painting (paintBiome, vegPdf)
     private final LocalRiverProvider localRiver;
 
     public HydrologyProfilePainter(LocalRiverProvider localRiver) {
@@ -37,5 +37,21 @@ public final class HydrologyProfilePainter {
         final float diff = heightmaps.get(Types.RIVER_DIFFERENCE, dx, dz);
         if (diff >= 0f) return reliefHeight;
         return Math.round(reliefHeight - diff);
+    }
+
+    /**
+     * True when {@code pixelPt} (relief-pixel frame) lies inside some channel's water span — i.e. within
+     * {@code unit.width()/2} of any {@link me.batata_1.fractal_terrain.hydrology.HydrologicalUnit}. The
+     * query region radius is {@link FractalTerrainConfig#maxNativeWidth()}{@code /2}: unit widths are
+     * capped at {@code MAX_WIDTH} (local channels, native px) and
+     * {@code MAX_WIDTH · GLOBAL_WIDTH_COORD_SCALE} (global rivers, rescaled after the width law), so any
+     * unit whose half-width disc could contain the point must lie inside that radius. Correct across tile
+     * borders ({@code anyValueWithin} visits every overlapping tile) and allocation-free (early-exit
+     * traversal, no result list).
+     */
+    public boolean insideChannel(double[] pixelPt) {
+        final double queryRadius = FractalTerrainConfig.maxNativeWidth() / 2.0;
+        return localRiver.anyUnitWithin(
+                pixelPt, queryRadius, (unit, distSq) -> distSq <= (unit.width() * 0.5) * (unit.width() * 0.5));
     }
 }

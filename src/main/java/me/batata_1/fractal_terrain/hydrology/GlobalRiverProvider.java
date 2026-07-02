@@ -353,9 +353,10 @@ public class GlobalRiverProvider {
     /**
      * Map a flow-accumulation value to a global-river width. Uses the shared
      * {@link me.batata_1.fractal_terrain.FractalTerrainConfig#widthFromFlow width law} (identical to the
-     * local network) and then multiplies by {@link GLOBAL_WIDTH_COORD_SCALE} to convert the coarse-px flow
-     * width into native px. Width grows with upstream drainage: large rivers downstream, thin tributaries
-     * near the ridges.
+     * local network — including its {@code MAX_WIDTH} cap, applied <em>before</em> the rescale) and then
+     * multiplies by {@link GLOBAL_WIDTH_COORD_SCALE} to convert the coarse-px flow width into native px,
+     * so the native ceiling is {@code FractalTerrainConfig.maxNativeWidth()}. Width grows with upstream
+     * drainage: large rivers downstream, thin tributaries near the ridges.
      */
     private static float globalRiverWidth(float flowAccumulation) {
         return (float) (widthFromFlow(flowAccumulation) * GLOBAL_WIDTH_COORD_SCALE);

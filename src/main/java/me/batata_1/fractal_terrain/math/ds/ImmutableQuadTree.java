@@ -64,8 +64,10 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
 
     private static final int Z = 1;
 
-    private static final int DEFAULT_MAX_DEPTH = 12;
-    private static final int DEFAULT_MAX_POINTS_NODE = 8;
+
+    //10,16
+    private static final int DEFAULT_MAX_DEPTH = 8;
+    private static final int DEFAULT_MAX_POINTS_NODE = 24;
 
     /**
      * When {@code true}, {@link #queryRec} emits an indented, per-node trace (visit / prune / accept /
@@ -324,22 +326,60 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
         return nodes.length == 0 ? 0 : nodes[0].count;
     }
 
+    /**
+     * Per-point acceptance test for {@link #anyPointInCircle}; receives the squared distance from the
+     * query center so implementations can compare against their own squared threshold without a sqrt.
+     */
+    @FunctionalInterface
+    public interface PointTest<T> {
+        boolean test(T point, double distSqToCenter);
+    }
+
     public List<T> getPointsInBox(final double[] b, final double[] d) {
+        return getPointsInBox(b, d, new ArrayList<>());
+    }
+
+    /**
+     * {@link #getPointsInBox(double[], double[])} appending into a caller-supplied buffer (returned for
+     * chaining). The buffer is <b>not</b> cleared — hot paths reuse one list across queries and clear it
+     * themselves.
+     */
+    public List<T> getPointsInBox(final double[] b, final double[] d, final List<T> out) {
         if (b.length != 2 || d.length != 2) throw new IllegalStateException();
         if (CHECK_QUERY_NAN) checkBoxQueryNaN(b, d);
-        final List<T> out = new ArrayList<>();
         query(new QuadTreeShape.QuadTreeBox(b, d), out);
         if (CHECK_QUERY_NAN) checkResultNaN("getPointsInBox", out);
         return out;
     }
 
     public List<T> getPointsInCircle(final double[] center, final double r) {
+        return getPointsInCircle(center, r, new ArrayList<>());
+    }
+
+    /**
+     * {@link #getPointsInCircle(double[], double)} appending into a caller-supplied buffer (returned for
+     * chaining). The buffer is <b>not</b> cleared — hot paths reuse one list across queries and clear it
+     * themselves.
+     */
+    public List<T> getPointsInCircle(final double[] center, final double r, final List<T> out) {
         if (center.length != 2) throw new IllegalStateException();
         if (CHECK_QUERY_NAN) checkCircleQueryNaN(center, r);
-        final List<T> out = new ArrayList<>();
         query(new QuadTreeShape.QuadTreeCircle(center, r), out);
         if (CHECK_QUERY_NAN) checkResultNaN("getPointsInCircle", out);
         return out;
+    }
+
+    /**
+     * Early-exit existence query: true iff some point within {@code radius} of {@code center} passes
+     * {@code test}. Same iterative traversal as {@link #getPointsInCircle} ({@code notIntersect} prune →
+     * bulk-accept → leaf-scan), but no result list is ever allocated and the walk returns on the first
+     * accepted point. Each candidate's squared distance to {@code center} is computed once and handed to
+     * {@code test} (points farther than {@code radius} are never offered).
+     */
+    public boolean anyPointInCircle(final double[] center, final double radius, final PointTest<T> test) {
+        if (center.length != 2) throw new IllegalStateException();
+        if (CHECK_QUERY_NAN) checkCircleQueryNaN(center, radius);
+        return anyInCircle(center, radius, test);
     }
 
     public List<double[]> getPointCoordsInBox(final double[] b, final double[] d) {
@@ -441,6 +481,94 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
                 childStart += nodes[childIdx].count;
             }
         }
+    }
+
+    /**
+     * The {@link #anyPointInCircle} walk: identical stack traversal to {@link #query} with a
+     * {@link QuadTreeShape.QuadTreeCircle}, except leaf-scan and bulk-accept both short-circuit — each
+     * candidate point's squared distance to the center is computed once, points beyond {@code radius} are
+     * skipped, and the first point accepted by {@code test} ends the walk.
+     */
+    private boolean anyInCircle(final double[] center, final double radius, final PointTest<T> test) {
+        if (nodes.length == 0) return false;
+        final QuadTreeShape shape = new QuadTreeShape.QuadTreeCircle(center, radius);
+        final double radiusSq = radius * radius;
+
+        int capacity = 64;
+        int[] idxStack = new int[capacity];
+        double[] oxStack = new double[capacity];
+        double[] ozStack = new double[capacity];
+        double[] sizeStack = new double[capacity];
+        int[] depthStack = new int[capacity];
+        int[] startStack = new int[capacity];
+
+        idxStack[0] = 0;
+        oxStack[0] = rootOriginX;
+        ozStack[0] = rootOriginZ;
+        sizeStack[0] = rootSize;
+        depthStack[0] = 0;
+        startStack[0] = 0;
+        int sp = 1;
+
+        final double[] lo = new double[2];
+        final double[] hi = new double[2];
+
+        while (sp > 0) {
+            sp--;
+            final int idx = idxStack[sp];
+            final double ox = oxStack[sp];
+            final double oz = ozStack[sp];
+            final double size = sizeStack[sp];
+            final int depth = depthStack[sp];
+            final int pointsStart = startStack[sp];
+
+            final Node n = nodes[idx];
+            if (n.count == 0) continue;
+            lo[0] = ox;
+            lo[1] = oz;
+            hi[0] = ox + size;
+            hi[1] = oz + size;
+            if (shape.notIntersect(lo, hi)) continue;
+            // Bulk-accept and leaf-scan collapse into one scan here: either way every candidate in the
+            // slice gets its distSq computed and offered to the test.
+            final boolean leaf = n.count <= maxPointsNode || depth == maxDepth;
+            if (leaf || shape.contains(lo, hi)) {
+                for (int i = pointsStart; i < pointsStart + n.count; i++) {
+                    final T pt = points[i];
+                    if (pt == null) continue;
+                    final double dx = pt.get(X) - center[0];
+                    final double dz = pt.get(Z) - center[1];
+                    final double distSq = dx * dx + dz * dz;
+                    if (distSq > radiusSq) continue;
+                    if (test.test(pt, distSq)) return true;
+                }
+                continue;
+            }
+
+            if (sp + 4 > capacity) {
+                capacity <<= 1;
+                idxStack = Arrays.copyOf(idxStack, capacity);
+                oxStack = Arrays.copyOf(oxStack, capacity);
+                ozStack = Arrays.copyOf(ozStack, capacity);
+                sizeStack = Arrays.copyOf(sizeStack, capacity);
+                depthStack = Arrays.copyOf(depthStack, capacity);
+                startStack = Arrays.copyOf(startStack, capacity);
+            }
+            final double cs = size / 2.0;
+            int childStart = pointsStart;
+            for (int k = 0; k < 4; k++) {
+                final int childIdx = n.id + k;
+                idxStack[sp] = childIdx;
+                oxStack[sp] = ox + (k >> 1) * cs;
+                ozStack[sp] = oz + (k & 1) * cs;
+                sizeStack[sp] = cs;
+                depthStack[sp] = depth + 1;
+                startStack[sp] = childStart;
+                sp++;
+                childStart += nodes[childIdx].count;
+            }
+        }
+        return false;
     }
 
     /** Indented {@code String.format} log line for the {@link #DEBUG_QUERY} / {@link #debugPrint} traces. */

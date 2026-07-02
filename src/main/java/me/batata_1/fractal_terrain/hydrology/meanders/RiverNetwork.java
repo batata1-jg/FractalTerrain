@@ -662,7 +662,10 @@ public final class RiverNetwork {
             double offsetZ,
             int[] nextFeatureId) {
         if (spline.getSize() < 2) return;
-        final double dx = Math.max(width / 2.0, MIN_CONVERT_SPACING);
+        // Spacing must be <= half the NARROWEST width along the start->end taper, so consecutive
+        // units' width/2 discs always overlap (gap-free membership test + girth rendering).
+        final double narrowestWidth = Math.min(startWidth, endWidth);
+        final double dx = Math.max(narrowestWidth / 2.0, MIN_CONVERT_SPACING);
         final QuinticHermiteSpline resampled;
         try {
             resampled = spline.reSample(dx);
@@ -689,8 +692,8 @@ public final class RiverNetwork {
             out.add(new HydrologicalUnit(
                     type,
                     null,
-                    List.of(p[0] - offsetX, p[1] - offsetZ),
-                    List.of(nrm[0], nrm[1]),
+                    new double[] {p[0] - offsetX, p[1] - offsetZ},
+                    new double[] {nrm[0], nrm[1]},
                     w,
                     bed,
                     time,

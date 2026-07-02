@@ -6,7 +6,6 @@ import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.neighb
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,13 +16,13 @@ import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.HydrologicalFeature;
 import me.batata_1.fractal_terrain.hydrology.meanders.*;
+import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteQuadTree;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
-import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 import me.batata_1.fractal_terrain.relief.DecoderChannels;
 import me.batata_1.fractal_terrain.storage.TileKey;
@@ -57,9 +56,7 @@ public class LocalRiverProvider {
     private static final double RELAX_STEPS_PER_ELEV = 0.2;
     private static final double MIN_WIDTH = FractalTerrainConfig.MIN_WIDTH;
 
-    // ---- Carving / sink filling ---------------------------------------------
-    private static final double MAX_CARVE_DIST = 64.0;
-    private static final double CARVE_SAMPLE_SPACING = 2.0;
+    // ---- Sink filling (the tile carve itself lives in HydrologyProfileCarver.carveGlobalRivers) ----
     private static final int FILL_PADDING = 64;
 
     // ---- Local network ------------------------------------------------------
@@ -156,7 +153,7 @@ public class LocalRiverProvider {
 
         // 2. carve the decoded elevation toward the global river beds.
         final float[] carvedElevation = base[0].clone();
-        carveGlobalRivers(carvedElevation, sim.getChannels());
+        HydrologyProfileCarver.carveGlobalRivers(carvedElevation, sim.getChannels(), PADDED);
 
         // 3. fill sinks (border-blended), then crop to the inner 512 carved tile.
         final float[] filled = PipelinePreprocessing.fillSinks(carvedElevation, PADDED, FILL_PADDING);
@@ -196,6 +193,7 @@ public class LocalRiverProvider {
             stages.localChannels = localChannels;
             stages.carvedElevation = carvedTile.data;
             stages.network = sim.getNetwork();
+            stages.unitTree = tree;
         }
         return new TileResult(tree, carvedTile);
     }
@@ -237,7 +235,8 @@ public class LocalRiverProvider {
                     }
                 int dcx = ccx, dcz = ccz;
                 double[] drain = null;
-                final double marginInfl = marginInfluence(Math.max(grp.getWidth(ccx, ccz), MIN_WIDTH));
+                final double marginInfl =
+                        FractalTerrainConfig.floodPlainInfluence(Math.max(grp.getWidth(ccx, ccz), MIN_WIDTH));
                 if (outDir != -1) {
                     dcx = ccx + PipelinePreprocessing.NEIGHBOR_OFFSET_X[outDir];
                     dcz = ccz + PipelinePreprocessing.NEIGHBOR_OFFSET_Z[outDir];
@@ -392,7 +391,7 @@ public class LocalRiverProvider {
 
     /**
      * Create the SOURCE node for an owned cell flagged {@code isSource}: place a deterministic interior
-     * seed ({@link #sourceSeed}, kept {@code marginInfluence(width)} clear of the cell edges), record its
+     * seed ({@link #sourceSeed}, kept {@code floodPlainInfluence(width)} clear of the cell edges), record its
      * boundary bed elevation (the decoded terrain at the seed, floored at the downstream coarse bed), and
      * wire a seed→centre edge.
      */
@@ -410,7 +409,7 @@ public class LocalRiverProvider {
             GlobalRiverProvider grp) {
         final double minX = PAD + a * COARSE_PX;
         final double minZ = PAD + b * COARSE_PX;
-        final double[] seed = sourceSeed(c.ccx(), c.ccz(), minX, minZ, marginInfluence(width));
+        final double[] seed = sourceSeed(c.ccx(), c.ccz(), minX, minZ, FractalTerrainConfig.floodPlainInfluence(width));
         final int seedNode = addNode(nodeSpecs, seed[0], seed[1], Endpoint.Type.SOURCE);
         final double downstreamBed =
                 (c.outDirection() != -1) ? grp.getElevation(c.dcx(), c.dcz()) : grp.getElevation(c.ccx(), c.ccz());
@@ -536,85 +535,6 @@ public class LocalRiverProvider {
     // -------------------------------------------------------------------------
     // Carving
     // -------------------------------------------------------------------------
-
-    /** A densified river sample carrying its interpolated width + bed elevation. */
-    private record RiverSample(double[] coords, double width, double bedElev) implements QuadTreePoint {
-        @Override
-        public double[] getCoords() {
-            return coords;
-        }
-    }
-
-    private void carveGlobalRivers(float[] elevation, List<Channel> channels) {
-        if (channels.isEmpty()) return;
-        final List<RiverSample> samples = new ArrayList<>();
-        for (Channel ch : channels) {
-            if (ch.bedElevations == null || ch.numPts() < 2) continue;
-            final QuinticHermiteSpline spline = ch.spline;
-            final int segments = ch.numPts() - 1;
-            final double[] pointWidths = pointWidths(ch);
-            for (int i = 0; i < segments; i++) {
-                final double segLength = VectorOps.distance(
-                        spline.points().get(i), spline.points().get(i + 1));
-                final int sampleCount = Math.max(1, (int) Math.ceil(segLength / CARVE_SAMPLE_SPACING));
-                final double startWidth = pointWidths[i];
-                final double endWidth = pointWidths[i + 1];
-                final double startBed = ch.bedElevations[i];
-                final double endBed = ch.bedElevations[i + 1];
-                for (int s = 0; s <= sampleCount; s++) {
-                    final double frac = (double) s / sampleCount;
-                    final double[] point = spline.sample(i + frac);
-                    final double width = startWidth + (endWidth - startWidth) * frac;
-                    final double bed = startBed + (endBed - startBed) * frac;
-                    samples.add(new RiverSample(new double[] {point[0], point[1]}, width, bed));
-                }
-            }
-        }
-        final ImmutableQuadTree<RiverSample> index = new ImmutableQuadTree<>(
-                new double[] {-COARSE_PX * 4, -COARSE_PX * 4},
-                new double[] {PADDED + COARSE_PX * 4, PADDED + COARSE_PX * 4},
-                samples);
-
-        for (int pi = 0; pi < PADDED; pi++) {
-            for (int pj = 0; pj < PADDED; pj++) {
-                final int idx = pi * PADDED + pj;
-                if (elevation[idx] < 0) continue;
-                final double[] pixel = {pi, pj};
-                final List<RiverSample> nearby = index.getPointsInCircle(pixel, MAX_CARVE_DIST);
-                if (nearby.isEmpty()) continue;
-                double nearestDist = Double.MAX_VALUE;
-                double width = 0;
-                double bedElev = 0;
-                for (RiverSample sample : nearby) {
-                    final double dist = VectorOps.distance(pixel, sample.coords());
-                    if (dist < nearestDist) {
-                        nearestDist = dist;
-                        width = sample.width();
-                        bedElev = sample.bedElev();
-                    }
-                }
-                if (nearestDist >= MAX_CARVE_DIST) continue;
-                final double margin = width * 0.5;
-                final double marginInfluence = marginInfluence(width);
-                if (nearestDist >= marginInfluence) continue;
-                final float orig = elevation[idx];
-                final double frac = (nearestDist <= margin)
-                        ? 0.0
-                        : Math.min(1.0, (nearestDist - margin) / (marginInfluence - margin));
-                elevation[idx] = (float) (bedElev + (orig - bedElev) * frac);
-            }
-        }
-    }
-
-    private static double[] pointWidths(Channel ch) {
-        final int n = ch.numPts();
-        final double[] w = new double[n];
-        for (int i = 0; i < n; i++) {
-            final double frac = (n == 1) ? 0.0 : (double) i / (n - 1);
-            w[i] = ch.startWidth + (ch.endWidth - ch.startWidth) * frac;
-        }
-        return w;
-    }
 
     // -------------------------------------------------------------------------
     // Local network (drainage-derived)
@@ -768,7 +688,10 @@ public class LocalRiverProvider {
      * {@code nextFeatureId} (one id per channel, advancing the counter).
      */
     private void addLocalChannelUnits(List<HydrologicalUnit> out, Channel ch, float[] elev, int[] nextFeatureId) {
-        final double dx = Math.max(ch.width / 2.0, 0.5);
+        // Spacing must be <= half the NARROWEST width along the start->end taper, so consecutive
+        // units' width/2 discs always overlap (gap-free membership test + girth rendering).
+        final double narrowestWidth = Math.min(ch.startWidth, ch.endWidth);
+        final double dx = Math.max(narrowestWidth / 2.0, 0.5);
         final QuinticHermiteSpline resampled;
         try {
             resampled = ch.spline.reSample(dx);
@@ -787,8 +710,8 @@ public class LocalRiverProvider {
             out.add(new HydrologicalUnit(
                     HydrologicalFeature.RIVER,
                     null,
-                    List.of(p[0], p[1]),
-                    List.of(nrm[0], nrm[1]),
+                    new double[] {p[0], p[1]},
+                    new double[] {nrm[0], nrm[1]},
                     w,
                     bed,
                     0,
@@ -969,10 +892,6 @@ public class LocalRiverProvider {
         return new double[] {minX + rx, minZ + rz};
     }
 
-    private static double marginInfluence(double width) {
-        return 5 * width;
-    }
-
     private static double sampleBilinear(float[] field, double px, double pz) {
         return Interpolation.sampleBilinear(field, px, pz, PADDED);
     }
@@ -987,50 +906,76 @@ public class LocalRiverProvider {
 
     /** True when a hydrological feature lies within {@link #QUERY_RADIUS} of {@code coords}. */
     public boolean insideMargin(double[] coords) {
-        return !units.getValuesWithin(coords, QUERY_RADIUS).isEmpty();
+        return anyUnitWithin(coords, QUERY_RADIUS / 2, (unit, distSq) -> true);
+    }
+
+    /**
+     * Early-exit existence test over the unit tree: true iff some unit within {@code radius} of
+     * {@code pt} (relief-pixel frame) passes {@code test}. Spans tile borders like
+     * {@link #queryInfluence} but allocates no result list and stops at the first accepted unit. The
+     * test runs in the tile-local frame; distances are translation-invariant, so the
+     * {@code distSqToCenter} it receives equals the world-frame squared distance.
+     */
+    public boolean anyUnitWithin(double[] pt, double radius, ImmutableQuadTree.PointTest<HydrologicalUnit> test) {
+        return units.anyValueWithin(pt, radius, test);
     }
 
     /**
      * Gather every hydrological unit whose feature influences {@code pt} (a point in the relief-pixel
-     * frame), re-stamped into world coords and returned as a flat array <b>sorted by
-     * {@link HydrologicalUnit#id() id}</b> — the universal iterate primitive both
-     * {@link me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver} and the painter consume
-     * (walk equal-id runs via
-     * {@link me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile#forEachIdRun}).
+     * frame), re-stamped into world coords and returned as a flat array in <b>unspecified order</b> —
+     * consumed by {@link me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver}'s flat
+     * distance-weighted merge (every unit contributes; no per-feature grouping).
      *
      * <p>A unit is kept when {@code pt} lies within that unit's own
-     * {@link FractalTerrainConfig#maxRiverInfluence influence} radius. The query spans tile borders (a
-     * river within influence may live in a neighbouring tile); stored coords are tile-local, so each is
-     * translated to the common world frame by adding its owning tile's origin before the distance test.
+     * {@link FractalTerrainConfig#maxRiverInfluence influence} radius, optionally extended by
+     * {@code extraRadius} (used by the per-chunk prefetch so one query serves every block of a chunk).
+     * The query spans tile borders (a river within influence may live in a neighbouring tile); stored
+     * coords are tile-local, so each is translated to the common world frame by adding its owning
+     * tile's origin before the distance test.
      */
-    public HydrologicalUnit[] queryInfluence(double[] pt) {
-        final List<HydrologicalUnit> hits = new ArrayList<>();
-        units.forEachTileWithin(pt, FractalTerrainConfig.MAX_INFLUENCE_RADIUS, (originX, originZ, local) -> {
-            for (HydrologicalUnit u : local) {
-                final double worldX = u.coord().get(0) + originX;
-                final double worldZ = u.coord().get(1) + originZ;
-                final double influence = FractalTerrainConfig.maxRiverInfluence(u.width());
-                final double dx = worldX - pt[0];
-                final double dz = worldZ - pt[1];
-                if (dx * dx + dz * dz > influence * influence) continue;
-                hits.add(new HydrologicalUnit(
-                        u.type(),
-                        u.rosgenType(),
-                        List.of(worldX, worldZ),
-                        u.normal(),
-                        u.width(),
-                        u.elevation(),
-                        u.time(),
-                        u.id()));
-            }
-        });
-        hits.sort(Comparator.comparingInt(HydrologicalUnit::id));
+    public HydrologicalUnit[] queryInfluence(double[] pt, double extraRadius) {
+        final List<HydrologicalUnit> hits = new ArrayList<>(64);
+        units.forEachTileWithin(
+                pt, FractalTerrainConfig.MAX_INFLUENCE_RADIUS + extraRadius, (originX, originZ, local) -> {
+                    for (HydrologicalUnit u : local) {
+                        final double worldX = u.coord()[0] + originX;
+                        final double worldZ = u.coord()[1] + originZ;
+                        final double reach = FractalTerrainConfig.maxRiverInfluence(u.width()) + extraRadius;
+                        final double dx = worldX - pt[0];
+                        final double dz = worldZ - pt[1];
+                        if (dx * dx + dz * dz > reach * reach) continue;
+                        hits.add(new HydrologicalUnit(
+                                u.type(),
+                                u.rosgenType(),
+                                new double[] {worldX, worldZ},
+                                u.normal(),
+                                u.width(),
+                                u.elevation(),
+                                u.time(),
+                                u.id()));
+                    }
+                });
         return hits.toArray(new HydrologicalUnit[0]);
+    }
+
+    /** {@link #queryInfluence(double[], double)} with no extra radius (single-point queries). */
+    public HydrologicalUnit[] queryInfluence(double[] pt) {
+        return queryInfluence(pt, 0.0);
     }
 
     // -------------------------------------------------------------------------
     // Debug access
     // -------------------------------------------------------------------------
+
+    /**
+     * The built {@link ImmutableQuadTree} of {@link HydrologicalUnit}s for tile {@code (tileX, tileZ)}
+     * (triggers {@link #buildTile} on a cache miss). For debug rendering
+     * ({@code Debug.units.see}) and the quadtree benchmark harness.
+     */
+    @TestOnly
+    public ImmutableQuadTree<HydrologicalUnit> getUnitTree(int tileX, int tileZ) {
+        return units.getEntry(new int[] {tileX, tileZ});
+    }
 
     @TestOnly
     public Stages debugStages(int tileX, int tileZ) {
@@ -1047,5 +992,6 @@ public class LocalRiverProvider {
         public List<Channel> channels;
         public List<Channel> localChannels;
         public RiverNetwork network;
+        public ImmutableQuadTree<HydrologicalUnit> unitTree;
     }
 }

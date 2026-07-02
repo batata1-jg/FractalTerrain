@@ -38,8 +38,8 @@ public final class Meanders {
 
     /**
      * Width of the border margin band kept clear of the grid edge, as a multiple of channel width.
-     * Matches {@code LocalRiverProvider.marginInfluence} (5×width) so a channel's whole carve band stays
-     * inside the grid.
+     * Matches {@code FractalTerrainConfig.floodPlainInfluence} (5×width) so a channel's whole carve band
+     * stays inside the grid.
      */
     private static final double MARGIN_INFLUENCE_FACTOR = 5.0;
 

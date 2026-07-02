@@ -37,8 +37,8 @@ public class LocalRiverTest {
     private static final int PAD = 1;
 
     /** Tiles (tx, tz) to render. */
-    private static final int[][] TILES = {
-        {0, -1},
+    private static final int[][] TILES = {{-1, -1}, {-1, -2}, {-2, -1}, {-2, -2}
+        // {0, -1},
         //    {-1,-1}
         //   {-1,-1},{0,-1},{0,-2}
         //            {1, -4}, {0, -3}, {0, -4}
@@ -88,6 +88,31 @@ public class LocalRiverTest {
                 stages.channels.size(),
                 stages.localChannels.size());
         checkMonotonicElevations(stages.network, tx, tz);
+        dumpUnitTree(stages, tx, tz, prefix);
+    }
+
+    /**
+     * Render the tile's built {@code HydrologicalUnit} quadtree (type-colored points, id shades, width
+     * girths — see {@link me.batata_1.fractal_terrain.debug.HydrologyUnitVisualizer}) and log its stats.
+     * Reads the tree {@code debugStages} captured, so the tile is not rebuilt.
+     */
+    private static void dumpUnitTree(LocalRiverProvider.Stages stages, int tx, int tz, String prefix) {
+        if (stages.unitTree == null) {
+            LOG.warn("tile ({},{}): no unit tree captured — skipping unit dump", tx, tz);
+            return;
+        }
+        final var savedPath = Debug.units.debugPath;
+        Debug.units.debugPath = DEBUG_PATH;
+        try {
+            final List<me.batata_1.fractal_terrain.hydrology.HydrologicalUnit> units =
+                    stages.unitTree.getPointsInBox(new double[] {-GRID, -GRID}, new double[] {2.0 * GRID, 2.0 * GRID});
+            Debug.units.see(units, prefix + "06_units", GRID, 4);
+            Debug.units.logStats(units, "tile (" + tx + "," + tz + ")");
+        } catch (RuntimeException e) {
+            LOG.warn("tile ({},{}): unit-tree dump failed ({})", tx, tz, e.toString(), e);
+        } finally {
+            Debug.units.debugPath = savedPath;
+        }
     }
 
     /** Cardinal direction labels for arrow bits 4..7 (see {@code PipelinePreprocessing.NEIGHBOR_OFFSET_*}). */

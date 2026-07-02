@@ -56,7 +56,7 @@ public record FractalTerrainConfig() {
     // 3D visualizer (debug terrain projection — see Infinite3DVisualizer)
     // ──────────────────────────────────────────────────────────────────────────
 
-    public static final boolean DISABLE_3D_VISUALIZER = true;
+    public static final boolean DISABLE_3D_VISUALIZER = false;
 
     /**
      * Drives the elevation each visualizer column is raised to ({@link Infinite3DVisualizer#debugElevController}).
@@ -66,7 +66,7 @@ public record FractalTerrainConfig() {
      *   <li>{@code COARSE} — coarse-stage elevation channel.</li>
      * </ul>
      */
-    public static final Infinite3DVisualizer.DebugModes VIZ_H_CONTROL_MODE = Infinite3DVisualizer.DebugModes.DIST_SHORE;
+    public static final Infinite3DVisualizer.DebugModes VIZ_H_CONTROL_MODE = Infinite3DVisualizer.DebugModes.RELIEF;
 
     /**
      * Drives the block painted at each visualizer position ({@link Infinite3DVisualizer#debugPaintController}).
@@ -77,7 +77,7 @@ public record FractalTerrainConfig() {
      * </ul>
      */
     public static final Infinite3DVisualizer.DebugPaintModes VIZ_PAINT_CONTROL_MODE =
-            Infinite3DVisualizer.DebugPaintModes.PV;
+            Infinite3DVisualizer.DebugPaintModes.RIVER_NET;
 
     /** Generation steps suppressed while the visualizer is active. */
     public static final boolean DISABLE_BIOME_DECORATION = true || !DISABLE_3D_VISUALIZER;
@@ -111,40 +111,53 @@ public record FractalTerrainConfig() {
     // ──────────────────────────────────────────────────────────────────────────
 
     /** Floor on every river width, in native pixels. */
-    public static final double MIN_WIDTH = readDouble("hydrology.min_width", 1.0);
+    public static final double MIN_WIDTH = 0.2f;
 
     /** Scale on {@code sqrt(flow)} shared by the global and local networks (see {@link #widthFromFlow}). */
-    public static final double WIDTH_FLOW_SCALE = 0.2f;
+    public static final double WIDTH_FLOW_SCALE = 0.02f;
+
+    /**
+     * Cap on every river width <em>in the width-law frame</em> (the frame {@link #widthFromFlow}'s caller
+     * works in). Local channels call {@code widthFromFlow} directly in native px, so they are capped at
+     * {@code MAX_WIDTH} native px. Global rivers call it in the coarse frame and are rescaled by
+     * {@link #GLOBAL_WIDTH_COORD_SCALE} afterwards ({@code GlobalRiverProvider.globalRiverWidth}), so their
+     * native-px cap is {@code MAX_WIDTH * GLOBAL_WIDTH_COORD_SCALE} — see {@link #maxNativeWidth()}.
+     */
+    public static final double MAX_WIDTH = 16f;
+
+    public static final double MAX_LOCAL_WIDTH = 6f;
 
     /**
      * Multiplier applied to <em>global</em>-river widths only, converting their coarse-px flow widths into
      * native px. (Local widths already come out in native px, so they use {@link #widthFromFlow} directly.)
      */
-    public static final double GLOBAL_WIDTH_COORD_SCALE = 10f;
+    public static final double GLOBAL_WIDTH_COORD_SCALE = 20f;
 
     /**
      * Floodplain half-extent (native px) = {@code FLOODPLAIN_BASE + FLOODPLAIN_WIDTH_FACTOR · width}. This
      * is the <em>flat</em> band carved at floodplain elevation; the blend to decoded terrain starts only
      * past it. Kept very tunable — a later plan adds noise to make this vary.
      */
-    public static final double FLOODPLAIN_BASE = readDouble("hydrology.floodplain_base", 4.0);
+    public static final double FLOODPLAIN_BASE = 0.6f;
 
-    public static final double FLOODPLAIN_WIDTH_FACTOR = readDouble("hydrology.floodplain_width_factor", 2.0);
+    public static final double FLOODPLAIN_WIDTH_FACTOR = 1.0f;
 
     /** Width of the blend-to-decoded band beyond the floodplain (native px). */
-    public static final double INFLUENCE_BLEND_LEN = readDouble("hydrology.influence_blend_len", 16.0);
+    public static final double INFLUENCE_BLEND_LEN = 16.0f;
 
     /**
      * Hard cap (native px) on any river's influence radius — also the radius the cross-tile unit query
      * uses. Bounds the per-pixel carve/paint work and the query span; rivers whose computed
      * {@link #maxRiverInfluence} would exceed this are clamped to it.
      */
-    public static final double MAX_INFLUENCE_RADIUS = readDouble("hydrology.max_influence_radius", 128.0);
+    public static final double MAX_INFLUENCE_RADIUS = 64.0f;
 
     /**
-     * Max {@code |intended bed − decoded|} a point may carve. Beyond this the point is treated as
-     * <em>uncarvable</em> and excluded from the carve/merge entirely (so we never leave isolated holes or
-     * trenches); its hydrological unit still records the intended bed elevation.
+     * Max {@code |intended bed − current terrain|} a pixel may carve — applies <em>only</em> to the
+     * tile-level pre-carve ({@code HydrologyProfileCarver.carveGlobalRivers}), not to the per-pixel
+     * refinement merge. A pixel beyond this delta is <em>uncarvable</em> and skipped (so the tile carve
+     * never gouges isolated holes or trenches); the hydrological units still record the intended bed
+     * elevation.
      */
     public static final double MAX_CARVE_DELTA = readDouble("hydrology.max_carve_delta", 48.0);
 
@@ -163,11 +176,35 @@ public record FractalTerrainConfig() {
 
     /**
      * The single river-width law shared by the global and local networks:
-     * {@code max(MIN_WIDTH, WIDTH_FLOW_SCALE · sqrt(max(0, rawFlow)))}. Global callers additionally
-     * multiply the result by {@link #GLOBAL_WIDTH_COORD_SCALE} to convert coarse-px flow into native px.
+     * {@code clamp(WIDTH_FLOW_SCALE · log(max(1, rawFlow + 1)), MIN_WIDTH, MAX_WIDTH)}. Global callers
+     * additionally multiply the result by {@link #GLOBAL_WIDTH_COORD_SCALE} to convert coarse-px flow into
+     * native px — the {@link #MAX_WIDTH} cap applies <em>before</em> that rescale, so the global native-px
+     * ceiling is {@link #maxNativeWidth()}.
      */
     public static double widthFromFlow(double rawFlow) {
-        return Math.max(MIN_WIDTH, WIDTH_FLOW_SCALE * Math.log(Math.max(0.0, rawFlow)));
+        final double lawWidth = WIDTH_FLOW_SCALE * Math.log(Math.max(1.0, rawFlow + 1));
+        return Math.clamp(lawWidth, MIN_WIDTH, MAX_WIDTH);
+    }
+
+    /**
+     * The largest width (native px) any {@code HydrologicalUnit} can carry: the global-river cap after its
+     * coarse→native rescale ({@link #MAX_WIDTH} · {@link #GLOBAL_WIDTH_COORD_SCALE}). Bounds the
+     * channel-membership query radius ({@code HydrologyProfilePainter.insideChannel} queries
+     * {@code maxNativeWidth()/2} around the point: any unit whose half-width disc could contain the point
+     * must lie inside that radius).
+     */
+    public static double maxNativeWidth() {
+        return MAX_WIDTH;
+    }
+
+    /**
+     * Outer edge of the flood-plain carve band for a channel of the given width (native px). Used by the
+     * tile-level pre-carve ({@code HydrologyProfileCarver.carveGlobalRivers}: full bed inside
+     * {@code width/2}, linear blend back to the original terrain at this radius) and by the global-river
+     * trace to keep seeds/paths clear of cell edges.
+     */
+    public static double floodPlainInfluence(double width) {
+        return 5.0 * width;
     }
 
     /** Inference device: "cpu", "gpu", or "auto" (try GPU then fall back to CPU). */

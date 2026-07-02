@@ -2,7 +2,9 @@ package me.batata_1.fractal_terrain.world.gen.populatenoise;
 
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
+import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
+import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
@@ -47,13 +49,25 @@ public class PopulateNoiseStep {
         final HydrologyProfileCarver carver = FractalTerrainInstance.getHydrologyCarver();
         final int startX = chunkPos.getMinBlockX();
         final int startZ = chunkPos.getMinBlockZ();
+        // One influence query serves the whole chunk: prefetch every unit that could reach any of the
+        // 256 columns (chunk center + half-diagonal, both in the relief-pixel frame), then run the
+        // flat merge per block against the prefetched array — 1 tree query per chunk instead of 256.
+        final double scale = FractalTerrainConfig.GLOBAL_SCALE_CORRECTION;
+        final double chunkCenterPixelX = (startX + 8) / scale;
+        final double chunkCenterPixelZ = (startZ + 8) / scale;
+        final double chunkRadiusPx = (8.0 * Math.sqrt(2.0)) / scale;
+        //final HydrologicalUnit[] chunkUnits = carver.prefetchChunk(chunkCenterPixelX, chunkCenterPixelZ, chunkRadiusPx);
         for (int dx = 0; dx < 16; dx++) {
             for (int dz = 0; dz < 16; dz++) {
                 final int pos = (dx << 4) + dz;
                 final float preCarveElev = interpolatedElevs[pos];
-                final float refinedElev = carver.carve(startX + dx, startZ + dz, preCarveElev);
-                riverDifference[pos] = refinedElev - preCarveElev;
-                interpolatedElevs[pos] = Math.max(bottom, refinedElev) + seaLevel - 1;
+//                final float refinedElev = chunkUnits.length == 0
+//                        ? preCarveElev
+//                        : carver.carvePrefetched(
+//                                chunkUnits, (startX + dx) / scale, (startZ + dz) / scale, preCarveElev);
+                riverDifference[pos] = 0;
+             //   refinedElev - preCarveElev;
+                interpolatedElevs[pos] = Math.max(bottom, preCarveElev) + seaLevel - 1;
             }
         }
     }

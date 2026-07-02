@@ -130,9 +130,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
                 final int reliefHeight = (int) reliefBaseHeight[(dx << 4) + dz];
                 // River water: where the carve lowered the terrain, fill the channel up to the pre-carve
                 // surface (the painter reads RIVER_DIFFERENCE); combined with the sea-level ocean fill.
-                final int riverWaterTop =
-                        FractalTerrainInstance.getHydrologyPainter().riverWaterTop(heightmaps, dx, dz, reliefHeight);
-                final int aboveWaterHeight = Math.max(Math.max(reliefHeight, seaLevel), riverWaterTop);
+                final int aboveWaterHeight = Math.max(reliefHeight, seaLevel);
                 mutable.set(xx, bottom, zz);
                 BlockState state;
                 for (int y = bottom; y <= aboveWaterHeight; y++) {

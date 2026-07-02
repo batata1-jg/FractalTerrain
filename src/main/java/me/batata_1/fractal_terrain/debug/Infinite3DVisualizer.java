@@ -9,12 +9,14 @@ import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import org.jetbrains.annotations.TestOnly;
 
 /**
  * When turned on in FractalTerrainConfig, projects anything into the minecraft world
  * using the chunk generator.
  * When using this, don't forget to disable the surface rule step and biome decoration step
  * */
+@TestOnly
 public class Infinite3DVisualizer {
 
     private static final BlockState DEFAULT = Blocks.WHITE_CONCRETE.defaultBlockState();
@@ -96,18 +98,18 @@ public class Infinite3DVisualizer {
     private static final BlockState RIVER_MARKER_ROCK = Blocks.GREEN_CONCRETE.defaultBlockState();
 
     public BlockState debugRiver(int xx, int y, int zz) {
+        final double[] pixelPt = mutableCoordsXZ.get();
+        pixelPt[0] = xx * 0.2; // block -> relief-pixel frame (÷ GLOBAL_SCALE_CORRECTION)
+        pixelPt[1] = zz * 0.2;
+        // Channel membership first, independent of the coarse-cell gate, so local channels outside
+        // global river/coast cells also render their width band.
+        if (FractalTerrainInstance.getHydrologyPainter().insideChannel(pixelPt)) return INSIDE_MARGIN_ROCK;
         final int coarseX = Math.floorDiv(xx, 256 * 5);
         final int coarseZ = Math.floorDiv(zz, 256 * 5);
-        mutableCoordsXZ.get()[0] = xx * 0.2;
-        mutableCoordsXZ.get()[1] = zz * 0.2;
         final int globalRiverData =
                 FractalTerrainInstance.getGlobalRiverProvider().getArrow(coarseX, coarseZ);
-        if (GlobalRiverProvider.isRiver(globalRiverData) || GlobalRiverProvider.isCoast(globalRiverData)) {
-            boolean f = FractalTerrainInstance.getLocalRiverProvider().insideMargin(mutableCoordsXZ.get());
-            if (f) return INSIDE_MARGIN_ROCK;
-            if (GlobalRiverProvider.isRiver(globalRiverData)) return RIVER_MARKER_ROCK;
-            return COAST_MARKER_ROCK;
-        }
+        if (GlobalRiverProvider.isRiver(globalRiverData)) return RIVER_MARKER_ROCK;
+        if (GlobalRiverProvider.isCoast(globalRiverData)) return COAST_MARKER_ROCK;
         return DEFAULT;
     }
 
