@@ -11,7 +11,7 @@ import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
  * {@link me.batata_1.fractal_terrain.hydrology.LocalRiverProvider#queryInfluence} the same way: every
  * unit contributes a per-unit value ({@link #computeForUnit} for elevation), and the caller merges the
  * contributions in one flat distance-weighted average (weight 1 at the unit, 0 at that unit's own
- * {@link FractalTerrainConfig#maxRiverInfluence influence} radius).
+ * {@link FractalTerrainConfig#riverInfluence influence} radius).
  */
 public final class HydrologyProfile {
 

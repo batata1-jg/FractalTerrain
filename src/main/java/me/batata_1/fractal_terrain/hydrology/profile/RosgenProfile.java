@@ -21,7 +21,7 @@ import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
  *   <li><b>River bed</b> ({@code projectedDist ≤ width·0.5}) → {@link #bedElevation};</li>
  *   <li><b>Floodplain</b> (up to {@code floodPlainLength}) → {@link #floodplainElevation} (a flat band for
  *       now, but kept a function for future noise);</li>
- *   <li><b>Blending region</b> (up to {@link FractalTerrainConfig#maxRiverInfluence}) → {@link #blend},
+ *   <li><b>Blending region</b> (up to {@link FractalTerrainConfig#riverInfluence}) → {@link #blend},
  *       the V/U valley curve that carries the floodplain delta toward {@code decodedRelative}.</li>
  * </ol>
  *
@@ -75,7 +75,7 @@ public enum RosgenProfile {
         if (projectedDist <= floodPlainLength) {
             return floodplainElevation(projectedDist, width, floodPlainLength);
         }
-        final double maxInfluence = FractalTerrainConfig.maxRiverInfluence(width);
+        final double maxInfluence = FractalTerrainConfig.riverInfluence(width);
         final double blendSpan = Math.max(1e-9, maxInfluence - floodPlainLength);
         final double t = Math.min(1.0, (projectedDist - floodPlainLength) / blendSpan);
         final double floodplainDelta = floodplainElevation(floodPlainLength, width, floodPlainLength);

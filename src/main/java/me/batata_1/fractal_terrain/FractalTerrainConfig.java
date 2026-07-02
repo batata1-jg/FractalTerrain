@@ -143,12 +143,12 @@ public record FractalTerrainConfig() {
     public static final double FLOODPLAIN_WIDTH_FACTOR = 1.0f;
 
     /** Width of the blend-to-decoded band beyond the floodplain (native px). */
-    public static final double INFLUENCE_BLEND_LEN = 16.0f;
+    public static final double INFLUENCE_BLEND_MULTIPLIER = 1.2f;
 
     /**
      * Hard cap (native px) on any river's influence radius — also the radius the cross-tile unit query
      * uses. Bounds the per-pixel carve/paint work and the query span; rivers whose computed
-     * {@link #maxRiverInfluence} would exceed this are clamped to it.
+     * {@link #riverInfluence} would exceed this are clamped to it.
      */
     public static final double MAX_INFLUENCE_RADIUS = 64.0f;
 
@@ -170,8 +170,8 @@ public record FractalTerrainConfig() {
      * Outer influence radius for a river of the given width: floodplain + blend band (native px), clamped
      * to {@link #MAX_INFLUENCE_RADIUS}. Beyond this radius a river no longer affects a pixel.
      */
-    public static double maxRiverInfluence(double width) {
-        return Math.min(MAX_INFLUENCE_RADIUS, floodPlainLength(width) + INFLUENCE_BLEND_LEN);
+    public static double riverInfluence(double width) {
+        return Math.min(MAX_INFLUENCE_RADIUS, floodPlainLength(width) * INFLUENCE_BLEND_MULTIPLIER);
     }
 
     /**

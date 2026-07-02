@@ -84,7 +84,7 @@ public final class HydrologyProfileCarver {
      * {@link #prefetchChunk}). <b>Every</b> influencing unit contributes its
      * {@link HydrologyProfile#computeForUnit} elevation, weighted linearly by distance: weight 1 when the
      * point sits on the unit, 0 at that unit's own
-     * {@link FractalTerrainConfig#maxRiverInfluence influence} radius. Contributions from all units of
+     * {@link FractalTerrainConfig#riverInfluence influence} radius. Contributions from all units of
      * all features are merged in one flat weighted average — a lone straight channel averages many
      * near-identical contributions (≈ its exact profile), and river intersections blend smoothly because
      * every channel's units participate. Returns {@code decodedElev} unchanged when no unit reaches the
@@ -94,7 +94,7 @@ public final class HydrologyProfileCarver {
         double weightedElevSum = 0.0;
         double weightSum = 0.0;
         for (final HydrologicalUnit unit : units) {
-            final double influenceRadius = FractalTerrainConfig.maxRiverInfluence(unit.width());
+            final double influenceRadius = FractalTerrainConfig.riverInfluence(unit.width());
             final double[] unitCoord = unit.coord();
             final double dist = Math.hypot(pixelX - unitCoord[0], pixelZ - unitCoord[1]);
             if (dist >= influenceRadius) continue; // outside this unit's reach

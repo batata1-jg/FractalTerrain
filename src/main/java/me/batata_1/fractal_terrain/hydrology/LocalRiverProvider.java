@@ -927,7 +927,7 @@ public class LocalRiverProvider {
      * distance-weighted merge (every unit contributes; no per-feature grouping).
      *
      * <p>A unit is kept when {@code pt} lies within that unit's own
-     * {@link FractalTerrainConfig#maxRiverInfluence influence} radius, optionally extended by
+     * {@link FractalTerrainConfig#riverInfluence influence} radius, optionally extended by
      * {@code extraRadius} (used by the per-chunk prefetch so one query serves every block of a chunk).
      * The query spans tile borders (a river within influence may live in a neighbouring tile); stored
      * coords are tile-local, so each is translated to the common world frame by adding its owning
@@ -940,7 +940,7 @@ public class LocalRiverProvider {
                     for (HydrologicalUnit u : local) {
                         final double worldX = u.coord()[0] + originX;
                         final double worldZ = u.coord()[1] + originZ;
-                        final double reach = FractalTerrainConfig.maxRiverInfluence(u.width()) + extraRadius;
+                        final double reach = FractalTerrainConfig.riverInfluence(u.width()) + extraRadius;
                         final double dx = worldX - pt[0];
                         final double dz = worldZ - pt[1];
                         if (dx * dx + dz * dz > reach * reach) continue;
