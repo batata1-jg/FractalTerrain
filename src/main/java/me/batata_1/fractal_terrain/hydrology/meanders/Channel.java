@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Objects;
 import me.batata_1.fractal_terrain.math.VectorOps;
-import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
+import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 
 public class Channel {
@@ -32,7 +32,7 @@ public class Channel {
     /**
      * Per-spline-point bed elevation (native-px scale), aligned to {@link #spline} points. Filled by the
      * bed-assignment pass in {@code LocalRiverProvider}; {@code null} until assigned. Read by
-     * {@code carveRiver} and {@link RiverNetwork#convertImmutableQuadtree}.
+     * {@code carveRiver} and {@link RiverNetwork#collectUnits}.
      */
     public double[] bedElevations;
 
@@ -160,7 +160,7 @@ public class Channel {
      * and the per-point {@code width} (lerped along the channel's start→end taper). Identity is by
      * {@code channelId} + {@code index} + coordinates (the {@code width} is excluded).
      */
-    public record ChannelPt(double[] coords, int index, int channelId, double width) implements QuadTreePoint {
+    public record ChannelPt(double[] coords, int index, int channelId, double width) implements SpatialIndexPoint {
 
         public ChannelPt(double[] pt, int id, int channelId) {
             this(pt, id, channelId, 0.0);

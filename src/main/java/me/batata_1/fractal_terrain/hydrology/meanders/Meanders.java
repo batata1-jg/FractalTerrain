@@ -34,12 +34,12 @@ public final class Meanders {
     private static final double DT = 1;
     public static final double DX = 1.5;
     /** max per-step displacement for the valley-seeking migration. */
-    private static final double MAX_GRAD_MIGRATION = DX;
+    private static final double MAX_GRAD_MIGRATION = 2 * DX;
 
     /**
-     * Width of the border margin band kept clear of the grid edge, as a multiple of channel width.
-     * Matches {@code FractalTerrainConfig.floodPlainInfluence} (5×width) so a channel's whole carve band
-     * stays inside the grid.
+     * Width of the border margin band kept clear of the grid edge, as a multiple of channel width. An
+     * independent margin factor (deliberately wider than {@code FractalTerrainConfig.riverInfluence}) so a
+     * channel's whole carve band stays inside the grid.
      */
     private static final double MARGIN_INFLUENCE_FACTOR = 5.0;
 

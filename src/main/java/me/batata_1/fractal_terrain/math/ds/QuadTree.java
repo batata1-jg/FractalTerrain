@@ -15,7 +15,7 @@ import me.batata_1.fractal_terrain.storage.Persistable;
  * lock, so writes never run concurrently with each other or with reads. All recursion-local state
  * is kept on the stack (no shared mutable fields), so readers do not interfere with one another.
  */
-public class QuadTree<T extends QuadTreePoint> implements Persistable<QuadTree<T>> {
+public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, Persistable<QuadTree<T>> {
     private static final int PP = 0;
     private static final int PQ = 1;
     private static final int QP = 2;
@@ -102,6 +102,27 @@ public class QuadTree<T extends QuadTreePoint> implements Persistable<QuadTree<T
         return tree.get(1).points.size();
     }
 
+    @Override
+    public int numEntries() {
+        lock.readLock().lock();
+        try {
+            return numPoints();
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    /** Snapshot of every stored point (the root node holds all of them), taken under the read lock. */
+    @Override
+    public List<T> getAllEntries() {
+        lock.readLock().lock();
+        try {
+            return new ArrayList<>(tree.get(1).points);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
     public void clear() {
         lock.writeLock().lock();
         try {
@@ -124,7 +145,7 @@ public class QuadTree<T extends QuadTreePoint> implements Persistable<QuadTree<T
     @Override
     public long byteSize() {
         final long bytesPerNode = 120; // child[4] + 2 double[2] + Set overhead, rough
-        final long bytesPerPoint = 48; // QuadTreePoint: 2 boxed doubles + list overhead, rough
+        final long bytesPerPoint = 48; // SpatialIndexPoint: 2 boxed doubles + list overhead, rough
         lock.readLock().lock();
         try {
             final long nodeCount = tree.size();
@@ -258,11 +279,11 @@ public class QuadTree<T extends QuadTreePoint> implements Persistable<QuadTree<T
     }
 
     // se so tem um elemento checar esse
-    private <S extends QuadTreeShape> ArrayList<T> query(final S shape, final int id) {
+    private <S extends SpatialIndexShape> ArrayList<T> query(final S shape, final int id) {
         if (id == 0) return null;
         final Node<T> cur = tree.get(id);
-        if (shape.notIntersect(cur)) return null;
-        if (shape.contains(cur)) return new ArrayList<>(cur.points);
+        if (shape.notIntersect(cur.p0, cur.p1)) return null;
+        if (shape.contains(cur.p0, cur.p1)) return new ArrayList<>(cur.points);
         if (cur.points.size() == 1) {
             final var ptList = new ArrayList<>(cur.points);
             var pt = ptList.getFirst();
@@ -308,7 +329,7 @@ public class QuadTree<T extends QuadTreePoint> implements Persistable<QuadTree<T
         if (d.length != 2 || b.length != 2) throw new IllegalStateException();
         lock.readLock().lock();
         try {
-            List<T> resp = query(new QuadTreeShape.QuadTreeBox(b, d), 1);
+            List<T> resp = query(new SpatialIndexShape.Rectangle(b, d), 1);
             if (resp == null) return new ArrayList<>();
             return resp;
         } finally {
@@ -320,7 +341,7 @@ public class QuadTree<T extends QuadTreePoint> implements Persistable<QuadTree<T
         if (pt.length != 2) throw new IllegalStateException();
         lock.readLock().lock();
         try {
-            List<T> resp = query(new QuadTreeShape.QuadTreeCircle(pt, r), 1);
+            List<T> resp = query(new SpatialIndexShape.Circle(pt, r), 1);
             if (resp == null) return new ArrayList<>();
             return resp;
         } finally {
@@ -332,9 +353,9 @@ public class QuadTree<T extends QuadTreePoint> implements Persistable<QuadTree<T
         if (d.length != 2 || b.length != 2) throw new IllegalStateException();
         lock.readLock().lock();
         try {
-            List<T> resp = query(new QuadTreeShape.QuadTreeBox(b, d), 1);
+            List<T> resp = query(new SpatialIndexShape.Rectangle(b, d), 1);
             if (resp == null) return new ArrayList<>();
-            return resp.stream().map(QuadTreePoint::toArray).toList();
+            return resp.stream().map(SpatialIndexPoint::toArray).toList();
         } finally {
             lock.readLock().unlock();
         }

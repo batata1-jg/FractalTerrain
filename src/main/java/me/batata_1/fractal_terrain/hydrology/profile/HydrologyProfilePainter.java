@@ -41,17 +41,18 @@ public final class HydrologyProfilePainter {
 
     /**
      * True when {@code pixelPt} (relief-pixel frame) lies inside some channel's water span — i.e. within
-     * {@code unit.width()/2} of any {@link me.batata_1.fractal_terrain.hydrology.HydrologicalUnit}. The
-     * query region radius is {@link FractalTerrainConfig#maxNativeWidth()}{@code /2}: unit widths are
-     * capped at {@code MAX_WIDTH} (local channels, native px) and
-     * {@code MAX_WIDTH · GLOBAL_WIDTH_COORD_SCALE} (global rivers, rescaled after the width law), so any
-     * unit whose half-width disc could contain the point must lie inside that radius. Correct across tile
-     * borders ({@code anyValueWithin} visits every overlapping tile) and allocation-free (early-exit
-     * traversal, no result list).
+     * {@code unit.width()/2} of any {@link me.batata_1.fractal_terrain.hydrology.HydrologicalUnit}.
+     * Candidates come from the R-tree stabbing query, which returns the units whose <em>influence</em>
+     * circle contains the point — a sound superset of the channel discs, because
+     * {@code riverInfluence(w) > w/2} for every representable width — and the {@code width/2} test
+     * filters them. The tile-visit radius is {@link FractalTerrainConfig#maxNativeWidth()}{@code /2}:
+     * any unit whose half-width disc could contain the point must lie inside that radius. Correct across
+     * tile borders ({@code anyInfluencingUnit} visits every overlapping tile) and allocation-free
+     * (early-exit traversal, no result list).
      */
     public boolean insideChannel(double[] pixelPt) {
-        final double queryRadius = FractalTerrainConfig.maxNativeWidth() / 2.0;
-        return localRiver.anyUnitWithin(
-                pixelPt, queryRadius, (unit, distSq) -> distSq <= (unit.width() * 0.5) * (unit.width() * 0.5));
+        final double tileVisitRadius = FractalTerrainConfig.maxNativeWidth() / 2.0;
+        return localRiver.anyInfluencingUnit(
+                pixelPt, tileVisitRadius, (unit, distSq) -> distSq <= (unit.width() * 0.5) * (unit.width() * 0.5));
     }
 }

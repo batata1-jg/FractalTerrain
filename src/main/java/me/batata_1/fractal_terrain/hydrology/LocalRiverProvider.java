@@ -12,17 +12,18 @@ import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.HydrologicalFeature;
 import me.batata_1.fractal_terrain.hydrology.meanders.*;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
-import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteQuadTree;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
+import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingSpatialIndex;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import me.batata_1.fractal_terrain.math.VectorOps;
-import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
+import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 import me.batata_1.fractal_terrain.relief.DecoderChannels;
 import me.batata_1.fractal_terrain.storage.TileKey;
@@ -35,9 +36,10 @@ import org.jetbrains.annotations.TestOnly;
  * artifacts produced by a single build:
  *
  * <ul>
- *   <li>a serializable {@link NonIntersectingInfiniteQuadTree} of {@link HydrologicalUnit}s — the
- *       queryable river network (global rivers traced + relaxed by a {@link Meanders} sim, plus the
- *       detailed local network traced from drainage); and</li>
+ *   <li>a serializable {@link NonIntersectingSpatialIndex} of per-tile {@link ImmutableRTree}s of
+ *       {@link HydrologicalUnit} influence circles — the queryable river network (global rivers traced
+ *       + relaxed by a {@link Meanders} sim, plus the detailed local network traced from drainage),
+ *       answered by point-stabbing queries; and</li>
  *   <li>a {@link NonIntersectingInfiniteTensor} of {@code [1,512,512]} carved+filled elevation tiles,
  *       imported by {@code ReliefProvider} as its elevation channel.</li>
  * </ul>
@@ -62,7 +64,6 @@ public class LocalRiverProvider {
     // ---- Local network ------------------------------------------------------
     private static final float FLOW_THRESHOLD = 40f;
     private static final double RESAMPLE_DIST = 2.0;
-    private static final double QUERY_RADIUS = 1.0;
 
     // ---- Geometry -----------------------------------------------------------
     private static final int GRID = 512;
@@ -71,7 +72,7 @@ public class LocalRiverProvider {
     private static final int COARSE_PX = 256;
     private static final int COARSE_HALF = COARSE_PX / 2;
 
-    private final NonIntersectingInfiniteQuadTree<HydrologicalUnit> units;
+    private final NonIntersectingSpatialIndex<ImmutableRTree<HydrologicalUnit>> units;
     private final NonIntersectingInfiniteTensor carved;
     private final ConcurrentHashMap<TileKey, TileResult> pending = new ConcurrentHashMap<>();
 
@@ -80,11 +81,17 @@ public class LocalRiverProvider {
     private @Nullable GlobalRiverProvider globalRiverOverride;
 
     /** Both per-tile artifacts produced by one {@link #buildTile}. */
-    private record TileResult(ImmutableQuadTree<HydrologicalUnit> units, FloatTensor carved) {}
+    private record TileResult(ImmutableRTree<HydrologicalUnit> units, FloatTensor carved) {}
 
     public LocalRiverProvider(String path) {
-        units = new NonIntersectingInfiniteQuadTree<>(
-                path, "local_river_units", new int[] {GRID, GRID}, HydrologicalUnit.PROTOTYPE, this::buildUnitsTile);
+        // The one-unit prototype index keeps Storage's serializability probe exercising unit
+        // serialization, so the store stays disk-backed (mirrors the old seeded prototype tree).
+        units = new NonIntersectingSpatialIndex<>(
+                path,
+                "local_river_units",
+                new int[] {GRID, GRID},
+                new ImmutableRTree<>(List.of(HydrologicalUnit.PROTOTYPE), HydrologicalUnit.PROTOTYPE),
+                this::buildUnitsTile);
         carved = new NonIntersectingInfiniteTensor(
                 path, "local_carved_elev", new int[] {1, GRID, GRID}, this::buildCarvedTile);
     }
@@ -118,7 +125,7 @@ public class LocalRiverProvider {
         return pending.computeIfAbsent(new TileKey(new int[] {tileX, tileZ}), k -> buildTile(tileX, tileZ, null));
     }
 
-    private ImmutableQuadTree<HydrologicalUnit> buildUnitsTile(TileKey key) {
+    private ImmutableRTree<HydrologicalUnit> buildUnitsTile(TileKey key) {
         final int tileX = key.get(0);
         final int tileZ = key.get(1);
         final TileResult result = buildOnce(tileX, tileZ);
@@ -134,7 +141,7 @@ public class LocalRiverProvider {
         final int tileZ = key.get(2);
         final TileResult result = buildOnce(tileX, tileZ);
         final int[] unitsKey = {tileX, tileZ};
-        final CompletableFuture<ImmutableQuadTree<HydrologicalUnit>> claim = units.claimForCompute(unitsKey);
+        final CompletableFuture<ImmutableRTree<HydrologicalUnit>> claim = units.claimForCompute(unitsKey);
         if (claim != null) units.fulfillClaim(unitsKey, claim, result.units());
         pending.remove(new TileKey(new int[] {tileX, tileZ}));
         return result.carved();
@@ -178,24 +185,24 @@ public class LocalRiverProvider {
 
         final List<Channel> localChannels = traceLocalNetwork(drainage, elev, globalMask, stages);
 
-        // 7. assemble the unit tree: global network units + local channel units (tile-local coords).
+        // 7. assemble the unit index: global network units + local channel units (tile-local coords),
+        //    STR bulk-loaded into an ImmutableRTree of influence circles (bounds derive from the data).
         //    A shared feature-id counter gives global rivers and the local network one tile-unique id space.
         final RiverNetwork.ElevationSampler decodedSampler = (x, z) -> sampleBilinear(base[0], x, z);
         final int[] nextFeatureId = {0};
         final List<HydrologicalUnit> unitPoints =
                 sim.getNetwork().collectUnits(0, decodedSampler, PAD, PAD, nextFeatureId);
         for (Channel ch : localChannels) addLocalChannelUnits(unitPoints, ch, elev, nextFeatureId);
-        final ImmutableQuadTree<HydrologicalUnit> tree = new ImmutableQuadTree<>(
-                new double[] {-16, -16}, new double[] {GRID + 16, GRID + 16}, unitPoints, HydrologicalUnit.PROTOTYPE);
+        final ImmutableRTree<HydrologicalUnit> unitIndex = new ImmutableRTree<>(unitPoints, HydrologicalUnit.PROTOTYPE);
 
         if (stages != null) {
             stages.channels = new ArrayList<>(sim.getChannels());
             stages.localChannels = localChannels;
             stages.carvedElevation = carvedTile.data;
             stages.network = sim.getNetwork();
-            stages.unitTree = tree;
+            stages.unitTree = unitIndex;
         }
-        return new TileResult(tree, carvedTile);
+        return new TileResult(unitIndex, carvedTile);
     }
 
     private FloatTensor cropToTile(float[] padded) {
@@ -236,7 +243,7 @@ public class LocalRiverProvider {
                 int dcx = ccx, dcz = ccz;
                 double[] drain = null;
                 final double marginInfl =
-                        FractalTerrainConfig.floodPlainInfluence(Math.max(grp.getWidth(ccx, ccz), MIN_WIDTH));
+                        FractalTerrainConfig.riverInfluence(Math.max(grp.getWidth(ccx, ccz), MIN_WIDTH));
                 if (outDir != -1) {
                     dcx = ccx + PipelinePreprocessing.NEIGHBOR_OFFSET_X[outDir];
                     dcz = ccz + PipelinePreprocessing.NEIGHBOR_OFFSET_Z[outDir];
@@ -391,7 +398,7 @@ public class LocalRiverProvider {
 
     /**
      * Create the SOURCE node for an owned cell flagged {@code isSource}: place a deterministic interior
-     * seed ({@link #sourceSeed}, kept {@code floodPlainInfluence(width)} clear of the cell edges), record its
+     * seed ({@link #sourceSeed}, kept {@code riverInfluence(width)} clear of the cell edges), record its
      * boundary bed elevation (the decoded terrain at the seed, floored at the downstream coarse bed), and
      * wire a seed→centre edge.
      */
@@ -409,7 +416,7 @@ public class LocalRiverProvider {
             GlobalRiverProvider grp) {
         final double minX = PAD + a * COARSE_PX;
         final double minZ = PAD + b * COARSE_PX;
-        final double[] seed = sourceSeed(c.ccx(), c.ccz(), minX, minZ, FractalTerrainConfig.floodPlainInfluence(width));
+        final double[] seed = sourceSeed(c.ccx(), c.ccz(), minX, minZ, FractalTerrainConfig.riverInfluence(width));
         final int seedNode = addNode(nodeSpecs, seed[0], seed[1], Endpoint.Type.SOURCE);
         final double downstreamBed =
                 (c.outDirection() != -1) ? grp.getElevation(c.dcx(), c.dcz()) : grp.getElevation(c.ccx(), c.ccz());
@@ -904,20 +911,33 @@ public class LocalRiverProvider {
     // Query API
     // -------------------------------------------------------------------------
 
-    /** True when a hydrological feature lies within {@link #QUERY_RADIUS} of {@code coords}. */
-    public boolean insideMargin(double[] coords) {
-        return anyUnitWithin(coords, QUERY_RADIUS / 2, (unit, distSq) -> true);
+    /** Per-unit acceptance test; receives the squared distance to the query point (frame-invariant). */
+    @FunctionalInterface
+    public interface InfluencingUnitTest {
+        boolean test(HydrologicalUnit unit, double distSqToQueryPoint);
     }
 
     /**
-     * Early-exit existence test over the unit tree: true iff some unit within {@code radius} of
-     * {@code pt} (relief-pixel frame) passes {@code test}. Spans tile borders like
-     * {@link #queryInfluence} but allocates no result list and stops at the first accepted unit. The
-     * test runs in the tile-local frame; distances are translation-invariant, so the
-     * {@code distSqToCenter} it receives equals the world-frame squared distance.
+     * Early-exit existence test over the unit index: true iff some unit whose influence circle contains
+     * {@code pt} (relief-pixel frame) passes {@code test}. Candidates come from the per-tile R-tree
+     * stabbing query; {@code tileVisitRadius} only sizes the cross-tile window and must upper-bound the
+     * distance of any unit the test can accept. Spans tile borders like {@link #queryInfluence} but
+     * allocates no result list and stops at the first accepted unit. The test runs in the tile-local
+     * frame; distances are translation-invariant, so the {@code distSqToQueryPoint} it receives equals
+     * the world-frame squared distance.
      */
-    public boolean anyUnitWithin(double[] pt, double radius, ImmutableQuadTree.PointTest<HydrologicalUnit> test) {
-        return units.anyValueWithin(pt, radius, test);
+    public boolean anyInfluencingUnit(double[] pt, double tileVisitRadius, InfluencingUnitTest test) {
+        final double[] tileLocalPoint = new double[2];
+        final Predicate<HydrologicalUnit> tileLocalAcceptanceTest = unit -> {
+            final double deltaX = unit.coord()[0] - tileLocalPoint[0];
+            final double deltaZ = unit.coord()[1] - tileLocalPoint[1];
+            return test.test(unit, deltaX * deltaX + deltaZ * deltaZ);
+        };
+        return units.forEachTileWithin(pt, tileVisitRadius, (tileOriginX, tileOriginZ, tileIndex) -> {
+            tileLocalPoint[0] = pt[0] - tileOriginX;
+            tileLocalPoint[1] = pt[1] - tileOriginZ;
+            return tileIndex.anyContaining(tileLocalPoint, tileLocalAcceptanceTest);
+        });
     }
 
     /**
@@ -926,36 +946,38 @@ public class LocalRiverProvider {
      * consumed by {@link me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver}'s flat
      * distance-weighted merge (every unit contributes; no per-feature grouping).
      *
-     * <p>A unit is kept when {@code pt} lies within that unit's own
-     * {@link FractalTerrainConfig#riverInfluence influence} radius, optionally extended by
-     * {@code extraRadius} (used by the per-chunk prefetch so one query serves every block of a chunk).
-     * The query spans tile borders (a river within influence may live in a neighbouring tile); stored
-     * coords are tile-local, so each is translated to the common world frame by adding its owning
-     * tile's origin before the distance test.
+     * <p>A unit is kept when {@code pt} lies within that unit's own influence circle
+     * ({@link HydrologicalUnit#getRadius()} = {@link FractalTerrainConfig#riverInfluence
+     * riverInfluence(width)}), optionally inflated by {@code extraRadius} (used by the per-chunk
+     * prefetch so one query serves every block of a chunk) — exactly what the per-tile R-tree stabbing
+     * query returns, so no per-unit reach re-test is needed. The query spans tile borders (a river
+     * within influence may live in a neighbouring tile); stored coords are tile-local, so each hit is
+     * re-stamped into the common world frame by adding its owning tile's origin.
      */
     public HydrologicalUnit[] queryInfluence(double[] pt, double extraRadius) {
-        final List<HydrologicalUnit> hits = new ArrayList<>(64);
+        final List<HydrologicalUnit> influencingUnits = new ArrayList<>(64);
+        final List<HydrologicalUnit> tileLocalHits = new ArrayList<>(64); // reused across tiles; cleared per tile
+        final double[] tileLocalPoint = new double[2];
         units.forEachTileWithin(
-                pt, FractalTerrainConfig.MAX_INFLUENCE_RADIUS + extraRadius, (originX, originZ, local) -> {
-                    for (HydrologicalUnit u : local) {
-                        final double worldX = u.coord()[0] + originX;
-                        final double worldZ = u.coord()[1] + originZ;
-                        final double reach = FractalTerrainConfig.riverInfluence(u.width()) + extraRadius;
-                        final double dx = worldX - pt[0];
-                        final double dz = worldZ - pt[1];
-                        if (dx * dx + dz * dz > reach * reach) continue;
-                        hits.add(new HydrologicalUnit(
-                                u.type(),
-                                u.rosgenType(),
-                                new double[] {worldX, worldZ},
-                                u.normal(),
-                                u.width(),
-                                u.elevation(),
-                                u.time(),
-                                u.id()));
+                pt, FractalTerrainConfig.MAX_INFLUENCE_RADIUS + extraRadius, (tileOriginX, tileOriginZ, tileIndex) -> {
+                    tileLocalPoint[0] = pt[0] - tileOriginX;
+                    tileLocalPoint[1] = pt[1] - tileOriginZ;
+                    tileLocalHits.clear();
+                    tileIndex.queryContaining(tileLocalPoint, extraRadius, tileLocalHits);
+                    for (final HydrologicalUnit unit : tileLocalHits) {
+                        influencingUnits.add(new HydrologicalUnit(
+                                unit.type(),
+                                unit.rosgenType(),
+                                new double[] {unit.coord()[0] + tileOriginX, unit.coord()[1] + tileOriginZ},
+                                unit.normal(),
+                                unit.width(),
+                                unit.elevation(),
+                                unit.time(),
+                                unit.id()));
                     }
+                    return false;
                 });
-        return hits.toArray(new HydrologicalUnit[0]);
+        return influencingUnits.toArray(new HydrologicalUnit[0]);
     }
 
     /** {@link #queryInfluence(double[], double)} with no extra radius (single-point queries). */
@@ -968,12 +990,12 @@ public class LocalRiverProvider {
     // -------------------------------------------------------------------------
 
     /**
-     * The built {@link ImmutableQuadTree} of {@link HydrologicalUnit}s for tile {@code (tileX, tileZ)}
-     * (triggers {@link #buildTile} on a cache miss). For debug rendering
-     * ({@code Debug.units.see}) and the quadtree benchmark harness.
+     * The built {@link ImmutableRTree} of {@link HydrologicalUnit} influence circles for tile
+     * {@code (tileX, tileZ)} (triggers {@link #buildTile} on a cache miss). For debug rendering
+     * ({@code Debug.units.see}) and the spatial-index benchmark harness.
      */
     @TestOnly
-    public ImmutableQuadTree<HydrologicalUnit> getUnitTree(int tileX, int tileZ) {
+    public ImmutableRTree<HydrologicalUnit> getUnitTree(int tileX, int tileZ) {
         return units.getEntry(new int[] {tileX, tileZ});
     }
 
@@ -992,6 +1014,6 @@ public class LocalRiverProvider {
         public List<Channel> channels;
         public List<Channel> localChannels;
         public RiverNetwork network;
-        public ImmutableQuadTree<HydrologicalUnit> unitTree;
+        public ImmutableRTree<HydrologicalUnit> unitTree;
     }
 }

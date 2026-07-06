@@ -57,15 +57,15 @@ import org.slf4j.LoggerFactory;
  * <p>Implements {@link Persistable} exactly like {@link QuadTree}: serializable iff a
  * {@link Persistable} point prototype is supplied (else the backing {@code Storage} is cache-only).
  */
-public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persistable<ImmutableQuadTree<T>> {
+public final class ImmutableQuadTree<T extends SpatialIndexPoint>
+        implements SpatialIndex<T>, Persistable<ImmutableQuadTree<T>> {
 
     /** Quadrant order (qx high bit, qz low bit): PP=0, PQ=1, QP=2, QQ=3. */
     private static final int X = 0;
 
     private static final int Z = 1;
 
-
-    //10,16
+    // 10,16
     private static final int DEFAULT_MAX_DEPTH = 8;
     private static final int DEFAULT_MAX_POINTS_NODE = 24;
 
@@ -86,8 +86,8 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
     /**
      * When {@code true}, {@link #getPointsInBox} / {@link #getPointsInCircle} validate their arguments —
      * and the points they return — for NaN coordinates, logging a warning for each offence. A NaN in a
-     * query argument silently yields a meaningless result (every {@link QuadTreeShape} comparison against
-     * NaN is {@code false}), so this catches it. Compile-time constant: zero cost when {@code false}.
+     * query argument silently yields a meaningless result (every {@link SpatialIndexShape} comparison
+     * against NaN is {@code false}), so this catches it. Compile-time constant: zero cost when {@code false}.
      */
     private static final boolean CHECK_QUERY_NAN = false;
 
@@ -247,7 +247,7 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
         }
 
         sorted.sort(this::comparator);
-        this.points = sorted.toArray((T[]) new QuadTreePoint[0]);
+        this.points = sorted.toArray((T[]) new SpatialIndexPoint[0]);
 
         final ArrayList<Node> nodeList = new ArrayList<>();
         nodeList.add(PLACEHOLDER); // root at index 0
@@ -326,6 +326,19 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
         return nodes.length == 0 ? 0 : nodes[0].count;
     }
 
+    @Override
+    public int numEntries() {
+        return numPoints();
+    }
+
+    /** Every real (non-null) stored point, in euler-tour order. */
+    @Override
+    public List<T> getAllEntries() {
+        final List<T> allEntries = new ArrayList<>(numPoints());
+        collect(0, points.length, allEntries);
+        return allEntries;
+    }
+
     /**
      * Per-point acceptance test for {@link #anyPointInCircle}; receives the squared distance from the
      * query center so implementations can compare against their own squared threshold without a sqrt.
@@ -347,7 +360,7 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
     public List<T> getPointsInBox(final double[] b, final double[] d, final List<T> out) {
         if (b.length != 2 || d.length != 2) throw new IllegalStateException();
         if (CHECK_QUERY_NAN) checkBoxQueryNaN(b, d);
-        query(new QuadTreeShape.QuadTreeBox(b, d), out);
+        query(new SpatialIndexShape.Rectangle(b, d), out);
         if (CHECK_QUERY_NAN) checkResultNaN("getPointsInBox", out);
         return out;
     }
@@ -364,7 +377,7 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
     public List<T> getPointsInCircle(final double[] center, final double r, final List<T> out) {
         if (center.length != 2) throw new IllegalStateException();
         if (CHECK_QUERY_NAN) checkCircleQueryNaN(center, r);
-        query(new QuadTreeShape.QuadTreeCircle(center, r), out);
+        query(new SpatialIndexShape.Circle(center, r), out);
         if (CHECK_QUERY_NAN) checkResultNaN("getPointsInCircle", out);
         return out;
     }
@@ -383,7 +396,7 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
     }
 
     public List<double[]> getPointCoordsInBox(final double[] b, final double[] d) {
-        return getPointsInBox(b, d).stream().map(QuadTreePoint::toArray).toList();
+        return getPointsInBox(b, d).stream().map(SpatialIndexPoint::toArray).toList();
     }
 
     /**
@@ -392,12 +405,12 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
      * {@code (ox, oz, size)} is the node's square (lower corner + side; see the class javadoc) and
      * {@code pointsStart} is the start of its contiguous slice in {@link #points}. Frames live in six
      * parallel primitive stacks (no per-node object allocation), and the two corner arrays
-     * {@code lo}/{@code hi} are reused across the whole walk (the {@link QuadTreeShape} implementations
+     * {@code lo}/{@code hi} are reused across the whole walk (the {@link SpatialIndexShape} implementations
      * only read them), so a query allocates nothing per node. Semantics are identical to the recursive
      * form: {@code notIntersect} prune → {@code contains} bulk-accept → leaf-scan vs. push the 4 children
      * with running {@code childStart} accumulation. Set {@link #DEBUG_QUERY} to trace each decision.
      */
-    private void query(final QuadTreeShape shape, final List<T> out) {
+    private void query(final SpatialIndexShape shape, final List<T> out) {
         if (nodes.length == 0) return;
 
         // Stack depth is bounded by the DFS frontier (≤ 3·maxDepth + 4); 64 covers the defaults and
@@ -485,13 +498,13 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
 
     /**
      * The {@link #anyPointInCircle} walk: identical stack traversal to {@link #query} with a
-     * {@link QuadTreeShape.QuadTreeCircle}, except leaf-scan and bulk-accept both short-circuit — each
+     * {@link SpatialIndexShape.Circle}, except leaf-scan and bulk-accept both short-circuit — each
      * candidate point's squared distance to the center is computed once, points beyond {@code radius} are
      * skipped, and the first point accepted by {@code test} ends the walk.
      */
     private boolean anyInCircle(final double[] center, final double radius, final PointTest<T> test) {
         if (nodes.length == 0) return false;
-        final QuadTreeShape shape = new QuadTreeShape.QuadTreeCircle(center, radius);
+        final SpatialIndexShape shape = new SpatialIndexShape.Circle(center, radius);
         final double radiusSq = radius * radius;
 
         int capacity = 64;
@@ -597,7 +610,7 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
     /**
      * Validates a box query's lower corner {@code b} and extent {@code d} for NaN coordinates, logging a
      * warning for each offending argument. Returns {@code true} when a NaN was found (the box query is
-     * then meaningless — every {@link QuadTreeShape} comparison against NaN is {@code false}).
+     * then meaningless — every {@link SpatialIndexShape} comparison against NaN is {@code false}).
      */
     public boolean checkBoxQueryNaN(final double[] b, final double[] d) {
         boolean bad = false;
@@ -800,7 +813,7 @@ public final class ImmutableQuadTree<T extends QuadTreePoint> implements Persist
     @Override
     public long byteSize() {
         final long bytesPerNode = 8; // two ints
-        final long bytesPerPoint = 48; // QuadTreePoint payload, rough
+        final long bytesPerPoint = 48; // SpatialIndexPoint payload, rough
         return (long) nodes.length * bytesPerNode + (long) points.length * bytesPerPoint;
     }
 

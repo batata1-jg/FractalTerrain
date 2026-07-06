@@ -9,7 +9,7 @@ import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
-import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
+import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 
 /**
@@ -94,7 +94,7 @@ public final class HydrologyProfileCarver {
         double weightedElevSum = 0.0;
         double weightSum = 0.0;
         for (final HydrologicalUnit unit : units) {
-            final double influenceRadius = FractalTerrainConfig.riverInfluence(unit.width());
+            final double influenceRadius = unit.getRadius(); // = riverInfluence(unit.width()), the circle's own radius
             final double[] unitCoord = unit.coord();
             final double dist = Math.hypot(pixelX - unitCoord[0], pixelZ - unitCoord[1]);
             if (dist >= influenceRadius) continue; // outside this unit's reach
@@ -120,7 +120,7 @@ public final class HydrologyProfileCarver {
     private static final double CARVE_INDEX_SLACK = 1024.0;
 
     /** A densified river sample carrying its interpolated width + bed elevation. */
-    private record RiverSample(double[] coords, double width, double bedElev) implements QuadTreePoint {
+    private record RiverSample(double[] coords, double width, double bedElev) implements SpatialIndexPoint {
         @Override
         public double[] getCoords() {
             return coords;
@@ -131,9 +131,9 @@ public final class HydrologyProfileCarver {
      * Tile-level global-river carve (the ch0 pre-carve, distinct from the per-pixel refinement above):
      * densify each channel spline into {@link RiverSample}s every {@link #CARVE_SAMPLE_SPACING} px, index
      * them in an {@link ImmutableQuadTree}, and pull every grid pixel within
-     * {@link FractalTerrainConfig#floodPlainInfluence floodPlainInfluence(width)} of its nearest sample
+     * {@link FractalTerrainConfig#riverInfluence riverInfluence(width)} of its nearest sample
      * toward that sample's bed (full bed inside {@code width/2}, linear blend back to the original
-     * terrain at {@code floodPlainInfluence}). {@link FractalTerrainConfig#MAX_CARVE_DELTA} lives
+     * terrain at {@code riverInfluence}). {@link FractalTerrainConfig#MAX_CARVE_DELTA} lives
      * <em>here only</em>: a pixel whose {@code |original − bed|} exceeds it is uncarvable and skipped, so
      * isolated deep beds never gouge holes or trenches. Static so {@code LocalRiverProvider.buildTile}
      * and future callers share one implementation.
@@ -195,12 +195,12 @@ public final class HydrologyProfileCarver {
                 // carving would gouge an isolated hole or trench. MAX_CARVE_DELTA applies ONLY here.
                 if (Math.abs(elevation[idx] - bedElev) > FractalTerrainConfig.MAX_CARVE_DELTA) continue;
                 final double bedHalfWidth = width * 0.5;
-                final double floodPlainInfluence = FractalTerrainConfig.floodPlainInfluence(width);
-                if (nearestDist >= floodPlainInfluence) continue;
+                final double riverInfluenceRadius = FractalTerrainConfig.riverInfluence(width);
+                if (nearestDist >= riverInfluenceRadius) continue;
                 final float orig = elevation[idx];
                 final double frac = (nearestDist <= bedHalfWidth)
                         ? 0.0
-                        : Math.min(1.0, (nearestDist - bedHalfWidth) / (floodPlainInfluence - bedHalfWidth));
+                        : Math.min(1.0, (nearestDist - bedHalfWidth) / (riverInfluenceRadius - bedHalfWidth));
                 elevation[idx] = (float) (bedElev + (orig - bedElev) * frac);
             }
         }

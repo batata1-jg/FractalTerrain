@@ -12,13 +12,13 @@ import java.util.Map;
 import javax.imageio.ImageIO;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.HydrologicalFeature;
-import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
+import me.batata_1.fractal_terrain.math.ds.SpatialIndex;
 
 /**
- * Renders the {@link HydrologicalUnit} point set of one relief tile (e.g. the
- * {@link ImmutableQuadTree} built by {@code LocalRiverProvider}) to an upscaled color PNG, and logs
- * summary statistics. Mirrors {@link TensorVisualizer} / {@link NoiseVisualizer}: explicit
- * {@code debugPath}, no running-server dependency, so it works from the standalone harnesses.
+ * Renders the {@link HydrologicalUnit} set of one relief tile (e.g. the {@code ImmutableRTree} built
+ * by {@code LocalRiverProvider}) to an upscaled color PNG, and logs summary statistics. Mirrors
+ * {@link TensorVisualizer} / {@link NoiseVisualizer}: explicit {@code debugPath}, no running-server
+ * dependency, so it works from the standalone harnesses.
  *
  * <p><b>Reading the image:</b> each {@link HydrologicalFeature} type has its own base hue (RIVER =
  * blue, ABANDONED_RIVER = orange, OXBOW_LAKE = magenta); different feature {@code id}s of the same
@@ -40,13 +40,9 @@ public class HydrologyUnitVisualizer {
         this.debugPath = debugPath;
     }
 
-    /** Collect every unit of {@code tree} (window {@code [-margin, gridSize+margin)²}) and render it. */
-    public void see(ImmutableQuadTree<HydrologicalUnit> tree, String name, int gridSize, int upscale) {
-        // Unit coords can overshoot the tile slightly (the tree window is padded), so query generously.
-        final double margin = gridSize; // more than any producer overshoot
-        final List<HydrologicalUnit> units = tree.getPointsInBox(
-                new double[] {-margin, -margin}, new double[] {gridSize + margin, gridSize + margin});
-        see(units, name, gridSize, upscale);
+    /** Collect every unit of {@code index} and render it (works for any {@link SpatialIndex} payload). */
+    public void see(SpatialIndex<HydrologicalUnit> index, String name, int gridSize, int upscale) {
+        see(index.getAllEntries(), name, gridSize, upscale);
     }
 
     /**

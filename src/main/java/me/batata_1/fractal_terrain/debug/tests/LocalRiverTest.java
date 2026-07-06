@@ -92,9 +92,9 @@ public class LocalRiverTest {
     }
 
     /**
-     * Render the tile's built {@code HydrologicalUnit} quadtree (type-colored points, id shades, width
+     * Render the tile's built {@code HydrologicalUnit} R-tree (type-colored points, id shades, width
      * girths — see {@link me.batata_1.fractal_terrain.debug.HydrologyUnitVisualizer}) and log its stats.
-     * Reads the tree {@code debugStages} captured, so the tile is not rebuilt.
+     * Reads the index {@code debugStages} captured, so the tile is not rebuilt.
      */
     private static void dumpUnitTree(LocalRiverProvider.Stages stages, int tx, int tz, String prefix) {
         if (stages.unitTree == null) {
@@ -104,8 +104,7 @@ public class LocalRiverTest {
         final var savedPath = Debug.units.debugPath;
         Debug.units.debugPath = DEBUG_PATH;
         try {
-            final List<me.batata_1.fractal_terrain.hydrology.HydrologicalUnit> units =
-                    stages.unitTree.getPointsInBox(new double[] {-GRID, -GRID}, new double[] {2.0 * GRID, 2.0 * GRID});
+            final List<me.batata_1.fractal_terrain.hydrology.HydrologicalUnit> units = stages.unitTree.getAllEntries();
             Debug.units.see(units, prefix + "06_units", GRID, 4);
             Debug.units.logStats(units, "tile (" + tx + "," + tz + ")");
         } catch (RuntimeException e) {

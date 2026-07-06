@@ -6,6 +6,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
 import me.batata_1.fractal_terrain.debug.Infinite3DVisualizer;
+import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
+import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import net.fabricmc.loader.api.FabricLoader;
 
 public record FractalTerrainConfig() {
@@ -56,7 +58,7 @@ public record FractalTerrainConfig() {
     // 3D visualizer (debug terrain projection — see Infinite3DVisualizer)
     // ──────────────────────────────────────────────────────────────────────────
 
-    public static final boolean DISABLE_3D_VISUALIZER = false;
+    public static final boolean DISABLE_3D_VISUALIZER = true;
 
     /**
      * Drives the elevation each visualizer column is raised to ({@link Infinite3DVisualizer#debugElevController}).
@@ -143,7 +145,7 @@ public record FractalTerrainConfig() {
     public static final double FLOODPLAIN_WIDTH_FACTOR = 1.0f;
 
     /** Width of the blend-to-decoded band beyond the floodplain (native px). */
-    public static final double INFLUENCE_BLEND_MULTIPLIER = 1.2f;
+    public static final double INFLUENCE_BLEND_MULTIPLIER = 2.2f;
 
     /**
      * Hard cap (native px) on any river's influence radius — also the radius the cross-tile unit query
@@ -159,19 +161,34 @@ public record FractalTerrainConfig() {
      * never gouges isolated holes or trenches); the hydrological units still record the intended bed
      * elevation.
      */
-    public static final double MAX_CARVE_DELTA = readDouble("hydrology.max_carve_delta", 48.0);
+    public static final double MAX_CARVE_DELTA = 100;
 
-    /** Floodplain half-extent for a river of the given width (native px). */
+    /**
+     * Floodplain half-extent for a river of the given width and Rosgen type (native px). Delegates to the
+     * type's {@link RosgenProfile#floodPlainLength} — the profile enum is the authority so extents can vary
+     * by type; {@link #FLOODPLAIN_BASE} / {@link #FLOODPLAIN_WIDTH_FACTOR} back its shared placeholder law.
+     */
+    public static double floodPlainLength(double width, RosgenType type) {
+        return RosgenProfile.of(type).floodPlainLength(width);
+    }
+
+    /** Floodplain half-extent for a typeless river (native px) — assumes {@link RosgenType#A}. */
     public static double floodPlainLength(double width) {
-        return FLOODPLAIN_BASE + FLOODPLAIN_WIDTH_FACTOR * width;
+        return floodPlainLength(width, RosgenType.A);
     }
 
     /**
-     * Outer influence radius for a river of the given width: floodplain + blend band (native px), clamped
-     * to {@link #MAX_INFLUENCE_RADIUS}. Beyond this radius a river no longer affects a pixel.
+     * Outer influence radius for a river of the given width and Rosgen type (native px): floodplain + blend
+     * band, clamped to {@link #MAX_INFLUENCE_RADIUS}. Beyond this radius a river no longer affects a pixel.
+     * Delegates to the type's {@link RosgenProfile#riverInfluence} so the radius can vary by type.
      */
+    public static double riverInfluence(double width, RosgenType type) {
+        return RosgenProfile.of(type).riverInfluence(width);
+    }
+
+    /** Outer influence radius for a typeless river (native px) — assumes {@link RosgenType#A}. */
     public static double riverInfluence(double width) {
-        return Math.min(MAX_INFLUENCE_RADIUS, floodPlainLength(width) * INFLUENCE_BLEND_MULTIPLIER);
+        return riverInfluence(width, RosgenType.A);
     }
 
     /**
@@ -195,16 +212,6 @@ public record FractalTerrainConfig() {
      */
     public static double maxNativeWidth() {
         return MAX_WIDTH;
-    }
-
-    /**
-     * Outer edge of the flood-plain carve band for a channel of the given width (native px). Used by the
-     * tile-level pre-carve ({@code HydrologyProfileCarver.carveGlobalRivers}: full bed inside
-     * {@code width/2}, linear blend back to the original terrain at this radius) and by the global-river
-     * trace to keep seeds/paths clear of cell edges.
-     */
-    public static double floodPlainInfluence(double width) {
-        return 5.0 * width;
     }
 
     /** Inference device: "cpu", "gpu", or "auto" (try GPU then fall back to CPU). */

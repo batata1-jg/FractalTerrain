@@ -166,10 +166,10 @@ tasks.register('pipelineTest', JavaExec) {
     jvmArgs '-Xmx8g'
 }
 
-tasks.register('quadTreeBenchmark', JavaExec) {
+tasks.register('spatialIndexBenchmark', JavaExec) {
     dependsOn compileJava
     classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'me.batata_1.fractal_terrain.debug.tests.QuadTreeBenchmark'
+    mainClass = 'me.batata_1.fractal_terrain.debug.tests.SpatialIndexBenchmark'
     jvmArgs '-Xmx8g'
 }
 

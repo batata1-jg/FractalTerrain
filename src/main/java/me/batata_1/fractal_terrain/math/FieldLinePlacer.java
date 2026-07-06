@@ -2,7 +2,7 @@ package me.batata_1.fractal_terrain.math;
 
 import java.util.List;
 import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
-import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
+import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
 
 /**
  * Rasterises two point sets (ridges and valleys) into a scalar "field-line" image.
@@ -59,7 +59,8 @@ public class FieldLinePlacer {
      * after the {@link #normalizeByFwidth} pass. The supplied trees must be in the same coordinate
      * frame that {@code (row*resolution, col*resolution)} addresses.
      */
-    public float[] apply(ImmutableQuadTree<QuadTreePoint> ridgePoints, ImmutableQuadTree<QuadTreePoint> valleyPoints) {
+    public float[] apply(
+            ImmutableQuadTree<SpatialIndexPoint> ridgePoints, ImmutableQuadTree<SpatialIndexPoint> valleyPoints) {
         return normalizeByFwidth(applyRaw(ridgePoints, valleyPoints), outputWidth(), outputHeight());
     }
 
@@ -68,7 +69,7 @@ public class FieldLinePlacer {
      * harnesses can visualise the pre-normalization image; production callers use {@link #apply}.
      */
     public float[] applyRaw(
-            ImmutableQuadTree<QuadTreePoint> ridgePoints, ImmutableQuadTree<QuadTreePoint> valleyPoints) {
+            ImmutableQuadTree<SpatialIndexPoint> ridgePoints, ImmutableQuadTree<SpatialIndexPoint> valleyPoints) {
         final int outH = outputHeight();
         final int outW = outputWidth();
         final float[] rawField = new float[outH * outW];
@@ -79,8 +80,8 @@ public class FieldLinePlacer {
                 final double sampleZ = col * resolution;
                 final double[] center = {sampleX, sampleZ};
 
-                final List<QuadTreePoint> ridgeHits = ridgePoints.getPointsInCircle(center, queryRadius);
-                final List<QuadTreePoint> valleyHits = valleyPoints.getPointsInCircle(center, queryRadius);
+                final List<SpatialIndexPoint> ridgeHits = ridgePoints.getPointsInCircle(center, queryRadius);
+                final List<SpatialIndexPoint> valleyHits = valleyPoints.getPointsInCircle(center, queryRadius);
 
                 if (ridgeHits.isEmpty() && valleyHits.isEmpty()) {
                     rawField[row * outW + col] = 0f;
@@ -88,10 +89,10 @@ public class FieldLinePlacer {
                 }
 
                 double netAngle = 0.0;
-                for (QuadTreePoint ridge : ridgeHits) {
+                for (SpatialIndexPoint ridge : ridgeHits) {
                     netAngle += frequency * Math.atan2(sampleX - ridge.get(0), sampleZ - ridge.get(1));
                 }
-                for (QuadTreePoint valley : valleyHits) {
+                for (SpatialIndexPoint valley : valleyHits) {
                     netAngle -= Math.atan2(sampleX - valley.get(0), sampleZ - valley.get(1));
                 }
                 rawField[row * outW + col] = (float) Math.sin(netAngle);

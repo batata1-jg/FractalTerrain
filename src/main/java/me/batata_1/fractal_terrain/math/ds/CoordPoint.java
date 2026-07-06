@@ -4,11 +4,11 @@ import java.util.Arrays;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * The simplest {@link QuadTreePoint}: a bare coordinate with no payload. Replaces the former direct
- * instantiation of the (now interface) {@code QuadTreePoint} class — used by visualizers and spatial
+ * The simplest {@link SpatialIndexPoint}: a bare coordinate with no payload. Replaces the former direct
+ * instantiation of the (now interface) {@code SpatialIndexPoint} class — used by visualizers and spatial
  * helpers that only need positions (e.g. coast-cell indexing, spline rasterization).
  */
-public record CoordPoint(double[] coords) implements QuadTreePoint {
+public record CoordPoint(double[] coords) implements SpatialIndexPoint {
 
     @Override
     public double[] getCoords() {

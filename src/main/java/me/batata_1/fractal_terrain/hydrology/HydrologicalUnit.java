@@ -4,17 +4,21 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.Objects;
-import me.batata_1.fractal_terrain.math.ds.QuadTreePoint;
+import me.batata_1.fractal_terrain.FractalTerrainConfig;
+import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
 import me.batata_1.fractal_terrain.storage.Persistable;
 
 /**
- * A single point of a hydrological feature — a river (with its Rosgen channel type), an abandoned
+ * A single sample of a hydrological feature — a river (with its Rosgen channel type), an abandoned
  * river, or an oxbow lake. It is the queryable, persistable unit stored in
- * {@link me.batata_1.fractal_terrain.hydrology.LocalRiverProvider}'s tiled quadtree: it carries its
- * tile-local coordinate, the channel {@code normal} (unit perpendicular to the centreline at this
- * point, used to project query points across the channel), the local channel {@code width}, bed
- * {@code elevation}, the simulation {@code time} (meander step) at which it was recorded, and an
- * {@code id} grouping every point of the same feature.
+ * {@link me.batata_1.fractal_terrain.hydrology.LocalRiverProvider}'s tiled {@code ImmutableRTree},
+ * where it lives as an <b>influence circle</b> ({@link SpatialIndexCircle}): center = its tile-local
+ * {@code coord}, radius = its own {@link FractalTerrainConfig#riverInfluence riverInfluence(width)} —
+ * so a point-stabbing query returns exactly the units whose influence reaches the point. It carries
+ * the channel {@code normal} (unit perpendicular to the centreline at this point, used to project
+ * query points across the channel), the local channel {@code width}, bed {@code elevation}, the
+ * simulation {@code time} (meander step) at which it was recorded, and an {@code id} grouping every
+ * point of the same feature.
  *
  * <p>The {@code id} groups the points that belong to one hydrological feature so the carve/paint
  * query can gather and merge them per feature. It is <em>not necessarily a channel id</em> — it is a
@@ -37,9 +41,9 @@ public record HydrologicalUnit(
         double elevation,
         int time,
         int id)
-        implements QuadTreePoint, Persistable<HydrologicalUnit> {
+        implements SpatialIndexCircle, Persistable<HydrologicalUnit> {
 
-    /** Dummy point that makes the unit tree serializable (probed once by Storage). */
+    /** Dummy unit that makes the unit index serializable (probed once by Storage). */
     public static final HydrologicalUnit PROTOTYPE =
             new HydrologicalUnit(HydrologicalFeature.RIVER, null, new double[] {0.0, 0.0}, null, 0, 0, 0, 0);
 
@@ -59,8 +63,22 @@ public record HydrologicalUnit(
     }
 
     @Override
-    public double[] getCoords() {
+    public double[] getCenter() {
         return coord;
+    }
+
+    /**
+     * The unit's influence radius — <b>derived</b> from {@code width} via
+     * {@link FractalTerrainConfig#riverInfluence}, never serialized (the on-disk unit layout is
+     * unchanged). Sound for the channel-membership test ({@code HydrologyProfilePainter.insideChannel}
+     * filters stab hits by {@code width/2}) because {@code riverInfluence(w) > w/2} for every
+     * representable width; if widths ever exceed 128 native px, change this to
+     * {@code max(riverInfluence(width), width * 0.5)} and keep the carve blend divisor on
+     * {@code riverInfluence}.
+     */
+    @Override
+    public double getRadius() {
+        return FractalTerrainConfig.riverInfluence(width, rosgenType == null ? RosgenType.A : rosgenType);
     }
 
     // Records compare array components by reference; these compare contents instead.

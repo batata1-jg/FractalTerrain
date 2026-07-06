@@ -153,6 +153,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
         return chunk;
     }
 
+    @TestOnly
     private ChunkAccess debugDoFill(final ChunkAccess chunk) {
         final ChunkPos chunkPos = chunk.getPos();
         final int startingX = chunkPos.getMinBlockX();

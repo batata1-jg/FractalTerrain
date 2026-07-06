@@ -35,9 +35,8 @@ public final class HydrologyProfile {
         }
         final double referenceElev = Math.min(unit.elevation(), decodedElev);
         final RosgenType type = unit.rosgenType() == null ? RosgenType.A : unit.rosgenType();
-        final double floodPlainLength = FractalTerrainConfig.floodPlainLength(unit.width());
-        final double delta = RosgenProfile.of(type)
-                .elevationDelta(projectedDist, unit.width(), floodPlainLength, decodedElev - referenceElev);
+        final double delta =
+                RosgenProfile.of(type).elevationDelta(projectedDist, unit.width(), decodedElev - referenceElev);
         return referenceElev + delta;
     }
 }

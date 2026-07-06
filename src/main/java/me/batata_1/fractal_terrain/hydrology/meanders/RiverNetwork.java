@@ -17,7 +17,6 @@ import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.HydrologicalFeature;
 import me.batata_1.fractal_terrain.math.VectorOps;
-import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 import org.slf4j.Logger;
@@ -38,9 +37,9 @@ import org.slf4j.Logger;
  * {@link HydrologicalFeature#OXBOW_LAKE}), plus bounded network snapshots. The relaxation phase runs
  * with recording disabled, so it produces no history.
  *
- * <p>{@link #convertImmutableQuadtree} packages the current network (plus recorded removed features) into
- * an {@link ImmutableQuadTree} of {@link HydrologicalUnit}s, resampling every feature at
- * {@code dx = width/2} so wider features carry proportionally fewer points.
+ * <p>{@link #collectUnits} packages the current network (plus recorded removed features) into a list of
+ * {@link HydrologicalUnit}s, resampling every feature at {@code dx = width/2} so wider features carry
+ * proportionally fewer points; the caller freezes the list into its spatial index of choice.
  */
 public final class RiverNetwork {
 
@@ -76,7 +75,7 @@ public final class RiverNetwork {
 
     private record Crossing(int channelIdA, int posA, int channelIdB, int posB, double widthA, double widthB) {}
 
-    /** A geometry removed from the active network, retained for {@link #convertImmutableQuadtree}. */
+    /** A geometry removed from the active network, retained for {@link #collectUnits}. */
     private record RemovedPath(HydrologicalFeature type, ArrayList<double[]> pts, double width, int time) {}
 
     public RiverNetwork(
@@ -580,26 +579,13 @@ public final class RiverNetwork {
     }
 
     /**
-     * Build an immutable {@link QuadTree} of {@link HydrologicalUnit}s from the active channels (type
-     * {@link HydrologicalFeature#RIVER}) plus any recorded removed features (oxbow lakes / abandoned
-     * rivers). Each feature is first resampled at {@code dx = width/2}; emitted coordinates are the
-     * network coordinate minus {@code (offsetX, offsetZ)} (e.g. to drop a halo pad). Per-point bed
-     * elevation follows the start→endpoint lerp anchored on the channel's node elevations.
-     *
-     * @param min lower bound (in emitted coordinates) of the returned tree
-     * @param max upper bound (in emitted coordinates) of the returned tree
-     */
-    public ImmutableQuadTree<HydrologicalUnit> convertImmutableQuadtree(
-            int time, ElevationSampler decodedElev, double offsetX, double offsetZ, double[] min, double[] max) {
-        return new ImmutableQuadTree<>(
-                min, max, collectUnits(time, decodedElev, offsetX, offsetZ, new int[] {0}), HydrologicalUnit.PROTOTYPE);
-    }
-
-    /**
-     * Collect the network's {@link HydrologicalUnit}s (active channels plus recorded removed
-     * features) as a mutable list, so a caller can append further units (e.g. the local-channel
-     * network) before freezing them into a single {@link ImmutableQuadTree}. See
-     * {@link #convertImmutableQuadtree} for the coordinate / bed-elevation conventions.
+     * Collect the network's {@link HydrologicalUnit}s (active channels of type
+     * {@link HydrologicalFeature#RIVER} plus recorded removed features — oxbow lakes / abandoned
+     * rivers) as a mutable list, so a caller can append further units (e.g. the local-channel
+     * network) before freezing them into a single spatial index. Each feature is first resampled at
+     * {@code dx = width/2}; emitted coordinates are the network coordinate minus
+     * {@code (offsetX, offsetZ)} (e.g. to drop a halo pad). Per-point bed elevation follows the
+     * start→endpoint lerp anchored on the channel's node elevations.
      *
      * <p>{@code nextFeatureId} is a single-element mutable counter threaded by the caller so the global
      * network and any units appended afterwards (e.g. the local channels) share one tile-unique
