@@ -198,8 +198,9 @@ public final class Meanders {
                 continue;
             }
             final double[] gradient = sampleGradient(point[0], point[1]);
-            double[] displacement = new double[] {-gradient[0], -gradient[1]}; // valley-seeking = -gradient
+            double[] displacement = VectorOps.project(gradient, ch.spline.normal(i));
             final double magnitude = VectorOps.magnitude(displacement);
+
             if (magnitude > MAX_GRAD_MIGRATION)
                 displacement = VectorOps.scale(displacement, MAX_GRAD_MIGRATION / magnitude);
             displacement = VectorOps.scale(displacement, borderDamping(point[0], point[1], ch.width));

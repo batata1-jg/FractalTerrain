@@ -2,6 +2,8 @@ package me.batata_1.fractal_terrain.hydrology.profile;
 
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The cross-channel elevation profile of a hydrological feature, keyed by Rosgen stream type. Given the
@@ -28,7 +30,7 @@ import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
  *   <li><b>Floodplain</b> (up to {@link #floodPlainLength}) → {@link #floodplainElevation} (a flat band for
  *       now, but kept a function for future noise);</li>
  *   <li><b>Blending region</b> (up to {@link #riverInfluence}) → {@link #blend}, the V/U valley curve that
- *       carries the floodplain delta toward {@code decodedRelative}.</li>
+ *       carries the floodplain delta toward {@code normalElevDelta}.</li>
  * </ol>
  *
  * <p><b>All four types currently share the same placeholder behaviour</b> — the cross-section deltas and
@@ -55,22 +57,21 @@ public enum RosgenProfile {
 
         @Override
         public double floodPlainLength(double width) {
-            return 1  + 1.2 * width;
+            return 1 + 1.2 * width;
         }
 
         @Override
         public double riverInfluence(double width) {
-            return Math.min(
-                    FractalTerrainConfig.MAX_INFLUENCE_RADIUS,
-                    floodPlainLength(width) * 5);
+            return Math.min(FractalTerrainConfig.MAX_INFLUENCE_RADIUS, floodPlainLength(width));
         }
     },
     B,
     C,
     D;
 
-
     // ---- Cross-section elevation deltas (shared placeholders; override per constant when formulas arrive) ----
+
+    private static final Logger LOG = LoggerFactory.getLogger(RosgenProfile.class);
 
     /** River-bed elevation delta (relative to the reference elevation) within the bed half-width. */
     public double bedElevation(double projectedDist, double width, double floodPlainLength) {
@@ -83,11 +84,11 @@ public enum RosgenProfile {
     }
 
     /**
-     * V/U blend curve for the blending region: maps the floodplain delta toward {@code decodedRelative}
+     * V/U blend curve for the blending region: maps the floodplain delta toward {@code normalElevDelta}
      * (= {@code decodedElev − referenceElev}) as the normalized blend parameter {@code t} goes 0 → 1.
      */
-    public double blend(double floodplainDelta, double decodedRelative, double t) {
-        return floodplainDelta * (1 - t) + decodedRelative * t;
+    public double blend(double floodplainDelta, double normalElevDelta, double t) {
+        return floodplainDelta * (1 - t) + normalElevDelta * t;
     }
 
     // ---- Horizontal extents (type-dependent; shared placeholder law, override per constant) ----
@@ -118,9 +119,9 @@ public enum RosgenProfile {
     /**
      * The full cross-section delta at {@code projectedDist}: dispatches to the bed / floodplain / blend
      * zone using this type's own {@link #floodPlainLength} and {@link #riverInfluence} extents.
-     * {@code decodedRelative} is {@code decodedElev − referenceElev}, used only in the blend zone.
+     * {@code normalElevDelta} is {@code decodedElev − referenceElev}, used only in the blend zone.
      */
-    public double elevationDelta(double projectedDist, double width, double decodedRelative) {
+    public double elevationDelta(double projectedDist, double width, double normalElevDelta) {
         final double bedHalfWidth = width * 0.5;
         final double floodPlainLength = floodPlainLength(width);
         if (projectedDist <= bedHalfWidth) {
@@ -133,7 +134,7 @@ public enum RosgenProfile {
         final double blendSpan = Math.max(1e-9, maxInfluence - floodPlainLength);
         final double t = Math.min(1.0, (projectedDist - floodPlainLength) / blendSpan);
         final double floodplainDelta = floodplainElevation(floodPlainLength, width, floodPlainLength);
-        return blend(floodplainDelta, decodedRelative, t);
+        return blend(floodplainDelta, normalElevDelta, t);
     }
 
     /** The profile for a unit's Rosgen type. */

@@ -58,7 +58,7 @@ public record FractalTerrainConfig() {
     // 3D visualizer (debug terrain projection — see Infinite3DVisualizer)
     // ──────────────────────────────────────────────────────────────────────────
 
-    public static final boolean DISABLE_3D_VISUALIZER = true;
+    public static final boolean DISABLE_3D_VISUALIZER = false;
 
     /**
      * Drives the elevation each visualizer column is raised to ({@link Infinite3DVisualizer#debugElevController}).

@@ -21,10 +21,19 @@ public final class HydrologyProfile {
      * The elevation this single unit would carve the point {@code (pixelX, pixelZ)} to, if it were the
      * only unit in the world (relief-pixel frame throughout). Projects the point onto the line through
      * the unit's coordinate along the unit's channel-perpendicular normal; the absolute projected
-     * distance is the cross-section parameter fed to the unit's {@link RosgenProfile}. The reference
-     * elevation is {@code min(unit.elevation, decodedElev)} so a unit never lifts the terrain.
+     * distance is the cross-section parameter fed to the unit's {@link RosgenProfile}.
+     *
+     * <p>The reference elevation the cross-section (bed / floodplain deltas) is built on is
+     * {@code min(unit.elevation, decodedElevAtUnit)} — anchored on the decoded pre-carve elevation at the
+     * <em>unit's own coordinate</em>, not the query pixel's. That keeps the bed at a consistent depth
+     * along the channel instead of tracking whatever terrain the pixel happens to sit on (the {@code min}
+     * still ensures a unit never lifts the terrain). The query pixel's decoded elevation
+     * ({@code decodedElevAtPixel}) is used only as the outer blend target: it is the {@code decodedRelative}
+     * fed to {@link RosgenProfile#elevationDelta}, so at the influence edge the carve seams back to the
+     * real terrain at the pixel.
      */
-    public static double computeForUnit(double pixelX, double pixelZ, HydrologicalUnit unit, double decodedElev) {
+    public static double computeForUnit(
+            double pixelX, double pixelZ, HydrologicalUnit unit, double decodedElevAtPixel, double decodedElevAtUnit) {
         final double[] unitCoord = unit.coord();
         final double projectedDist;
         if (unit.normal() != null) {
@@ -33,10 +42,10 @@ public final class HydrologyProfile {
         } else {
             projectedDist = Math.hypot(pixelX - unitCoord[0], pixelZ - unitCoord[1]);
         }
-        final double referenceElev = Math.min(unit.elevation(), decodedElev);
+        final double referenceElev = Math.min(unit.elevation(), decodedElevAtUnit);
         final RosgenType type = unit.rosgenType() == null ? RosgenType.A : unit.rosgenType();
         final double delta =
-                RosgenProfile.of(type).elevationDelta(projectedDist, unit.width(), decodedElev - referenceElev);
+                RosgenProfile.of(type).elevationDelta(projectedDist, unit.width(), decodedElevAtPixel - referenceElev);
         return referenceElev + delta;
     }
 }

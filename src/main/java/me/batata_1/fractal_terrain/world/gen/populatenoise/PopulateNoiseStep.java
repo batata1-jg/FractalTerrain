@@ -4,7 +4,6 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
-import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
@@ -56,12 +55,13 @@ public class PopulateNoiseStep {
         final double chunkCenterPixelX = (startX + 8) / scale;
         final double chunkCenterPixelZ = (startZ + 8) / scale;
         final double chunkRadiusPx = (8.0 * Math.sqrt(2.0)) / scale;
-        final HydrologicalUnit[] chunkUnits = carver.prefetchChunk(chunkCenterPixelX, chunkCenterPixelZ, chunkRadiusPx);
+        final HydrologyProfileCarver.PrefetchedUnits chunkUnits =
+                carver.prefetchChunk(chunkCenterPixelX, chunkCenterPixelZ, chunkRadiusPx);
         for (int dx = 0; dx < 16; dx++) {
             for (int dz = 0; dz < 16; dz++) {
                 final int pos = (dx << 4) + dz;
                 final float preCarveElev = interpolatedElevs[pos];
-                final float refinedElev = chunkUnits.length == 0
+                final float refinedElev = chunkUnits.units().length == 0
                         ? preCarveElev
                         : carver.carvePrefetched(
                                 chunkUnits, (startX + dx) / scale, (startZ + dz) / scale, preCarveElev);

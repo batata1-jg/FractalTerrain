@@ -7,10 +7,12 @@ import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
+import me.batata_1.fractal_terrain.math.Interpolation;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
+import me.batata_1.fractal_terrain.relief.ReliefProvider;
 
 /**
  * The elevation side of the hydrology profile. Two carve stages live here:
@@ -60,49 +62,84 @@ public final class HydrologyProfileCarver {
     }
 
     /**
+     * A chunk's influencing units paired with each unit's own decoded pre-carve elevation
+     * ({@code decodedElevAtUnit[i]} is the elevation for {@code units[i]}). The decoded elevations are
+     * sampled once per unit (see {@link #queryUnits}) so the per-block merge never re-queries the
+     * relief provider. Produced by {@link #prefetchChunk} / {@link #queryUnits} and consumed by
+     * {@link #carvePrefetched}.
+     */
+    public record PrefetchedUnits(HydrologicalUnit[] units, double[] decodedElevAtUnit) {}
+
+    /**
      * Carve at a point already in the relief-pixel frame: query the influencing units, then merge via
      * {@link #carvePrefetched}.
      */
-    public float carveAtPixel(double pixelX, double pixelZ, double decodedElev) {
-        final HydrologicalUnit[] units = localRiver.queryInfluence(new double[] {pixelX, pixelZ});
-        return carvePrefetched(units, pixelX, pixelZ, decodedElev);
+    public float carveAtPixel(double pixelX, double pixelZ, double decodedElevAtPixel) {
+        final PrefetchedUnits prefetched = queryUnits(new double[] {pixelX, pixelZ}, 0.0);
+        return carvePrefetched(prefetched, pixelX, pixelZ, decodedElevAtPixel);
     }
 
     /**
      * One cross-tile influence query serving a whole chunk of carve calls: gathers every unit that could
      * influence <em>any</em> point within {@code chunkRadiusPx} of {@code (centerPixelX, centerPixelZ)}
      * (a unit is kept when the center lies within {@code maxRiverInfluence(unit.width()) +
-     * chunkRadiusPx}). Feed the result to {@link #carvePrefetched} for each block — one tree query per
-     * chunk instead of one per block. All arguments are in the relief-pixel frame.
+     * chunkRadiusPx}), and samples each unit's decoded pre-carve elevation once. Feed the result to
+     * {@link #carvePrefetched} for each block — one tree query per chunk instead of one per block. All
+     * arguments are in the relief-pixel frame.
      */
-    public HydrologicalUnit[] prefetchChunk(double centerPixelX, double centerPixelZ, double chunkRadiusPx) {
-        return localRiver.queryInfluence(new double[] {centerPixelX, centerPixelZ}, chunkRadiusPx);
+    public PrefetchedUnits prefetchChunk(double centerPixelX, double centerPixelZ, double chunkRadiusPx) {
+        return queryUnits(new double[] {centerPixelX, centerPixelZ}, chunkRadiusPx);
     }
 
     /**
-     * The merge core, over an already-gathered unit array (world relief-pixel coords, e.g. from
-     * {@link #prefetchChunk}). <b>Every</b> influencing unit contributes its
+     * Query the units influencing {@code pt} (relief-pixel frame, inflated by {@code extraRadius}) and
+     * sample each unit's decoded pre-carve elevation at its own coordinate — the same smoothstep over the
+     * carved+filled ch0 that produces the pixel's own pre-carve elevation ({@code Types.ELEVATION}).
+     */
+    private PrefetchedUnits queryUnits(double[] pt, double extraRadius) {
+        final HydrologicalUnit[] units = localRiver.queryInfluence(pt, extraRadius);
+        final double[] decodedElevAtUnit = new double[units.length];
+        final ReliefProvider relief = FractalTerrainInstance.getReliefProvider();
+        final int[] nodePos = new int[3]; // [CH, x, z]; reused across units
+        final float[] nodes = new float[4]; // 2x2 interpolation stencil; reused across units
+        for (int i = 0; i < units.length; i++) {
+            final double[] coord = units[i].coord();
+            decodedElevAtUnit[i] = Interpolation.interpolateSmoothStep(
+                    (float) coord[0], (float) coord[1], nodePos, nodes, relief::getElev);
+        }
+        return new PrefetchedUnits(units, decodedElevAtUnit);
+    }
+
+    /**
+     * The merge core, over an already-gathered {@link PrefetchedUnits} (world relief-pixel coords, e.g.
+     * from {@link #prefetchChunk}). <b>Every</b> influencing unit contributes its
      * {@link HydrologyProfile#computeForUnit} elevation, weighted linearly by distance: weight 1 when the
      * point sits on the unit, 0 at that unit's own
      * {@link FractalTerrainConfig#riverInfluence influence} radius. Contributions from all units of
      * all features are merged in one flat weighted average — a lone straight channel averages many
      * near-identical contributions (≈ its exact profile), and river intersections blend smoothly because
-     * every channel's units participate. Returns {@code decodedElev} unchanged when no unit reaches the
-     * point.
+     * every channel's units participate. Each unit's cross-section is anchored on its own decoded
+     * elevation ({@code decodedElevAtUnit[i]}); {@code decodedElevAtPixel} is only the outer blend target.
+     * Returns {@code decodedElevAtPixel} unchanged when no unit reaches the point.
      */
-    public float carvePrefetched(HydrologicalUnit[] units, double pixelX, double pixelZ, double decodedElev) {
+    public float carvePrefetched(PrefetchedUnits prefetched, double pixelX, double pixelZ, double decodedElevAtPixel) {
+        final HydrologicalUnit[] units = prefetched.units();
+        final double[] decodedElevAtUnit = prefetched.decodedElevAtUnit();
         double weightedElevSum = 0.0;
         double weightSum = 0.0;
-        for (final HydrologicalUnit unit : units) {
+        for (int i = 0; i < units.length; i++) {
+            final HydrologicalUnit unit = units[i];
             final double influenceRadius = unit.getRadius(); // = riverInfluence(unit.width()), the circle's own radius
             final double[] unitCoord = unit.coord();
             final double dist = Math.hypot(pixelX - unitCoord[0], pixelZ - unitCoord[1]);
             if (dist >= influenceRadius) continue; // outside this unit's reach
             final double weight = 1.0 - dist / influenceRadius; // 1 at the unit, 0 at the influence edge
-            weightedElevSum += HydrologyProfile.computeForUnit(pixelX, pixelZ, unit, decodedElev) * weight;
+            weightedElevSum +=
+                    HydrologyProfile.computeForUnit(pixelX, pixelZ, unit, decodedElevAtPixel, decodedElevAtUnit[i])
+                            * weight;
             weightSum += weight;
         }
-        if (weightSum == 0.0) return (float) decodedElev;
+        if (weightSum == 0.0) return (float) decodedElevAtPixel;
         return (float) (weightedElevSum / weightSum);
     }
 
