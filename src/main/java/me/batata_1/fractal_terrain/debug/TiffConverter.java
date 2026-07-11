@@ -4,6 +4,7 @@ import ai.onnxruntime.OnnxTensor;
 import java.io.ByteArrayOutputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 
 public class TiffConverter {
@@ -134,7 +135,7 @@ public class TiffConverter {
                 float[] fl = tl.getBand(0, i);
                 fos.write(FloatTiffWriter.createFloatTiff(fl));
             } catch (IOException e) {
-                throw new RuntimeException(e);
+                throw new UncheckedIOException(e);
             }
         }
     }
@@ -145,7 +146,7 @@ public class TiffConverter {
             float[] fl = tl.getBand(0, ch);
             fos.write(FloatTiffWriter.createFloatTiff(fl));
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new UncheckedIOException(e);
         }
     }
 }

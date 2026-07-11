@@ -1,9 +1,13 @@
 package me.batata_1.fractal_terrain.hydrology.profile;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
+
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
+import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
@@ -38,11 +42,6 @@ public final class HydrologyProfileCarver {
 
     public HydrologyProfileCarver(LocalRiverProvider localRiver) {
         this.localRiver = localRiver;
-    }
-
-    /** Convenience: resolve the live {@link LocalRiverProvider} from the singleton. */
-    public HydrologyProfileCarver() {
-        this(FractalTerrainInstance.getLocalRiverProvider());
     }
 
     // -------------------------------------------------------------------------
@@ -139,6 +138,7 @@ public final class HydrologyProfileCarver {
                             * weight;
             weightSum += weight;
         }
+
         if (weightSum == 0.0) return (float) decodedElevAtPixel;
         return (float) (weightedElevSum / weightSum);
     }
@@ -146,9 +146,6 @@ public final class HydrologyProfileCarver {
     // -------------------------------------------------------------------------
     // Tile-level global-river pre-carve (moved from LocalRiverProvider)
     // -------------------------------------------------------------------------
-
-    /** Query radius for nearby river samples during the tile pre-carve (native px). */
-    private static final double MAX_CARVE_DIST = 64.0;
 
     /** Densification interval along the channel splines (native px). */
     private static final double CARVE_SAMPLE_SPACING = 2.0;
@@ -214,7 +211,8 @@ public final class HydrologyProfileCarver {
                 final int idx = pi * paddedSize + pj;
                 if (elevation[idx] < 0) continue;
                 final double[] pixel = {pi, pj};
-                final List<RiverSample> nearby = index.getPointsInCircle(pixel, MAX_CARVE_DIST);
+                final List<RiverSample> nearby =
+                        index.getPointsInCircle(pixel, FractalTerrainConfig.MAX_INFLUENCE_RADIUS);
                 if (nearby.isEmpty()) continue;
                 double nearestDist = Double.MAX_VALUE;
                 double width = 0;
@@ -227,11 +225,11 @@ public final class HydrologyProfileCarver {
                         bedElev = sample.bedElev();
                     }
                 }
-                if (nearestDist >= MAX_CARVE_DIST) continue;
+                if (nearestDist >= FractalTerrainConfig.MAX_INFLUENCE_RADIUS) continue;
                 // Uncarvable pixel: the intended bed is too far below/above the current terrain —
                 // carving would gouge an isolated hole or trench. MAX_CARVE_DELTA applies ONLY here.
                 if (Math.abs(elevation[idx] - bedElev) > FractalTerrainConfig.MAX_CARVE_DELTA) continue;
-                final double bedHalfWidth = width * 0.5;
+                final double bedHalfWidth = ChannelGeometry.bedHalfWidth(width);
                 final double riverInfluenceRadius = FractalTerrainConfig.riverInfluence(width);
                 if (nearestDist >= riverInfluenceRadius) continue;
                 final float orig = elevation[idx];

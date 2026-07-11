@@ -104,16 +104,6 @@ public class ClimateVariableTransform {
         return continentalness >= Continentalness.NEAR_INLAND.range.min();
     }
 
-    /** Temperature level 0–4 of a temperature parameter value. */
-    public static int temperatureLevel(float temperature) {
-        return TemperatureLevel.of(temperature).ordinal();
-    }
-
-    /** Humidity (vegetation) level 0–4 of a humidity parameter value. */
-    public static int humidityLevel(float humidity) {
-        return HumidityLevel.of(humidity).ordinal();
-    }
-
     /** Erosion level 5 (0.45 … 0.55): vanilla's shattered-terrain band. */
     public static boolean isShatteredErosion(float erosion) {
         return erosion > ErosionLevel.LEVEL_5.range.min() && erosion < ErosionLevel.LEVEL_5.range.max();

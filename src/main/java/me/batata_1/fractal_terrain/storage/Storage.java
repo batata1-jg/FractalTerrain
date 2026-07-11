@@ -4,6 +4,7 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -331,7 +332,7 @@ public class Storage<T extends Persistable<T>> {
             try {
                 writeBytes(tilePath(key) + ".ser", entry.serialize());
             } catch (IOException e) {
-                throw new RuntimeException(e);
+                throw new UncheckedIOException("failed to persist tile " + key, e);
             }
         }
         recordCachedEntry(key, entry.byteSize());

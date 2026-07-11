@@ -56,7 +56,6 @@ public class LocalRiverProvider {
     // a baseline at sea level plus a per-elevation increment, so higher terrain relaxes more.
     private static final int MIN_RELAX_STEPS = 5;
     private static final double RELAX_STEPS_PER_ELEV = 0.2;
-    private static final double MIN_WIDTH = FractalTerrainConfig.MIN_WIDTH;
 
     // ---- Sink filling (the tile carve itself lives in HydrologyProfileCarver.carveGlobalRivers) ----
     private static final int FILL_PADDING = 64;
@@ -90,8 +89,8 @@ public class LocalRiverProvider {
                 path,
                 "local_river_units",
                 new int[] {GRID, GRID},
-                new ImmutableRTree<>(List.of(HydrologicalUnit.PROTOTYPE), HydrologicalUnit.PROTOTYPE),
-                this::buildUnitsTile);
+                new ImmutableRTree<>(List.of(), HydrologicalUnit.PROTOTYPE),
+                key -> key != null ? buildUnitsTile(key) : null);
         carved = new NonIntersectingInfiniteTensor(
                 path, "local_carved_elev", new int[] {1, GRID, GRID}, this::buildCarvedTile);
     }
@@ -242,8 +241,8 @@ public class LocalRiverProvider {
                     }
                 int dcx = ccx, dcz = ccz;
                 double[] drain = null;
-                final double marginInfl =
-                        FractalTerrainConfig.riverInfluence(Math.max(grp.getWidth(ccx, ccz), MIN_WIDTH));
+                final double marginInfl = FractalTerrainConfig.riverInfluence(
+                        Math.max(grp.getWidth(ccx, ccz), FractalTerrainConfig.MIN_WIDTH));
                 if (outDir != -1) {
                     dcx = ccx + PipelinePreprocessing.NEIGHBOR_OFFSET_X[outDir];
                     dcz = ccz + PipelinePreprocessing.NEIGHBOR_OFFSET_Z[outDir];
@@ -292,7 +291,7 @@ public class LocalRiverProvider {
                 if (c == null) continue;
                 final int centre = centerIdx.get(cellKey(ccx, ccz));
                 final double[] centreCoord = nodeCoord(nodeSpecs, centre);
-                final double width = Math.max(grp.getWidth(ccx, ccz), MIN_WIDTH);
+                final double width = Math.max(grp.getWidth(ccx, ccz), FractalTerrainConfig.MIN_WIDTH);
 
                 // drains to another cell. Places the channel that connects the center to the drainage point
                 if (c.outDirection() != -1 && c.drain() != null) {
@@ -331,7 +330,7 @@ public class LocalRiverProvider {
                             entryNode,
                             centre,
                             pts(n.drain(), gateInside(centreCoord, n.drain(), ccx, ccz), centreCoord),
-                            Math.max(grp.getWidth(n.ccx(), n.ccz()), MIN_WIDTH)));
+                            Math.max(grp.getWidth(n.ccx(), n.ccz()), FractalTerrainConfig.MIN_WIDTH)));
                 }
 
                 if (GlobalRiverProvider.isSource(grp.getArrow(ccx, ccz))) {
@@ -681,9 +680,11 @@ public class LocalRiverProvider {
         final double endWidth = FractalTerrainConfig.widthFromFlow(flow[cells.getLast()]);
         final Channel channel = new Channel(FractalTerrainConfig.widthFromFlow(maxFlow), points, channelId);
         channel.setWidthProfile(startWidth, endWidth);
+        if (!channel.isResampleable()) return null; // degenerate geometry: skip this channel
         try {
             channel.reSample(RESAMPLE_DIST);
-        } catch (RuntimeException degenerate) {
+        } catch (RuntimeException runaway) {
+            // Pathological runaway geometry (spline exceeds MAX_SPLINE_LENGTH); drop the channel.
             return null;
         }
         return channel;
@@ -699,10 +700,12 @@ public class LocalRiverProvider {
         // units' width/2 discs always overlap (gap-free membership test + girth rendering).
         final double narrowestWidth = Math.min(ch.startWidth, ch.endWidth);
         final double dx = Math.max(narrowestWidth / 2.0, 0.5);
+        if (!ch.spline.isResampleable()) return; // degenerate geometry: nothing to add
         final QuinticHermiteSpline resampled;
         try {
             resampled = ch.spline.reSample(dx);
-        } catch (RuntimeException degenerate) {
+        } catch (RuntimeException runaway) {
+            // Pathological runaway geometry (spline exceeds MAX_SPLINE_LENGTH); add no units.
             return;
         }
         final List<double[]> pts = resampled.points();
@@ -716,7 +719,7 @@ public class LocalRiverProvider {
             final double[] nrm = resampled.normal(i);
             out.add(new HydrologicalUnit(
                     HydrologicalFeature.RIVER,
-                    null,
+                    HydrologicalUnit.RosgenType.A,
                     new double[] {p[0], p[1]},
                     new double[] {nrm[0], nrm[1]},
                     w,
@@ -943,7 +946,7 @@ public class LocalRiverProvider {
     /**
      * Gather every hydrological unit whose feature influences {@code pt} (a point in the relief-pixel
      * frame), re-stamped into world coords and returned as a flat array in <b>unspecified order</b> —
-     * consumed by {@link me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver}'s flat
+     * consumed by {@link HydrologyProfileCarver}'s flat
      * distance-weighted merge (every unit contributes; no per-feature grouping).
      *
      * <p>A unit is kept when {@code pt} lies within that unit's own influence circle

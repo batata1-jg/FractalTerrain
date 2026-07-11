@@ -6,6 +6,7 @@ import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -84,7 +85,7 @@ public class HydrologyUnitVisualizer {
         try {
             ImageIO.write(image, "png", outputFile);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new UncheckedIOException(e);
         }
         DEBUG_LOGGER.info(
                 "unit tree '{}': {} units rendered to {} ({}x{} px)", name, units.size(), outputFile, side, side);

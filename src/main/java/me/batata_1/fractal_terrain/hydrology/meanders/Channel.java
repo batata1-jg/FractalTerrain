@@ -3,6 +3,7 @@ package me.batata_1.fractal_terrain.hydrology.meanders;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Objects;
+import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
@@ -38,7 +39,7 @@ public class Channel {
 
     public Channel(double width, ArrayList<double[]> pts, int channelId) {
         this.width = width;
-        this.depth = Math.max(1.0, Math.pow(width / 18.8, 1.0 / 1.41));
+        this.depth = ChannelGeometry.depthForWidth(width);
         this.spline = QuinticHermiteSpline.createCatmullRom(pts);
         this.channelId = channelId;
         this.startWidth = width;
@@ -87,6 +88,11 @@ public class Channel {
         for (int i = 0; i < spline.points().size(); i++)
             res[i] = new ChannelPt(spline.points().get(i), i, channelId, widthAt(i));
         return res;
+    }
+
+    /** Whether {@link #reSample} can run (delegates to {@link QuinticHermiteSpline#isResampleable}). */
+    public boolean isResampleable() {
+        return spline.isResampleable();
     }
 
     public void reSample(double samplingDist) throws IllegalStateException {

@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.debug.Debug;
+import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.HydrologicalFeature;
 import me.batata_1.fractal_terrain.math.VectorOps;
@@ -313,7 +314,7 @@ public final class RiverNetwork {
 
                     if (nearSharedNode(channelA, channelB, pointA)) continue;
                     final double distance = VectorOps.distance(pointA, nearbyPoint.toArray());
-                    if (distance > 0.5 * (channelA.width + channelB.width)) continue;
+                    if (!ChannelGeometry.channelsOverlap(distance, channelA.width, channelB.width)) continue;
                     contactsByPartner
                             .computeIfAbsent(channelBId, partner -> new ArrayList<>())
                             .add(new double[] {posA, posB, distance});
@@ -647,7 +648,7 @@ public final class RiverNetwork {
             double offsetX,
             double offsetZ,
             int[] nextFeatureId) {
-        if (spline.getSize() < 2) return;
+        if (!spline.isResampleable()) return; // degenerate geometry (too few points or NaN): skip
         // Spacing must be <= half the NARROWEST width along the start->end taper, so consecutive
         // units' width/2 discs always overlap (gap-free membership test + girth rendering).
         final double narrowestWidth = Math.min(startWidth, endWidth);
@@ -655,7 +656,8 @@ public final class RiverNetwork {
         final QuinticHermiteSpline resampled;
         try {
             resampled = spline.reSample(dx);
-        } catch (RuntimeException degenerate) {
+        } catch (RuntimeException runaway) {
+            // Pathological runaway geometry (spline exceeds MAX_SPLINE_LENGTH); add no units.
             return;
         }
         final List<double[]> pts = resampled.points();
@@ -677,7 +679,8 @@ public final class RiverNetwork {
             final double[] nrm = resampled.normal(i);
             out.add(new HydrologicalUnit(
                     type,
-                    null,
+                    //TODO: change this to the correct type
+                    HydrologicalUnit.RosgenType.A,
                     new double[] {p[0] - offsetX, p[1] - offsetZ},
                     new double[] {nrm[0], nrm[1]},
                     w,

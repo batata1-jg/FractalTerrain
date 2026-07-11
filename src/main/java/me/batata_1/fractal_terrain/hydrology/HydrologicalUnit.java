@@ -5,8 +5,10 @@ import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.Objects;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
+import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
 import me.batata_1.fractal_terrain.storage.Persistable;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * A single sample of a hydrological feature — a river (with its Rosgen channel type), an abandoned
@@ -78,22 +80,36 @@ public record HydrologicalUnit(
      */
     @Override
     public double getRadius() {
-        return FractalTerrainConfig.riverInfluence(width, rosgenType == null ? RosgenType.A : rosgenType);
+        return RosgenProfile.of(rosgenType).riverInfluence(width);
+    }
+
+    /**
+     * Whether a query point at squared distance {@code distSqFromCentre} from this unit's centre lies
+     * inside the channel's water span — i.e. within this unit's bed half-width
+     * ({@link ChannelGeometry#bedHalfWidth}). The channel-membership test used by
+     * {@link me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfilePainter#insideChannel}.
+     */
+    public boolean channelContains(double distSqFromCentre) {
+        final double bedHalfWidth = ChannelGeometry.bedHalfWidth(width);
+        return distSqFromCentre <= bedHalfWidth * bedHalfWidth;
     }
 
     // Records compare array components by reference; these compare contents instead.
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof HydrologicalUnit other)) return false;
-        return type == other.type
-                && rosgenType == other.rosgenType
-                && Arrays.equals(coord, other.coord)
-                && Arrays.equals(normal, other.normal)
-                && Double.compare(width, other.width) == 0
-                && Double.compare(elevation, other.elevation) == 0
-                && time == other.time
-                && id == other.id;
+        if (!(o instanceof HydrologicalUnit(
+                HydrologicalFeature type1, RosgenType rosgenType1, double[] coord1, double[] normal1, double width1,
+                double elevation1, int time1, int id1
+        ))) return false;
+        return type == type1
+                && rosgenType == rosgenType1
+                && Arrays.equals(coord, coord1)
+                && Arrays.equals(normal, normal1)
+                && Double.compare(width, width1) == 0
+                && Double.compare(elevation, elevation1) == 0
+                && time == time1
+                && id == id1;
     }
 
     @Override
@@ -105,7 +121,7 @@ public record HydrologicalUnit(
     }
 
     @Override
-    public String toString() {
+    public @NotNull String toString() {
         return "HydrologicalUnit[type=" + type + ", rosgenType=" + rosgenType + ", coord="
                 + Arrays.toString(coord) + ", normal=" + Arrays.toString(normal) + ", width=" + width
                 + ", elevation=" + elevation + ", time=" + time + ", id=" + id + "]";

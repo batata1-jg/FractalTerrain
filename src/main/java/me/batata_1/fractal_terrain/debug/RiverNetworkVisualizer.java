@@ -6,6 +6,7 @@ import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
 import java.io.File;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.List;
 import javax.imageio.ImageIO;
@@ -85,7 +86,7 @@ public class RiverNetworkVisualizer {
         try {
             ImageIO.write(image, "png", outputFile);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new UncheckedIOException(e);
         }
     }
 
@@ -157,7 +158,7 @@ public class RiverNetworkVisualizer {
         try {
             ImageIO.write(image, "png", new File(dir, name + ".png"));
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new UncheckedIOException(e);
         }
     }
 

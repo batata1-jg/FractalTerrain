@@ -97,17 +97,16 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
     }
 
     private float highErosionPvFactor(float depth, int x, int z, FractalTerrainHeightmap h) {
-        int erosionLvl = ErosionLevel.erosionLevel(h.get(Types.EROSION, x, z));
-        // if(x==&&z==) LOG.info("erosions level of {} {} : {}",x,z,erosionLvl);
+        ErosionLevel erosion = ErosionLevel.of(h.get(Types.EROSION, x, z));
         Continentalness c = Continentalness.of(h.get(Types.CONTINENTALNESS, x, z));
         PeaksValleys pv = PeaksValleys.of(h.get(Types.WEIRDNESS, x, z));
-        if (erosionLvl == 0 || erosionLvl == 1) {
+        if (erosion == ErosionLevel.LEVEL_0 || erosion == ErosionLevel.LEVEL_1) {
             switch (pv) {
                 case PEAKS -> {
                     return 50;
                 }
                 case HIGH -> {
-                    if (erosionLvl == 0) return 50;
+                    if (erosion == ErosionLevel.LEVEL_0) return 50;
                 }
                 default -> {
                     if (c.equals(Continentalness.COAST)) return 50;

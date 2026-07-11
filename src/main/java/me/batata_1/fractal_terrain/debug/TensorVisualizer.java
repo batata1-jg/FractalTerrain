@@ -7,6 +7,7 @@ import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
 import java.io.File;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.Arrays;
 import javax.imageio.ImageIO;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
@@ -99,7 +100,7 @@ public class TensorVisualizer {
         try {
             ImageIO.write(outputImage, "png", outputFile);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new UncheckedIOException(e);
         }
         System.out.println("end");
     }
@@ -147,7 +148,7 @@ public class TensorVisualizer {
         try {
             ImageIO.write(img, "png", outputFile);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new UncheckedIOException(e);
         }
     }
 
@@ -192,7 +193,7 @@ public class TensorVisualizer {
         try {
             ImageIO.write(img, "png", outputFile);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new UncheckedIOException(e);
         }
     }
 
@@ -250,7 +251,7 @@ public class TensorVisualizer {
         try {
             ImageIO.write(outputImage, "png", outputFile);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new UncheckedIOException(e);
         }
         System.out.println("end");
     }

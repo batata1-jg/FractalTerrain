@@ -1,6 +1,7 @@
 package me.batata_1.fractal_terrain.hydrology.profile;
 
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
+import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,7 +47,7 @@ public enum RosgenProfile {
         @Override
         public double bedElevation(double projectedDist, double width, double floodPlainLength) {
             // TODO: user-supplied formula. Placeholder: river bed sits 1 below the reference (depth 1).
-            return -1.0;
+            return -10.0;
         }
 
         @Override
@@ -60,10 +61,6 @@ public enum RosgenProfile {
             return 1 + 1.2 * width;
         }
 
-        @Override
-        public double riverInfluence(double width) {
-            return Math.min(FractalTerrainConfig.MAX_INFLUENCE_RADIUS, floodPlainLength(width));
-        }
     },
     B,
     C,
@@ -122,7 +119,7 @@ public enum RosgenProfile {
      * {@code normalElevDelta} is {@code decodedElev − referenceElev}, used only in the blend zone.
      */
     public double elevationDelta(double projectedDist, double width, double normalElevDelta) {
-        final double bedHalfWidth = width * 0.5;
+        final double bedHalfWidth = ChannelGeometry.bedHalfWidth(width);
         final double floodPlainLength = floodPlainLength(width);
         if (projectedDist <= bedHalfWidth) {
             return bedElevation(projectedDist, width, floodPlainLength);

@@ -54,12 +54,12 @@ public class VectorOps {
         return resp;
     }
 
-    //projects a onto b
+    // projects a onto b
     public static double[] project(double[] a, double[] b) {
         checkLengths(a, b);
         final double magB = magnitude(b);
-        if(magB<1e-5) return new double[a.length];
-        return scale(b,dot(a,b)/(magB*magB));
+        if (magB < 1e-5) return new double[a.length];
+        return scale(b, dot(a, b) / (magB * magB));
     }
 
     public static double[] div(double[] vec, double scalar) {

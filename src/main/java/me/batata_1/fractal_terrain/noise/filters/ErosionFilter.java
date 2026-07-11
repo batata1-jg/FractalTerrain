@@ -10,11 +10,6 @@ public class ErosionFilter extends Filter {
         super();
     }
 
-    public double sample(double x, double z, double y, double gradX, double gradZ) {
-
-        return 0;
-    }
-
     @Override
     public double sample(double x, double z, double y) {
         return 0;

@@ -27,8 +27,4 @@ public enum ErosionLevel {
         }
         return level;
     }
-
-    public static int erosionLevel(float erosion) {
-        return ErosionLevel.of(erosion).ordinal();
-    }
 }

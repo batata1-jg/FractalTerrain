@@ -6,6 +6,7 @@ import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
 import java.io.File;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import javax.imageio.ImageIO;
 import me.batata_1.fractal_terrain.noise.NoiseSampler;
 
@@ -66,7 +67,7 @@ public class NoiseVisualizer {
         try {
             ImageIO.write(image, "png", outputFile);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new UncheckedIOException(e);
         }
     }
 }

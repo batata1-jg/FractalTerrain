@@ -111,6 +111,17 @@ public record QuinticHermiteSpline(
         return false;
     }
 
+    /**
+     * Whether {@link #reSample} can run on this spline: it needs at least two points and no NaN
+     * components. A spline failing this is degenerate and would make {@code reSample} throw
+     * {@link IllegalStateException}; callers should test this up front rather than catch that as control
+     * flow. (A well-formed spline may still hit runaway geometry, which {@code reSample} reports
+     * separately.)
+     */
+    public boolean isResampleable() {
+        return points.size() >= 2 && !checkNaN();
+    }
+
     public double curvature(double t) {
         final double[] dxy = firstDerivative(t);
         final double absDxy = VectorOps.magnitude(dxy);

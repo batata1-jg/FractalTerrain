@@ -9,6 +9,8 @@ import me.batata_1.fractal_terrain.debug.Infinite3DVisualizer;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import net.fabricmc.loader.api.FabricLoader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public record FractalTerrainConfig() {
 
@@ -58,7 +60,7 @@ public record FractalTerrainConfig() {
     // 3D visualizer (debug terrain projection — see Infinite3DVisualizer)
     // ──────────────────────────────────────────────────────────────────────────
 
-    public static final boolean DISABLE_3D_VISUALIZER = false;
+    public static final boolean DISABLE_3D_VISUALIZER = true;
 
     /**
      * Drives the elevation each visualizer column is raised to ({@link Infinite3DVisualizer#debugElevController}).
@@ -91,6 +93,7 @@ public record FractalTerrainConfig() {
     // Property-file config (defaults backing the readers below)
     // ──────────────────────────────────────────────────────────────────────────
 
+    private static final Logger LOG = LoggerFactory.getLogger(FractalTerrainConfig.class);
     private static final String FILE_NAME = "terrain-diffusion-mc.properties";
     private static final String RESOURCE_PATH = "/" + FILE_NAME;
     private static final Properties PROPERTIES = new Properties();
@@ -243,7 +246,7 @@ public record FractalTerrainConfig() {
                 loadedFromResource = true;
             }
         } catch (IOException e) {
-            System.err.println("Failed to load default config from resource: " + e.getMessage());
+            LOG.warn("Failed to load default config from resource; falling back to built-in defaults", e);
         }
 
         if (!loadedFromResource) {
@@ -261,7 +264,7 @@ public record FractalTerrainConfig() {
         try {
             return FabricLoader.getInstance().getConfigDir().resolve(FILE_NAME);
         } catch (RuntimeException e) {
-            System.err.println("Fabric Loader config directory unavailable: " + e.getMessage());
+            LOG.warn("Fabric Loader config directory unavailable; using built-in defaults", e);
             return null;
         }
     }
@@ -279,7 +282,7 @@ public record FractalTerrainConfig() {
                 writeConfig(configPath);
             }
         } catch (IOException e) {
-            System.err.println("Failed to read config file: " + e.getMessage());
+            LOG.warn("Failed to read config file; using built-in defaults", e);
         }
     }
 
@@ -290,9 +293,9 @@ public record FractalTerrainConfig() {
                 Files.copy(defaultConfigInputStream, configPath);
                 return;
             }
-            System.err.println("Default config resource not found: " + RESOURCE_PATH);
+            LOG.error("Default config resource not found: {}", RESOURCE_PATH);
         } catch (IOException e) {
-            System.err.println("Failed to copy default config resource: " + e.getMessage());
+            LOG.warn("Failed to copy default config resource", e);
         }
     }
 
@@ -307,7 +310,7 @@ public record FractalTerrainConfig() {
         try {
             return Integer.parseInt(value);
         } catch (NumberFormatException e) {
-            System.err.println("Invalid int for " + key + ": " + value + ", using default " + defaultValue);
+            LOG.warn("Invalid int for {}: {}, using default {}", key, value, defaultValue);
             return defaultValue;
         }
     }
@@ -318,7 +321,7 @@ public record FractalTerrainConfig() {
         try {
             return Double.parseDouble(value.trim());
         } catch (NumberFormatException e) {
-            System.err.println("Invalid double for " + key + ": " + value + ", using default " + defaultValue);
+            LOG.warn("Invalid double for {}: {}, using default {}", key, value, defaultValue);
             return defaultValue;
         }
     }

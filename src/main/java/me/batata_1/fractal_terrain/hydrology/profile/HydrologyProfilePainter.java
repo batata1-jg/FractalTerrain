@@ -1,7 +1,7 @@
 package me.batata_1.fractal_terrain.hydrology.profile;
 
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
-import me.batata_1.fractal_terrain.FractalTerrainInstance;
+import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
@@ -19,11 +19,6 @@ public final class HydrologyProfilePainter {
 
     public HydrologyProfilePainter(LocalRiverProvider localRiver) {
         this.localRiver = localRiver;
-    }
-
-    /** Convenience: resolve the live {@link LocalRiverProvider} from the singleton. */
-    public HydrologyProfilePainter() {
-        this(FractalTerrainInstance.getLocalRiverProvider());
     }
 
     /**
@@ -52,7 +47,6 @@ public final class HydrologyProfilePainter {
      */
     public boolean insideChannel(double[] pixelPt) {
         final double tileVisitRadius = FractalTerrainConfig.maxNativeWidth() / 2.0;
-        return localRiver.anyInfluencingUnit(
-                pixelPt, tileVisitRadius, (unit, distSq) -> distSq <= (unit.width() * 0.5) * (unit.width() * 0.5));
+        return localRiver.anyInfluencingUnit(pixelPt, tileVisitRadius, HydrologicalUnit::channelContains);
     }
 }
