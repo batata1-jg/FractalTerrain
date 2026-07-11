@@ -11,7 +11,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import javax.imageio.ImageIO;
-import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
+import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.CoordPoint;
 import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
@@ -49,7 +49,7 @@ public class SplineVisualizer {
         double[] grid = new double[(int) (WH[0] * WH[1])];
 
         final double[] curPt = new double[2];
-        final double detectDist = Meanders.DX;
+        final double detectDist = HydrologyTuning.DX;
         final List<CoordPoint> treePoints = new ArrayList<>();
 
         for (double i = 0; i < spline.getSize() + beyond; i += resolution)

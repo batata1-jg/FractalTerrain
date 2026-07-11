@@ -14,6 +14,7 @@ import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.OPPOSI
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.math.MarchingSquares;
@@ -66,8 +67,6 @@ public class GlobalRiverProvider {
     private static final float RIDGE_THRESHOLD = 20f;
     /** Lower (coast) region: pixels with normalized elevation ≤ this form the coastline. */
     private static final float COAST_THRESHOLD = 0f;
-    /** Halo width (coarse px) over which the isolate ramp rises toward the tile border. */
-    private static final int RAMP_WIDTH = 6;
     /** Peak height added to border pixels by the isolate ramp (decays linearly to 0 inward). */
     private static final float RAMP_HEIGHT = 5000f;
     /** Maximum descent steps per source before bailing (guards against pathological grids). */
@@ -82,8 +81,9 @@ public class GlobalRiverProvider {
 
     // ---- Geometry -----------------------------------------------------------
     private static final int TILE_SIZE = 64;
-    /** Halo so border pixels have neighbours for the gradient descent; equals the ramp width. */
-    private static final int PAD = RAMP_WIDTH;
+    /** Halo so border pixels have neighbours for the gradient descent; equals the ramp width
+     *  ({@link HydrologyTuning#RAMP_WIDTH}). */
+    private static final int PAD = HydrologyTuning.RAMP_WIDTH;
 
     private static final int PADDED_SIDE = TILE_SIZE + 2 * PAD;
     private static final Logger LOG = getLogger(GlobalRiverProvider.class);
@@ -341,9 +341,9 @@ public class GlobalRiverProvider {
 
     /**
      * Return a copy of {@code elevation} with a ramp added that rises toward the padded-grid border:
-     * border pixels gain {@link #RAMP_HEIGHT}, decaying linearly to 0 at {@link #RAMP_WIDTH} pixels
-     * inward. This pushes steepest-descent flow inward so rivers terminate within the tile rather than
-     * spilling across its borders. <b>Ocean pixels ({@code elevation < 0}) are left untouched</b>: the
+     * border pixels gain {@link #RAMP_HEIGHT}, decaying linearly to 0 at {@link HydrologyTuning#RAMP_WIDTH}
+     * pixels inward. This pushes steepest-descent flow inward so rivers terminate within the tile rather
+     * than spilling across its borders. <b>Ocean pixels ({@code elevation < 0}) are left untouched</b>: the
      * ocean is already a natural border, so flow is allowed to exit the tile through it. The central
      * 64×64 region is left untouched (real elevation).
      */
@@ -354,9 +354,11 @@ public class GlobalRiverProvider {
                 final int idx = pi * PADDED_SIDE + pj;
                 final int distanceToBorder =
                         Math.min(Math.min(pi, pj), Math.min(PADDED_SIDE - 1 - pi, PADDED_SIDE - 1 - pj));
-                if (distanceToBorder >= RAMP_WIDTH) continue;
+                if (distanceToBorder >= HydrologyTuning.RAMP_WIDTH) continue;
                 if (elevation[idx] < 0) continue; // ocean acts as a natural border — don't raise it.
-                ramped[idx] += RAMP_HEIGHT * (RAMP_WIDTH - distanceToBorder) / (float) RAMP_WIDTH;
+                ramped[idx] += RAMP_HEIGHT
+                        * (HydrologyTuning.RAMP_WIDTH - distanceToBorder)
+                        / (float) HydrologyTuning.RAMP_WIDTH;
             }
         }
         return ramped;

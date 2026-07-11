@@ -2,6 +2,7 @@ package me.batata_1.fractal_terrain.debug.tests;
 
 import java.util.ArrayList;
 import java.util.List;
+import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
 import me.batata_1.fractal_terrain.hydrology.meanders.Endpoint;
@@ -143,7 +144,7 @@ public class MeandersTest {
         // reSample appends getMaxT() after its sampling loop, which can leave a single benign
         // coincident point at the tail (a known baseline artifact), so near-zero spacings are
         // tolerated; the meaningful guarantee is that no gap exceeds 2*DX.
-        double lo = 0.5 * Meanders.DX, hi = 2.0 * Meanders.DX;
+        double lo = 0.5 * HydrologyTuning.DX, hi = 2.0 * HydrologyTuning.DX;
         for (int i = 1; i < m; i++) {
             double dx = result.get(i)[0] - result.get(i - 1)[0];
             double dz = result.get(i)[1] - result.get(i - 1)[1];

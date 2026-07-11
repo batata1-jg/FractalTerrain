@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.function.Consumer;
+import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
@@ -32,16 +33,8 @@ public final class Meanders {
     private static final double K = 0.0164; // aumentar esse faz curvar pra traz
     private static final double FRICTION = 0.011; // diminue a
     private static final double DT = 1;
-    public static final double DX = 1.5;
     /** max per-step displacement for the valley-seeking migration. */
-    private static final double MAX_GRAD_MIGRATION = 2 * DX;
-
-    /**
-     * Width of the border margin band kept clear of the grid edge, as a multiple of channel width. An
-     * independent margin factor (deliberately wider than {@code FractalTerrainConfig.riverInfluence}) so a
-     * channel's whole carve band stays inside the grid.
-     */
-    private static final double MARGIN_INFLUENCE_FACTOR = 5.0;
+    private static final double MAX_GRAD_MIGRATION = 2 * HydrologyTuning.DX;
 
     /** When true, step()/manageCollisions() dump per-stage network PNGs into step_&lt;n&gt;/ folders. */
     public static boolean DEBUG_STEPS = false;
@@ -77,7 +70,8 @@ public final class Meanders {
         this.gradX = gradX;
         this.gradZ = gradZ;
         this.maxMigrationMagnetude = INF;
-        this.network = new RiverNetwork(gridSize, nodeSpecs, edgeSpecs, savePreviousStates, maxSavedStates, DX);
+        this.network = new RiverNetwork(
+                gridSize, nodeSpecs, edgeSpecs, savePreviousStates, maxSavedStates, HydrologyTuning.DX);
     }
 
     /** The mutated river network (for conversion / inspection). */
@@ -109,7 +103,7 @@ public final class Meanders {
         network.beginStep();
         dumpNetwork("00_original");
         for (Channel ch : network.getChannels()) {
-            ch.reSample(DX);
+            ch.reSample(HydrologyTuning.DX);
             ch.spline = QuinticHermiteSpline.createCatmullRom(ch.spline.points());
             migrate.accept(ch);
             ch.reSample(Math.sqrt(ch.width));
@@ -120,7 +114,7 @@ public final class Meanders {
         network.manageCollisions(i);
         dumpNetwork("04_managed");
         for (Channel ch : network.getChannels()) {
-            ch.reSample(DX);
+            ch.reSample(HydrologyTuning.DX);
             ch.spline = QuinticHermiteSpline.createCatmullRom(ch.spline.points());
         }
         dumpNetwork("05_final");
@@ -147,7 +141,7 @@ public final class Meanders {
         Debug.isNan(localRates);
         final double sigmaToTheMinus2over3 = Math.pow(sinuosity, -TWO_THIRDS);
         final double alpha = 2 * FRICTION / ch.depth;
-        final double expTerm = Math.exp(-alpha * DX);
+        final double expTerm = Math.exp(-alpha * HydrologyTuning.DX);
         double integralTerm = 0;
         final double[] migRates = new double[ch.spline.points().size()];
         for (int i = 0; i < ch.spline.points().size(); i++) {
@@ -211,15 +205,15 @@ public final class Meanders {
 
     /**
      * Multiplier in {@code [0, 1]} that fades a migration vector to zero as a point nears the grid border,
-     * so interior points never wander into the margin band. The band is {@code MARGIN_INFLUENCE_FACTOR ×
-     * width} wide, so wider channels are confined further from the edge — keeping their whole carve band
+     * so interior points never wander into the margin band. The band is
+     * {@code HydrologyTuning.MARGIN_INFLUENCE_FACTOR × width} wide, so wider channels are confined further from the edge — keeping their whole carve band
      * inside the grid. An inner padding of the same {@code margin} width sits flush against the border where
      * damping is hard-zero (the channel never migrates there); beyond it the multiplier ramps from 0 to 1
      * over another {@code margin}. Channel endpoints (sources/drains/junctions) are pinned by the callers, so
      * only they are allowed to sit near the border.
      */
     private double borderDamping(double x, double z, double width) {
-        final double margin = MARGIN_INFLUENCE_FACTOR * width;
+        final double margin = HydrologyTuning.MARGIN_INFLUENCE_FACTOR * width;
         if (margin <= 0) return 1.0;
         final double distToBorder = Math.min(Math.min(x, z), Math.min(gridSize - 1 - x, gridSize - 1 - z));
         // Inner padding [0, margin]: hard-zero. Beyond it, ramp 0→1 over the next margin.

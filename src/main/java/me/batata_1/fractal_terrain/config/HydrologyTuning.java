@@ -22,6 +22,34 @@ public final class HydrologyTuning {
     public static final int BINARY_SEARCH_MAX_STEPS = 20;
 
     // ──────────────────────────────────────────────────────────────────────────
+    // Border / sampling constants consolidated from GlobalRiverProvider, LocalRiverProvider, and
+    // Meanders (one home per concept; values unchanged from their prior per-class declarations).
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Halo width (coarse px) over which {@code GlobalRiverProvider}'s isolate ramp rises toward the tile
+     * border; also that provider's padding halo (equal to the ramp width).
+     */
+    public static final int RAMP_WIDTH = 6;
+
+    /** Sink-fill border-blend padding (native px) used by {@code LocalRiverProvider}'s tile carve. */
+    public static final int FILL_PADDING = 64;
+
+    /** Resample spacing (native px) for a freshly traced local channel, in {@code LocalRiverProvider}. */
+    public static final double RESAMPLE_DIST = 2.0;
+
+    /** Meander-simulation resample/migration step (native px), shared by {@code Meanders} and callers
+     *  that need to reason about its point spacing (debug visualizers, tests). */
+    public static final double DX = 1.5;
+
+    /**
+     * Width of the border margin band {@code Meanders} keeps clear of the grid edge, as a multiple of
+     * channel width. An independent margin factor (deliberately wider than {@link #riverInfluence}) so a
+     * channel's whole carve band stays inside the grid.
+     */
+    public static final double MARGIN_INFLUENCE_FACTOR = 5.0;
+
+    // ──────────────────────────────────────────────────────────────────────────
     // Hydrology — river width & carve-profile tuning (all property-overridable).
     // ──────────────────────────────────────────────────────────────────────────
 

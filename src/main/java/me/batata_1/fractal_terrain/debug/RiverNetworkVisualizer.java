@@ -10,6 +10,7 @@ import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.List;
 import javax.imageio.ImageIO;
+import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.meanders.*;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.CoordPoint;
@@ -33,9 +34,9 @@ public class RiverNetworkVisualizer {
         float[] splinePointGrid = new float[gridSize * gridSize]; // green
         float[] migPointGrid = new float[gridSize * gridSize]; // red
 
-        final double samplingDist = Meanders.DX;
+        final double samplingDist = HydrologyTuning.DX;
         final double[] curPt = new double[2];
-        final double detectDist = Meanders.DX;
+        final double detectDist = HydrologyTuning.DX;
         final List<CoordPoint> treePoints = new ArrayList<>();
 
         for (Channel c : meanders.getChannels()) {
