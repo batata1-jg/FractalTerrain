@@ -679,7 +679,7 @@ public final class RiverNetwork {
             final double[] nrm = resampled.normal(i);
             out.add(new HydrologicalUnit(
                     type,
-                    //TODO: change this to the correct type
+                    // TODO: change this to the correct type
                     HydrologicalUnit.RosgenType.A,
                     new double[] {p[0] - offsetX, p[1] - offsetZ},
                     new double[] {nrm[0], nrm[1]},

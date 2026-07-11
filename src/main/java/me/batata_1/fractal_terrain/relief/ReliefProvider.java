@@ -94,7 +94,7 @@ public class ReliefProvider {
             for (int iz = 0; iz < INNER; iz++) {
                 final int paddedIndex = (DOG_PAD + ix) * DOG_PADDED + (DOG_PAD + iz);
                 final int innerIndex = ix * INNER + iz;
-               // entries[innerIndex] = carved.data[innerIndex];// ch0
+                // entries[innerIndex] = carved.data[innerIndex];// ch0
                 entries[innerIndex] = base[0][paddedIndex];
                 entries[1 * pixels + innerIndex] = base[1][paddedIndex]; // blurredElev
                 entries[2 * pixels + innerIndex] = base[2][paddedIndex]; // gradX

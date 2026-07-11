@@ -1,10 +1,7 @@
 package me.batata_1.fractal_terrain.hydrology.profile;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
-
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;

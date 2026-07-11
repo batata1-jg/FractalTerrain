@@ -98,10 +98,17 @@ public record HydrologicalUnit(
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof HydrologicalUnit(
-                HydrologicalFeature type1, RosgenType rosgenType1, double[] coord1, double[] normal1, double width1,
-                double elevation1, int time1, int id1
-        ))) return false;
+        if (!(o
+                instanceof
+                HydrologicalUnit(
+                        HydrologicalFeature type1,
+                        RosgenType rosgenType1,
+                        double[] coord1,
+                        double[] normal1,
+                        double width1,
+                        double elevation1,
+                        int time1,
+                        int id1))) return false;
         return type == type1
                 && rosgenType == rosgenType1
                 && Arrays.equals(coord, coord1)

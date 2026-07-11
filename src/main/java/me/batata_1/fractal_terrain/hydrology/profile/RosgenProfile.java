@@ -60,7 +60,6 @@ public enum RosgenProfile {
         public double floodPlainLength(double width) {
             return 1 + 1.2 * width;
         }
-
     },
     B,
     C,

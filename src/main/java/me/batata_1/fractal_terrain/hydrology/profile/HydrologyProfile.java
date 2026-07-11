@@ -44,7 +44,7 @@ public final class HydrologyProfile {
         }
 
         final double referenceElev = decodedElevAtUnit;
-        //Math.min(unit.elevation() + 62, decodedElevAtUnit);
+        // Math.min(unit.elevation() + 62, decodedElevAtUnit);
         final RosgenType type = unit.rosgenType() == null ? RosgenType.A : unit.rosgenType();
         final double delta =
                 RosgenProfile.of(type).elevationDelta(projectedDist, unit.width(), decodedElevAtPixel - referenceElev);
