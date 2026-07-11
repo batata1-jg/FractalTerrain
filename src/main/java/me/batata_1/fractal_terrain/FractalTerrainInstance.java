@@ -2,7 +2,6 @@ package me.batata_1.fractal_terrain;
 
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
-import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import me.batata_1.fractal_terrain.debug.Infinite3DVisualizer;
@@ -13,78 +12,37 @@ import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfilePainter;
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import me.batata_1.fractal_terrain.ml.pipeline.WorldPipeline;
-import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
 import me.batata_1.fractal_terrain.relief.ReliefProvider;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmapCache;
 import me.batata_1.fractal_terrain.world.biome.BiomeProvider;
-import me.batata_1.fractal_terrain.world.gen.chunk.FractalTerrainChunkGenerator;
 import me.batata_1.fractal_terrain.world.gen.populatenoise.PopulateNoiseStep;
 import me.batata_1.fractal_terrain.world.gen.surfacebuilder.FractalTerrainSurfaceSystem;
-import net.minecraft.core.RegistryAccess;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.levelgen.RandomState;
-import net.minecraft.world.level.storage.LevelResource;
 import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 
+/**
+ * Thin static adapter over the current {@link GenerationContext} (keystone M-008).
+ *
+ * <p>The per-world provider graph now lives in {@link GenerationContext}; this class holds the current one
+ * behind a {@code volatile CompletableFuture} and forwards its historical static getters to it, so the ~46
+ * existing {@code FractalTerrainInstance.getX()} reach-throughs keep working unchanged while callers are
+ * migrated package-by-package to hold an injected {@link GenerationContext} directly. The shared
+ * {@link WorldPipeline} (loaded once per JVM) stays here since it outlives individual worlds.
+ */
 public class FractalTerrainInstance {
 
     private static final Logger LOG = getLogger(FractalTerrainInstance.class);
     public static volatile WorldPipeline pipeline;
 
-    private static volatile CompletableFuture<FractalTerrainInstance> instance = new CompletableFuture<>();
-
-    private final MinecraftServer curServer;
-    private final ReliefProvider reliefSource;
-    private final BiomeProvider biomeProvider;
-    private final GlobalRiverProvider globalRiverProvider;
-    private final LocalRiverProvider localRiverProvider;
-    private final HydrologyProfileCarver hydrologyCarver;
-    private final HydrologyProfilePainter hydrologyPainter;
-    private final PopulateNoiseStep populateNoiseStep;
-    private final FractalTerrainSurfaceSystem surfaceBuilder;
-    private final FractalTerrainHeightmapCache heightmapCache;
-    private final RandomState noiseConfig;
-    private final Infinite3DVisualizer viz;
-
-    private FractalTerrainInstance(MinecraftServer server) {
-        this.curServer = server;
-        final Path worldPath = server.getWorldPath(LevelResource.ROOT).normalize();
-        // Build order mirrors the dependency graph: global → local → relief → biome.
-        this.globalRiverProvider = new GlobalRiverProvider(worldPath + "/fractal_terrain");
-        this.localRiverProvider = new LocalRiverProvider(worldPath + "/fractal_terrain");
-        this.hydrologyCarver = new HydrologyProfileCarver(this.localRiverProvider);
-        this.hydrologyPainter = new HydrologyProfilePainter(this.localRiverProvider);
-        this.reliefSource = new ReliefProvider(worldPath + "/fractal_terrain");
-        this.biomeProvider = new BiomeProvider(worldPath + "/fractal_terrain");
-        final long seed = server.getWorldData().worldGenOptions().seed();
-        final ServerLevel world = server.overworld();
-        final RegistryAccess dynamicRegistryManager = world.registryAccess();
-        final FractalTerrainChunkGenerator chunkGenerator =
-                (FractalTerrainChunkGenerator) world.getChunkSource().getGenerator();
-        this.populateNoiseStep =
-                new PopulateNoiseStep(chunkGenerator.getSettings().value());
-        this.heightmapCache = new FractalTerrainHeightmapCache(world.getChunkSource());
-        this.noiseConfig = RandomState.create(
-                chunkGenerator.getSettings().value(), dynamicRegistryManager.lookupOrThrow(Registries.NOISE), seed);
-        pipeline.updateInstance(seed, worldPath + "/fractal_terrain");
-        OctaveSimplexNoiseSampler.init(seed);
-        // LOG.info("chunk Generator settings: {}", chunkGenerator.getSettings().value());
-
-        RegistryAccess registryAccess = server.registryAccess();
-        surfaceBuilder = new FractalTerrainSurfaceSystem(
-                this.noiseConfig,
-                Blocks.STONE.defaultBlockState(),
-                63,
-                this.noiseConfig.random,
-                chunkGenerator.getSettings().value().surfaceRule());
-        LOG.info("fractal terrain instance created");
-        if (FractalTerrainConfig.DISABLE_3D_VISUALIZER) viz = null;
-        else viz = new Infinite3DVisualizer();
-    }
+    /**
+     * The current world's context. {@code volatile}, and completed with a fully-constructed
+     * {@link GenerationContext}; {@code get()} gives readers a happens-before edge with {@code complete()},
+     * so a worker never observes a partially-built or null context. Reset to a fresh incomplete future on
+     * {@link #close()} so a subsequent load re-publishes cleanly.
+     */
+    private static volatile CompletableFuture<GenerationContext> context = new CompletableFuture<>();
 
     /**
      * Loads the terrain-diffusion models and constructs the shared {@link WorldPipeline}, if not already
@@ -107,74 +65,71 @@ public class FractalTerrainInstance {
             return;
         }
         initPipeline();
-        instance.complete(new FractalTerrainInstance(server));
+        context.complete(new GenerationContext(server, pipeline, LOG));
     }
 
     public static synchronized void close() {
         if (!exists()) return;
-        getInstance().biomeProvider.getInfiniteTensor().clear();
-        getInstance().reliefSource.getInfiniteTensor().clear();
-        getInstance().globalRiverProvider.getInfiniteTensor().clear();
-        getInstance().localRiverProvider.clearCaches();
-        getInstance().heightmapCache.clear();
-        instance = new CompletableFuture<>();
+        current().clearCaches();
+        context = new CompletableFuture<>();
         LOG.info("fractal terrain instance closed");
     }
 
-    public static FractalTerrainInstance getInstance() {
+    /** The current world's context, blocking until {@link #init} has published it. */
+    private static GenerationContext current() {
         try {
-            return instance.get();
+            return context.get();
         } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException(e);
         }
     }
 
+    public static boolean exists() {
+        return context.isDone();
+    }
+
     public static PopulateNoiseStep getPopulateNoiseStep() {
-        return getInstance().populateNoiseStep;
+        return current().getPopulateNoiseStep();
     }
 
     public static ReliefProvider getReliefProvider() {
-        return getInstance().reliefSource;
+        return current().getReliefProvider();
     }
 
     public static MinecraftServer getServer() {
-        return getInstance().curServer;
+        return current().getServer();
     }
 
     public static BiomeProvider getBiomeProvider() {
-        return getInstance().biomeProvider;
+        return current().getBiomeProvider();
     }
 
     public static FractalTerrainSurfaceSystem getSurfaceBuilder() {
-        return getInstance().surfaceBuilder;
+        return current().getSurfaceBuilder();
     }
 
     public static FractalTerrainHeightmapCache getHeightmapCache() {
-        return getInstance().heightmapCache;
-    }
-
-    public static boolean exists() {
-        return instance.isDone();
+        return current().getHeightmapCache();
     }
 
     public static RandomState getNoiseConfig() {
-        return getInstance().noiseConfig;
+        return current().getNoiseConfig();
     }
 
     public static GlobalRiverProvider getGlobalRiverProvider() {
-        return getInstance().globalRiverProvider;
+        return current().getGlobalRiverProvider();
     }
 
     public static LocalRiverProvider getLocalRiverProvider() {
-        return getInstance().localRiverProvider;
+        return current().getLocalRiverProvider();
     }
 
     public static HydrologyProfileCarver getHydrologyCarver() {
-        return getInstance().hydrologyCarver;
+        return current().getHydrologyCarver();
     }
 
     public static HydrologyProfilePainter getHydrologyPainter() {
-        return getInstance().hydrologyPainter;
+        return current().getHydrologyPainter();
     }
 
     /**
@@ -185,16 +140,16 @@ public class FractalTerrainInstance {
      */
     @TestOnly
     public static void dumpDebugStages(int tileX, int tileZ) {
-        final FractalTerrainInstance inst = getInstance();
+        final GenerationContext ctx = current();
         final String root = FractalTerrainConfig.DEFAULT_DEBUG_PATH + "/instance";
         LOG.info("dumping instance debug stages for tile ({},{}) to {}", tileX, tileZ, root);
         InstanceStageDumper.dump(
-                root, tileX, tileZ, inst.globalRiverProvider, inst.localRiverProvider, inst.reliefSource);
+                root, tileX, tileZ, ctx.getGlobalRiverProvider(), ctx.getLocalRiverProvider(), ctx.getReliefProvider());
         LOG.info("instance debug stages dumped to {}", root);
     }
 
     @TestOnly
     public static Infinite3DVisualizer getInfinite3DVisualizer() {
-        return getInstance().viz;
+        return current().getInfinite3DVisualizer();
     }
 }
