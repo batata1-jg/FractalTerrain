@@ -55,7 +55,7 @@ fabricApi {
 }
 
 repositories {
-//    mavenCentral()
+    mavenCentral()
     maven { url = 'https://maven.minecraftforge.net/' }
     flatDir { dirs 'libs/onnxruntime' }
 }
@@ -72,6 +72,16 @@ dependencies {
 
     implementation(files("libs/onnxruntime/teste.jar"))
     include name: 'teste'
+
+    // Headless JUnit 5 golden-test gate for the deterministic hydrology layers (M-004). Test-only —
+    // does not touch the mod jar / runClient / the manual JavaExec harnesses below.
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
 }
 
 
