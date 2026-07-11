@@ -174,9 +174,21 @@ public class GlobalRiverProvider {
         final int tileOriginCx = tx * TILE_SIZE;
         final int tileOriginCz = tz * TILE_SIZE;
 
-        // 1. slice: padded, weight-normalized coarse elevation.
+        // 1. slice: padded, weight-normalized coarse elevation — the ONLY pipeline-sourced input.
         final float[] elevation = paddedElevation(tileOriginCx, tileOriginCz);
 
+        return computeTileFromElevation(elevation, tileOriginCx, tileOriginCz, stages);
+    }
+
+    /**
+     * The deterministic per-tile pipeline (steps 2–7) over an already-materialized padded elevation
+     * field — the single pipeline-sourced input {@link #computeTile} fetches via {@link #paddedElevation}.
+     * Factored out so the network build is exercisable headlessly (see {@code GlobalRiverGoldenTest}) over
+     * a synthetic seeded elevation grid of length {@code PADDED_SIDE*PADDED_SIDE}, without the ~1 GB ONNX
+     * diffusion pipeline. Production {@link #computeTile} delegates here unchanged, so behavior is identical.
+     */
+    private FloatTensor computeTileFromElevation(
+            float[] elevation, int tileOriginCx, int tileOriginCz, @Nullable Stages stages) {
         // 2. threshold on the RAW elevation (so the coast stays anchored to true elevation).
         final boolean[][] ridgeMask = new boolean[PADDED_SIDE][PADDED_SIDE];
         final boolean[][] lowerMask = new boolean[PADDED_SIDE][PADDED_SIDE];
@@ -425,6 +437,23 @@ public class GlobalRiverProvider {
         final Stages stages = new Stages();
         computeTile(tx, tz, stages);
         return stages;
+    }
+
+    /** Padded working-grid side ({@code TILE_SIZE + 2*PAD}); a headless golden test sizes its synthetic
+     *  elevation fixture as {@code paddedSideForTest()²}. */
+    @TestOnly
+    public static int paddedSideForTest() {
+        return PADDED_SIDE;
+    }
+
+    /**
+     * Headless seam for {@code GlobalRiverGoldenTest}: run the deterministic tile pipeline over a supplied
+     * padded elevation grid ({@code paddedSideForTest()²} floats) with no pipeline dependency, and return
+     * the packed {@code [GLOBAL_RIVER_CHANNELS,64,64]} result tile. Delegates to the exact production path.
+     */
+    @TestOnly
+    public FloatTensor computeTileForTest(float[] paddedElevation) {
+        return computeTileFromElevation(paddedElevation, 0, 0, null);
     }
 
     /** Snapshot of every intermediate artifact produced while building a single tile. */

@@ -100,6 +100,27 @@ public class LocalRiverProvider {
         this.globalRiverOverride = provider;
     }
 
+    /** Inner (unpadded) tile side; a headless golden test sizes its synthetic fixtures as
+     *  {@code gridSizeForTest()²}. */
+    @TestOnly
+    public static int gridSizeForTest() {
+        return GRID;
+    }
+
+    /**
+     * Headless seam for {@code LocalRiverGoldenTest}: run the local-network trace — the deterministic core
+     * unique to this provider (flow accumulation → reach test → segment walk → channel build) — over a
+     * supplied {@code GRID*GRID} drainage/elevation pair and global-river mask, with no pipeline
+     * dependency. In production the drainage and elevation originate from the ONNX-decoded terrain
+     * (via {@link me.batata_1.fractal_terrain.relief.DecoderChannels#decode}); a golden test instead feeds
+     * a synthetic seeded elevation field and its {@code PipelinePreprocessing}-computed drainage. Delegates
+     * to the exact production {@link #traceLocalNetwork} path.
+     */
+    @TestOnly
+    public List<Channel> traceLocalNetworkForTest(int[] drainage, float[] elev, boolean[] globalMask) {
+        return traceLocalNetwork(drainage, elev, globalMask, null);
+    }
+
     private GlobalRiverProvider globalRiverProvider() {
         return (globalRiverOverride != null) ? globalRiverOverride : FractalTerrainInstance.getGlobalRiverProvider();
     }
