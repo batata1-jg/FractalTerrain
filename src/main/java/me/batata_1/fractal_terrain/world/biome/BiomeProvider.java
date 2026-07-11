@@ -359,7 +359,7 @@ public class BiomeProvider {
     /**
      * Erosion density that nudges values out of vanilla's shattered band (erosion level 5,
      * ≈0.45–0.55) until shattered biomes are handled. See {@code worldgeneration101.md}
-     * ("Shattered biomes") and {@link ClimateVariableTransform#isShatteredErosion}.
+     * ("Shattered biomes") and {@link BiomeParameterClassifier#isShatteredErosion}.
      */
     private static class ErosionDensity implements DensityFunction.SimpleFunction {
 
