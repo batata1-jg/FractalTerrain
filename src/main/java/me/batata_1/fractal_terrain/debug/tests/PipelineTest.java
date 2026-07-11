@@ -1,8 +1,12 @@
 package me.batata_1.fractal_terrain.debug.tests;
 
 import java.util.concurrent.atomic.AtomicLong;
+import me.batata_1.fractal_terrain.debug.Debug;
+import org.slf4j.Logger;
 
 public class PipelineTest {
+
+    private static final Logger LOG = Debug.getLogger(PipelineTest.class);
 
     private static long getProcessGpuMemMB() {
         long pid = ProcessHandle.current().pid();
@@ -51,8 +55,7 @@ public class PipelineTest {
         int blockEndX = blockStartX + TILE_SIZE;
         int blockEndZ = blockStartZ + TILE_SIZE;
 
-        System.out.printf(
-                "blockStart: X=%d Z=%d  blockEnd: X=%d Z=%d%n", blockStartX, blockStartZ, blockEndX, blockEndZ);
+        LOG.info("blockStart: X={} Z={}  blockEnd: X={} Z={}", blockStartX, blockStartZ, blockEndX, blockEndZ);
 
         int i1n = Math.floorDiv(blockStartZ, scale);
         int j1n = Math.floorDiv(blockStartX, scale);
@@ -62,10 +65,10 @@ public class PipelineTest {
         int i2p = i2n + 2, j2p = j2n + 2;
         int nH = i2p - i1p, nW = j2p - j1p;
 
-        System.out.printf("Native range: i=[%d,%d) j=[%d,%d) nH=%d nW=%d%n", i1p, i2p, j1p, j2p, nH, nW);
+        LOG.info("Native range: i=[{},{}) j=[{},{}) nH={} nW={}", i1p, i2p, j1p, j2p, nH, nW);
 
         long baselineTotal = getTotalGpuMemUsedMB();
-        System.out.printf("Baseline total GPU memory: %d MB%n", baselineTotal);
+        LOG.info("Baseline total GPU memory: {} MB", baselineTotal);
 
         AtomicLong peakProcessMB = new AtomicLong(0);
         AtomicLong peakTotalMB = new AtomicLong(baselineTotal < 0 ? 0 : baselineTotal);
@@ -94,20 +97,20 @@ public class PipelineTest {
         long peakTotal = peakTotalMB.get();
         long delta = baselineTotal >= 0 ? peakTotal - baselineTotal : -1;
 
-        System.out.println("=== VRAM Report ===");
-        System.out.printf("Baseline total GPU:     %d MB%n", baselineTotal);
-        System.out.printf("Peak total GPU:         %d MB%n", peakTotal);
-        System.out.printf("Pipeline delta (total): %d MB%n", delta);
-        System.out.printf("Peak process-specific:  %d MB%n", peakProc);
+        LOG.info("=== VRAM Report ===");
+        LOG.info("Baseline total GPU:     {} MB", baselineTotal);
+        LOG.info("Peak total GPU:         {} MB", peakTotal);
+        LOG.info("Pipeline delta (total): {} MB", delta);
+        LOG.info("Peak process-specific:  {} MB", peakProc);
 
         long reportedMB = peakProc > 0 ? peakProc : delta;
         if (reportedMB > 2500) {
-            System.err.printf("FAIL: pipeline VRAM %d MB exceeds 2500 MB limit%n", reportedMB);
+            LOG.error("FAIL: pipeline VRAM {} MB exceeds 2500 MB limit", reportedMB);
             System.exit(1);
         } else if (reportedMB >= 0) {
-            System.out.printf("PASS: pipeline VRAM %d MB is within 2500 MB limit%n", reportedMB);
+            LOG.info("PASS: pipeline VRAM {} MB is within 2500 MB limit", reportedMB);
         } else {
-            System.out.println("VRAM measurement unavailable (nvidia-smi not found)");
+            LOG.info("VRAM measurement unavailable (nvidia-smi not found)");
         }
     }
 }

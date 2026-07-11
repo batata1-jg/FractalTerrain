@@ -102,7 +102,7 @@ public class TensorVisualizer {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-        System.out.println("end");
+        DEBUG_LOGGER.info("end");
     }
 
     public void see(FloatTensor tl, String name, String debugPath) {
@@ -253,6 +253,6 @@ public class TensorVisualizer {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-        System.out.println("end");
+        DEBUG_LOGGER.info("end");
     }
 }

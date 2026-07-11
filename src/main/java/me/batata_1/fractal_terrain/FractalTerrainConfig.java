@@ -1,328 +1,132 @@
 package me.batata_1.fractal_terrain;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Properties;
+import me.batata_1.fractal_terrain.config.DebugConfig;
+import me.batata_1.fractal_terrain.config.HydrologyTuning;
+import me.batata_1.fractal_terrain.config.ModConfig;
+import me.batata_1.fractal_terrain.config.TensorLayout;
 import me.batata_1.fractal_terrain.debug.Infinite3DVisualizer;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
-import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
-import net.fabricmc.loader.api.FabricLoader;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
+/**
+ * Thin delegating facade over the {@code config} package: re-exports {@link TensorLayout}, {@link
+ * DebugConfig}, {@link HydrologyTuning}, and {@link ModConfig} under their original names so existing
+ * callers keep compiling unchanged. New code should reference the owning class in {@code config}
+ * directly.
+ */
 public record FractalTerrainConfig() {
 
-    public static final float GLOBAL_SCALE_CORRECTION = 5f;
+    public static final float GLOBAL_SCALE_CORRECTION = ModConfig.GLOBAL_SCALE_CORRECTION;
 
     // ──────────────────────────────────────────────────────────────────────────
-    // Algorithm tuning
+    // Algorithm tuning — see HydrologyTuning
     // ──────────────────────────────────────────────────────────────────────────
 
-    /** Hard cap on spline resampling iterations, guarding against runaway geometry. */
-    public static final int MAX_SPLINE_LENGTH = (int) 1e4;
-    /** Iteration cap for the spline arc-length binary search. */
-    public static final int BINARY_SEARCH_MAX_STEPS = 20;
+    public static final int MAX_SPLINE_LENGTH = HydrologyTuning.MAX_SPLINE_LENGTH;
+    public static final int BINARY_SEARCH_MAX_STEPS = HydrologyTuning.BINARY_SEARCH_MAX_STEPS;
 
     // ──────────────────────────────────────────────────────────────────────────
-    // Tensor layout (axis indices and per-stage channel counts)
+    // Tensor layout — see TensorLayout
     // ──────────────────────────────────────────────────────────────────────────
 
-    /** Tensor axis indices for {@code [channel, x, z]} tile keys. */
-    public static final int CH = 0;
+    public static final int CH = TensorLayout.CH;
+    public static final int X = TensorLayout.X;
+    public static final int Z = TensorLayout.Z;
 
-    public static final int X = 1;
-    public static final int Z = 2;
-
-    /** Channel counts per pipeline stage. */
-    public static final int DECODER_CHANNELS = 8;
-
-    public static final int RELIEF_CHANNELS = 7;
-    public static final int BIOME_CHANNELS = 6;
-    public static final int GLOBAL_RIVER_CHANNELS = 3;
+    public static final int DECODER_CHANNELS = TensorLayout.DECODER_CHANNELS;
+    public static final int RELIEF_CHANNELS = TensorLayout.RELIEF_CHANNELS;
+    public static final int BIOME_CHANNELS = TensorLayout.BIOME_CHANNELS;
+    public static final int GLOBAL_RIVER_CHANNELS = TensorLayout.GLOBAL_RIVER_CHANNELS;
 
     // ──────────────────────────────────────────────────────────────────────────
-    // Debug flags & logging
+    // Debug flags & logging — see DebugConfig
     // ──────────────────────────────────────────────────────────────────────────
 
-    public static final String DEFAULT_DEBUG_PATH = "run/debug";
-    public static final boolean DEBUG = false;
-    public static final boolean TEST_INSTANCE = false;
-    public static final boolean DEBUG_RIVER_NET = false;
-    public static final boolean DEBUG_MANAGE_COLLISIONS = false;
-    public static final boolean DEBUG_CROSSING_WINNER = false;
-
-    /** Logs every distance-to-shore grid cell (coarse-px coordinate + value) as a biome tile is built. */
-    public static final boolean DEBUG_DSHORE = false;
+    public static final String DEFAULT_DEBUG_PATH = DebugConfig.DEFAULT_DEBUG_PATH;
+    public static final boolean DEBUG = DebugConfig.DEBUG;
+    public static final boolean TEST_INSTANCE = DebugConfig.TEST_INSTANCE;
+    public static final boolean DEBUG_RIVER_NET = DebugConfig.DEBUG_RIVER_NET;
+    public static final boolean DEBUG_MANAGE_COLLISIONS = DebugConfig.DEBUG_MANAGE_COLLISIONS;
+    public static final boolean DEBUG_CROSSING_WINNER = DebugConfig.DEBUG_CROSSING_WINNER;
+    public static final boolean DEBUG_DSHORE = DebugConfig.DEBUG_DSHORE;
 
     // ──────────────────────────────────────────────────────────────────────────
-    // 3D visualizer (debug terrain projection — see Infinite3DVisualizer)
+    // 3D visualizer — see DebugConfig
     // ──────────────────────────────────────────────────────────────────────────
 
-    public static final boolean DISABLE_3D_VISUALIZER = true;
-
-    /**
-     * Drives the elevation each visualizer column is raised to ({@link Infinite3DVisualizer#debugElevController}).
-     * Available {@link Infinite3DVisualizer.DebugModes}:
-     * <ul>
-     *   <li>{@code RELIEF} — decoded relief elevation channel.</li>
-     *   <li>{@code COARSE} — coarse-stage elevation channel.</li>
-     * </ul>
-     */
-    public static final Infinite3DVisualizer.DebugModes VIZ_H_CONTROL_MODE = Infinite3DVisualizer.DebugModes.RELIEF;
-
-    /**
-     * Drives the block painted at each visualizer position ({@link Infinite3DVisualizer#debugPaintController}).
-     * Available {@link Infinite3DVisualizer.DebugPaintModes}:
-     * <ul>
-     *   <li>{@code RIVER_NET} — global/local river + coast markers.</li>
-     *   <li>{@code PV} — peaks-and-valleys bands quantized from biome weirdness.</li>
-     * </ul>
-     */
+    public static final boolean DISABLE_3D_VISUALIZER = DebugConfig.DISABLE_3D_VISUALIZER;
+    public static final Infinite3DVisualizer.DebugModes VIZ_H_CONTROL_MODE = DebugConfig.VIZ_H_CONTROL_MODE;
     public static final Infinite3DVisualizer.DebugPaintModes VIZ_PAINT_CONTROL_MODE =
-            Infinite3DVisualizer.DebugPaintModes.RIVER_NET;
-
-    /** Generation steps suppressed while the visualizer is active. */
-    public static final boolean DISABLE_BIOME_DECORATION = true || !DISABLE_3D_VISUALIZER;
-
-    public static final boolean DISABLE_SURFACE_STEP = false || !DISABLE_3D_VISUALIZER;
-    public static final boolean TEST_HEIGHT_MAP = false;
+            DebugConfig.VIZ_PAINT_CONTROL_MODE;
+    public static final boolean DISABLE_BIOME_DECORATION = DebugConfig.DISABLE_BIOME_DECORATION;
+    public static final boolean DISABLE_SURFACE_STEP = DebugConfig.DISABLE_SURFACE_STEP;
+    public static final boolean TEST_HEIGHT_MAP = DebugConfig.TEST_HEIGHT_MAP;
 
     // ──────────────────────────────────────────────────────────────────────────
-    // Property-file config (defaults backing the readers below)
+    // Hydrology — river width & carve-profile tuning — see HydrologyTuning
     // ──────────────────────────────────────────────────────────────────────────
 
-    private static final Logger LOG = LoggerFactory.getLogger(FractalTerrainConfig.class);
-    private static final String FILE_NAME = "terrain-diffusion-mc.properties";
-    private static final String RESOURCE_PATH = "/" + FILE_NAME;
-    private static final Properties PROPERTIES = new Properties();
-    private static final String DEFAULT_INFERENCE_DEVICE = "gpu";
-    private static final boolean DEFAULT_OFFLOAD_MODELS = false;
-    private static final boolean DEFAULT_VALIDATE_MODEL = false;
-    private static final int DEFAULT_EXPLORER_PORT = 19801;
+    public static final double MIN_WIDTH = HydrologyTuning.MIN_WIDTH;
+    public static final double WIDTH_FLOW_SCALE = HydrologyTuning.WIDTH_FLOW_SCALE;
+    public static final double MAX_WIDTH = HydrologyTuning.MAX_WIDTH;
+    public static final double MAX_LOCAL_WIDTH = HydrologyTuning.MAX_LOCAL_WIDTH;
+    public static final double GLOBAL_WIDTH_COORD_SCALE = HydrologyTuning.GLOBAL_WIDTH_COORD_SCALE;
+    public static final double FLOODPLAIN_BASE = HydrologyTuning.FLOODPLAIN_BASE;
+    public static final double FLOODPLAIN_WIDTH_FACTOR = HydrologyTuning.FLOODPLAIN_WIDTH_FACTOR;
+    public static final double INFLUENCE_BLEND_MULTIPLIER = HydrologyTuning.INFLUENCE_BLEND_MULTIPLIER;
+    public static final double MAX_INFLUENCE_RADIUS = HydrologyTuning.MAX_INFLUENCE_RADIUS;
+    public static final double MAX_CARVE_DELTA = HydrologyTuning.MAX_CARVE_DELTA;
 
-    static {
-        loadDefaults();
-        Path configPath = resolveConfigPath();
-        if (configPath != null) {
-            loadOverrides(configPath);
-        }
-    }
-
-    // ──────────────────────────────────────────────────────────────────────────
-    // Hydrology — river width & carve-profile tuning (all property-overridable).
-    // Declared after the static block so PROPERTIES is already populated.
-    // ──────────────────────────────────────────────────────────────────────────
-
-    /** Floor on every river width, in native pixels. */
-    public static final double MIN_WIDTH = 0.2f;
-
-    /** Scale on {@code sqrt(flow)} shared by the global and local networks (see {@link #widthFromFlow}). */
-    public static final double WIDTH_FLOW_SCALE = 0.02f;
-
-    /**
-     * Cap on every river width <em>in the width-law frame</em> (the frame {@link #widthFromFlow}'s caller
-     * works in). Local channels call {@code widthFromFlow} directly in native px, so they are capped at
-     * {@code MAX_WIDTH} native px. Global rivers call it in the coarse frame and are rescaled by
-     * {@link #GLOBAL_WIDTH_COORD_SCALE} afterwards ({@code GlobalRiverProvider.globalRiverWidth}), so their
-     * native-px cap is {@code MAX_WIDTH * GLOBAL_WIDTH_COORD_SCALE} — see {@link #maxNativeWidth()}.
-     */
-    public static final double MAX_WIDTH = 16f;
-
-    public static final double MAX_LOCAL_WIDTH = 6f;
-
-    /**
-     * Multiplier applied to <em>global</em>-river widths only, converting their coarse-px flow widths into
-     * native px. (Local widths already come out in native px, so they use {@link #widthFromFlow} directly.)
-     */
-    public static final double GLOBAL_WIDTH_COORD_SCALE = 20f;
-
-    /**
-     * Floodplain half-extent (native px) = {@code FLOODPLAIN_BASE + FLOODPLAIN_WIDTH_FACTOR · width}. This
-     * is the <em>flat</em> band carved at floodplain elevation; the blend to decoded terrain starts only
-     * past it. Kept very tunable — a later plan adds noise to make this vary.
-     */
-    public static final double FLOODPLAIN_BASE = 0.6f;
-
-    public static final double FLOODPLAIN_WIDTH_FACTOR = 1.0f;
-
-    /** Width of the blend-to-decoded band beyond the floodplain (native px). */
-    public static final double INFLUENCE_BLEND_MULTIPLIER = 2.2f;
-
-    /**
-     * Hard cap (native px) on any river's influence radius — also the radius the cross-tile unit query
-     * uses. Bounds the per-pixel carve/paint work and the query span; rivers whose computed
-     * {@link #riverInfluence} would exceed this are clamped to it.
-     */
-    public static final double MAX_INFLUENCE_RADIUS = 64.0f;
-
-    /**
-     * Max {@code |intended bed − current terrain|} a pixel may carve — applies <em>only</em> to the
-     * tile-level pre-carve ({@code HydrologyProfileCarver.carveGlobalRivers}), not to the per-pixel
-     * refinement merge. A pixel beyond this delta is <em>uncarvable</em> and skipped (so the tile carve
-     * never gouges isolated holes or trenches); the hydrological units still record the intended bed
-     * elevation.
-     */
-    public static final double MAX_CARVE_DELTA = 100;
-
-    /**
-     * Floodplain half-extent for a river of the given width and Rosgen type (native px). Delegates to the
-     * type's {@link RosgenProfile#floodPlainLength} — the profile enum is the authority so extents can vary
-     * by type; {@link #FLOODPLAIN_BASE} / {@link #FLOODPLAIN_WIDTH_FACTOR} back its shared placeholder law.
-     */
+    /** @see HydrologyTuning#floodPlainLength(double, RosgenType) */
     public static double floodPlainLength(double width, RosgenType type) {
-        return RosgenProfile.of(type).floodPlainLength(width);
+        return HydrologyTuning.floodPlainLength(width, type);
     }
 
-    /** Floodplain half-extent for a typeless river (native px) — assumes {@link RosgenType#A}. */
+    /** @see HydrologyTuning#floodPlainLength(double) */
     public static double floodPlainLength(double width) {
-        return floodPlainLength(width, RosgenType.A);
+        return HydrologyTuning.floodPlainLength(width);
     }
 
-    /**
-     * Outer influence radius for a river of the given width and Rosgen type (native px): floodplain + blend
-     * band, clamped to {@link #MAX_INFLUENCE_RADIUS}. Beyond this radius a river no longer affects a pixel.
-     * Delegates to the type's {@link RosgenProfile#riverInfluence} so the radius can vary by type.
-     */
+    /** @see HydrologyTuning#riverInfluence(double, RosgenType) */
     public static double riverInfluence(double width, RosgenType type) {
-        return RosgenProfile.of(type).riverInfluence(width);
+        return HydrologyTuning.riverInfluence(width, type);
     }
 
-    /** Outer influence radius for a typeless river (native px) — assumes {@link RosgenType#A}. */
+    /** @see HydrologyTuning#riverInfluence(double) */
     public static double riverInfluence(double width) {
-        return riverInfluence(width, RosgenType.A);
+        return HydrologyTuning.riverInfluence(width);
     }
 
-    /**
-     * The single river-width law shared by the global and local networks:
-     * {@code clamp(WIDTH_FLOW_SCALE · log(max(1, rawFlow + 1)), MIN_WIDTH, MAX_WIDTH)}. Global callers
-     * additionally multiply the result by {@link #GLOBAL_WIDTH_COORD_SCALE} to convert coarse-px flow into
-     * native px — the {@link #MAX_WIDTH} cap applies <em>before</em> that rescale, so the global native-px
-     * ceiling is {@link #maxNativeWidth()}.
-     */
+    /** @see HydrologyTuning#widthFromFlow(double) */
     public static double widthFromFlow(double rawFlow) {
-        final double lawWidth = WIDTH_FLOW_SCALE * Math.log(Math.max(1.0, rawFlow + 1));
-        return Math.clamp(lawWidth, MIN_WIDTH, MAX_WIDTH);
+        return HydrologyTuning.widthFromFlow(rawFlow);
     }
 
-    /**
-     * The largest width (native px) any {@code HydrologicalUnit} can carry: the global-river cap after its
-     * coarse→native rescale ({@link #MAX_WIDTH} · {@link #GLOBAL_WIDTH_COORD_SCALE}). Bounds the
-     * channel-membership query radius ({@code HydrologyProfilePainter.insideChannel} queries
-     * {@code maxNativeWidth()/2} around the point: any unit whose half-width disc could contain the point
-     * must lie inside that radius).
-     */
+    /** @see HydrologyTuning#maxNativeWidth() */
     public static double maxNativeWidth() {
-        return MAX_WIDTH;
+        return HydrologyTuning.maxNativeWidth();
     }
 
-    /** Inference device: "cpu", "gpu", or "auto" (try GPU then fall back to CPU). */
+    // ──────────────────────────────────────────────────────────────────────────
+    // Property-file config — see ModConfig
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /** @see ModConfig#inferenceDevice() */
     public static String inferenceDevice() {
-        return readString("inference.device", DEFAULT_INFERENCE_DEVICE);
+        return ModConfig.inferenceDevice();
     }
 
-    /** Whether to offload inactive models from VRAM between pipeline stages. */
+    /** @see ModConfig#offloadModels() */
     public static boolean offloadModels() {
-        return readBoolean("inference.offload_models", DEFAULT_OFFLOAD_MODELS);
+        return ModConfig.offloadModels();
     }
 
-    /** TCP port for the local terrain explorer HTTP server. */
+    /** @see ModConfig#explorerPort() */
     public static int explorerPort() {
-        return readInt("explorer.port", DEFAULT_EXPLORER_PORT);
+        return ModConfig.explorerPort();
     }
 
-    /** Whether to validate SHA-256 for pre-existing local model files before use. */
+    /** @see ModConfig#validateModel() */
     public static boolean validateModel() {
-        return readBoolean("validate_model", DEFAULT_VALIDATE_MODEL);
-    }
-
-    private static void loadDefaults() {
-        boolean loadedFromResource = false;
-        try (InputStream in =
-                me.batata_1.fractal_terrain.FractalTerrainConfig.class.getResourceAsStream(RESOURCE_PATH)) {
-            if (in != null) {
-                PROPERTIES.load(in);
-                loadedFromResource = true;
-            }
-        } catch (IOException e) {
-            LOG.warn("Failed to load default config from resource; falling back to built-in defaults", e);
-        }
-
-        if (!loadedFromResource) {
-            PROPERTIES.setProperty("inference.device", DEFAULT_INFERENCE_DEVICE);
-            PROPERTIES.setProperty("validate_model", String.valueOf(DEFAULT_VALIDATE_MODEL));
-        }
-    }
-
-    private static String readString(String key, String defaultValue) {
-        String value = PROPERTIES.getProperty(key);
-        return value != null ? value.trim().toLowerCase() : defaultValue;
-    }
-
-    private static Path resolveConfigPath() {
-        try {
-            return FabricLoader.getInstance().getConfigDir().resolve(FILE_NAME);
-        } catch (RuntimeException e) {
-            LOG.warn("Fabric Loader config directory unavailable; using built-in defaults", e);
-            return null;
-        }
-    }
-
-    private static void loadOverrides(Path configPath) {
-        try {
-            Files.createDirectories(configPath.getParent());
-            if (Files.exists(configPath)) {
-                try (InputStream in = Files.newInputStream(configPath)) {
-                    Properties overrides = new Properties();
-                    overrides.load(in);
-                    PROPERTIES.putAll(overrides);
-                }
-            } else {
-                writeConfig(configPath);
-            }
-        } catch (IOException e) {
-            LOG.warn("Failed to read config file; using built-in defaults", e);
-        }
-    }
-
-    private static void writeConfig(Path configPath) {
-        try (InputStream defaultConfigInputStream =
-                me.batata_1.fractal_terrain.FractalTerrainConfig.class.getResourceAsStream(RESOURCE_PATH)) {
-            if (defaultConfigInputStream != null) {
-                Files.copy(defaultConfigInputStream, configPath);
-                return;
-            }
-            LOG.error("Default config resource not found: {}", RESOURCE_PATH);
-        } catch (IOException e) {
-            LOG.warn("Failed to copy default config resource", e);
-        }
-    }
-
-    private static boolean readBoolean(String key, boolean defaultValue) {
-        String value = PROPERTIES.getProperty(key);
-        return value != null ? Boolean.parseBoolean(value.trim()) : defaultValue;
-    }
-
-    private static int readInt(String key, int defaultValue) {
-        String value = PROPERTIES.getProperty(key);
-        if (value == null) return defaultValue;
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-            LOG.warn("Invalid int for {}: {}, using default {}", key, value, defaultValue);
-            return defaultValue;
-        }
-    }
-
-    private static double readDouble(String key, double defaultValue) {
-        String value = PROPERTIES.getProperty(key);
-        if (value == null) return defaultValue;
-        try {
-            return Double.parseDouble(value.trim());
-        } catch (NumberFormatException e) {
-            LOG.warn("Invalid double for {}: {}, using default {}", key, value, defaultValue);
-            return defaultValue;
-        }
+        return ModConfig.validateModel();
     }
 }

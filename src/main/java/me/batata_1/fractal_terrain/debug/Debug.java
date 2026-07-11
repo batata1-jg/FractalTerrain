@@ -6,7 +6,6 @@ import java.io.*;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Set;
-import java.util.stream.Stream;
 import javax.imageio.ImageIO;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
@@ -34,7 +33,7 @@ public class Debug {
             new HydrologyUnitVisualizer(FractalTerrainConfig.DEFAULT_DEBUG_PATH);
 
     public static Logger getLogger(Class<?> clazz) {
-        return LoggerFactory.getLogger("fractal_terrain/" + clazz.toString());
+        return LoggerFactory.getLogger("fractal_terrain/" + clazz.getName());
     }
 
     public static void isNan(double[] t) {
@@ -73,7 +72,7 @@ public class Debug {
         WritableRaster raster = outputImage.getRaster();
         raster.setSamples(0, 0, size, size, 0, arr);
         ImageIO.write(outputImage, "png", outputFile);
-        System.out.println("end");
+        DEBUG_LOGGER.info("end");
     }
 
     public static void seeTile(FloatTensor tile, int x, int z, String name) {
@@ -150,10 +149,5 @@ public class Debug {
     public static void debugCalls(int[] wi, String name) {
         if (!FractalTerrainConfig.DEBUG) return;
         DEBUG_LOGGER.info("{} is creating {}", name, wi);
-    }
-
-    public static <T> void printStream(Stream<T> stream, String name) {
-        DEBUG_LOGGER.info("{}:", name);
-        stream.peek(e -> DEBUG_LOGGER.info(" {}", e));
     }
 }
