@@ -82,9 +82,15 @@ public final class WorldPipeline implements AutoCloseable {
     private final OnnxModel decoderModel;
     private final OnnxModel fuzedModel;
     private final boolean ownModels;
-    private volatile SyntheticMapFactory syntheticMapFactory;
-    private volatile long seed;
-    private volatile float[] tau = new float[] {1F};
+
+    /**
+     * The reload-scoped inputs {@code (seed, syntheticMapFactory, tau)} bundled behind one volatile
+     * reference (MUST-1). {@link #updateInstance} swaps a whole new immutable {@link PipelineSession};
+     * every tile closure snapshots this once so a reload cannot tear the multi-field read. See
+     * {@link PipelineSession}.
+     */
+    private volatile PipelineSession session;
+
     private final long cacheLimitBytes = 50L * 1024 * 1024;
 
     /**
@@ -105,13 +111,12 @@ public final class WorldPipeline implements AutoCloseable {
 
     /** Uses shared models from PipelineModels (e.g. from mod init). Does not close models on close(). Seed is 64-bit (Python: seed & 0xFFFFFFFFFFFFFFFF). */
     public WorldPipeline(long seed, PipelineModels models) {
-        this.seed = seed;
         this.coarseModel = models.getCoarseModel();
         this.baseModel = models.getBaseModel();
         this.decoderModel = models.getDecoderModel();
         this.fuzedModel = models.getFuzedModel();
         this.ownModels = false;
-        this.syntheticMapFactory = new SyntheticMapFactory(this.seed);
+        this.session = new PipelineSession(seed, new SyntheticMapFactory(seed), new float[] {1F});
         this.coarse = buildCoarseStage();
         this.latents = buildLatentStage();
         this.residual = buildDecoderStage();
@@ -120,14 +125,13 @@ public final class WorldPipeline implements AutoCloseable {
     /** Loads its own models (e.g. for tests). Caller must close. */
     @TestOnly
     public WorldPipeline(long seed) {
-        this.seed = seed;
         ModelAssetManager.ensureAssetsReady();
         this.coarseModel = new OnnxModel(ModelAssetManager.resolveAssetPath("coarse_model.onnx"), "coarse");
         this.baseModel = new OnnxModel(ModelAssetManager.resolveAssetPath("base_model.onnx"), "base");
         this.decoderModel = new OnnxModel(ModelAssetManager.resolveAssetPath("decoder_model.onnx"), "decoder");
         this.fuzedModel = new OnnxModel(ModelAssetManager.resolveAssetPath("fuzed.onnx"), "fuzed");
         this.ownModels = true;
-        this.syntheticMapFactory = new SyntheticMapFactory(this.seed);
+        this.session = new PipelineSession(seed, new SyntheticMapFactory(seed), new float[] {1F});
         this.coarse = buildCoarseStage();
         this.latents = buildLatentStage();
         this.residual = buildDecoderStage();
@@ -135,10 +139,13 @@ public final class WorldPipeline implements AutoCloseable {
 
     /** Lightweight seed change (Python change_seed): update seed and synthetic map, clear tile caches. Models stay loaded. */
     public synchronized void updateInstance(final long newSeed, final String newPath) {
-        if (newSeed == this.seed && Objects.equals(coarse.getCurrentPath(), newPath)) return;
+        final PipelineSession current = session;
+        if (newSeed == current.seed() && Objects.equals(coarse.getCurrentPath(), newPath)) return;
         updateInfiniteTensors(newPath);
-        this.seed = newSeed;
-        this.syntheticMapFactory = new SyntheticMapFactory(newSeed);
+        // Build a fresh, internally consistent session (seed + its synthetic map together) and publish it
+        // in a single volatile swap so in-flight workers snapshot either the whole old or whole new triple.
+        // tau is not seed-scoped, so carry the current value forward.
+        session = new PipelineSession(newSeed, new SyntheticMapFactory(newSeed), current.tau());
     }
 
     private synchronized void updateInfiniteTensors(String newPath) {
@@ -172,10 +179,14 @@ public final class WorldPipeline implements AutoCloseable {
         int i = wi[1], j = wi[2];
         int i1 = i * ST, j1 = j * ST;
         Debug.debugCalls(wi, "coarse");
+        // Snapshot the reload-scoped session ONCE so the synthetic map and every seed-derived noise draw
+        // below come from the same reload generation (MUST-1 — see PipelineSession).
+        final PipelineSession s = session;
+        final long seed = s.seed();
         // Synthetic map conditioning: channels [elev_sqrt, temp, tempStd, precip, precipStd]
         // Python call: synthetic_map_factory(j1, i1, j2, i2)
         // Coordinates are intentionally swapped
-        float[][][] syn = syntheticMapFactory.sample(j1, i1, j1 + S, i1 + S);
+        float[][][] syn = s.syntheticMapFactory().sample(j1, i1, j1 + S, i1 + S);
 
         // Modify temp channel (index 1): where <= 20, scale toward 20
         for (int r = 0; r < S; r++)
@@ -303,6 +314,7 @@ public final class WorldPipeline implements AutoCloseable {
         int S = LATENT_TILE_SIZE, ST = LATENT_TILE_STRIDE;
         int batch = wis.size();
         float cosT = (float) Math.cos(t), sinT = (float) Math.sin(t);
+        final long seed = session.seed(); // snapshot once (MUST-1)
 
         // Intermediate storage: xT per batch element (needed for output step)
         float[][] xTArr = new float[batch][5 * S * S];
@@ -457,6 +469,10 @@ public final class WorldPipeline implements AutoCloseable {
         final int Slc = S / LATENT_COMPRESSION;
         final int i1 = wi[1] * ST, j1 = wi[2] * ST;
         final float cosT = (float) Math.cos(t), sinT = (float) Math.sin(t);
+        // Snapshot the reload-scoped session once so the seed-derived noise draw and tau come from the same
+        // reload generation (MUST-1 — see PipelineSession).
+        final PipelineSession s = session;
+        final long seed = s.seed();
 
         // Unnormalize latents channels 0..3 (4 channels)
         final float[] latFlat = new float[4 * Slc * Slc];
@@ -501,7 +517,7 @@ public final class WorldPipeline implements AutoCloseable {
         Object[][] inputs = new Object[3][3];
         inputs[0] = new Object[] {"residual_init", newSample, new long[] {1, 512, 512}};
         inputs[1] = new Object[] {"latents_init", latentSlice.dataUnsafe(), new long[] {6, 64, 64}};
-        inputs[2] = new Object[] {"tau", tau, new long[] {1}};
+        inputs[2] = new Object[] {"tau", s.tau(), new long[] {1}};
 
         final float[] data = fuzedModel.run(inputs);
         final float[] out = new float[S * S * DECODER_CHANNELS];
@@ -517,7 +533,7 @@ public final class WorldPipeline implements AutoCloseable {
 
     /** Returns the current world seed. */
     public long getSeed() {
-        return seed;
+        return session.seed();
     }
 
     /**
