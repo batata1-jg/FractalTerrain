@@ -3,7 +3,6 @@ package me.batata_1.fractal_terrain.world.biome;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.*;
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 
-import java.util.Arrays;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
@@ -157,10 +156,10 @@ public class BiomeProvider {
                             .getInfiniteTensor()
                             .getEntry(key);
 
-                    final float[] elev = Arrays.copyOfRange(reliefTensor.data, 0, 1 << 18);
-                    final float[] grad = Arrays.copyOfRange(reliefTensor.data, 4 << 18, 5 << 18);
-                    final float[] lowFreqGrad = Arrays.copyOfRange(reliefTensor.data, 5 << 18, 6 << 18);
-                    final float[] res = Arrays.copyOfRange(reliefTensor.data, 6 << 18, 7 << 18);
+                    final float[] elev = reliefTensor.copyRange(0, 1 << 18);
+                    final float[] grad = reliefTensor.copyRange(4 << 18, 5 << 18);
+                    final float[] lowFreqGrad = reliefTensor.copyRange(5 << 18, 6 << 18);
+                    final float[] res = reliefTensor.copyRange(6 << 18, 7 << 18);
                     final float[] vegPdf = new float[TILE_PIXELS];
                     final float[] climate = pipeline.getClimate(x, z, elev);
                     final int[] coarseDistShore = computeCoarseDistShore(x, z);
@@ -252,8 +251,8 @@ public class BiomeProvider {
         final int cells = sliceSide * sliceSide;
         final float[] elev = new float[cells];
         for (int px = 0; px < cells; px++) {
-            final float w = slice.data[6 * cells + px];
-            elev[px] = (w > COARSE_WEIGHT_EPS) ? slice.data[px] / w : 0f;
+            final float w = slice.get(6 * cells + px);
+            elev[px] = (w > COARSE_WEIGHT_EPS) ? slice.get(px) / w : 0f;
         }
 
         // The target cell sits at the slice centre.

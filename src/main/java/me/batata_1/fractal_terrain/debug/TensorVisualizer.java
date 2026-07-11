@@ -54,21 +54,21 @@ public class TensorVisualizer {
             });
         }
 
-        float[] ftu = new float[(int) (tl.getShape()[1] * tl.getShape()[2])];
+        float[] ftu = new float[tl.shape(1) * tl.shape(2)];
 
         DEBUG_LOGGER.info("first tensor sampleElev {} {}", tl.entryAt(new int[] {channel, 0, 0}), name);
         printBounds(tl.get(), "cur seen tensor has bounds");
-        for (int i = 0; i < tl.getShape()[1]; i++)
-            for (int j = 0; j < tl.getShape()[2]; j++) {
-                if (0 == tl.getShape()[0] - 1 || !seeAvg) {
-                    ftu[(int) (j + tl.getShape()[1] * i)] = tl.entryAt(new int[] {channel, i, j});
+        for (int i = 0; i < tl.shape(1); i++)
+            for (int j = 0; j < tl.shape(2); j++) {
+                if (0 == tl.shape(0) - 1 || !seeAvg) {
+                    ftu[j + tl.shape(1) * i] = tl.entryAt(new int[] {channel, i, j});
                     continue;
                 }
 
-                ftu[(int) (j + tl.getShape()[1] * i)] =
-                        tl.entryAt(new int[] {channel, i, j}) / tl.entryAt(new int[] {(tl.getShape()[0] - 1), i, j});
+                ftu[j + tl.shape(1) * i] =
+                        tl.entryAt(new int[] {channel, i, j}) / tl.entryAt(new int[] {(tl.shape(0) - 1), i, j});
             }
-        FloatTensor t = new FloatTensor(ftu, new int[] {tl.getShape()[1], tl.getShape()[2]});
+        FloatTensor t = new FloatTensor(ftu, new int[] {tl.shape(1), tl.shape(2)});
 
         File dir = new File(debugPath);
         dir.mkdirs();
@@ -76,27 +76,26 @@ public class TensorVisualizer {
         DEBUG_LOGGER.info("O caminho eh: {} , ", outputFile.getPath());
         float max = -1000000;
         float min = 1000000;
-        for (int i = 0; i < t.getShape()[0]; i++)
-            for (int j = 0; j < t.getShape()[1]; j++) {
+        for (int i = 0; i < t.shape(0); i++)
+            for (int j = 0; j < t.shape(1); j++) {
                 max = Math.max(max, t.entryAt(new int[] {i, j}));
                 min = Math.min(min, t.entryAt(new int[] {i, j}));
             }
         DEBUG_LOGGER.info(" bounds of amplitude min are [{},{}] for {}", min, max, name);
         final float eps = 1e-5F;
-        int[] arr = new int[(int) t.getSize()];
-        for (int i = 0; i < t.getShape()[0]; i++) {
-            for (int j = 0; j < t.getShape()[1]; j++) {
+        int[] arr = new int[t.getSize()];
+        for (int i = 0; i < t.shape(0); i++) {
+            for (int j = 0; j < t.shape(1); j++) {
 
                 float vi = (t.entryAt(new int[] {i, j}) - min) / (max - min + eps);
                 int v = (int) (255F * vi);
 
-                arr[(int) (j + i * t.getShape()[0])] = v;
+                arr[j + i * t.shape(0)] = v;
             }
         }
-        BufferedImage outputImage =
-                new BufferedImage((int) t.getShape()[0], (int) t.getShape()[1], BufferedImage.TYPE_BYTE_GRAY);
+        BufferedImage outputImage = new BufferedImage(t.shape(0), t.shape(1), BufferedImage.TYPE_BYTE_GRAY);
         WritableRaster raster = outputImage.getRaster();
-        raster.setSamples(0, 0, (int) t.getShape()[0], (int) t.getShape()[1], 0, arr);
+        raster.setSamples(0, 0, t.shape(0), t.shape(1), 0, arr);
         try {
             ImageIO.write(outputImage, "png", outputFile);
         } catch (IOException e) {
@@ -212,42 +211,41 @@ public class TensorVisualizer {
             });
         }
 
-        float[] ftu = new float[(int) (tl.getShape()[1] * tl.getShape()[2])];
+        float[] ftu = new float[tl.shape(1) * tl.shape(2)];
 
         DEBUG_LOGGER.info("first tensor sampleElev {} {}", tl.entryAt(new int[] {channel, 0, 0}), path);
         printBounds(tl.get(), "cur seen tensor has bounds");
-        for (int i = 0; i < tl.getShape()[1]; i++)
-            for (int j = 0; j < tl.getShape()[2]; j++) {
-                ftu[(int) (j + tl.getShape()[1] * i)] = tl.entryAt(new int[] {channel, i, j});
+        for (int i = 0; i < tl.shape(1); i++)
+            for (int j = 0; j < tl.shape(2); j++) {
+                ftu[j + tl.shape(1) * i] = tl.entryAt(new int[] {channel, i, j});
                 continue;
             }
-        FloatTensor t = new FloatTensor(ftu, new int[] {tl.getShape()[1], tl.getShape()[2]});
+        FloatTensor t = new FloatTensor(ftu, new int[] {tl.shape(1), tl.shape(2)});
 
         File outputFile = new File(path + ".png");
         DEBUG_LOGGER.info("O caminho eh: {} , ", outputFile.getPath());
         float max = -1000000;
         float min = 1000000;
-        for (int i = 0; i < t.getShape()[0]; i++)
-            for (int j = 0; j < t.getShape()[1]; j++) {
+        for (int i = 0; i < t.shape(0); i++)
+            for (int j = 0; j < t.shape(1); j++) {
                 max = Math.max(max, t.entryAt(new int[] {i, j}));
                 min = Math.min(min, t.entryAt(new int[] {i, j}));
             }
         DEBUG_LOGGER.info(" bounds of amplitude min are [{},{}] for {}", min, max, path);
         final float eps = 1e-5F;
-        int[] arr = new int[(int) t.getSize()];
-        for (int i = 0; i < t.getShape()[0]; i++) {
-            for (int j = 0; j < t.getShape()[1]; j++) {
+        int[] arr = new int[t.getSize()];
+        for (int i = 0; i < t.shape(0); i++) {
+            for (int j = 0; j < t.shape(1); j++) {
 
                 float vi = (t.entryAt(new int[] {i, j}) - min) / (max - min + eps);
                 int v = (int) (255F * vi);
 
-                arr[(int) (j + i * t.getShape()[0])] = v;
+                arr[j + i * t.shape(0)] = v;
             }
         }
-        BufferedImage outputImage =
-                new BufferedImage((int) t.getShape()[0], (int) t.getShape()[1], BufferedImage.TYPE_BYTE_GRAY);
+        BufferedImage outputImage = new BufferedImage(t.shape(0), t.shape(1), BufferedImage.TYPE_BYTE_GRAY);
         WritableRaster raster = outputImage.getRaster();
-        raster.setSamples(0, 0, (int) t.getShape()[0], (int) t.getShape()[1], 0, arr);
+        raster.setSamples(0, 0, t.shape(0), t.shape(1), 0, arr);
         try {
             ImageIO.write(outputImage, "png", outputFile);
         } catch (IOException e) {

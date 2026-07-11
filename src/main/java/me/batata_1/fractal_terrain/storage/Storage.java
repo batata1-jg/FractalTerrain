@@ -36,6 +36,14 @@ import org.slf4j.Logger;
  * ({@link #cachedEntryByteSizes} / {@link #totalCachedBytes}), guarded by {@link #evictionLock},
  * which readers never touch. See the class-level refactor plan for the lock-ordering argument.
  *
+ * <p><b>Cache-write boundary / immutability:</b> {@link #persistAndRecord} and the disk-reload path in
+ * {@link #loadInto} are the only two places a payload transitions from "just produced" to "published
+ * for other worker threads to read"; both call {@link Persistable#freeze()} first, so a type with a
+ * freeze contract (e.g. {@code FloatTensor}) is always immutable by the time any other thread can
+ * observe it. The freeze write happens-before publication because it runs on the same thread, before
+ * the key ever appears completed in {@link #CACHE} (via {@link CompletableFuture#complete}), which is
+ * itself a safe-publication point for every awaiting/racing reader.
+ *
  * @param <T> the cached payload type.
  */
 public class Storage<T extends Persistable<T>> {
@@ -314,6 +322,7 @@ public class Storage<T extends Persistable<T>> {
         }
         try {
             final T entry = deserializationPrototype.deserialize(readBytes(tileFile));
+            entry.freeze(); // cache-write boundary: freeze before publishing to other reader threads
             recordCachedEntry(key, entry.byteSize());
             promise.complete(entry);
         } catch (IOException | IllegalStateException e) {
@@ -327,6 +336,7 @@ public class Storage<T extends Persistable<T>> {
      * {@code thenApply} chaining. Acquires only {@link #evictionLock} (never a CACHE bin lock).
      */
     protected T persistAndRecord(TileKey key, T entry) {
+        entry.freeze(); // cache-write boundary: freeze before publishing to other reader threads
         GENERATED_ENTRIES.add(key);
         if (payloadIsSerializable) {
             try {

@@ -197,7 +197,7 @@ public class LocalRiverProvider {
         if (stages != null) {
             stages.channels = new ArrayList<>(sim.getChannels());
             stages.localChannels = localChannels;
-            stages.carvedElevation = carvedTile.data;
+            stages.carvedElevation = carvedTile.copyRange(0, carvedTile.getSize());
             stages.network = sim.getNetwork();
             stages.unitTree = unitIndex;
         }

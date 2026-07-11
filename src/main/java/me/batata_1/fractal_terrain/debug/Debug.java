@@ -80,9 +80,9 @@ public class Debug {
         DEBUG_LOGGER.info("{}", basePath);
         name = name + "_p" + x + "_" + z + "q_";
         new File(basePath.toString(), name).mkdirs();
-        DEBUG_LOGGER.info("seeTile x={} z={} channels={} name={}", x, z, tile.getShape()[0], name);
+        DEBUG_LOGGER.info("seeTile x={} z={} channels={} name={}", x, z, tile.shape(0), name);
         var onnxTile = tile.get();
-        for (int ch = 0; ch < tile.getShape()[0]; ch++) {
+        for (int ch = 0; ch < tile.shape(0); ch++) {
             tensor.see(onnxTile, name + "/ch_" + ch, basePath.toString(), false, ch);
             // tensor.see(tile,name + "/ch_" + ch,basePath.toString());
         }
@@ -94,9 +94,9 @@ public class Debug {
                 .normalize();
         name = name + "_p" + x + "_" + z + "q_";
         new File(basePath.toString(), name).mkdirs();
-        DEBUG_LOGGER.info("seeTileTiff x={} z={} channels={} name={}", x, z, tile.getShape()[0], name);
+        DEBUG_LOGGER.info("seeTileTiff x={} z={} channels={} name={}", x, z, tile.shape(0), name);
         var onnxTile = tile.get();
-        for (int ch = 0; ch < tile.getShape()[0]; ch++) {
+        for (int ch = 0; ch < tile.shape(0); ch++) {
             TiffConverter.toTiffChannel(onnxTile, ch, basePath + "/" + name + "/ch");
         }
     }

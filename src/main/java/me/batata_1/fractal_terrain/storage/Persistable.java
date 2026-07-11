@@ -43,4 +43,12 @@ public interface Persistable<T extends Persistable<T>> {
         throw new UnsupportedOperationException(
                 "deserialize not implemented for " + getClass().getName());
     }
+
+    /**
+     * Called once by {@link Storage} at the cache-write boundary — immediately before a freshly
+     * computed or disk-deserialized payload is published into the shared cache — so implementations
+     * that hold mutable internal state can seal it against further mutation before it becomes visible
+     * to other reader threads. The default is a no-op for payloads with no such contract.
+     */
+    default void freeze() {}
 }

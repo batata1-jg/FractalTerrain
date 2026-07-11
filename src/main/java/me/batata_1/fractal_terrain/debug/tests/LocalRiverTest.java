@@ -6,6 +6,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
+import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
@@ -13,7 +14,6 @@ import me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing;
 import me.batata_1.fractal_terrain.hydrology.meanders.*;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.ml.models.ModelAssetManager;
-import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,7 +48,7 @@ public class LocalRiverTest {
         LOG.info("LocalRiverTest start; output dir = {}", DEBUG_PATH);
         Meanders.DEBUG_STEPS = true;
         ModelAssetManager.ensureAssetsReady();
-        PipelineModels.load();
+        FractalTerrainInstance.initPipeline();
         pipeline.updateInstance(420, DEBUG_PATH);
 
         final GlobalRiverProvider globalRivers = new GlobalRiverProvider(null);

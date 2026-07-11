@@ -248,9 +248,9 @@ public class GlobalRiverProvider {
             for (int z = 0; z < TILE_SIZE; z++) {
                 final int paddedIndex = (PAD + x) * PADDED_SIDE + (PAD + z);
                 final int localIndex = x * TILE_SIZE + z;
-                tile.data[localIndex] = Float.intBitsToFloat(arrows[paddedIndex]);
-                tile.data[pixelsPerChannel + localIndex] = widths[paddedIndex];
-                tile.data[2 * pixelsPerChannel + localIndex] = riverElevation[paddedIndex];
+                tile.set(localIndex, Float.intBitsToFloat(arrows[paddedIndex]));
+                tile.set(pixelsPerChannel + localIndex, widths[paddedIndex]);
+                tile.set(2 * pixelsPerChannel + localIndex, riverElevation[paddedIndex]);
             }
         }
 
@@ -321,8 +321,8 @@ public class GlobalRiverProvider {
         final int pixelCount = PADDED_SIDE * PADDED_SIDE;
         final float[] elevation = new float[pixelCount];
         for (int px = 0; px < pixelCount; px++) {
-            final float weight = slice.data[6 * pixelCount + px];
-            elevation[px] = (weight > 1e-6f) ? slice.data[px] / weight : 0f;
+            final float weight = slice.get(6 * pixelCount + px);
+            elevation[px] = (weight > 1e-6f) ? slice.get(px) / weight : 0f;
         }
         return elevation;
     }

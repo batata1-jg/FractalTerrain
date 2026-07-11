@@ -253,8 +253,8 @@ public final class WorldPipeline implements AutoCloseable {
         // Output: (7, S, S) = [6 channels * weight | weight]
         FloatTensor result = new FloatTensor(new int[] {7, S, S});
         for (int ch = 0; ch < 6; ch++)
-            for (int px = 0; px < S * S; px++) result.data[ch * S * S + px] = out[ch * S * S + px] * ww[px];
-        System.arraycopy(ww, 0, result.data, 6 * S * S, S * S);
+            for (int px = 0; px < S * S; px++) result.set(ch * S * S + px, out[ch * S * S + px] * ww[px]);
+        result.writeFrom(ww, 0, 6 * S * S, S * S);
         return result;
     }
 
@@ -325,8 +325,8 @@ public final class WorldPipeline implements AutoCloseable {
                 FloatTensor ps = prevSamples.get(b);
                 for (int ch = 0; ch < 5; ch++)
                     for (int px = 0; px < S * S; px++) {
-                        float w = ps.data[5 * S * S + px];
-                        sample[ch * S * S + px] = (w > 1e-6f) ? ps.data[ch * S * S + px] / w * SIGMA_DATA : 0f;
+                        float w = ps.get(5 * S * S + px);
+                        sample[ch * S * S + px] = (w > 1e-6f) ? ps.get(ch * S * S + px) / w * SIGMA_DATA : 0f;
                     }
             }
 
@@ -366,8 +366,8 @@ public final class WorldPipeline implements AutoCloseable {
 
             FloatTensor out = new FloatTensor(new int[] {6, S, S});
             for (int ch = 0; ch < 5; ch++)
-                for (int px = 0; px < S * S; px++) out.data[ch * S * S + px] = newSample[ch * S * S + px] * ww[px];
-            System.arraycopy(ww, 0, out.data, 5 * S * S, S * S);
+                for (int px = 0; px < S * S; px++) out.set(ch * S * S + px, newSample[ch * S * S + px] * ww[px]);
+            out.writeFrom(ww, 0, 5 * S * S, S * S);
             results.add(out);
         }
         return results;
@@ -380,8 +380,8 @@ public final class WorldPipeline implements AutoCloseable {
         float[] condFlat = new float[6 * N];
         for (int ch = 0; ch < 6; ch++)
             for (int px = 0; px < N; px++) {
-                float w = coarseSlice.data[6 * N + px];
-                condFlat[ch * N + px] = (w > 1e-6f) ? coarseSlice.data[ch * N + px] / w : 0f;
+                float w = coarseSlice.get(6 * N + px);
+                condFlat[ch * N + px] = (w > 1e-6f) ? coarseSlice.get(ch * N + px) / w : 0f;
             }
 
         // Append mask channel (all ones = (1 - mean) / std normalized)
@@ -462,8 +462,8 @@ public final class WorldPipeline implements AutoCloseable {
         final float[] latFlat = new float[4 * Slc * Slc];
         for (int ch = 0; ch < 4; ch++)
             for (int px = 0; px < Slc * Slc; px++) {
-                float w = latentSlice.data[5 * Slc * Slc + px];
-                latFlat[ch * Slc * Slc + px] = (w > 1e-6f) ? latentSlice.data[ch * Slc * Slc + px] / w : 0f;
+                float w = latentSlice.get(5 * Slc * Slc + px);
+                latFlat[ch * Slc * Slc + px] = (w > 1e-6f) ? latentSlice.get(ch * Slc * Slc + px) / w : 0f;
             }
 
         // Nearest-neighbor upsample (4, Slc, Slc) → (4, S, S)
@@ -500,7 +500,7 @@ public final class WorldPipeline implements AutoCloseable {
         // post proessing
         Object[][] inputs = new Object[3][3];
         inputs[0] = new Object[] {"residual_init", newSample, new long[] {1, 512, 512}};
-        inputs[1] = new Object[] {"latents_init", latentSlice.data, new long[] {6, 64, 64}};
+        inputs[1] = new Object[] {"latents_init", latentSlice.dataUnsafe(), new long[] {6, 64, 64}};
         inputs[2] = new Object[] {"tau", tau, new long[] {1}};
 
         final float[] data = fuzedModel.run(inputs);
@@ -609,8 +609,8 @@ public final class WorldPipeline implements AutoCloseable {
         float[][] coarseMap = new float[6][cH * cW];
         for (int ch = 0; ch < 6; ch++)
             for (int px = 0; px < cH * cW; px++) {
-                float w = coarseSlice.data[6 * cH * cW + px];
-                coarseMap[ch][px] = (w > 1e-6f) ? coarseSlice.data[ch * cH * cW + px] / w : 0f;
+                float w = coarseSlice.get(6 * cH * cW + px);
+                coarseMap[ch][px] = (w > 1e-6f) ? coarseSlice.get(ch * cH * cW + px) / w : 0f;
             }
 
         // Coarse elevation (undo sqrt): max(0, v)^2  — ocean pixels clamp to 0, matching Python

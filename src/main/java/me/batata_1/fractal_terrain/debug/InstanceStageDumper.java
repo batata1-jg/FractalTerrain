@@ -101,11 +101,11 @@ public final class InstanceStageDumper {
     /** Dump every channel of a {@code [C, H, W]} tensor as its own PNG (square H == W == side). */
     private static void dumpTensorChannels(String dir, FloatTensor tile, int side, String prefix) {
         if (tile == null) return;
-        final int channels = tile.shape[0];
+        final int channels = tile.shape(0);
         final int pixels = side * side;
         for (int ch = 0; ch < channels; ch++) {
             final float[] out = new float[pixels];
-            System.arraycopy(tile.data, ch * pixels, out, 0, pixels);
+            tile.readInto(ch * pixels, out, 0, pixels);
             see(dir, out, side, prefix + ch);
         }
     }

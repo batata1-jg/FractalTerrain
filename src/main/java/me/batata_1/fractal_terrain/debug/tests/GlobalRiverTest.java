@@ -5,11 +5,11 @@ import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 import java.io.File;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
+import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.ml.models.ModelAssetManager;
-import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,7 +33,7 @@ public class GlobalRiverTest {
         LOG.info("GlobalRiverTest start; output dir = {}", DEBUG_PATH);
         cleanDir(DEBUG_PATH);
         ModelAssetManager.ensureAssetsReady();
-        PipelineModels.load();
+        FractalTerrainInstance.initPipeline();
         pipeline.updateInstance(420, DEBUG_PATH);
 
         final GlobalRiverProvider provider = new GlobalRiverProvider(null);
@@ -109,7 +109,7 @@ public class GlobalRiverTest {
     private static float[] channel(FloatTensor tile, int ch) {
         final int pixels = TILE_SIZE * TILE_SIZE;
         final float[] out = new float[pixels];
-        System.arraycopy(tile.data, ch * pixels, out, 0, pixels);
+        tile.readInto(ch * pixels, out, 0, pixels);
         return out;
     }
 

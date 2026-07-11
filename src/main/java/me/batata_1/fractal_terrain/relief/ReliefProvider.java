@@ -107,7 +107,7 @@ public class ReliefProvider {
 
         final FloatTensor result = new FloatTensor(entries, new int[] {RELIEF_CHANNELS, INNER, INNER});
         if (stages != null) {
-            stages.carvedElevation = carved.data;
+            stages.carvedElevation = carved.copyRange(0, carved.getSize());
             stages.base = base;
             stages.result = result;
         }

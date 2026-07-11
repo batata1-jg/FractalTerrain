@@ -33,15 +33,7 @@ import org.slf4j.Logger;
 public class FractalTerrainInstance {
 
     private static final Logger LOG = getLogger(FractalTerrainInstance.class);
-    public static final WorldPipeline pipeline;
-
-    static {
-        PipelineModels.load();
-        PipelineModels.awaitLoad();
-        PipelineModels models = PipelineModels.getInstance();
-        if (models == null) throw new IllegalStateException("PipelineModels failed to load");
-        pipeline = new WorldPipeline(0, models);
-    }
+    public static volatile WorldPipeline pipeline;
 
     private static volatile CompletableFuture<FractalTerrainInstance> instance = new CompletableFuture<>();
 
@@ -94,11 +86,27 @@ public class FractalTerrainInstance {
         else viz = new Infinite3DVisualizer();
     }
 
+    /**
+     * Loads the terrain-diffusion models and constructs the shared {@link WorldPipeline}, if not already
+     * done. Safe to call repeatedly. Unlike the class-init-time loading this replaces, a load failure
+     * (e.g. a missing datapack) surfaces here as a normal exception instead of an
+     * {@code ExceptionInInitializerError} that would permanently poison this class.
+     */
+    public static synchronized void initPipeline() {
+        if (pipeline != null) return;
+        PipelineModels.load();
+        PipelineModels.awaitLoad();
+        PipelineModels models = PipelineModels.getInstance();
+        if (models == null) throw new IllegalStateException("PipelineModels failed to load");
+        pipeline = new WorldPipeline(0, models);
+    }
+
     public static synchronized void init(MinecraftServer server) {
         if (exists()) {
             LOG.warn("Already initialized");
             return;
         }
+        initPipeline();
         instance.complete(new FractalTerrainInstance(server));
     }
 

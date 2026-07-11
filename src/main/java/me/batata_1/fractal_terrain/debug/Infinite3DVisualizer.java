@@ -78,7 +78,7 @@ public class Infinite3DVisualizer {
 
     private Float getCoarse(int[] xz) {
         xz[CH] = 0;
-        return FractalTerrainInstance.pipeline.getCoarse().getSlice(xz, xz).data[0];
+        return FractalTerrainInstance.pipeline.getCoarse().getSlice(xz, xz).get(0);
     }
 
     public Infinite3DVisualizer() {}

@@ -36,10 +36,10 @@ public final class DecoderChannels {
         final int pixelCount = padded * padded;
         final float[][] base = new float[BASE_CHANNELS][pixelCount];
         for (int px = 0; px < pixelCount; px++) {
-            final float weight = slice.data[px];
+            final float weight = slice.get(px);
             final float inverse = (weight > 1e-6f) ? 1f / weight : 0f;
             for (int c = 1; c < DECODER_CHANNELS; c++) {
-                base[c - 1][px] = slice.data[c * pixelCount + px] * inverse;
+                base[c - 1][px] = slice.get(c * pixelCount + px) * inverse;
             }
         }
         return base;

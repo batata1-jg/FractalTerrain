@@ -74,8 +74,8 @@ public class DifferenceOfGaussians {
 
         final float[] elev = new float[N];
         for (int px = 0; px < N; px++) {
-            final float w = slice.data[6 * N + px];
-            final float eNorm = (w > 1e-6f) ? slice.data[px] / w : 0f;
+            final float w = slice.get(6 * N + px);
+            final float eNorm = (w > 1e-6f) ? slice.get(px) / w : 0f;
             final float clamped = Math.max(0f, eNorm);
             elev[px] = clamped;
         }

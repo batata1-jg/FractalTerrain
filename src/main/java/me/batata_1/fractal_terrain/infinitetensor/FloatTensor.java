@@ -12,13 +12,33 @@ import java.util.Arrays;
 import me.batata_1.fractal_terrain.storage.Persistable;
 import org.slf4j.Logger;
 
+/**
+ * Dense N-dimensional float tensor.
+ *
+ * <p><b>Immutability contract:</b> {@link #data}/{@link #shape} are {@code private final} and never
+ * exposed as a mutable reference. Instances are freely mutable while under construction by their
+ * producer thread; once a tensor is published into a {@link me.batata_1.fractal_terrain.storage.Storage}
+ * cache, {@link #freeze()} is called at that cache-write boundary (see {@code Storage#persistAndRecord}
+ * / {@code Storage#loadInto}), and every mutating method ({@link #set}, {@link #writeFrom},
+ * {@link #dataUnsafe()}, {@link #addFrom}, {@link #copyFrom}) throws {@link IllegalStateException}
+ * thereafter. Reads ({@link #get(int)}, {@link #readInto}, {@link #copyRange}, {@link #entryAt}) never
+ * allocate and remain available regardless of frozen state, so cached tensors stay safe to read
+ * concurrently from any worker thread without per-read copies.
+ */
 public class FloatTensor implements Persistable<FloatTensor> {
 
     public static final Logger LOG = getLogger(FloatTensor.class);
 
-    public final float[] data;
-    public final int[] shape;
+    private final float[] data;
+    private final int[] shape;
     private final int[] strides;
+
+    /**
+     * Set once by {@link me.batata_1.fractal_terrain.storage.Storage} at the cache-write boundary.
+     * Never reset. {@code volatile} so the freeze is visible to any thread that observes this tensor
+     * through the cache's safe-publication path.
+     */
+    private volatile boolean frozen = false;
 
     public FloatTensor(OnnxTensor h) {
         data = h.getFloatBuffer().array();
@@ -117,6 +137,7 @@ public class FloatTensor implements Persistable<FloatTensor> {
      * The region sizes must match in every dimension.
      */
     public void addFrom(FloatTensor src, int[][] dstRegion, int[][] srcRegion) {
+        checkMutable();
         int n = shape.length;
         int[] count = new int[n];
         int total = 1;
@@ -145,6 +166,7 @@ public class FloatTensor implements Persistable<FloatTensor> {
     }
 
     public void copyFrom(FloatTensor src, int[][] dstRegion, int[][] srcRegion) {
+        checkMutable();
         int n = shape.length;
         int[] count = new int[n];
         int total = 1;
@@ -205,8 +227,89 @@ public class FloatTensor implements Persistable<FloatTensor> {
         return data[idx];
     }
 
+    // -------------------------------------------------------------------------
+    // Immutability contract: freeze + indexed/bulk accessors
+    // -------------------------------------------------------------------------
+
+    /**
+     * Freezes this tensor: every subsequent mutation attempt throws {@link IllegalStateException}.
+     * Called exactly once by {@link me.batata_1.fractal_terrain.storage.Storage} at the moment this
+     * tensor is published into the shared cache. Idempotent — safe to call more than once.
+     */
+    @Override
+    public void freeze() {
+        frozen = true;
+    }
+
+    public boolean isFrozen() {
+        return frozen;
+    }
+
+    private void checkMutable() {
+        if (frozen) {
+            throw new IllegalStateException(
+                    "cannot mutate " + this + ": already frozen (published to a Storage cache)");
+        }
+    }
+
+    /** Flat indexed read: {@code data[flatIndex]}. No allocation; safe on the tensor read hot path. */
+    public float get(int flatIndex) {
+        return data[flatIndex];
+    }
+
+    /**
+     * Flat indexed write: {@code data[flatIndex] = value}. Throws {@link IllegalStateException} once
+     * this tensor is frozen.
+     */
+    public void set(int flatIndex, float value) {
+        checkMutable();
+        data[flatIndex] = value;
+    }
+
+    /**
+     * Bulk read of {@code [srcPos, srcPos+length)} into {@code dest}, mirroring
+     * {@link System#arraycopy}. Read-only: always allowed, regardless of frozen state.
+     */
+    public void readInto(int srcPos, float[] dest, int destPos, int length) {
+        System.arraycopy(data, srcPos, dest, destPos, length);
+    }
+
+    /**
+     * Bulk write of {@code src[srcPos, srcPos+length)} into this tensor at {@code destPos}, mirroring
+     * {@link System#arraycopy}. Throws {@link IllegalStateException} once this tensor is frozen.
+     */
+    public void writeFrom(float[] src, int srcPos, int destPos, int length) {
+        checkMutable();
+        System.arraycopy(src, srcPos, data, destPos, length);
+    }
+
+    /**
+     * Read-only copy of {@code data[from:to]} as a freshly allocated array. Always allowed. Prefer
+     * {@link #get(int)}/{@link #readInto} on the hot path — this allocates.
+     */
+    public float[] copyRange(int from, int to) {
+        return Arrays.copyOfRange(data, from, to);
+    }
+
+    /**
+     * Direct access to the backing array, for bulk numeric interop (e.g. constructing an
+     * {@link OnnxTensor} input) that needs the array reference itself rather than an indexed/ranged
+     * copy. Throws {@link IllegalStateException} once this tensor is frozen, so a cached tensor's
+     * backing array can never escape through this method. Callers must not mutate the returned array.
+     */
+    public float[] dataUnsafe() {
+        checkMutable();
+        return data;
+    }
+
+    /** Indexed shape read: {@code shape[dim]}. No allocation. */
+    public int shape(int dim) {
+        return shape[dim];
+    }
+
+    /** Defensive copy of the shape array; {@link #shape(int)} avoids the allocation for a single dim. */
     public int[] getShape() {
-        return shape;
+        return shape.clone();
     }
 
     public int getSize() {

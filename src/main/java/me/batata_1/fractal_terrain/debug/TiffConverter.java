@@ -130,7 +130,7 @@ public class TiffConverter {
 
     public static void toTiff(OnnxTensor op, String name) {
         FloatTensor tl = new FloatTensor(op);
-        for (int i = 0; i < tl.getShape()[0]; i++) {
+        for (int i = 0; i < tl.shape(0); i++) {
             try (FileOutputStream fos = new FileOutputStream(name + "-" + i + ".tiff")) {
                 float[] fl = tl.getBand(0, i);
                 fos.write(FloatTiffWriter.createFloatTiff(fl));

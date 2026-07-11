@@ -298,14 +298,14 @@ public abstract class InfiniteTensor {
 
     private void validateOutputShape(@NotNull FloatTensor result, int[] windowIndex) {
         int n = outputWindow.size.length;
-        if (result.shape.length != n) {
-            throw new IllegalStateException("Function for tensor '" + id + "' returned shape with "
-                    + result.shape.length + " dims, expected " + n);
+        if (result.ndim() != n) {
+            throw new IllegalStateException(
+                    "Function for tensor '" + id + "' returned shape with " + result.ndim() + " dims, expected " + n);
         }
         for (int d = 0; d < n; d++) {
-            if (result.shape[d] != outputWindow.size[d]) {
+            if (result.shape(d) != outputWindow.size[d]) {
                 throw new IllegalStateException("Function for tensor '" + id + "' returned shape[" + d + "]="
-                        + result.shape[d] + ", expected " + outputWindow.size[d]);
+                        + result.shape(d) + ", expected " + outputWindow.size[d]);
             }
         }
     }

@@ -9,6 +9,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.function.ToLongFunction;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
+import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
@@ -19,7 +20,6 @@ import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
 import me.batata_1.fractal_terrain.ml.models.ModelAssetManager;
-import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -89,7 +89,7 @@ public class SpatialIndexBenchmark {
         LOG.info("SpatialIndexBenchmark start; output dir = {}", DEBUG_PATH);
         Meanders.DEBUG_STEPS = false;
         ModelAssetManager.ensureAssetsReady();
-        PipelineModels.load();
+        FractalTerrainInstance.initPipeline();
         pipeline.updateInstance(420, DEBUG_PATH);
 
         final GlobalRiverProvider globalRivers = new GlobalRiverProvider(null);
