@@ -174,7 +174,7 @@ public class LocalRiverProvider {
         //    separate, never-mutated clone of the original decoded terrain: both the global and local shell
         //    carves compute their falloff lerp against it, so the min-composite across the two passes stays
         //    order-independent regardless of call order.
-        final float[] carvedElevation = base[0].clone();
+        final float[] carvedElevation = base[0];
         HydrologyProfileCarver.carveRiverShells(
                 carvedElevation, globalUnitsPadded.toArray(new HydrologicalUnit[0]), PADDED);
 

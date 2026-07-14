@@ -7,6 +7,7 @@ import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
+import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 
 /**
  * The elevation side of the hydrology profile. Two carve stages live here:
@@ -118,7 +119,7 @@ public final class HydrologyProfileCarver {
     // -------------------------------------------------------------------------
 
     /** Slack around the tile grid for the unit index bounds (units may overshoot the pad). */
-    private static final double CARVE_INDEX_SLACK = 1024.0;
+    private static final double CARVE_INDEX_SLACK = 64.0;
 
     /**
      * Tile-level valley/floodplain shell carve (distinct from the per-pixel bed-residual refinement
@@ -145,10 +146,7 @@ public final class HydrologyProfileCarver {
     public static void carveRiverShells(
             float[] elevation, HydrologicalUnit[] units, int paddedSize) {
         if (units.length == 0) return;
-        final ImmutableQuadTree<HydrologicalUnit> index = new ImmutableQuadTree<>(
-                new double[] {-CARVE_INDEX_SLACK, -CARVE_INDEX_SLACK},
-                new double[] {paddedSize + CARVE_INDEX_SLACK, paddedSize + CARVE_INDEX_SLACK},
-                Arrays.asList(units));
+        final ImmutableRTree<HydrologicalUnit> index = new ImmutableRTree<>(Arrays.asList(units),HydrologicalUnit.PROTOTYPE);
 
         for (int pi = 0; pi < paddedSize; pi++) {
             for (int pj = 0; pj < paddedSize; pj++) {
@@ -157,11 +155,12 @@ public final class HydrologyProfileCarver {
                 if (ambient < 0) continue;
                 final double[] pixel = {pi, pj};
                 final List<HydrologicalUnit> nearby =
-                        index.getPointsInCircle(pixel, FractalTerrainConfig.MAX_INFLUENCE_RADIUS);
+                        index.queryContaining(pixel);
                 if (nearby.isEmpty()) continue;
 
                 final double curElev = elevation[idx];
-                double target = ambient;
+                double softMaxSum = 0;
+                double softMaxWeights = 0;
                 for (HydrologicalUnit unit : nearby) {
                     final double[] coord = unit.coord();
                     final double dx = pixel[0] - coord[0];
@@ -169,24 +168,14 @@ public final class HydrologyProfileCarver {
                     final double radialDist = Math.hypot(dx, dz);
                     if (radialDist >= unit.getRadius()) continue; // outside this unit's influence
 
-                    final double perpDist;
-                    final double alongDist;
-                    if (unit.normal() != null) {
-                        final double[] n = unit.normal();
-                        perpDist = Math.abs(dx * n[0] + dz * n[1]);
-                        alongDist = Math.sqrt(Math.max(0.0, radialDist * radialDist - perpDist * perpDist));
-                    } else {
-                        perpDist = radialDist;
-                        alongDist = 0.0;
-                    }
-
                     final RosgenType type = unit.rosgenType() == null ? RosgenType.A : unit.rosgenType();
                     final RosgenProfile profile = RosgenProfile.of(type);
-                    final double elev = profile.riverInfluenceElevation(radialDist, unit.width(), curElev, unit.elevation());
-                    target = Math.min(target, elev);
+                    final double softMaxWeight = Math.exp(Math.pow(radialDist, -2)*10);
+                    softMaxSum += profile.riverInfluenceElevation(radialDist, unit.width(), curElev, unit.elevation())*softMaxWeight;
+                    softMaxWeights += softMaxWeight;
                 }
-
-                elevation[idx] = (float) target;
+                if(softMaxWeights < 1e-8 ) continue;
+                elevation[idx] = (float) (softMaxSum / softMaxWeights);
             }
         }
     }
