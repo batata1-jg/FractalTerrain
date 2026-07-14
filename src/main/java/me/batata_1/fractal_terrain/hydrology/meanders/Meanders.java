@@ -204,6 +204,17 @@ public final class Meanders {
     }
 
     /**
+     * Cap on {@link #borderDamping}'s margin, as a fraction of the grid side -- so a wide native-rescaled
+     * global trunk's {@code MARGIN_INFLUENCE_FACTOR * width} margin cannot exceed the grid and hard-zero
+     * the whole damping field, leaving no interior for the channel to relax into.
+     *
+     * <p>First-cut value, untuned: it engages across most of the width range and under-damps wide trunks
+     * near the grid center. Pending the M-006 visual/relaxation validation pass (see
+     * {@code plan-river-carve.md} "Deferred / open follow-ups").
+     */
+    private static final double MAX_MARGIN_FRACTION = 0.4;
+
+    /**
      * Multiplier in {@code [0, 1]} that fades a migration vector to zero as a point nears the grid border,
      * so interior points never wander into the margin band. The band is
      * {@code HydrologyTuning.MARGIN_INFLUENCE_FACTOR × width} wide, so wider channels are confined further from the edge — keeping their whole carve band
@@ -213,7 +224,7 @@ public final class Meanders {
      * only they are allowed to sit near the border.
      */
     private double borderDamping(double x, double z, double width) {
-        final double margin = HydrologyTuning.MARGIN_INFLUENCE_FACTOR * width;
+        final double margin = Math.min(HydrologyTuning.MARGIN_INFLUENCE_FACTOR * width, MAX_MARGIN_FRACTION * gridSize);
         if (margin <= 0) return 1.0;
         final double distToBorder = Math.min(Math.min(x, z), Math.min(gridSize - 1 - x, gridSize - 1 - z));
         // Inner padding [0, margin]: hard-zero. Beyond it, ramp 0→1 over the next margin.

@@ -634,6 +634,12 @@ public final class RiverNetwork {
         return units;
     }
 
+    /**
+     * {@code width} here is already the native-rescaled global width fed into the {@code EdgeSpec} at
+     * network-construction time ({@link GlobalNetworkBuilder} multiplies coarse-px flow width by {@code
+     * GLOBAL_WIDTH_COORD_SCALE} before building edges) -- this method never re-scales it, so the emitted
+     * units and the shell-carve query radius both stay in the same native-px frame as local channels.
+     */
     private static void addFeatureUnits(
             List<HydrologicalUnit> out,
             QuinticHermiteSpline spline,
@@ -651,6 +657,7 @@ public final class RiverNetwork {
         if (!spline.isResampleable()) return; // degenerate geometry (too few points or NaN): skip
         // Spacing must be <= half the NARROWEST width along the start->end taper, so consecutive
         // units' width/2 discs always overlap (gap-free membership test + girth rendering).
+        // RosgenProfile's radial floodplain-disc union also relies on this overlap to stay gap-free.
         final double narrowestWidth = Math.min(startWidth, endWidth);
         final double dx = Math.max(narrowestWidth / 2.0, MIN_CONVERT_SPACING);
         final QuinticHermiteSpline resampled;

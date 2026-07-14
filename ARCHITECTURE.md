@@ -71,10 +71,39 @@ dual-store cache (an `ImmutableRTree<HydrologicalUnit>` spatial index + a carved
 `PADDED=514`, `COARSE_PX=256`) all three depend on. `PipelinePreprocessing.java` (sink-fill, drainage
 direction, flow accumulation) and `ChannelGeometry.java` are lower-level shared helpers. The
 `hydrology/profile/` subpackage (`HydrologyProfileCarver`, `HydrologyProfilePainter`,
-`HydrologyProfile`, `RosgenProfile`) turns the hydrological-unit index into per-pixel carve/paint
-operations consumed by `world/gen/`. `GlobalRiverProvider.java` is independent of `LocalRiverProvider`
-and caches its own 64×64-coarse-px tiles directly (coarse-px addressed, not the 512-native-px tile
-grid — see Coordinate frames).
+`HydrologyProfile`, `RosgenProfile`) turns the hydrological-unit index into carve/paint operations
+consumed by `world/gen/`. `GlobalRiverProvider.java` is independent of `LocalRiverProvider` and caches
+its own 64×64-coarse-px tiles directly (coarse-px addressed, not the 512-native-px tile grid — see
+Coordinate frames).
+
+**Hydrology carve pipeline — "carve first, detail later".** `RosgenProfile` defines a feature's
+*reference* elevation as the bank; the per-pixel bed is `reference − depth`. Two carve stages, in two
+different places, sum to the intended trench:
+
+1. **Tile-level shell carve** (`HydrologyProfileCarver.carveRiverShells`, static) — run as two passes
+   (global units, then local units) on the same cached-elevation buffer, both within the single
+   once-per-tile `LocalRiverProvider.buildTile` flow. Pulls the elevation toward each unit's shell floor
+   (`RosgenProfile.shellFloor` = bank − `HydrologyTuning.FREEBOARD`), lens-masked (`RosgenProfile.lensMask`)
+   so the *mask* is exactly 1 (flat floor) out to `floodPlainLength` and falls to exactly 0 at
+   `riverInfluence`; the resulting delta is `(shellFloor − ambient) × mask`. Every unit's delta is composed
+   via `min()` of an absolute floor target against a pristine (pre-carve) ambient snapshot — never a
+   relative subtract — so the global-then-local carve on one shared buffer never double-deepens a
+   confluence, regardless of pass order.
+2. **Per-pixel bed residual** (`HydrologyProfileCarver.carve`/`carveAtPixel`/`carvePrefetched` →
+   `HydrologyProfile.computeForUnit`) — applied per block in `PopulateNoiseStep`, on top of the already
+   shell-carved elevation. Cuts only `bed = shell − depth` within the bed half-width
+   (`RosgenProfile.bedResidualDelta`); the deepest covering unit wins at a confluence (min-composite,
+   consistent with the shell kernel). `Types.RIVER_DIFFERENCE` is `refined − shell` (trench-vs-shell, not
+   vs. the original decoded terrain).
+
+`LocalRiverProvider.buildTile` order: trace/relax the global network → assemble global units → carve the
+global shell (against a pristine snapshot) → `fillSinks` → drainage → trace the local network → sample
+local reference elevation from the already-globally-carved buffer, forced monotone non-increasing
+downstream (`LocalDrainageTracer.addLocalChannelUnits`) → carve the local shell (same buffer, same
+pristine snapshot) → a second `fillSinks` (a local carve can reopen basins the first fill closed) →
+assemble the combined global+local unit index. The carved-elevation cache store is
+`local_carved_elev_v2` (renamed from `local_carved_elev`; new-worlds-only, old tiles are orphaned and the
+frontier regenerates under the new name).
 
 **Biome split** (`world/biome/`, M-011): `ClimateVariableTransform.java` is a thin public facade
 preserving the pre-split signature; it forwards to `ClimateToBiomeTransformer.java`, which uses

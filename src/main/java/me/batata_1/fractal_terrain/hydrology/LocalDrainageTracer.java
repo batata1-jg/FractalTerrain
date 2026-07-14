@@ -202,12 +202,20 @@ final class LocalDrainageTracer {
         }
         final List<double[]> pts = resampled.points();
         final int n = pts.size();
+        // Sample each point's shell reference off the already-globally-carved buffer, then force it
+        // monotone non-increasing downstream (index 0..n-1 is upstream..downstream) so a local channel
+        // never floats above its own upstream point.
+        final double[] reference = new double[n];
+        for (int i = 0; i < n; i++) {
+            final double[] p = pts.get(i);
+            final double sampled = sampleLocal(elev, p[0], p[1]);
+            reference[i] = (i == 0) ? sampled : Math.min(reference[i - 1], sampled);
+        }
         final int featureId = nextFeatureId[0]++;
         for (int i = 0; i < n; i++) {
             final double[] p = pts.get(i);
             final double frac = (n <= 1) ? 0.0 : (double) i / (n - 1);
             final double w = ch.startWidth + (ch.endWidth - ch.startWidth) * frac;
-            final double bed = sampleLocal(elev, p[0], p[1]);
             final double[] nrm = resampled.normal(i);
             out.add(new HydrologicalUnit(
                     HydrologicalFeature.RIVER,
@@ -215,7 +223,7 @@ final class LocalDrainageTracer {
                     new double[] {p[0], p[1]},
                     new double[] {nrm[0], nrm[1]},
                     w,
-                    bed,
+                    reference[i],
                     0,
                     featureId));
         }

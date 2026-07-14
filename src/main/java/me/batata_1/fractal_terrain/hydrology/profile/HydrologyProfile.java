@@ -20,34 +20,28 @@ public final class HydrologyProfile {
     /**
      * The elevation this single unit would carve the point {@code (pixelX, pixelZ)} to, if it were the
      * only unit in the world (relief-pixel frame throughout). Projects the point onto the line through
-     * the unit's coordinate along the unit's channel-perpendicular normal; the absolute projected
-     * distance is the cross-section parameter fed to the unit's {@link RosgenProfile}.
+     * the unit's coordinate along the unit's channel-perpendicular normal; the absolute perpendicular
+     * projected distance is the bed cross-section parameter fed to the unit's {@link RosgenProfile}.
      *
-     * <p>The reference elevation the cross-section (bed / floodplain deltas) is built on is
-     * {@code min(unit.elevation, decodedElevAtUnit)} — anchored on the decoded pre-carve elevation at the
-     * <em>unit's own coordinate</em>, not the query pixel's. That keeps the bed at a consistent depth
-     * along the channel instead of tracking whatever terrain the pixel happens to sit on (the {@code min}
-     * still ensures a unit never lifts the terrain). The query pixel's decoded elevation
-     * ({@code decodedElevAtPixel}) is used only as the outer blend target: it is the {@code decodedRelative}
-     * fed to {@link RosgenProfile#elevationDelta}, so at the influence edge the carve seams back to the
-     * real terrain at the pixel.
+     * <p>Anchors on {@code shellElevAtPixel} — the elevation already carved into the tile-level
+     * valley/floodplain shell at this pixel by {@code HydrologyProfileCarver#carveRiverShells} — and cuts
+     * only the per-pixel bed residual below it ({@link RosgenProfile#bedResidualDelta}), within the bed
+     * half-width. This is cross-stage conservation (the shell carve and this residual sum to the intended
+     * trench): the detail stage never re-cuts from the original terrain.
      */
-    public static double computeForUnit(
-            double pixelX, double pixelZ, HydrologicalUnit unit, double decodedElevAtPixel, double decodedElevAtUnit) {
+    public static double computeForUnit(double pixelX, double pixelZ, HydrologicalUnit unit, double shellElevAtPixel) {
         final double[] unitCoord = unit.coord();
-        final double projectedDist;
+        final double dx = pixelX - unitCoord[0];
+        final double dz = pixelZ - unitCoord[1];
+        final double perpDist;
         if (unit.normal() != null) {
             final double[] n = unit.normal();
-            projectedDist = Math.abs((pixelX - unitCoord[0]) * n[0] + (pixelZ - unitCoord[1]) * n[1]);
+            perpDist = Math.abs(dx * n[0] + dz * n[1]);
         } else {
-            projectedDist = Math.hypot(pixelX - unitCoord[0], pixelZ - unitCoord[1]);
+            perpDist = Math.hypot(dx, dz);
         }
 
-        final double referenceElev = decodedElevAtUnit;
-        // Math.min(unit.elevation() + 62, decodedElevAtUnit);
         final RosgenType type = unit.rosgenType() == null ? RosgenType.A : unit.rosgenType();
-        final double delta =
-                RosgenProfile.of(type).elevationDelta(projectedDist, unit.width(), decodedElevAtPixel - referenceElev);
-        return referenceElev + delta;
+        return shellElevAtPixel + RosgenProfile.of(type).bedResidualDelta(perpDist, unit.width());
     }
 }

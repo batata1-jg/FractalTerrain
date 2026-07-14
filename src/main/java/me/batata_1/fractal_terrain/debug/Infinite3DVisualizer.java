@@ -5,8 +5,12 @@ import static me.batata_1.fractal_terrain.FractalTerrainConfig.CH;
 import java.util.function.Function;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
+import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
+import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
+import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import me.batata_1.fractal_terrain.math.Interpolation;
+import me.batata_1.fractal_terrain.relief.DecoderChannels;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.TestOnly;
@@ -22,8 +26,15 @@ public class Infinite3DVisualizer {
     private static final BlockState DEFAULT = Blocks.WHITE_CONCRETE.defaultBlockState();
 
     public enum DebugModes {
+        /** Elevation <em>after</em> the carving step: the carved+filled ch0 imported by ReliefProvider. */
         RELIEF(0.2f, 1.0f, 5.0f, xz -> FractalTerrainInstance.getReliefProvider()
                 .getElev(xz)),
+        /**
+         * Elevation <em>before</em> the carving step: the raw decoded terrain ({@link DecoderChannels}
+         * {@code base[0]}), same vertical scale as {@link #RELIEF} so before/after are directly comparable.
+         */
+        DECODED(0.2f, 1.0f, 5.0f, xz -> FractalTerrainInstance.getInfinite3DVisualizer()
+                .getDecodedElev(xz)),
         COARSE(1.0f, 1.0f, 256.0f, xz -> FractalTerrainInstance.getInfinite3DVisualizer()
                 .getCoarse(xz)),
 
@@ -54,11 +65,14 @@ public class Infinite3DVisualizer {
      * <ul>
      *   <li>{@link #RIVER_NET} — {@link #debugRiver}: global/local river + coast markers.</li>
      *   <li>{@link #PV} — {@link #debugPV}: peaks-and-valleys bands quantized from biome weirdness.</li>
+     *   <li>{@link #HYDRO_ZONES} — {@link #debugHydroZones}: per-block carve zone (bed / floodplain /
+     *       blending) of the nearest influencing hydrological unit.</li>
      * </ul>
      */
     public enum DebugPaintModes {
         RIVER_NET(Infinite3DVisualizer::debugRiver),
-        PV(Infinite3DVisualizer::debugPV);
+        PV(Infinite3DVisualizer::debugPV),
+        HYDRO_ZONES(Infinite3DVisualizer::debugHydroZones);
 
         private final PaintFn fn;
 
@@ -79,6 +93,31 @@ public class Infinite3DVisualizer {
     private Float getCoarse(int[] xz) {
         xz[CH] = 0;
         return FractalTerrainInstance.pipeline.getCoarse().getSlice(xz, xz).get(0);
+    }
+
+    // Pre-carve (decoded) elevation sampling. DecoderChannels.decode is a whole-tile decode, so we cache
+    // the most recently decoded tile's ch0 per thread — a bilinear sample hits 4 neighbours that almost
+    // always fall in the same tile, so this is ~1 decode per tile region rather than per block.
+    private final ThreadLocal<long[]> decodedTileKey = ThreadLocal.withInitial(() -> new long[] {Long.MIN_VALUE});
+    private final ThreadLocal<float[]> decodedTileElev = ThreadLocal.withInitial(() -> null);
+
+    /**
+     * Decoded (pre-carve) elevation at relief-pixel {@code (xz[1], xz[2])} — the {@link DecoderChannels}
+     * {@code base[0]} that {@link DebugModes#DECODED} projects, before any river carving is applied.
+     */
+    private Float getDecodedElev(int[] xz) {
+        final int px = xz[1];
+        final int pz = xz[2];
+        final int tileX = Math.floorDiv(px, DecoderChannels.INNER);
+        final int tileZ = Math.floorDiv(pz, DecoderChannels.INNER);
+        final long key = (((long) tileX) << 32) ^ (tileZ & 0xffffffffL);
+        if (decodedTileElev.get() == null || decodedTileKey.get()[0] != key) {
+            decodedTileElev.set(DecoderChannels.decode(tileX, tileZ, 0)[0]);
+            decodedTileKey.get()[0] = key;
+        }
+        final int lx = px - tileX * DecoderChannels.INNER;
+        final int lz = pz - tileZ * DecoderChannels.INNER;
+        return decodedTileElev.get()[lx * DecoderChannels.INNER + lz];
     }
 
     public Infinite3DVisualizer() {}
@@ -111,6 +150,56 @@ public class Infinite3DVisualizer {
         if (GlobalRiverProvider.isRiver(globalRiverData)) return RIVER_MARKER_ROCK;
         if (GlobalRiverProvider.isCoast(globalRiverData)) return COAST_MARKER_ROCK;
         return DEFAULT;
+    }
+
+    // hydrology carve-zone painting (bed / floodplain / blending)
+    private static final BlockState BED_ZONE = Blocks.RED_CONCRETE.defaultBlockState();
+    private static final BlockState FLOODPLAIN_ZONE = Blocks.ORANGE_CONCRETE.defaultBlockState();
+    private static final BlockState BLENDING_ZONE = Blocks.PINK_CONCRETE.defaultBlockState();
+
+    /**
+     * Paints the carve zone at {@code (xx, zz)} as the deepest zone reached by any influencing
+     * {@link HydrologicalUnit}, mirroring
+     * {@link me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver#carvePrefetched}'s
+     * min-composite (deepest covering channel wins) rather than a single nearest-unit seam:
+     *
+     * <ul>
+     *   <li><b>bed</b> ({@code perpDist ≤ bedHalfWidth}, cross-channel) → red;</li>
+     *   <li><b>floodplain</b> ({@code radialDist ≤ floodPlainLength}) → orange;</li>
+     *   <li><b>blending</b> (out to the unit's influence radius) → pink.</li>
+     * </ul>
+     *
+     * <p>Distances use the same {@code normal}/radial split as the carver, so this is a faithful preview
+     * of which zone each block falls in.
+     */
+    public BlockState debugHydroZones(int xx, int y, int zz) {
+        final double[] pt = mutableCoordsXZ.get();
+        pt[0] = xx * 0.2; // block -> relief-pixel frame (÷ GLOBAL_SCALE_CORRECTION)
+        pt[1] = zz * 0.2;
+        final HydrologicalUnit[] units =
+                FractalTerrainInstance.getLocalRiverProvider().queryInfluence(pt);
+
+        BlockState deepest = DEFAULT;
+        for (final HydrologicalUnit unit : units) {
+            final double du = pt[0] - unit.coord()[0];
+            final double dv = pt[1] - unit.coord()[1];
+            final double radialDist = Math.hypot(du, dv);
+            if (radialDist >= unit.getRadius()) continue; // outside this unit's influence circle
+
+            final double perpDist =
+                    (unit.normal() != null) ? Math.abs(du * unit.normal()[0] + dv * unit.normal()[1]) : radialDist;
+            if (perpDist <= ChannelGeometry.bedHalfWidth(unit.width())) return BED_ZONE; // deepest possible zone
+
+            if (deepest == BED_ZONE) continue;
+            final RosgenProfile profile =
+                    RosgenProfile.of(unit.rosgenType() == null ? HydrologicalUnit.RosgenType.A : unit.rosgenType());
+            if (radialDist <= profile.floodPlainLength(unit.width())) {
+                deepest = FLOODPLAIN_ZONE;
+            } else if (deepest == DEFAULT) {
+                deepest = BLENDING_ZONE;
+            }
+        }
+        return deepest;
     }
 
     // peaks-and-valleys (PV) painting

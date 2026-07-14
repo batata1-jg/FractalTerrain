@@ -29,7 +29,7 @@ public class FloatTensor implements Persistable<FloatTensor> {
 
     public static final Logger LOG = getLogger(FloatTensor.class);
 
-    private final float[] data;
+    public final float[] data;
     private final int[] shape;
     private final int[] strides;
 

@@ -35,10 +35,10 @@ public class PopulateNoiseStep {
      * height, and clamping the lowest point to {@code bottomY}. {@link #settings} carries the sea level
      * and {@code minY} those tweaks need.
      *
-     * <p>It also applies the per-pixel hydrology refinement: {@link HydrologyProfileCarver#carve} pulls
-     * the raw elevation toward nearby river channel/floodplain profiles, and the carve delta
-     * ({@code refined − raw}) is recorded into the {@link Types#RIVER_DIFFERENCE} heightmap so the surface
-     * painter can place water where the river carved below the original terrain.
+     * <p>It also applies the per-pixel hydrology refinement: {@link HydrologyProfileCarver#carve} cuts the
+     * bed residual trench below the already tile-carved valley/floodplain shell, and the carve delta
+     * ({@code refined − shell}) is recorded into the {@link Types#RIVER_DIFFERENCE} heightmap so the
+     * surface painter can place water where the river carved below the shell surface.
      */
     public void updateToFinalElev(ChunkPos chunkPos, FractalTerrainHeightmap heightmap) {
         final int seaLevel = settings.seaLevel();
@@ -60,12 +60,11 @@ public class PopulateNoiseStep {
         for (int dx = 0; dx < 16; dx++) {
             for (int dz = 0; dz < 16; dz++) {
                 final int pos = (dx << 4) + dz;
-                final float preCarveElev = interpolatedElevs[pos];
+                final float shellElev = interpolatedElevs[pos];
                 final float refinedElev = chunkUnits.units().length == 0
-                        ? preCarveElev
-                        : carver.carvePrefetched(
-                                chunkUnits, (startX + dx) / scale, (startZ + dz) / scale, preCarveElev);
-                riverDifference[pos] = refinedElev - preCarveElev;
+                        ? shellElev
+                        : carver.carvePrefetched(chunkUnits, (startX + dx) / scale, (startZ + dz) / scale, shellElev);
+                riverDifference[pos] = refinedElev - shellElev; // trench vs. shell, not vs. original terrain
                 interpolatedElevs[pos] = Math.max(bottom, refinedElev) + seaLevel - 1;
             }
         }

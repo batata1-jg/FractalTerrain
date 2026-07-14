@@ -7,6 +7,7 @@ import java.util.Objects;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
+import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
 import me.batata_1.fractal_terrain.storage.Persistable;
 import org.jetbrains.annotations.NotNull;
 
@@ -18,7 +19,8 @@ import org.jetbrains.annotations.NotNull;
  * {@code coord}, radius = its own {@link FractalTerrainConfig#riverInfluence riverInfluence(width)} —
  * so a point-stabbing query returns exactly the units whose influence reaches the point. It carries
  * the channel {@code normal} (unit perpendicular to the centreline at this point, used to project
- * query points across the channel), the local channel {@code width}, bed {@code elevation}, the
+ * query points across the channel), the local channel {@code width}, the reference (bank) {@code
+ * elevation} the tile-level shell carve floors against (see {@code RosgenProfile#shellFloor}), the
  * simulation {@code time} (meander step) at which it was recorded, and an {@code id} grouping every
  * point of the same feature.
  *
@@ -43,11 +45,17 @@ public record HydrologicalUnit(
         double elevation,
         int time,
         int id)
-        implements SpatialIndexCircle, Persistable<HydrologicalUnit> {
+        implements SpatialIndexPoint, SpatialIndexCircle, Persistable<HydrologicalUnit> {
 
     /** Dummy unit that makes the unit index serializable (probed once by Storage). */
     public static final HydrologicalUnit PROTOTYPE =
             new HydrologicalUnit(HydrologicalFeature.RIVER, null, new double[] {0.0, 0.0}, null, 0, 0, 0, 0);
+
+    /** {@link SpatialIndexPoint} coordinate accessor — same backing array as {@link #getCenter()}, no copy. */
+    @Override
+    public double[] getCoords() {
+        return coord;
+    }
 
     /** Kind of hydrological feature this point belongs to. */
     public enum HydrologicalFeature {
@@ -80,7 +88,7 @@ public record HydrologicalUnit(
      */
     @Override
     public double getRadius() {
-        return RosgenProfile.of(rosgenType).riverInfluence(width);
+        return RosgenProfile.of(rosgenType == null ? RosgenType.A : rosgenType).riverInfluence(width);
     }
 
     /**

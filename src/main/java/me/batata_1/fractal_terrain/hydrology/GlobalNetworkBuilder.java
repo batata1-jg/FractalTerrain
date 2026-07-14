@@ -31,6 +31,11 @@ import me.batata_1.fractal_terrain.hydrology.meanders.*;
  * junctions, sources) and gate-jitter/relax-step constants are unchanged from the original
  * {@code LocalRiverProvider.buildGlobalNetwork}; do not reorder the node/edge construction passes — later
  * passes rely on {@code centerIdx}/{@code edgeNodeIdx} populated by earlier ones.
+ *
+ * <p>{@link GlobalRiverProvider#getWidth} already returns native-rescaled widths (coarse-px flow width x
+ * {@code GLOBAL_WIDTH_COORD_SCALE}); every {@code EdgeSpec}/margin/seed computation below consumes that
+ * value directly, so the {@link Meanders} relax step and the border-confinement margin both operate in
+ * the same native-px frame as the local network -- do not re-scale it again here.
  */
 final class GlobalNetworkBuilder {
 

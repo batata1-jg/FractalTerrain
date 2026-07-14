@@ -78,7 +78,7 @@ public class LocalRiverProvider {
                 new ImmutableRTree<>(List.of(), HydrologicalUnit.PROTOTYPE),
                 key -> key != null ? buildUnitsTile(key) : null);
         carved = new NonIntersectingInfiniteTensor(
-                path, "local_carved_elev", new int[] {1, GRID, GRID}, this::buildCarvedTile);
+                path, "local_carved_elev_v2", new int[] {1, GRID, GRID}, this::buildCarvedTile);
     }
 
     @TestOnly
@@ -164,15 +164,22 @@ public class LocalRiverProvider {
         // 1. global rivers: trace + relax + assign bed elevations.
         final Meanders sim = GlobalNetworkBuilder.build(tileX, tileZ, base, grp);
 
-        // 2. carve the decoded elevation toward the global river beds.
+        // 2. assemble global units (padded frame, offset 0) so they line up with `carvedElevation`.
+        final RiverNetwork.ElevationSampler decodedSampler = (x, z) -> sampleBilinear(base[0], x, z);
+        final int[] nextFeatureId = {0};
+        final List<HydrologicalUnit> globalUnitsPadded =
+                sim.getNetwork().collectUnits(0, decodedSampler, 0, 0, nextFeatureId);
+
+        // 3. carve the global valley/floodplain shell into the decoded elevation. `pristineElevation` is a
+        //    separate, never-mutated clone of the original decoded terrain: both the global and local shell
+        //    carves compute their falloff lerp against it, so the min-composite across the two passes stays
+        //    order-independent regardless of call order.
         final float[] carvedElevation = base[0].clone();
-        HydrologyProfileCarver.carveGlobalRivers(carvedElevation, sim.getChannels(), PADDED);
+        HydrologyProfileCarver.carveRiverShells(
+                carvedElevation, globalUnitsPadded.toArray(new HydrologicalUnit[0]), PADDED);
 
-        // 3. fill sinks (border-blended), then crop to the inner 512 carved tile.
+        // 4. fill sinks, then drainage on the filled elevation; crop to the inner 512 grid.
         final float[] filled = PipelinePreprocessing.fillSinks(carvedElevation, PADDED, HydrologyTuning.FILL_PADDING);
-        final FloatTensor carvedTile = cropToTile(filled);
-
-        // 4. drainage on the filled elevation; crop everything to the inner 512 grid.
         final float[] uniformWeight = new float[PADDED * PADDED];
         Arrays.fill(uniformWeight, 1f);
         final int[] drainagePadded = PipelinePreprocessing.computeDrainageDirection(filled, uniformWeight, PADDED);
@@ -191,14 +198,27 @@ public class LocalRiverProvider {
 
         final List<Channel> localChannels = LocalDrainageTracer.traceLocalNetwork(drainage, elev, globalMask, stages);
 
-        // 7. assemble the unit index: global network units + local channel units (tile-local coords),
-        //    STR bulk-loaded into an ImmutableRTree of influence circles (bounds derive from the data).
-        //    A shared feature-id counter gives global rivers and the local network one tile-unique id space.
-        final RiverNetwork.ElevationSampler decodedSampler = (x, z) -> sampleBilinear(base[0], x, z);
-        final int[] nextFeatureId = {0};
-        final List<HydrologicalUnit> unitPoints =
-                sim.getNetwork().collectUnits(0, decodedSampler, PAD, PAD, nextFeatureId);
-        for (Channel ch : localChannels) LocalDrainageTracer.addLocalChannelUnits(unitPoints, ch, elev, nextFeatureId);
+        // 6. assemble local units (tile-local GRID frame): reference sampled from the already-globally-
+        //    carved buffer (`elev`) and forced monotone non-increasing downstream (see
+        //    LocalDrainageTracer#addLocalChannelUnits). A shared feature-id counter gives global rivers
+        //    and the local network one tile-unique id space.
+        final List<HydrologicalUnit> localUnits = new ArrayList<>();
+        for (Channel ch : localChannels) LocalDrainageTracer.addLocalChannelUnits(localUnits, ch, elev, nextFeatureId);
+
+        // 7. carve the local shell on top of the globally-carved padded buffer, then re-fill sinks.
+        //    NOTE: local networks are traced with no coarse halo, so a local shell can be truncated at
+        //    this tile's PAD=1 border -- a known, currently-accepted seam risk for local floodplains that
+        //    straddle a tile edge (global floodplains use the 2x2-cell halo and are unaffected).
+        final List<HydrologicalUnit> localUnitsPadded = shiftUnits(localUnits, PAD, PAD);
+//        HydrologyProfileCarver.carveRiverShells(
+//                carvedElevation, localUnitsPadded.toArray(new HydrologicalUnit[0]), PADDED);
+       // final float[] refilled = PipelinePreprocessing.fillSinks(carvedElevation, PADDED, HydrologyTuning.FILL_PADDING);
+        final FloatTensor carvedTile = cropToTile(carvedElevation);
+
+        // 8. combined unit index: global units (shifted to tile-local) + local units, STR bulk-loaded into
+        //    an ImmutableRTree of influence circles (bounds derive from the data).
+        final List<HydrologicalUnit> unitPoints = new ArrayList<>(shiftUnits(globalUnitsPadded, -PAD, -PAD));
+        unitPoints.addAll(localUnits);
         final ImmutableRTree<HydrologicalUnit> unitIndex = new ImmutableRTree<>(unitPoints, HydrologicalUnit.PROTOTYPE);
 
         if (stages != null) {
@@ -209,6 +229,26 @@ public class LocalRiverProvider {
             stages.unitTree = unitIndex;
         }
         return new TileResult(unitIndex, carvedTile);
+    }
+
+    /**
+     * Re-stamps every unit's coordinate by {@code (dx, dz)} -- moves a unit list between the padded
+     * (native, PAD-inclusive) frame and the tile-local (cropped GRID) frame.
+     */
+    private static List<HydrologicalUnit> shiftUnits(List<HydrologicalUnit> units, double dx, double dz) {
+        final List<HydrologicalUnit> shifted = new ArrayList<>(units.size());
+        for (HydrologicalUnit u : units) {
+            shifted.add(new HydrologicalUnit(
+                    u.type(),
+                    u.rosgenType(),
+                    new double[] {u.coord()[0] + dx, u.coord()[1] + dz},
+                    u.normal(),
+                    u.width(),
+                    u.elevation(),
+                    u.time(),
+                    u.id()));
+        }
+        return shifted;
     }
 
     private FloatTensor cropToTile(float[] padded) {

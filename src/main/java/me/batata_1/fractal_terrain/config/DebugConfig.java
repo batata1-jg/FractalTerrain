@@ -37,7 +37,7 @@ public final class DebugConfig {
      * Whether the 3D visualizer replaces normal chunk fill. Checked once per chunk fill, not per block, so
      * a runtime read costs nothing on the generation hot path.
      */
-    public static final boolean DISABLE_3D_VISUALIZER = ModConfig.readBoolean("debug.disable_3d_visualizer", true);
+    public static final boolean DISABLE_3D_VISUALIZER = false;
 
     /**
      * Drives the elevation each visualizer column is raised to ({@link Infinite3DVisualizer#debugElevController}).
@@ -45,8 +45,11 @@ public final class DebugConfig {
      * compile-time constant rather than a property-sourced field. Available
      * {@link Infinite3DVisualizer.DebugModes}:
      * <ul>
-     *   <li>{@code RELIEF} — decoded relief elevation channel.</li>
+     *   <li>{@code RELIEF} — elevation after the carving step (carved+filled ch0 imported by ReliefProvider).</li>
+     *   <li>{@code DECODED} — elevation before the carving step (raw decoded terrain, {@code DecoderChannels}
+     *       {@code base[0]}), same vertical scale as {@code RELIEF} for direct before/after comparison.</li>
      *   <li>{@code COARSE} — coarse-stage elevation channel.</li>
+     *   <li>{@code DIST_SHORE} — distance-to-shore field from the biome provider.</li>
      * </ul>
      */
     public static final Infinite3DVisualizer.DebugModes VIZ_H_CONTROL_MODE = Infinite3DVisualizer.DebugModes.RELIEF;

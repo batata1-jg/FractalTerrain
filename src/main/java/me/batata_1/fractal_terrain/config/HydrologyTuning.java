@@ -96,13 +96,38 @@ public final class HydrologyTuning {
     public static final double MAX_INFLUENCE_RADIUS = 64.0f;
 
     /**
-     * Max {@code |intended bed − current terrain|} a pixel may carve — applies <em>only</em> to the
-     * tile-level pre-carve ({@code HydrologyProfileCarver.carveGlobalRivers}), not to the per-pixel
+     * Max {@code |intended shell floor − current terrain|} a pixel may carve — applies <em>only</em> to the
+     * tile-level pre-carve ({@code HydrologyProfileCarver.carveRiverShells}), not to the per-pixel
      * refinement merge. A pixel beyond this delta is <em>uncarvable</em> and skipped (so the tile carve
-     * never gouges isolated holes or trenches); the hydrological units still record the intended bed
-     * elevation.
+     * never gouges isolated holes or trenches); the hydrological units still record the intended shell
+     * floor elevation.
      */
     public static final double MAX_CARVE_DELTA = 100;
+
+    /**
+     * Depth (native px) the tile-carved shell floor sits below a feature's reference (bank) elevation --
+     * shallow, distinct from the much deeper per-pixel bed trench ({@link
+     * me.batata_1.fractal_terrain.hydrology.ChannelGeometry#depthForWidth}).
+     */
+    public static final double FREEBOARD = 0.3f;
+
+    /**
+     * Fraction of the way from {@code width/2} to a river's {@code floodPlainLength} that the lens
+     * sagitta {@link #d} sits -- keeps {@code d} strictly inside the required band {@code (width/2, fpl)}
+     * for every representable width, since {@code floodPlainLength(width) > width/2} always.
+     */
+    private static final double D_FRACTION = 0.5;
+
+    /**
+     * The lens sagitta (native px) for the shell-carve mask: the along-channel half-extent of a single
+     * unit's flat-floor footprint. Stays strictly inside the validity band {@code width/2 < d <
+     * floodPlainLength} across the whole width range (narrowest local channel to the widest
+     * native-rescaled global trunk) by construction -- see {@link #D_FRACTION}.
+     */
+    public static double d(double width, double floodPlainLength) {
+        final double halfWidth = width * 0.5;
+        return halfWidth + D_FRACTION * (floodPlainLength - halfWidth);
+    }
 
     /**
      * Floodplain half-extent for a river of the given width and Rosgen type (native px). Delegates to the
@@ -152,6 +177,6 @@ public final class HydrologyTuning {
      * must lie inside that radius).
      */
     public static double maxNativeWidth() {
-        return MAX_WIDTH;
+        return MAX_WIDTH * GLOBAL_WIDTH_COORD_SCALE;
     }
 }
