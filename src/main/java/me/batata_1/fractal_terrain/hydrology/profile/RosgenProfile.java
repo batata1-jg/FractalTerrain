@@ -18,7 +18,7 @@ import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
  *       {@code HydrologyProfileCarver#carveRiverShells}, which computes the falloff lerp against a
  *       pristine (pre-carve) ambient snapshot rather than the live buffer, so the min-composite across
  *       the global and local passes is order-independent.
- *   <li>{@link #bedResidualDelta} — the per-pixel bed TRENCH cut below the already-carved shell, within
+ *   <li>{@link #riverAreaDelta} — the per-pixel bed TRENCH cut below the already-carved shell, within
  *       the bed half-width only. Carved per block by {@code PopulateNoiseStep}.
  * </ul>
  *
@@ -51,13 +51,37 @@ public enum RosgenProfile {
         public double floodPlainLength(double width) {
             return 1 + 1.2 * width;
         }
+
+        @Override
+        protected double bedDelta(double signedPerpDist,double width ) {
+            return width*Math.sqrt(1-signedPerpDist*signedPerpDist) /2;
+        }
+
+        @Override
+        protected double floodPlainDelta(double signedPerpDist, double width, double floodPlainLength) {
+            if(width>1) if(-0.75<signedPerpDist&&signedPerpDist<-0.25) return 1;
+            return 0;
+        }
+
+        @Override
+        protected double unAffectedDistCalculator(double width) {
+            return 1.12*width;
+        }
+
     },
     B,
     C,
     D;
 
-    // ---- Horizontal extents (type-dependent; shared placeholder law, override per constant) ----
+    public double unAffectedDist(double width) {
+        return Math.clamp(unAffectedDistCalculator(width),width/2,floodPlainLength(width));
+    }
 
+    protected double unAffectedDistCalculator(double width) {
+        return width;
+    }
+
+    // ---- Horizontal extents (type-dependent; shared placeholder law, override per constant) ----
     /**
      * Floodplain half-extent (native px) for a river of the given width under this Rosgen type. Placeholder
      * law shared by all types: {@code FLOODPLAIN_BASE + FLOODPLAIN_WIDTH_FACTOR · width}. Override in a
@@ -81,17 +105,7 @@ public enum RosgenProfile {
                 floodPlainLength(width) * FractalTerrainConfig.INFLUENCE_BLEND_MULTIPLIER);
     }
 
-    // ---- Lens mask (flat-floor footprint of a single unit) ----
-
-    /**
-     * The flat-floor footprint of a single unit: {@code 1} inside the two-circle lens intersection
-     * (constructed from chord half-length {@code floodPlainLength} and sagitta
-     * {@link HydrologyTuning#d}), falling off to exactly {@code 0} at {@link #riverInfluence}.
-     */
-    public double lensMask(double perpDist, double alongDist, double width, double floodPlainLength) {
-        final double radialDist = Math.hypot(perpDist, alongDist);
-        final double maxInfluence = riverInfluence(width);
-        if (radialDist >= maxInfluence) return 0.0;
+    public static double lensMask(double perpDist, double alongDist, double width, double floodPlainLength) {
 
         final double d = HydrologyTuning.d(width, floodPlainLength);
         final double r = (floodPlainLength * floodPlainLength) / (2.0 * d) + d / 2.0;
@@ -101,19 +115,11 @@ public enum RosgenProfile {
         // Inside the intersection of both discs iff within r of the farther center.
         final double excess = Math.max(distToNearCenter, distToFarCenter) - r;
         if (excess <= 0.0) return 1.0;
-
-        final double falloffSpan = Math.max(1e-9, maxInfluence - floodPlainLength);
-        return Math.max(0.0, 1.0 - excess / falloffSpan);
+        return 0;
     }
 
-    // ---- Shell (tile-level, lens-masked flat floor) ----
 
-    /**
-     * The tile-level shell delta at a point: the lens-masked pull from the ambient elevation toward
-     * {@link #shellFloor}. Reaches exactly 0 at {@link #riverInfluence}. {@code ambientElev} must be the
-     * pristine (pre-carve) original terrain, not a value already mutated by a prior carve pass — that is
-     * what makes the shell min-composite across the global and local passes order-independent.
-     */
+
     public double riverInfluenceElevation(
             double radialDist,
             double width,
@@ -131,13 +137,24 @@ public enum RosgenProfile {
 
     // ---- Bed (per-pixel residual trench, cut below the already-carved shell) ----
 
-    /**
-     * The per-pixel bed residual delta cut below the already-carved shell, within the bed half-width only;
-     * 0 outside it.
-     */
-    public double bedResidualDelta(double perpDist, double width) {
-        if (perpDist > ChannelGeometry.bedHalfWidth(width)) return 0.0;
-        return -ChannelGeometry.depthForWidth(width);
+
+    public double riverAreaDelta(double signedPerpDist, double alongDist , double width) {
+        final double floodPlainLen = floodPlainLength(width);
+        if(Math.hypot(signedPerpDist, alongDist) > floodPlainLen ) return 0;
+        final double marginLen = width/2;
+        if (Math.abs(signedPerpDist) <= marginLen ) return bedDelta(signedPerpDist/marginLen,width);
+        return floodPlainDelta(signedPerpDist>0?((signedPerpDist-marginLen)/(floodPlainLen-marginLen)):((marginLen+signedPerpDist)/(marginLen-floodPlainLen)),width,floodPlainLen);
+    }
+
+    // range [-1,0] -> [-floodPlainLen,-marginLen] ;
+    // range [0,1] -> [marginLen,floodPlainLen] ;
+    protected double floodPlainDelta(double signedPerpDist, double width, double floodPlainLength) {
+        return 0;
+    }
+
+    // should be between the range -1 and 1
+    protected double bedDelta(double signedPerpDist,double width) {
+        return -1;
     }
 
     /** The profile for a unit's Rosgen type. */

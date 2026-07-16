@@ -89,24 +89,24 @@ public final class HydrologyProfileCarver {
      * from {@link #prefetchChunk}). The point's elevation is the <b>minimum</b> (deepest) of
      * {@link HydrologyProfile#computeForUnit} over every prefetched unit that reaches the point (radial
      * distance below that unit's own {@link FractalTerrainConfig#riverInfluence influence} radius) — since
-     * {@code computeForUnit} returns {@code shellElevAtPixel + bedResidualDelta}, this is a min-composite
+     * {@code computeForUnit} returns {@code shellElevAtPixel + riverAreaDelta}, this is a min-composite
      * bed carve consistent with the shell kernel's own min-composite: the deepest covering channel wins at
      * a confluence, with no additive double-deepening (both channels share the same
      * {@code shellElevAtPixel} anchor) and no abrupt mid-channel Voronoi seam between overlapping bed
      * half-widths. {@code shellElevAtPixel} is the fallback returned unchanged when no unit reaches the
      * point.
      */
-    public float carvePrefetched(PrefetchedUnits prefetched, double pixelX, double pixelZ, double shellElevAtPixel) {
+    public float carvePrefetched(PrefetchedUnits prefetched, double[] pt, double shellElevAtPixel) {
         final HydrologicalUnit[] units = prefetched.units();
         double target = shellElevAtPixel;
         boolean anyInfluence = false;
         for (final HydrologicalUnit unit : units) {
             final double influenceRadius = unit.getRadius(); // = riverInfluence(unit.width()), the circle's own radius
             final double[] unitCoord = unit.coord();
-            final double dist = Math.hypot(pixelX - unitCoord[0], pixelZ - unitCoord[1]);
+            final double dist = Math.hypot(pt[0] - unitCoord[0], pt[1] - unitCoord[1]);
             if (dist >= influenceRadius) continue; // outside this unit's reach
             anyInfluence = true;
-            final double unitElev = HydrologyProfile.computeForUnit(pixelX, pixelZ, unit, shellElevAtPixel);
+            final double unitElev = HydrologyProfile.computeForUnit(pt, unit, shellElevAtPixel);
             target = Math.min(target, unitElev);
         }
 

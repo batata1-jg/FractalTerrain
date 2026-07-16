@@ -3,6 +3,7 @@ package me.batata_1.fractal_terrain.hydrology.profile;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
+import me.batata_1.fractal_terrain.math.VectorOps;
 
 /**
  * Shared primitives for the two sides of the same coin — {@link HydrologyProfileCarver} (elevation) and
@@ -25,23 +26,36 @@ public final class HydrologyProfile {
      *
      * <p>Anchors on {@code shellElevAtPixel} — the elevation already carved into the tile-level
      * valley/floodplain shell at this pixel by {@code HydrologyProfileCarver#carveRiverShells} — and cuts
-     * only the per-pixel bed residual below it ({@link RosgenProfile#bedResidualDelta}), within the bed
+     * only the per-pixel bed residual below it ({@link RosgenProfile#riverAreaDelta}), within the bed
      * half-width. This is cross-stage conservation (the shell carve and this residual sum to the intended
      * trench): the detail stage never re-cuts from the original terrain.
      */
-    public static double computeForUnit(double pixelX, double pixelZ, HydrologicalUnit unit, double shellElevAtPixel) {
-        final double[] unitCoord = unit.coord();
-        final double dx = pixelX - unitCoord[0];
-        final double dz = pixelZ - unitCoord[1];
-        final double perpDist;
-        if (unit.normal() != null) {
-            final double[] n = unit.normal();
-            perpDist = Math.abs(dx * n[0] + dz * n[1]);
-        } else {
-            perpDist = Math.hypot(dx, dz);
-        }
+    public static double computeForUnit(double[] pt, HydrologicalUnit unit, double elevAtPixel) {
+        final double[] normal = unit.normal();
+        if(normal==null) return elevAtPixel;
+        final double[] normTangent = VectorOps.perpendicular(normal);
 
-        final RosgenType type = unit.rosgenType() == null ? RosgenType.A : unit.rosgenType();
-        return shellElevAtPixel + RosgenProfile.of(type).bedResidualDelta(perpDist, unit.width());
+        final double[] unitCoord = unit.coord();
+
+        final double SignedPerpDist;
+        final double alongDist;
+        final double[] ptToUnit = VectorOps.sub(pt,unitCoord);
+        SignedPerpDist = VectorOps.dot(normal, ptToUnit);
+        alongDist = Math.abs(VectorOps.dot(normTangent, ptToUnit));
+
+        final RosgenProfile profile = RosgenProfile.of(unit.rosgenType() == null ? RosgenType.A : unit.rosgenType());
+        final double uninterpolatedDelta = profile.riverAreaDelta(SignedPerpDist,alongDist, unit.width());
+        final double unAffectedAreaDistMag = profile.unAffectedDist(unit.width());
+        final double[] unAffectedAreaDist = VectorOps.scale(normTangent,unAffectedAreaDistMag);
+        final double[] circlePtR = VectorOps.add(unitCoord,unAffectedAreaDist);
+        final double[] circlePtL = VectorOps.sub(unitCoord,unAffectedAreaDist);
+        if(
+            VectorOps.distanceSquared(circlePtL,pt)<=unAffectedAreaDistMag*unAffectedAreaDistMag &&
+            VectorOps.distanceSquared(circlePtR,pt)<=unAffectedAreaDistMag*unAffectedAreaDistMag
+        ) {
+            return elevAtPixel + uninterpolatedDelta;
+        }
+        
+        return elevAtPixel;
     }
 }

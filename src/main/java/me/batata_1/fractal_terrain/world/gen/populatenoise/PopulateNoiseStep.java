@@ -57,13 +57,16 @@ public class PopulateNoiseStep {
         final double chunkRadiusPx = (8.0 * Math.sqrt(2.0)) / scale;
         final HydrologyProfileCarver.PrefetchedUnits chunkUnits =
                 carver.prefetchChunk(chunkCenterPixelX, chunkCenterPixelZ, chunkRadiusPx);
+        final double[] mutablePt = new double[2];
         for (int dx = 0; dx < 16; dx++) {
             for (int dz = 0; dz < 16; dz++) {
                 final int pos = (dx << 4) + dz;
                 final float shellElev = interpolatedElevs[pos];
+                mutablePt[0] = (startX + dx) / scale;
+                mutablePt[1] = (startZ + dz) / scale;
                 final float refinedElev = chunkUnits.units().length == 0
                         ? shellElev
-                        : carver.carvePrefetched(chunkUnits, (startX + dx) / scale, (startZ + dz) / scale, shellElev);
+                        : carver.carvePrefetched(chunkUnits, mutablePt , shellElev);
                 riverDifference[pos] = refinedElev - shellElev; // trench vs. shell, not vs. original terrain
                 interpolatedElevs[pos] = Math.max(bottom, refinedElev) + seaLevel - 1;
             }

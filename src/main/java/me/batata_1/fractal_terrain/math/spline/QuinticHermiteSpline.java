@@ -135,8 +135,7 @@ public record QuinticHermiteSpline(
     }
 
     public double[] normal(double t) {
-        double[] d = VectorOps.normalize(firstDerivative(t));
-        return new double[] {d[1], -d[0]};
+        return VectorOps.perpendicular(VectorOps.normalize(firstDerivative(t)));
     }
 
     public double[] normal(int t) {
