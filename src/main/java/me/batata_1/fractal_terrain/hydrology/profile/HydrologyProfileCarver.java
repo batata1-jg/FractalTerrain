@@ -49,7 +49,7 @@ public final class HydrologyProfileCarver {
     public float carve(double worldBlockX, double worldBlockZ, double shellElevAtPixel) {
         final double pixelX = worldBlockX / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION;
         final double pixelZ = worldBlockZ / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION;
-        return carveAtPixel(pixelX, pixelZ, shellElevAtPixel);
+        return carveAtPixel(new double[]{pixelX,pixelZ}, shellElevAtPixel);
     }
 
     /**
@@ -63,9 +63,9 @@ public final class HydrologyProfileCarver {
      * Carve at a point already in the relief-pixel frame: query the influencing units, then merge via
      * {@link #carvePrefetched}.
      */
-    public float carveAtPixel(double pixelX, double pixelZ, double shellElevAtPixel) {
-        final PrefetchedUnits prefetched = queryUnits(new double[] {pixelX, pixelZ}, 0.0);
-        return carvePrefetched(prefetched, pixelX, pixelZ, shellElevAtPixel);
+    public float carveAtPixel(double[] pt, double shellElevAtPixel) {
+        final PrefetchedUnits prefetched = queryUnits(pt, 0.0);
+        return carvePrefetched(prefetched, pt, shellElevAtPixel);
     }
 
     /**

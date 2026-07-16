@@ -163,7 +163,7 @@ public class SpatialIndexBenchmark {
         bench(
                 "HydrologyProfileCarver.carveAtPixel",
                 worldInnerPoints(6, worldOriginX, worldOriginZ),
-                pt -> Float.floatToIntBits(carver.carveAtPixel(pt[0], pt[1], 100.0)));
+                pt -> Float.floatToIntBits(carver.carveAtPixel(pt, 100.0)));
 
         LOG.info(
                 "throughput ratio (rtree/quadtree): influence query {}x, insideChannel test {}x",
