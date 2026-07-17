@@ -1,0 +1,66 @@
+{
+  "task_spec": [
+    "subject: unify FractalTerrain's local and global river networks into one graph so a single elevation pass and single collectUnits handle both (local rivers become first-class RiverNetwork members joined to the global meander graph)",
+    "scope: src/main/java/me/batata_1/fractal_terrain/hydrology/ (LocalRiverProvider, LocalDrainageTracer, GlobalNetworkBuilder, ChannelElevationAssigner, meanders/RiverNetwork, meanders/Channel) and math/spline/QuinticHermiteSpline",
+    "out-of-scope: the diffusion/ONNX decode pipeline (ml/), biome/world gen, GlobalRiverProvider coarse-grid math, carve/paint profile package internals (profile/) beyond how they consume units",
+    "out-of-scope: changing HydrologicalUnit record shape or the R-tree index type"
+  ],
+  "constraints": [
+    "MUST: no behavior regression provable via existing JavaExec harnesses (globalRiverTest, localRiverTest, meandersTest, pipelineTest)",
+    "MUST: run `gradle spotlessApply` before committing (palantirJavaFormat enforced by build)",
+    "MUST: build via cached gradle 9.2.1, not PATH's 8.14; Python is `py` not python3",
+    "MUST: collectUnits must NOT invent elevations - only resample and read Channel.bedElevations (user directive)",
+    "MUST: traceLocalNetwork returns nothing - it mutates the sim's network in place (user directive)",
+    "MUST: rasterizeGlobalMask dropped entirely - no per-pixel global boolean mask (user decision: 'drop the mask entirely')",
+    "SHOULD: keep RiverNetwork per-tile, single-threaded, no cross-tile shared state (existing invariant)"
+  ],
+  "entry_points": [
+    "math/spline/QuinticHermiteSpline.java:75 reSample - builds newT via arc-length binary search then discards it; must expose newT (or a resample-with-t variant) so bed can align",
+    "meanders/Channel.java:98 reSample - delegates to spline.reSample, leaves bedElevations stale; add bedElev(double t) + resample bedElevations here",
+    "meanders/Channel.java:38 bedElevations - per-point double[], null until assigned; javadoc stale (claims collectUnits reads it - it does not)",
+    "meanders/RiverNetwork.java:596 collectUnits + :643 addFeatureUnits - resamples raw spline and re-derives bed via decodedElev.sample() lerp; switch to Channel.reSample + read bedElevations",
+    "meanders/RiverNetwork.java:82 constructor + :189 split + :262 newNode - graph built only from NodeSpec/EdgeSpec in ctor; extract reusable insert-specs API",
+    "meanders/RiverNetwork.java:617 collectUnits removedPaths - oxbows are non-Channel NaN splines with no bedElevations (must keep an elevation source for them)",
+    "hydrology/ChannelElevationAssigner.java:34 assign - topo bed assignment; currently GLOBAL-only, called inside GlobalNetworkBuilder.build; must run AFTER local insertion over whole graph",
+    "hydrology/LocalDrainageTracer.java:63 traceLocalNetwork - GRID-frame, returns List<Channel>; :41 rasterizeGlobalMask (to delete); :164 buildLocalChannel; :190 addLocalChannelUnits (to fold into unified collectUnits)",
+    "hydrology/LocalRiverProvider.java:160 buildTile - crops PADDED->GRID at step 4, shiftUnits(+/-PAD) dance; reorder so crop/shift only at end",
+    "hydrology/HydrologyTileGeometry.java - GRID=512 PAD=1 PADDED=514; sampleBilinear/sampleLocal frame helpers"
+  ],
+  "rejected_alternatives": [
+    "keep rasterizeGlobalMask for pixel exclusion + only add network query for junctions - REJECTED by user (keeps two representations of global rivers)",
+    "handle exclusion via internal rasterization from sim.getChannels() - REJECTED by user in favor of full drop-the-mask (graph-driven)",
+    "re-walk arc length inside Channel to resample bed (H1) - dispreferred: two independent binary-search walks can diverge and misalign bed to points; expose newT instead"
+  ],
+  "current_understanding": [
+    "Per-tile pipeline (LocalRiverProvider.buildTile): decode padded 514 -> GlobalNetworkBuilder.build (trace+relax+assign bed) returns Meanders sim -> collectUnits(global, padded frame) -> carve global shell -> fillSinks+drainage on padded -> CROP to GRID 512 -> rasterizeGlobalMask -> traceLocalNetwork(GRID) -> addLocalChannelUnits(GRID) -> shiftUnits dance -> combined ImmutableRTree + cropped carved tile",
+    "RiverNetwork is a dendritic in-tree: nodes (SOURCE=1 out/0 in, DRAIN=0 out/>=1 in, JUNCTION>=1 in/1 out), channels are directed edges start->end; every node has <=1 outgoing",
+    "ChannelElevationAssigner: set SOURCE/DRAIN elev from boundaryElevByNodeIdx; resolveDrainElevations (memoized downstream walk); Kahn topo propagate junction elev = min of incoming; then per-channel bedElevations = monotone-non-increasing lerp start->end clamped to max(decodedTerrain,endElev) and floored at terminal drain",
+    "collectUnits currently: for each channel spline.reSample(width/2) then bed via i==0?startElev : lerp(max(decoded,endElev)->endElev); bedElevations field unused there",
+    "QuinticHermiteSpline.sample(t): id=clamp(floor(t),0,size-2), u=t-id, quintic hermite over p0/p1,v0/v1,a0/a1; reSample maps newT list through sample/firstDerivative/secondDerivative",
+    "LocalDrainageTracer: computeFlow -> computeReaches (backprop from globalMask|elev<0 seeds) -> riverMask=flow>=40 && reaches && !globalMask; build downstream/inDegree graph; walk segments from sources/junctions; drop segments that leave tile (onBorder); buildLocalChannel makes a Channel with width-from-flow taper"
+  ],
+  "assumptions": [
+    "bedElev(t) should be plain linear interpolation between bedElevations[id] and bedElevations[id+1] at u=t-id, mirroring sample()'s segment logic (H) - user said 'in the same way as QuinticHermiteSpline sample'",
+    "networks are per-tile and discarded, so collectUnits mutating channels in-place via Channel.reSample is safe (H)",
+    "coast DRAIN datum (elev<0) comes from bilinear decoded/carved terrain at the drain coordinate, fed into boundaryElevByNodeIdx (M)",
+    "proximity radius d for 'local river meets global channel' is a new HydrologyTuning constant needing runtime calibration (H)",
+    "the transient collision QuadTree cannot be reused for junction queries (cleared each step); a fresh point index over sim.getChannels() is needed for the local-attach pass (M)"
+  ],
+  "invisible_knowledge": [
+    "H1 keystone: bedElevations must be resampled on the SAME newT basis the spline used, or bed values misalign to points; QuinticHermiteSpline.reSample must surface newT",
+    "H2 trap: Channel.reSample is called with bedElevations==null in the ctor (RiverNetwork:105), buildLocalChannel (LocalDrainageTracer:177), and meander steps - resample must no-op bed when null",
+    "H3 trap: removedPaths/oxbows have no bedElevations and NaN endpoint elevations - removing the sampler lerp orphans their elevation; needs an explicit fallback",
+    "H4 ordering: assign() must move to AFTER local insertion and boundaryElevByNodeIdx must gain entries for local sources (ridge seeds) and coast drains, else locals get datum 0.0",
+    "H5 invariant: LocalDrainageTracer hardcodes GRID in neighborIndex/onBorder/leavesTile/sampleLocal; moving to PADDED changes what 'border' means - must still reject channels crossing the TRUE tile boundary, not the padded edge",
+    "H6 mechanism: junction attachment = nearest-global-channel-point spatial query -> split(channelId,pos,redirect) mints the JUNCTION; drop-the-mask means walk-termination (proximity to global channel) also replaces the !globalMask exclusion term, and computeReaches seeds become coast(elev<0) + cells adjacent to a global channel (derived from sim, not a passed mask)",
+    "proximity radius d is the knob that replaces the crisp pixel boundary: too small -> parallel double rivers, too large -> truncated local detail; validate via localRiverTest",
+    "feature-id space is a single shared int[] counter across global+local so units share one tile-unique id space",
+    "carveRiverShells for local floodplains is currently commented out in buildTile (LocalRiverProvider:213-215) - known accepted seam risk; do not silently re-enable"
+  ],
+  "reference_docs": [
+    "ARCHITECTURE.md - pipeline, providers, coordinate frames (PADDED/GRID/COARSE), Hydrology split, Invariants",
+    "src/main/java/me/batata_1/fractal_terrain/hydrology/CLAUDE.md - hydrology file map + dual-store cache",
+    "src/main/java/me/batata_1/fractal_terrain/hydrology/meanders/CLAUDE.md - per-tile meander network semantics",
+    "CLAUDE.md (root) - build/test tasks (gradle build, spotlessApply, localRiverTest, globalRiverTest, meandersTest, pipelineTest)"
+  ]
+}

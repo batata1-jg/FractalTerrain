@@ -28,9 +28,13 @@ public class Endpoint {
     public double[] coord;
 
     /**
-     * Bed elevation assigned to this vertex (native-px scale), filled by the bottom-up junction-elevation
-     * pass in {@code LocalRiverProvider}. {@code NaN} until assigned. Used by
-     * {@link RiverNetwork#collectUnits} to anchor each channel's per-point bed.
+     * Bed elevation assigned to this vertex (native-px scale), filled by the single bottom-up
+     * junction-elevation pass ({@code ChannelElevationAssigner.assign}, invoked once from
+     * {@code LocalRiverProvider.buildTile}) that runs over the whole unified network — global and local
+     * nodes alike — after local insertion. {@code NaN} until assigned. Not read directly by
+     * {@link RiverNetwork#collectUnits}: that pass instead reads the per-channel
+     * {@link Channel#bedElevations} array, which the same assignment pass derives from these node
+     * elevations.
      */
     public double elevation = Double.NaN;
 

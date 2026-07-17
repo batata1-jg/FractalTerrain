@@ -31,9 +31,12 @@ public class Channel {
     public int startNodeId = -1, endNodeId = -1;
 
     /**
-     * Per-spline-point bed elevation (native-px scale), aligned to {@link #spline} points. Filled by the
-     * bed-assignment pass in {@code LocalRiverProvider}; {@code null} until assigned. Read by
-     * {@code carveRiver} and {@link RiverNetwork#collectUnits}.
+     * Per-spline-point bed elevation (native-px scale), aligned to {@link #spline} points. Filled once per
+     * tile by {@code ChannelElevationAssigner.assign}, which runs a single pass over the whole unified
+     * network — global and local channels alike — after local insertion; {@code null} until assigned.
+     * {@link #reSample} keeps this array index-aligned to the spline's resampled points. Read directly by
+     * {@code carveRiver} and by {@link RiverNetwork#collectUnits}, which emits it as each unit's elevation
+     * without deriving or re-sampling it from decoded terrain.
      */
     public double[] bedElevations;
 
@@ -96,7 +99,28 @@ public class Channel {
     }
 
     public void reSample(double samplingDist) throws IllegalStateException {
-        this.spline = spline.reSample(samplingDist);
+        if (bedElevations == null) {
+            this.spline = spline.reSample(samplingDist);
+            return;
+        }
+        final QuinticHermiteSpline.Resampled resampled = spline.reSampleWithTs(samplingDist);
+        final double[] newBedElevations = new double[resampled.ts().length];
+        for (int i = 0; i < newBedElevations.length; i++)
+            newBedElevations[i] = bedElev(resampled.ts()[i]);
+        this.spline = resampled.spline();
+        this.bedElevations = newBedElevations;
+    }
+
+    /**
+     * Bed elevation at arc-length parameter {@code t}: a linear blend of {@code bedElevations[floor(t)]}
+     * and {@code bedElevations[floor(t)+1]} at {@code u = t - floor(t)}, with {@code floor(t)} clamped to
+     * the valid segment range, mirroring {@link QuinticHermiteSpline#sample}'s segment indexing.
+     * {@link #bedElevations} must be non-null.
+     */
+    public double bedElev(double t) {
+        final int id = Math.clamp((int) Math.floor(t), 0, bedElevations.length - 2);
+        final double u = t - id;
+        return bedElevations[id] + (bedElevations[id + 1] - bedElevations[id]) * u;
     }
 
     @Override

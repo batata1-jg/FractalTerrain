@@ -7,7 +7,11 @@ import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.sample
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
@@ -15,7 +19,7 @@ import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
-import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
+import me.batata_1.fractal_terrain.hydrology.meanders.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
@@ -26,6 +30,8 @@ import me.batata_1.fractal_terrain.relief.DecoderChannels;
 import me.batata_1.fractal_terrain.storage.TileKey;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Owner of the whole per-tile river pipeline. From the decoded terrain ({@link DecoderChannels}) and the
@@ -34,9 +40,9 @@ import org.jetbrains.annotations.TestOnly;
  *
  * <ul>
  *   <li>a serializable {@link NonIntersectingSpatialIndex} of per-tile {@link ImmutableRTree}s of
- *       {@link HydrologicalUnit} influence circles — the queryable river network (global rivers traced
- *       + relaxed by a {@link Meanders} sim, plus the detailed local network traced from drainage),
- *       answered by point-stabbing queries; and</li>
+ *       {@link HydrologicalUnit} influence circles — the queryable river network: global rivers traced
+ *       + relaxed by a Meanders sim, with the detailed local network traced from drainage attached onto
+ *       the SAME graph as first-class members — answered by point-stabbing queries; and</li>
  *   <li>a {@link NonIntersectingInfiniteTensor} of {@code [1,512,512]} carved+filled elevation tiles,
  *       imported by {@code ReliefProvider} as its elevation channel.</li>
  * </ul>
@@ -46,9 +52,11 @@ import org.jetbrains.annotations.TestOnly;
  *
  * <p><b>Responsibility (thin orchestrator):</b> owns the dual-store cache/single-flight plumbing and the
  * per-tile pipeline sequencing; the actual per-stage math is delegated to
- * {@link GlobalNetworkBuilder} (global-river trace + relax + bed assignment, which in turn uses
- * {@link ChannelElevationAssigner}) and {@link LocalDrainageTracer} (drainage-derived local network).
- * {@link HydrologyTileGeometry} is the shared tile-frame geometry all three depend on.
+ * {@link GlobalNetworkBuilder} (global-river trace + relax), {@link LocalDrainageTracer} (drainage-derived
+ * local network, attached in place onto the global graph) and {@link ChannelElevationAssigner}
+ * (bed-elevation propagation, invoked here once local insertion has finished so every source/junction/
+ * drain in the unified graph is seeded). {@link HydrologyTileGeometry} is the shared tile-frame geometry
+ * all three depend on.
  *
  * <p><b>Invariants:</b> {@link #units}/{@link #carved} (a {@link NonIntersectingSpatialIndex} /
  * {@link NonIntersectingInfiniteTensor} pair) are reused per-tile and single-threaded per key — the
@@ -57,6 +65,7 @@ import org.jetbrains.annotations.TestOnly;
  */
 public class LocalRiverProvider {
 
+    private static final Logger LOG = LoggerFactory.getLogger(LocalRiverProvider.class);
     private final NonIntersectingSpatialIndex<ImmutableRTree<HydrologicalUnit>> units;
     private final NonIntersectingInfiniteTensor carved;
     private final ConcurrentHashMap<TileKey, TileResult> pending = new ConcurrentHashMap<>();
@@ -95,16 +104,19 @@ public class LocalRiverProvider {
 
     /**
      * Headless seam for {@code LocalRiverGoldenTest}: run the local-network trace — the deterministic core
-     * unique to this provider (flow accumulation → reach test → segment walk → channel build) — over a
-     * supplied {@code GRID*GRID} drainage/elevation pair and global-river mask, with no pipeline
-     * dependency. In production the drainage and elevation originate from the ONNX-decoded terrain
-     * (via {@link me.batata_1.fractal_terrain.relief.DecoderChannels#decode}); a golden test instead feeds
-     * a synthetic seeded elevation field and its {@code PipelinePreprocessing}-computed drainage. Delegates
-     * to the exact production {@link LocalDrainageTracer#traceLocalNetwork} path.
+     * unique to this provider (flow accumulation → reach test → segment walk → attach) — over a supplied
+     * {@code GRID*GRID} drainage/elevation pair and a caller-built {@code network} (a synthetic global
+     * network in the golden test; the real per-tile graph in production), with no pipeline dependency. In
+     * production the drainage and elevation originate from the ONNX-decoded terrain (via {@link
+     * me.batata_1.fractal_terrain.relief.DecoderChannels#decode}); a golden test instead feeds a synthetic
+     * seeded elevation field and its {@code PipelinePreprocessing}-computed drainage, plus a synthetic
+     * central trunk channel for {@code network}. Delegates to the exact production {@link
+     * LocalDrainageTracer#traceLocalNetwork} path, which mutates {@code network} in place and returns
+     * nothing — the caller inspects {@code network} afterwards.
      */
     @TestOnly
-    public List<Channel> traceLocalNetworkForTest(int[] drainage, float[] elev, boolean[] globalMask) {
-        return LocalDrainageTracer.traceLocalNetwork(drainage, elev, globalMask, null);
+    public void traceLocalNetworkForTest(int[] drainage, float[] elev, RiverNetwork network) {
+        LocalDrainageTracer.traceLocalNetwork(drainage, elev, network, null);
     }
 
     private GlobalRiverProvider globalRiverProvider() {
@@ -161,94 +173,95 @@ public class LocalRiverProvider {
         final GlobalRiverProvider grp = globalRiverProvider();
         final float[][] base = DecoderChannels.decode(tileX, tileZ, PAD); // padded 514, channels 0..6
 
-        // 1. global rivers: trace + relax + assign bed elevations.
-        final Meanders sim = GlobalNetworkBuilder.build(tileX, tileZ, base, grp);
+        // 1. global rivers: trace + relax, returning the network plus the boundary-elevation map
+        //    GlobalNetworkBuilder accumulated for it (source/drain node datum).
+        final GlobalNetworkBuilder.Result globalResult = GlobalNetworkBuilder.build(tileX, tileZ, base, grp);
+        final RiverNetwork network = globalResult.network().getNetwork();
+        final Map<Integer, Double> boundaryElev = new HashMap<>(globalResult.boundaryElevByNodeIdx());
 
-        // 2. assemble global units (padded frame, offset 0) so they line up with `carvedElevation`.
-        final RiverNetwork.ElevationSampler decodedSampler = (x, z) -> sampleBilinear(base[0], x, z);
-        final int[] nextFeatureId = {0};
-        final List<HydrologicalUnit> globalUnitsPadded =
-                sim.getNetwork().collectUnits(0, decodedSampler, 0, 0, nextFeatureId);
-
-        // 3. carve the global valley/floodplain shell into the decoded elevation. `pristineElevation` is a
-        //    separate, never-mutated clone of the original decoded terrain: both the global and local shell
-        //    carves compute their falloff lerp against it, so the min-composite across the two passes stays
-        //    order-independent regardless of call order.
         final float[] carvedElevation = base[0];
-        HydrologyProfileCarver.carveRiverShells(
-                carvedElevation, globalUnitsPadded.toArray(new HydrologicalUnit[0]), PADDED);
+        ChannelElevationAssigner.assign(network,boundaryElev, carvedElevation);
+        LOG.info("passed first assignemnt");
 
-        // 4. fill sinks, then drainage on the filled elevation; crop to the inner 512 grid.
+        final List<HydrologicalUnit> globalUnitsFirstCarvePass = network.collectUnits(
+                0, 0, 0, new int[] {0});
+        HydrologyProfileCarver.carveRiverShells(
+                carvedElevation, globalUnitsFirstCarvePass.toArray(new HydrologicalUnit[0]), PADDED);
+
+        // 2. sink-fill + drainage on the RAW decoded elevation (not yet carved): the local trace no
+        //    longer needs a pre-carved valley to route toward the global network -- LOCAL_ATTACH_RADIUS
+        //    proximity (not terrain shape) is what joins locals to the graph -- so drainage can be
+        //    computed once, up front, and fed straight into the trace.
         final float[] filled = PipelinePreprocessing.fillSinks(carvedElevation, PADDED, HydrologyTuning.FILL_PADDING);
         final float[] uniformWeight = new float[PADDED * PADDED];
         Arrays.fill(uniformWeight, 1f);
         final int[] drainagePadded = PipelinePreprocessing.computeDrainageDirection(filled, uniformWeight, PADDED);
-        final int[] drainage = new int[GRID * GRID];
-        final float[] elev = new float[GRID * GRID];
-        for (int ix = 0; ix < GRID; ix++) {
-            for (int iz = 0; iz < GRID; iz++) {
-                final int padded = (PAD + ix) * PADDED + (PAD + iz);
-                drainage[ix * GRID + iz] = drainagePadded[padded];
-                elev[ix * GRID + iz] = filled[padded];
+
+        // 3. local rivers: trace + attach into the SAME graph. A before/after channel-id snapshot tells
+        //    apart the channels the trace minted (local SOURCE-rooted edges, plus any global channel
+        //    split() grew a downstream half for) from genuinely-local ones: a minted channel is "local"
+        //    iff its start node is a freshly-minted SOURCE (a split()-grown global downstream half always
+        //    starts at a JUNCTION instead), so this needs no extra bookkeeping out of the void-returning
+        //    tracer.
+        final Set<Integer> channelIdsBeforeLocalTrace = new HashSet<>();
+        for (Channel ch : network.getChannels()) channelIdsBeforeLocalTrace.add(ch.channelId);
+        LocalDrainageTracer.traceLocalNetwork(drainagePadded, carvedElevation, network, stages);
+        final Set<Integer> localChannelIds = new HashSet<>();
+        for (Channel ch : network.getChannels()) {
+            if (channelIdsBeforeLocalTrace.contains(ch.channelId)) continue;
+            final Endpoint start = network.getNode(ch.startNodeId);
+            if (start != null && start.type == Endpoint.Type.SOURCE) localChannelIds.add(ch.channelId);
+        }
+
+        // 4. augment the boundary map with the local ridge SOURCEs (decoded terrain at the seed, floored
+        //    at the downstream terminal reference -- the coast datum, or the datum at the global junction
+        //    it split) and coast DRAINs (bilinear terrain datum) the trace minted, so the single assign
+        //    below has a seed for every local path too (H4 -- otherwise these nodes float at 0.0).
+        for (int channelId : localChannelIds) {
+            final Channel ch = network.getChannel(channelId);
+            if (ch == null) continue;
+            final Endpoint start = network.getNode(ch.startNodeId);
+            final Endpoint end = network.getNode(ch.endNodeId);
+            if (end == null) continue;
+            final double downstreamRef = sampleBilinear(carvedElevation, end.coord[0], end.coord[1]);
+            if (start != null) {
+                boundaryElev.putIfAbsent(
+                        start.id, Math.max(sampleBilinear(carvedElevation, start.coord[0], start.coord[1]), downstreamRef));
+            }
+            if (end.type == Endpoint.Type.DRAIN) {
+                boundaryElev.putIfAbsent(end.id, downstreamRef);
             }
         }
 
-        // 5. mark the global-river pixels so the local network excludes them.
-        final boolean[] globalMask = LocalDrainageTracer.rasterizeGlobalMask(sim.getChannels());
+        // 5. ONE bed-elevation assignment over the whole unified graph.
+        ChannelElevationAssigner.assign(network, boundaryElev, carvedElevation);
 
-        final List<Channel> localChannels = LocalDrainageTracer.traceLocalNetwork(drainage, elev, globalMask, stages);
-
-        // 6. assemble local units (tile-local GRID frame): reference sampled from the already-globally-
-        //    carved buffer (`elev`) and forced monotone non-increasing downstream (see
-        //    LocalDrainageTracer#addLocalChannelUnits). A shared feature-id counter gives global rivers
-        //    and the local network one tile-unique id space.
-        final List<HydrologicalUnit> localUnits = new ArrayList<>();
-        for (Channel ch : localChannels) LocalDrainageTracer.addLocalChannelUnits(localUnits, ch, elev, nextFeatureId);
-
-        // 7. carve the local shell on top of the globally-carved padded buffer, then re-fill sinks.
-        //    NOTE: local networks are traced with no coarse halo, so a local shell can be truncated at
-        //    this tile's PAD=1 border -- a known, currently-accepted seam risk for local floodplains that
-        //    straddle a tile edge (global floodplains use the 2x2-cell halo and are unaffected).
-        final List<HydrologicalUnit> localUnitsPadded = shiftUnits(localUnits, PAD, PAD);
-//        HydrologyProfileCarver.carveRiverShells(
-//                carvedElevation, localUnitsPadded.toArray(new HydrologicalUnit[0]), PADDED);
-       // final float[] refilled = PipelinePreprocessing.fillSinks(carvedElevation, PADDED, HydrologyTuning.FILL_PADDING);
-        final FloatTensor carvedTile = cropToTile(carvedElevation);
-
-        // 8. combined unit index: global units (shifted to tile-local) + local units, STR bulk-loaded into
-        //    an ImmutableRTree of influence circles (bounds derive from the data).
-        final List<HydrologicalUnit> unitPoints = new ArrayList<>(shiftUnits(globalUnitsPadded, -PAD, -PAD));
-        unitPoints.addAll(localUnits);
+        final int[] nextFeatureId = {0};
+        final List<HydrologicalUnit> unitPoints = network.collectUnits(0, PAD, PAD, nextFeatureId);
         final ImmutableRTree<HydrologicalUnit> unitIndex = new ImmutableRTree<>(unitPoints, HydrologicalUnit.PROTOTYPE);
 
+
+        final List<HydrologicalUnit> globalUnitsForCarve = network.collectUnits(
+                0, 0, 0, new int[] {0});
+
+        HydrologyProfileCarver.carveRiverShells(
+                carvedElevation, globalUnitsForCarve.toArray(new HydrologicalUnit[0]), PADDED);
+        final FloatTensor carvedTile = cropToTile(carvedElevation);
+
         if (stages != null) {
-            stages.channels = new ArrayList<>(sim.getChannels());
-            stages.localChannels = localChannels;
+            final List<Channel> globalOnly = new ArrayList<>();
+            final List<Channel> localOnly = new ArrayList<>();
+            for (Channel ch : network.getChannels()) {
+                if (localChannelIds.contains(ch.channelId)) localOnly.add(ch);
+                else globalOnly.add(ch);
+            }
+            stages.channels = globalOnly;
+            stages.localChannels = localOnly;
             stages.carvedElevation = carvedTile.copyRange(0, carvedTile.getSize());
-            stages.network = sim.getNetwork();
+            stages.network = network;
             stages.unitTree = unitIndex;
         }
         return new TileResult(unitIndex, carvedTile);
-    }
-
-    /**
-     * Re-stamps every unit's coordinate by {@code (dx, dz)} -- moves a unit list between the padded
-     * (native, PAD-inclusive) frame and the tile-local (cropped GRID) frame.
-     */
-    private static List<HydrologicalUnit> shiftUnits(List<HydrologicalUnit> units, double dx, double dz) {
-        final List<HydrologicalUnit> shifted = new ArrayList<>(units.size());
-        for (HydrologicalUnit u : units) {
-            shifted.add(new HydrologicalUnit(
-                    u.type(),
-                    u.rosgenType(),
-                    new double[] {u.coord()[0] + dx, u.coord()[1] + dz},
-                    u.normal(),
-                    u.width(),
-                    u.elevation(),
-                    u.time(),
-                    u.id()));
-        }
-        return shifted;
     }
 
     private FloatTensor cropToTile(float[] padded) {
@@ -360,14 +373,27 @@ public class LocalRiverProvider {
         return stages;
     }
 
+    /**
+     * Debug snapshot of one {@link #buildTile} run, captured for {@code LocalRiverTest}. {@link #network}
+     * is the single unified {@link RiverNetwork} graph (global and local channels as one graph, per
+     * DL-010); {@link #channels} and {@link #localChannels} are that SAME graph's channels split by the
+     * local-vs-global distinction {@link #buildTile} already derives via its before/after channel-id
+     * snapshot (a minted channel is "local" iff its start node is a freshly-minted SOURCE), so the harness
+     * can render the two colorings from one graph without recomputing that distinction or walking any
+     * separate parallel structure.
+     */
     @TestOnly
     public static final class Stages {
         public float[] flow;
         public boolean[] riverMask;
         public float[] carvedElevation;
+        /** Global-only channels of {@link #network} (see class javadoc for the local/global split). */
         public List<Channel> channels;
+        /** Local-only channels of {@link #network} (see class javadoc for the local/global split). */
         public List<Channel> localChannels;
+        /** The single unified per-tile graph (global and local channels together). */
         public RiverNetwork network;
+
         public ImmutableRTree<HydrologicalUnit> unitTree;
     }
 }

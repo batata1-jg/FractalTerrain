@@ -1,8 +1,6 @@
 package me.batata_1.fractal_terrain.hydrology;
 
-import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.GRID;
-import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.PAD;
-import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.sampleLocal;
+import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.*;
 import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.computeFlow;
 import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.neighbor;
 
@@ -10,27 +8,31 @@ import java.util.ArrayList;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
-import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.HydrologicalFeature;
 import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
-import me.batata_1.fractal_terrain.math.VectorOps;
-import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
+import me.batata_1.fractal_terrain.hydrology.meanders.Endpoint;
+import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork;
+import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import org.jetbrains.annotations.Nullable;
 
 /**
  * Responsibility: the detailed <em>local</em> river network, traced directly from the per-tile drainage
- * field (flow accumulation → reach test → segment walk → channel build), excluding pixels already
- * claimed by the global-river trace. This is the deterministic core exercised headlessly by
- * {@code LocalRiverGoldenTest} via {@link LocalRiverProvider#traceLocalNetworkForTest}.
+ * field (flow accumulation → reach test → segment walk → channel build) and attached in place onto the
+ * live {@link RiverNetwork} that already carries the global (Meanders-relaxed) channels, so a single
+ * downstream bed-assignment/unit-collection pass serves both. This is the deterministic core exercised
+ * headlessly by {@code LocalRiverGoldenTest} via {@link LocalRiverProvider#traceLocalNetworkForTest}.
  *
- * <p>Collaborators: {@link HydrologyTileGeometry} (tile geometry + local-frame sampling);
- * {@link PipelinePreprocessing} (flow accumulation, neighbour resolution); {@link Channel} /
- * {@link QuinticHermiteSpline} (traced-segment geometry); consumed by
- * {@code LocalRiverProvider.buildTile} (steps 5–7).
+ * <p>Collaborators: {@link HydrologyTileGeometry} (tile geometry); {@link PipelinePreprocessing} (flow
+ * accumulation, neighbour resolution); {@link Channel} / {@link RiverNetwork} (traced-segment geometry
+ * and the graph it attaches to); consumed by {@code LocalRiverProvider.buildTile}.
  *
- * <p>Invariants: purely functional over its parameters — no shared mutable state, so per-tile traces
- * from different worker threads never interact. A channel is only emitted when its whole segment stays
- * interior to the tile ({@link #leavesTile}); this is unchanged from the original
- * {@code LocalRiverProvider.traceLocalNetwork}.
+ * <p>Invariants: purely functional over its parameters plus the one {@link RiverNetwork} it mutates in
+ * place — no state shared across tiles, so per-tile traces from different worker threads never
+ * interact. A channel is only attached when its whole segment stays interior to the tile's TRUE boundary
+ * ({@link #leavesTile}, still {@link HydrologyTileGeometry#GRID}-based, not the padded frame — H5). No
+ * per-pixel global boolean mask is built anywhere: proximity to a global channel is read from a point
+ * index freshly built over {@link RiverNetwork#getChannels()} every call (the transient Meanders
+ * collision {@link QuadTree} is cleared every simulation step and cannot be reused, so this index is its
+ * own, separate, throwaway structure) — see {@link #buildGlobalPointIndex}.
  */
 final class LocalDrainageTracer {
 
@@ -38,35 +40,43 @@ final class LocalDrainageTracer {
 
     private static final float FLOW_THRESHOLD = 40f;
 
-    static boolean[] rasterizeGlobalMask(List<Channel> channels) {
-        final boolean[] mask = new boolean[GRID * GRID];
-        for (Channel ch : channels) {
-            if (ch.numPts() < 2) continue;
-            final QuinticHermiteSpline spline = ch.spline;
-            final int segments = ch.numPts() - 1;
-            for (int i = 0; i < segments; i++) {
-                final double segLength = VectorOps.distance(
-                        spline.points().get(i), spline.points().get(i + 1));
-                final int sampleCount = Math.max(1, (int) Math.ceil(segLength / 0.5));
-                for (int s = 0; s <= sampleCount; s++) {
-                    final double[] p = spline.sample(i + (double) s / sampleCount);
-                    final int xi = (int) Math.round(p[0] - PAD);
-                    final int zi = (int) Math.round(p[1] - PAD);
-                    if (xi < 0 || zi < 0 || xi >= GRID || zi >= GRID) continue;
-                    mask[xi * GRID + zi] = true;
-                }
-            }
-        }
-        return mask;
-    }
+    /** Half-extent of the fresh global-channel point index's bounds (channels never approach this). */
+    private static final double POINT_INDEX_EXTENT = 1e9;
 
-    static List<Channel> traceLocalNetwork(
-            int[] drainage, float[] elev, boolean[] globalMask, @Nullable LocalRiverProvider.Stages stages) {
-        final int cellCount = GRID * GRID;
-        final float[] flow = computeFlow(drainage, GRID);
-        final boolean[] reaches = computeReaches(drainage, elev, globalMask);
+    /**
+     * Traces the local drainage network and mutates {@code network} in place: flow accumulation → reach
+     * test → segment walk, as before, but every surviving interior segment is now attached directly to
+     * {@code network} as a graph edge instead of being returned in a detached list. Proximity to a global
+     * channel — read from a point index freshly built over {@code network.getChannels()} (see
+     * {@link #buildGlobalPointIndex}) — replaces both the walk-termination exclusion and the reach-seed
+     * adjacency the removed pixel mask used to provide ({@link HydrologyTuning#LOCAL_ATTACH_RADIUS} gates
+     * both, plus the junction-attachment split below).
+     *
+     * <p>Each surviving segment's upstream ridge cell becomes a SOURCE node; its downstream end either
+     * splits the nearest global channel (minting a JUNCTION) when a global-channel point lies within
+     * {@code LOCAL_ATTACH_RADIUS} of it, or terminates at a coast DRAIN ({@code elev < 0}). A segment
+     * whose downstream end finds neither is DROPPED rather than force-attached (DL-013/DL-015: the
+     * continuous attach-time distance check is authoritative over the grid reach seed at the radius
+     * boundary). If the walk yields no surviving segments, or the graph carries no channels to index
+     * against (every segment then only attaches via a coast drain), this method is simply a no-op /
+     * coast-only pass — {@link #buildGlobalPointIndex} and {@link QuadTree#getPointsInCircle} both
+     * tolerate an empty channel list without error.
+     *
+     * <p>Returns nothing — see {@code LocalRiverProvider.buildTile} for how the caller augments the
+     * boundary-elevation map (reading the nodes this method minted) and runs the single
+     * assign/collectUnits pass over the now-unified graph.
+     */
+    static void traceLocalNetwork(
+            int[] drainage, float[] elev, RiverNetwork network, @Nullable LocalRiverProvider.Stages stages) {
+        final int cellCount = PADDED * PADDED;
+        final float[] flow = computeFlow(drainage, PADDED);
+        final QuadTree<Channel.ChannelPt> globalIndex = buildGlobalPointIndex(network.getChannels());
+        final boolean[] reaches = computeReaches(drainage, elev, globalIndex);
         final boolean[] riverMask = new boolean[cellCount];
-        for (int i = 0; i < cellCount; i++) riverMask[i] = flow[i] >= FLOW_THRESHOLD && reaches[i] && !globalMask[i];
+        for (int cell = 0; cell < cellCount; cell++) {
+            riverMask[cell] =
+                    flow[cell] >= FLOW_THRESHOLD && reaches[cell] && !nearGlobal(globalIndex, cell / PADDED, cell % PADDED);
+        }
 
         final int[] downstream = new int[cellCount];
         final int[] inDegree = new int[cellCount];
@@ -75,14 +85,13 @@ final class LocalDrainageTracer {
             if (!riverMask[cell]) continue;
             final int direction = neighbor(drainage[cell]);
             if (direction == -1) continue;
-            final int next = PipelinePreprocessing.neighborIndex(cell, direction, GRID);
+            final int next = PipelinePreprocessing.neighborIndex(cell, direction, PADDED);
             if (next == -1 || !riverMask[next]) continue;
             downstream[cell] = next;
             inDegree[next]++;
         }
 
-        final List<Channel> channels = new ArrayList<>();
-        int channelId = 0;
+        int localChannelId = 0;
         for (int start = 0; start < cellCount; start++) {
             if (!riverMask[start]) continue;
             final boolean isSource = inDegree[start] == 0;
@@ -90,14 +99,118 @@ final class LocalDrainageTracer {
             if (!isSource && !isJunction) continue;
             final List<Integer> segmentCells = walkSegment(start, downstream, inDegree);
             if (segmentCells.size() < 2 || leavesTile(segmentCells)) continue;
-            final Channel channel = buildLocalChannel(segmentCells, flow, channelId++);
-            if (channel != null) channels.add(channel);
+            final Channel channel = buildLocalChannel(segmentCells, flow, localChannelId++);
+            if (channel == null) continue; // degenerate geometry: skip (buildLocalChannel already logs nothing)
+            attachSegment(network, globalIndex, channel, segmentCells.getLast(), elev);
         }
+
         if (stages != null) {
             stages.flow = flow;
             stages.riverMask = riverMask;
         }
-        return channels;
+    }
+
+    /**
+     * Attaches one traced local {@code channel} (still in the un-padded {@code GRID} frame) to
+     * {@code network} as a SOURCE -> (JUNCTION split | coast DRAIN) edge. {@code globalIndex} (built in
+     * the same {@code GRID} frame) locates the nearest global-channel point within {@link
+     * HydrologyTuning#LOCAL_ATTACH_RADIUS} of the segment's downstream end; when found, the nearest
+     * candidate's exact channel/index is split (DL-015: this continuous distance check is authoritative,
+     * so a candidate the split bounds-check rejects — e.g. it turns out to sit exactly on a channel
+     * endpoint, or a prior attach in this same pass already split past it — is a clean DROP, never a
+     * force-attach). Otherwise the segment attaches to a coast DRAIN when its downstream cell is below
+     * sea level, or is dropped (DL-013: no dangling, datum-less node).
+     */
+    private static void attachSegment(
+            RiverNetwork network,
+            QuadTree<Channel.ChannelPt> globalIndex,
+            Channel channel,
+            int downstreamCell,
+            float[] elev) {
+        final List<double[]> pts = channel.spline.points();
+        final double[] downstreamPt = pts.getLast();
+        final Channel.ChannelPt nearestGlobal =
+                nearestWithin(globalIndex, downstreamPt[0], downstreamPt[1], HydrologyTuning.LOCAL_ATTACH_RADIUS);
+
+        final ArrayList<double[]> paddedPts = shiftToPaddedFrame(pts);
+        final RiverNetwork.NodeSpec sourceSpec =
+                new RiverNetwork.NodeSpec(paddedPts.getFirst()[0], paddedPts.getFirst()[1], Endpoint.Type.SOURCE);
+
+        if (nearestGlobal != null) {
+            final Channel globalChannel = network.getChannel(nearestGlobal.channelId());
+            if (globalChannel == null) return; // stale candidate (already restructured this pass): drop.
+            final int downstreamChannelId = network.split(nearestGlobal.channelId(), nearestGlobal.index(), false);
+            if (downstreamChannelId == -1) return; // DL-015: split rejected the candidate; drop, don't force.
+            // Snap the attaching edge's last point onto the exact junction coordinate split() just minted,
+            // so the new edge's endpoint coincides with the node it terminates at (no confluence gap).
+            paddedPts.set(
+                    paddedPts.size() - 1,
+                    network.getNode(globalChannel.endNodeId).coord.clone());
+            network.attachSourceToExistingNode(
+                    sourceSpec,
+                    globalChannel.endNodeId,
+                    paddedPts,
+                    channel.startWidth,
+                    channel.endWidth,
+                    HydrologyTuning.RESAMPLE_DIST);
+            return;
+        }
+
+        if (elev[downstreamCell] >= 0) return; // DL-013: no global channel in reach, no coast -> drop.
+        final RiverNetwork.NodeSpec drainSpec =
+                new RiverNetwork.NodeSpec(paddedPts.getLast()[0], paddedPts.getLast()[1], Endpoint.Type.DRAIN);
+        network.attachSourceToNewDrain(
+                sourceSpec, drainSpec, paddedPts, channel.startWidth, channel.endWidth, HydrologyTuning.RESAMPLE_DIST);
+    }
+
+    private static ArrayList<double[]> shiftToPaddedFrame(List<double[]> pts) {
+        final ArrayList<double[]> shifted = new ArrayList<>(pts.size());
+        for (double[] p : pts) shifted.add(new double[] {p[0] + PAD, p[1] + PAD});
+        return shifted;
+    }
+
+    /**
+     * A fresh point index over every point of every channel in {@code channels}, shifted into the
+     * un-padded {@code GRID} frame (subtracting {@link HydrologyTileGeometry#PAD}) that the local trace
+     * itself works in — mirrors the coordinate convention the removed {@code rasterizeGlobalMask} used.
+     * Tolerates an empty {@code channels} list (an empty tree; every query below just returns no
+     * candidates, so every non-coast segment is dropped rather than dereferencing a missing point).
+     */
+    private static QuadTree<Channel.ChannelPt> buildGlobalPointIndex(List<Channel> channels) {
+        final QuadTree<Channel.ChannelPt> index = new QuadTree<>(
+                new double[] {-POINT_INDEX_EXTENT, -POINT_INDEX_EXTENT},
+                new double[] {POINT_INDEX_EXTENT, POINT_INDEX_EXTENT});
+        for (Channel ch : channels) {
+            final List<double[]> pts = ch.spline.points();
+            for (int i = 0; i < pts.size(); i++) {
+                final double[] p = pts.get(i);
+                index.insertPoint(new Channel.ChannelPt(new double[] {p[0] - PAD, p[1] - PAD}, i, ch.channelId));
+            }
+        }
+        return index;
+    }
+
+    /** Whether any global-channel point lies within {@link HydrologyTuning#LOCAL_ATTACH_RADIUS} of (x, z). */
+    private static boolean nearGlobal(QuadTree<Channel.ChannelPt> index, int x, int z) {
+        return !index.getPointsInCircle(new double[] {x, z}, HydrologyTuning.LOCAL_ATTACH_RADIUS)
+                .isEmpty();
+    }
+
+    /** The nearest global-channel point within {@code radius} of {@code (x, z)}, or {@code null}. */
+    private static @Nullable Channel.ChannelPt nearestWithin(
+            QuadTree<Channel.ChannelPt> index, double x, double z, double radius) {
+        Channel.ChannelPt nearest = null;
+        double nearestDistSq = Double.MAX_VALUE;
+        for (Channel.ChannelPt candidate : index.getPointsInCircle(new double[] {x, z}, radius)) {
+            final double dx = candidate.coords()[0] - x;
+            final double dz = candidate.coords()[1] - z;
+            final double distSq = dx * dx + dz * dz;
+            if (distSq < nearestDistSq) {
+                nearestDistSq = distSq;
+                nearest = candidate;
+            }
+        }
+        return nearest;
     }
 
     private static List<Integer> walkSegment(int start, int[] downstream, int[] inDegree) {
@@ -124,7 +237,7 @@ final class LocalDrainageTracer {
         return x == 0 || z == 0 || x == GRID - 1 || z == GRID - 1;
     }
 
-    private static boolean[] computeReaches(int[] drainage, float[] elev, boolean[] globalMask) {
+    private static boolean[] computeReaches(int[] drainage, float[] elev, QuadTree<Channel.ChannelPt> globalIndex) {
         final int n = drainage.length;
         final int[] down = new int[n];
         for (int c = 0; c < n; c++) {
@@ -143,7 +256,7 @@ final class LocalDrainageTracer {
         int qHead = 0;
         int qTail = 0;
         for (int c = 0; c < n; c++) {
-            if (globalMask[c] || elev[c] < 0) {
+            if (elev[c] < 0 || nearGlobal(globalIndex, c / GRID, c % GRID)) {
                 reaches[c] = true;
                 queue[qTail++] = c;
             }
@@ -180,52 +293,5 @@ final class LocalDrainageTracer {
             return null;
         }
         return channel;
-    }
-
-    /**
-     * Resample a local channel at {@code dx = width/2} and add its points as RIVER
-     * {@link HydrologicalUnit}s, stamping each with the channel normal and a shared feature id pulled from
-     * {@code nextFeatureId} (one id per channel, advancing the counter).
-     */
-    static void addLocalChannelUnits(List<HydrologicalUnit> out, Channel ch, float[] elev, int[] nextFeatureId) {
-        // Spacing must be <= half the NARROWEST width along the start->end taper, so consecutive
-        // units' width/2 discs always overlap (gap-free membership test + girth rendering).
-        final double narrowestWidth = Math.min(ch.startWidth, ch.endWidth);
-        final double dx = Math.max(narrowestWidth / 2.0, 0.5);
-        if (!ch.spline.isResampleable()) return; // degenerate geometry: nothing to add
-        final QuinticHermiteSpline resampled;
-        try {
-            resampled = ch.spline.reSample(dx);
-        } catch (RuntimeException runaway) {
-            // Pathological runaway geometry (spline exceeds MAX_SPLINE_LENGTH); add no units.
-            return;
-        }
-        final List<double[]> pts = resampled.points();
-        final int n = pts.size();
-        // Sample each point's shell reference off the already-globally-carved buffer, then force it
-        // monotone non-increasing downstream (index 0..n-1 is upstream..downstream) so a local channel
-        // never floats above its own upstream point.
-        final double[] reference = new double[n];
-        for (int i = 0; i < n; i++) {
-            final double[] p = pts.get(i);
-            final double sampled = sampleLocal(elev, p[0], p[1]);
-            reference[i] = (i == 0) ? sampled : Math.min(reference[i - 1], sampled);
-        }
-        final int featureId = nextFeatureId[0]++;
-        for (int i = 0; i < n; i++) {
-            final double[] p = pts.get(i);
-            final double frac = (n <= 1) ? 0.0 : (double) i / (n - 1);
-            final double w = ch.startWidth + (ch.endWidth - ch.startWidth) * frac;
-            final double[] nrm = resampled.normal(i);
-            out.add(new HydrologicalUnit(
-                    HydrologicalFeature.RIVER,
-                    HydrologicalUnit.RosgenType.A,
-                    new double[] {p[0], p[1]},
-                    new double[] {nrm[0], nrm[1]},
-                    w,
-                    reference[i],
-                    0,
-                    featureId));
-        }
     }
 }

@@ -35,9 +35,9 @@ seed ──► WorldPipeline (JVM-lifetime, me/batata_1/fractal_terrain/ml/pipel
            │
            ├─ GlobalRiverProvider   (hydrology/)  — coarse-px river network per 64×64-coarse tile
            ├─ LocalRiverProvider    (hydrology/)  — 512-native-px carved elevation + hydrological-unit index
-           │     ├─ GlobalNetworkBuilder    — traces/relaxes/beds the global network inside a tile
-           │     ├─ ChannelElevationAssigner — bed-elevation propagation for that network
-           │     └─ LocalDrainageTracer      — detailed local network off the drainage field
+           │     ├─ GlobalNetworkBuilder    — traces/relaxes the global network inside a tile
+           │     ├─ LocalDrainageTracer      — local network off the drainage field, attached in place onto that SAME graph
+           │     └─ ChannelElevationAssigner — ONE bed-elevation propagation pass over the unified global+local graph
            ├─ ReliefProvider        (relief/)     — imports carved elevation + decodes residual → [RELIEF_CHANNELS=7,512,512]
            └─ BiomeProvider         (world/biome/) — climate+relief → vanilla biome parameters
                      └─ ClimateVariableTransform (facade) → ClimateToBiomeTransformer
@@ -62,15 +62,25 @@ Every ONNX-facing tensor uses the fixed axis order `CH=0/X=1/Z=2` and the channe
 model-specific constants (means/stds, latent compression, native resolution) from
 `world_pipeline_config.json` so a model swap needs no recompile.
 
-**Hydrology split** (`hydrology/`, M-010): `LocalRiverProvider.java` is a thin orchestrator over a
-dual-store cache (an `ImmutableRTree<HydrologicalUnit>` spatial index + a carved-elevation
-`FloatTensor`, filled by one `buildTile` call). It delegates the deterministic math to
-`GlobalNetworkBuilder.java` (global-network trace/relax/bed-assignment, itself using
-`ChannelElevationAssigner.java`) and `LocalDrainageTracer.java` (drainage-derived local network);
-`HydrologyTileGeometry.java` centralizes the shared tile-frame geometry (`GRID=512`, `PAD=1`,
-`PADDED=514`, `COARSE_PX=256`) all three depend on. `PipelinePreprocessing.java` (sink-fill, drainage
-direction, flow accumulation) and `ChannelGeometry.java` are lower-level shared helpers. The
-`hydrology/profile/` subpackage (`HydrologyProfileCarver`, `HydrologyProfilePainter`,
+**Hydrology split** (`hydrology/`, M-010; unified onto one graph by the 2026-07 river-network
+unification, `plan-hydrology.md`): `LocalRiverProvider.java` is a thin orchestrator over a dual-store
+cache (an `ImmutableRTree<HydrologicalUnit>` spatial index + a carved-elevation `FloatTensor`, filled by
+one `buildTile` call). `buildTile` builds ONE per-tile `RiverNetwork` graph: `GlobalNetworkBuilder.java`
+traces/relaxes the global (Meanders) subgraph and returns it together with the boundary-elevation map it
+accumulated (it no longer calls `assign` itself); `LocalDrainageTracer.java` then traces the
+drainage-derived local network and attaches every surviving segment directly onto that SAME graph in
+place (`SOURCE` root → `JUNCTION`-`split()` or coast-`DRAIN` terminus), returning nothing, instead of
+handing back a detached channel list; `ChannelElevationAssigner.java` then runs ONE `assign` pass over
+the now-unified graph, and `RiverNetwork.collectUnits` runs ONE pass emitting every hydrological unit —
+global and local, one shared feature-id counter — by resampling geometry and reading each channel's
+assigned `Channel.bedElevations` (oxbows/abandoned paths fall back to a decoded-terrain sampler, since
+they carry no `bedElevations`). There is no per-pixel global boolean mask anywhere in this path:
+proximity to a global-channel point (`HydrologyTuning.LOCAL_ATTACH_RADIUS`) replaces both the old mask's
+walk-termination exclusion and its reach-seed adjacency, read from a point index built fresh over the
+graph's channels each call. `HydrologyTileGeometry.java` centralizes the shared tile-frame geometry
+(`GRID=512`, `PAD=1`, `PADDED=514`, `COARSE_PX=256`) all three depend on. `PipelinePreprocessing.java`
+(sink-fill, drainage direction, flow accumulation) and `ChannelGeometry.java` are lower-level shared
+helpers. The `hydrology/profile/` subpackage (`HydrologyProfileCarver`, `HydrologyProfilePainter`,
 `HydrologyProfile`, `RosgenProfile`) turns the hydrological-unit index into carve/paint operations
 consumed by `world/gen/`. `GlobalRiverProvider.java` is independent of `LocalRiverProvider` and caches
 its own 64×64-coarse-px tiles directly (coarse-px addressed, not the 512-native-px tile grid — see
@@ -80,15 +90,15 @@ Coordinate frames).
 *reference* elevation as the bank; the per-pixel bed is `reference − depth`. Two carve stages, in two
 different places, sum to the intended trench:
 
-1. **Tile-level shell carve** (`HydrologyProfileCarver.carveRiverShells`, static) — run as two passes
-   (global units, then local units) on the same cached-elevation buffer, both within the single
+1. **Tile-level shell carve** (`HydrologyProfileCarver.carveRiverShells`, static) — run as a single pass
+   over the GLOBAL-only units of the unified network (local channels are excluded from this pass; DL-011
+   keeps the local shell carve disabled — see the `buildTile` order below) within the single
    once-per-tile `LocalRiverProvider.buildTile` flow. Pulls the elevation toward each unit's shell floor
    (`RosgenProfile.shellFloor` = bank − `HydrologyTuning.FREEBOARD`), lens-masked (`RosgenProfile.lensMask`)
    so the *mask* is exactly 1 (flat floor) out to `floodPlainLength` and falls to exactly 0 at
    `riverInfluence`; the resulting delta is `(shellFloor − ambient) × mask`. Every unit's delta is composed
    via `min()` of an absolute floor target against a pristine (pre-carve) ambient snapshot — never a
-   relative subtract — so the global-then-local carve on one shared buffer never double-deepens a
-   confluence, regardless of pass order.
+   relative subtract — so overlapping global units on one shared buffer never double-deepen a confluence.
 2. **Per-pixel bed residual** (`HydrologyProfileCarver.carve`/`carveAtPixel`/`carvePrefetched` →
    `HydrologyProfile.computeForUnit`) — applied per block in `PopulateNoiseStep`, on top of the already
    shell-carved elevation. Cuts only `bed = shell − depth` within the bed half-width
@@ -96,14 +106,21 @@ different places, sum to the intended trench:
    consistent with the shell kernel). `Types.RIVER_DIFFERENCE` is `refined − shell` (trench-vs-shell, not
    vs. the original decoded terrain).
 
-`LocalRiverProvider.buildTile` order: trace/relax the global network → assemble global units → carve the
-global shell (against a pristine snapshot) → `fillSinks` → drainage → trace the local network → sample
-local reference elevation from the already-globally-carved buffer, forced monotone non-increasing
-downstream (`LocalDrainageTracer.addLocalChannelUnits`) → carve the local shell (same buffer, same
-pristine snapshot) → a second `fillSinks` (a local carve can reopen basins the first fill closed) →
-assemble the combined global+local unit index. The carved-elevation cache store is
-`local_carved_elev_v2` (renamed from `local_carved_elev`; new-worlds-only, old tiles are orphaned and the
-frontier regenerates under the new name).
+`LocalRiverProvider.buildTile` order: trace/relax the global network (`GlobalNetworkBuilder.build`,
+returning the network plus its boundary-elevation map) → `fillSinks` + drainage on the raw decoded
+elevation → trace the local network and attach every surviving segment directly onto that SAME graph
+(`LocalDrainageTracer.traceLocalNetwork`, in place, no return value) as `SOURCE`/`JUNCTION`-split/coast-
+`DRAIN` edges, proximity to a global-channel point (`HydrologyTuning.LOCAL_ATTACH_RADIUS`) gating both
+attachment and walk termination → augment the boundary-elevation map with the local `SOURCE`/`DRAIN`
+nodes the trace minted → ONE `ChannelElevationAssigner.assign` pass over the now-unified graph → ONE
+`RiverNetwork.collectUnits` pass emitting every unit (global and local, one shared feature-id counter,
+reading each channel's assigned `Channel.bedElevations` rather than deriving bed from decoded terrain) →
+carve ONLY the global-river shell into the decoded elevation (DL-011: the local shell carve stays
+disabled — local networks are traced with no coarse halo, so a local shell can be truncated at this
+tile's `PAD=1` border, an accepted seam risk for local floodplains that straddle a tile edge; global
+floodplains use the 2×2-cell halo and are unaffected) → crop to the 512×512 tile. The carved-elevation
+cache store is `local_carved_elev_v2` (renamed from `local_carved_elev`; new-worlds-only, old tiles are
+orphaned and the frontier regenerates under the new name).
 
 **Biome split** (`world/biome/`, M-011): `ClimateVariableTransform.java` is a thin public facade
 preserving the pre-split signature; it forwards to `ClimateToBiomeTransformer.java`, which uses
@@ -273,12 +290,13 @@ runs on the same thread, before the key is observably completed to any other thr
   to cross-fill the second store without a duplicate compute — do not bypass it.
 - **`FloatTensor` is frozen once cached** — see MUST-3. Never mutate a tensor obtained from a `Storage`
   cache; if you need a mutable copy, use `slice`/`copyRange`, which allocate a fresh tensor.
-- **`RiverNetwork`/`QuadTree` reuse is per-tile and single-threaded.** `GlobalNetworkBuilder` and
-  `LocalDrainageTracer` are purely functional over their parameters (documented explicitly in both
-  classes' Invariants sections) — each tile build constructs a fresh `Meanders`/`RiverNetwork` with no
-  state shared across tiles or threads. `QuadTree` itself is safe for concurrent reads under its own
-  read/write lock (`QuadTree.java:10-16`), but that contract exists for within-tree query concurrency, not
-  for sharing one instance's *construction* across worker threads.
+- **`RiverNetwork`/`QuadTree` reuse is per-tile and single-threaded.** `GlobalNetworkBuilder` builds and
+  returns a fresh `Meanders`/`RiverNetwork` purely from its parameters; `LocalDrainageTracer` then mutates
+  that same network in place to attach the local subgraph (`traceLocalNetwork` returns nothing) — both are
+  still per-tile/no-shared-state (documented explicitly in both classes' Invariants sections), so each
+  tile build's graph carries no state shared across tiles or threads. `QuadTree` itself is safe for
+  concurrent reads under its own read/write lock (`QuadTree.java:10-16`), but that contract exists for
+  within-tree query concurrency, not for sharing one instance's *construction* across worker threads.
 
 ## Testing stance
 

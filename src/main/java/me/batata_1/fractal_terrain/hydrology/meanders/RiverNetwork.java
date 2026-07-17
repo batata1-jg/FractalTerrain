@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.function.IntPredicate;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
@@ -93,27 +94,117 @@ public final class RiverNetwork {
         if (FractalTerrainConfig.DEBUG_RIVER_NET)
             Debug.river.seeNetwork(gridSize, nodeSpecs, edgeSpecs, "river_network", "_");
 
+        insertSpecs(nodeSpecs, edgeSpecs, resampleDist);
+    }
+
+    /**
+     * Mints Endpoints and Channels for a batch of {@link NodeSpec}/{@link EdgeSpec} entries into the
+     * live graph, resampling each new channel at {@code resampleDist} and wiring outgoing/incoming
+     * edges while enforcing the single-outflow invariant (a node may have at most one outgoing edge).
+     * {@link EdgeSpec#startNodeIdx()}/{@link EdgeSpec#endNodeIdx()} are indices into the supplied
+     * {@code nodeSpecs} list, not node ids — this method mints a fresh node id per spec (so it composes
+     * safely with a graph that already has nodes) and returns the mapping from each supplied node-spec
+     * index to its minted node id, so a caller (e.g. the local drainage tracer) can reference the
+     * freshly minted nodes afterwards. The constructor delegates its own node/edge construction to this
+     * method.
+     */
+    public Map<Integer, Integer> insertSpecs(List<NodeSpec> nodeSpecs, List<EdgeSpec> edgeSpecs, double resampleDist) {
+        final Map<Integer, Integer> specIndexToNodeId = new HashMap<>();
         for (int i = 0; i < nodeSpecs.size(); i++) {
             NodeSpec ns = nodeSpecs.get(i);
-            nodes.put(i, new Endpoint(i, ns.type(), new double[] {ns.x(), ns.z()}));
+            final int nodeId = nextNodeId++;
+            nodes.put(nodeId, new Endpoint(nodeId, ns.type(), new double[] {ns.x(), ns.z()}));
+            specIndexToNodeId.put(i, nodeId);
         }
-        nextNodeId = nodeSpecs.size();
 
         for (EdgeSpec es : edgeSpecs) {
-            final int id = nextChannelId++;
-            Channel ch = new Channel(es.width(), new ArrayList<>(es.pts()), id);
-            ch.reSample(resampleDist);
-            ch.startNodeId = es.startNodeIdx();
-            ch.endNodeId = es.endNodeIdx();
-            channels.put(id, ch);
-            Endpoint start = nodes.get(es.startNodeIdx());
-            Endpoint end = nodes.get(es.endNodeIdx());
-            if (start.outgoing != -1) {
-                throw new IllegalArgumentException("node " + start.id + " would have >1 outgoing edge");
-            }
-            start.outgoing = id;
-            end.incoming.add(id);
+            final int startNodeId = specIndexToNodeId.get(es.startNodeIdx());
+            final int endNodeId = specIndexToNodeId.get(es.endNodeIdx());
+            mintChannel(startNodeId, endNodeId, es.pts(), es.width(), es.width(), resampleDist);
         }
+        return specIndexToNodeId;
+    }
+
+    /**
+     * Mints a new SOURCE-typed node plus a single edge from it to an EXISTING node id already in the
+     * graph -- the local drainage tracer's "attach to a global channel" case, where {@code
+     * existingEndNodeId} is a JUNCTION minted by {@link #split} and only the upstream endpoint is new.
+     * Resamples the channel at {@code resampleDist} and applies the given start/end width taper (mirrors
+     * {@link #insertSpecs}'s wiring/single-outflow enforcement via the shared {@link #mintChannel}).
+     * Returns the minted node's id.
+     */
+    public int attachSourceToExistingNode(
+            NodeSpec sourceSpec,
+            int existingEndNodeId,
+            ArrayList<double[]> pts,
+            double startWidth,
+            double endWidth,
+            double resampleDist) {
+        final int sourceNodeId = nextNodeId++;
+        nodes.put(
+                sourceNodeId,
+                new Endpoint(sourceNodeId, sourceSpec.type(), new double[] {sourceSpec.x(), sourceSpec.z()}));
+        mintChannel(sourceNodeId, existingEndNodeId, pts, startWidth, endWidth, resampleDist);
+        return sourceNodeId;
+    }
+
+    /**
+     * Mints a new SOURCE and a new DRAIN node plus the single edge between them -- the local drainage
+     * tracer's "coast-draining" attach case, where both endpoints are new. Mirrors {@link
+     * #attachSourceToExistingNode}'s width-taper/resample handling for the case where no global channel
+     * is within reach; the general N-node/M-edge batch case remains {@link #insertSpecs}. Returns
+     * {@code {sourceNodeId, drainNodeId}}.
+     */
+    public int[] attachSourceToNewDrain(
+            NodeSpec sourceSpec,
+            NodeSpec drainSpec,
+            ArrayList<double[]> pts,
+            double startWidth,
+            double endWidth,
+            double resampleDist) {
+        final int sourceNodeId = nextNodeId++;
+        nodes.put(
+                sourceNodeId,
+                new Endpoint(sourceNodeId, sourceSpec.type(), new double[] {sourceSpec.x(), sourceSpec.z()}));
+        final int drainNodeId = nextNodeId++;
+        nodes.put(
+                drainNodeId, new Endpoint(drainNodeId, drainSpec.type(), new double[] {drainSpec.x(), drainSpec.z()}));
+        mintChannel(sourceNodeId, drainNodeId, pts, startWidth, endWidth, resampleDist);
+        return new int[] {sourceNodeId, drainNodeId};
+    }
+
+    /**
+     * Shared edge-minting core behind {@link #insertSpecs}, {@link #attachSourceToExistingNode} and
+     * {@link #attachSourceToNewDrain}: builds the {@link Channel} at {@code Math.min(startWidth,
+     * endWidth)} (so {@link #collectUnits}'s {@code width/2} resample spacing never exceeds half the
+     * <em>narrowest</em> point along a tapered channel's start->end profile, keeping the gap-free-discs
+     * invariant), applies the start/end width taper, resamples at {@code resampleDist} (a no-op on
+     * {@link Channel#bedElevations}, which is always null at insertion time -- H2), wires the directed
+     * edge between the two given node ids, and enforces the single-outflow invariant. Returns the minted
+     * channel id.
+     */
+    private int mintChannel(
+            int startNodeId,
+            int endNodeId,
+            List<double[]> pts,
+            double startWidth,
+            double endWidth,
+            double resampleDist) {
+        final int id = nextChannelId++;
+        final Channel ch = new Channel(Math.min(startWidth, endWidth), new ArrayList<>(pts), id);
+        ch.setWidthProfile(startWidth, endWidth);
+        ch.reSample(resampleDist);
+        ch.startNodeId = startNodeId;
+        ch.endNodeId = endNodeId;
+        channels.put(id, ch);
+        final Endpoint start = nodes.get(startNodeId);
+        final Endpoint end = nodes.get(endNodeId);
+        if (start.outgoing != -1) {
+            throw new IllegalArgumentException("node " + start.id + " would have >1 outgoing edge");
+        }
+        start.outgoing = id;
+        end.incoming.add(id);
+        return id;
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -573,60 +664,89 @@ public final class RiverNetwork {
     // Conversion to the queryable, persistable unit tree
     // ---------------------------------------------------------------------------------------------
 
-    /** Samples a scalar field (e.g. decoded terrain elevation) at a point in the network's coordinates. */
-    @FunctionalInterface
-    public interface ElevationSampler {
-        double sample(double x, double z);
-    }
 
     /**
      * Collect the network's {@link HydrologicalUnit}s (active channels of type
      * {@link HydrologicalFeature#RIVER} plus recorded removed features — oxbow lakes / abandoned
-     * rivers) as a mutable list, so a caller can append further units (e.g. the local-channel
-     * network) before freezing them into a single spatial index. Each feature is first resampled at
-     * {@code dx = width/2}; emitted coordinates are the network coordinate minus
-     * {@code (offsetX, offsetZ)} (e.g. to drop a halo pad). Per-point bed elevation follows the
-     * start→endpoint lerp anchored on the channel's node elevations.
+     * rivers) in one pass over the unified graph — global and local channels alike, now that local
+     * segments are first-class graph members — as a mutable list the caller freezes into a single
+     * spatial index. Each feature is first resampled at {@code dx = width/2}; emitted coordinates are
+     * the network coordinate minus {@code (offsetX, offsetZ)} (e.g. to drop a halo pad). Per-point bed
+     * elevation is read directly from the already-assigned {@link Channel#bedElevations} — this pass
+     * never invents or re-derives it from decoded terrain; removed paths (oxbows/abandoned rivers) carry
+     * no {@code bedElevations}, so their elevation falls back to sampling {@code decodedElev} at each
+     * point.
      *
-     * <p>{@code nextFeatureId} is a single-element mutable counter threaded by the caller so the global
-     * network and any units appended afterwards (e.g. the local channels) share one tile-unique
+     * <p>{@code nextFeatureId} is a single-element mutable counter threaded by the caller so every unit
+     * this one pass emits — global and local alike — shares one tile-unique
      * {@link HydrologicalUnit#id() id} space — every point of one feature gets the same id, and the
      * counter advances once per feature.
      */
     public List<HydrologicalUnit> collectUnits(
-            int time, ElevationSampler decodedElev, double offsetX, double offsetZ, int[] nextFeatureId) {
+            int time, double offsetX, double offsetZ, int[] nextFeatureId) {
+        return collectUnits(time, offsetX, offsetZ, nextFeatureId, channelId -> true);
+    }
+
+    /**
+     * As {@link #collectUnits(int, ElevationSampler, double, double, int[])}, but a graph channel's RIVER
+     * units are only emitted when {@code channelIdFilter} accepts its {@link Channel#channelId}; recorded
+     * removed features (oxbow/abandoned) are always emitted regardless (the local drainage tracer never
+     * produces removed paths, so this only ever filters live graph channels). Used by {@code
+     * LocalRiverProvider} to feed the tile-level shell carve global-river units only (DL-011: the local
+     * shell carve stays disabled) while the unfiltered overload above still assembles the single,
+     * authoritative unit list (global + local) for the tile's spatial index.
+     */
+    public List<HydrologicalUnit> collectUnits(
+            int time,
+            double offsetX,
+            double offsetZ,
+            int[] nextFeatureId,
+            IntPredicate channelIdFilter) {
         final List<HydrologicalUnit> units = new ArrayList<>();
         for (Channel ch : channels.values()) {
-            final double startElev = nodeElevation(ch.startNodeId);
-            final double endElev = nodeElevation(ch.endNodeId);
+            if (!channelIdFilter.test(ch.channelId)) continue;
+            if (!ch.isResampleable()) continue; // degenerate geometry (too few points or NaN): skip
+            // Spacing must be <= half the NARROWEST width along the start->end taper, so consecutive
+            // units' width/2 discs always overlap (gap-free membership test + girth rendering).
+            final double dx = Math.max(ch.width / 2.0, MIN_CONVERT_SPACING);
+            try {
+                ch.reSample(dx);
+            } catch (RuntimeException runaway) {
+                // Pathological runaway geometry (spline exceeds MAX_SPLINE_LENGTH); add no units.
+                continue;
+            }
             addFeatureUnits(
                     units,
                     ch.spline,
-                    ch.width,
+                    ch.bedElevations,
                     ch.startWidth,
                     ch.endWidth,
-                    startElev,
-                    endElev,
                     HydrologicalFeature.RIVER,
                     time,
-                    decodedElev,
                     offsetX,
                     offsetZ,
                     nextFeatureId);
         }
         for (RemovedPath rp : removedPaths) {
             final QuinticHermiteSpline spline = QuinticHermiteSpline.createCatmullRom(rp.pts());
+            if (!spline.isResampleable()) continue; // degenerate geometry (too few points or NaN): skip
+            final double dx = Math.max(rp.width() / 2.0, MIN_CONVERT_SPACING);
+            final QuinticHermiteSpline resampled;
+            try {
+                resampled = spline.reSample(dx);
+            } catch (RuntimeException runaway) {
+                // Pathological runaway geometry (spline exceeds MAX_SPLINE_LENGTH); add no units.
+                continue;
+            }
+            // No bedElevations for oxbow/abandoned removed paths: fall back to decoded terrain.
             addFeatureUnits(
                     units,
-                    spline,
+                    resampled,
+                    null,
                     rp.width(),
                     rp.width(),
-                    rp.width(),
-                    Double.NaN,
-                    Double.NaN,
                     rp.type(),
                     rp.time(),
-                    decodedElev,
                     offsetX,
                     offsetZ,
                     nextFeatureId);
@@ -634,56 +754,27 @@ public final class RiverNetwork {
         return units;
     }
 
-    /**
-     * {@code width} here is already the native-rescaled global width fed into the {@code EdgeSpec} at
-     * network-construction time ({@link GlobalNetworkBuilder} multiplies coarse-px flow width by {@code
-     * GLOBAL_WIDTH_COORD_SCALE} before building edges) -- this method never re-scales it, so the emitted
-     * units and the shell-carve query radius both stay in the same native-px frame as local channels.
-     */
+
     private static void addFeatureUnits(
             List<HydrologicalUnit> out,
             QuinticHermiteSpline spline,
-            double width,
+            double[] bedElevations,
             double startWidth,
             double endWidth,
-            double startElev,
-            double endElev,
             HydrologicalFeature type,
             int time,
-            ElevationSampler decodedElev,
             double offsetX,
             double offsetZ,
             int[] nextFeatureId) {
-        if (!spline.isResampleable()) return; // degenerate geometry (too few points or NaN): skip
-        // Spacing must be <= half the NARROWEST width along the start->end taper, so consecutive
-        // units' width/2 discs always overlap (gap-free membership test + girth rendering).
-        // RosgenProfile's radial floodplain-disc union also relies on this overlap to stay gap-free.
-        final double narrowestWidth = Math.min(startWidth, endWidth);
-        final double dx = Math.max(narrowestWidth / 2.0, MIN_CONVERT_SPACING);
-        final QuinticHermiteSpline resampled;
-        try {
-            resampled = spline.reSample(dx);
-        } catch (RuntimeException runaway) {
-            // Pathological runaway geometry (spline exceeds MAX_SPLINE_LENGTH); add no units.
-            return;
-        }
-        final List<double[]> pts = resampled.points();
+        final List<double[]> pts = spline.points();
         final int n = pts.size();
-        final double anchorEnd = Double.isNaN(endElev) ? 0.0 : endElev;
         final int featureId = nextFeatureId[0]++;
         for (int i = 0; i < n; i++) {
             final double[] p = pts.get(i);
             final double frac = (n == 1) ? 0.0 : (double) i / (n - 1);
             final double w = startWidth + (endWidth - startWidth) * frac;
-            final double bed;
-            if (i == 0 && !Double.isNaN(startElev)) {
-                bed = startElev;
-            } else {
-                // lerp max(decoded, endpointElev) -> endpointElev by distance along the channel.
-                final double candidate = Math.max(decodedElev.sample(p[0], p[1]), anchorEnd);
-                bed = candidate + (anchorEnd - candidate) * frac;
-            }
-            final double[] nrm = resampled.normal(i);
+            final double bed = (bedElevations != null) ? bedElevations[i] : 0;
+            final double[] nrm = spline.normal(i);
             out.add(new HydrologicalUnit(
                     type,
                     // TODO: change this to the correct type
@@ -695,11 +786,6 @@ public final class RiverNetwork {
                     time,
                     featureId));
         }
-    }
-
-    private double nodeElevation(int nodeId) {
-        final Endpoint endpoint = nodes.get(nodeId);
-        return (endpoint == null) ? Double.NaN : endpoint.elevation;
     }
 
     // ---------------------------------------------------------------------------------------------

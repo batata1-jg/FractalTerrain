@@ -1,0 +1,590 @@
+{
+  "schema_version": "1.0",
+  "phase": "impl-code",
+  "iteration": 1,
+  "items": [
+    {
+      "id": "qa-001",
+      "scope": "*",
+      "check": "Across all new attach paths (insertSpecs, attachSourceToExistingNode via split(), attachSourceToNewDrain), no node ends up with >1 outgoing edge and no JUNCTION is minted outside split().",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "umbrella"
+    },
+    {
+      "id": "qa-001a",
+      "parent_id": "qa-001",
+      "scope": "*",
+      "check": "No node ends up with >1 outgoing edge across all attach paths.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-001"
+    },
+    {
+      "id": "qa-001b",
+      "parent_id": "qa-001",
+      "scope": "*",
+      "check": "No JUNCTION is minted anywhere outside RiverNetwork.split().",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-001"
+    },
+    {
+      "id": "qa-002",
+      "scope": "file:hydrology/meanders/RiverNetwork.java",
+      "check": "insertSpecs mints nodes/edges from NodeSpec/EdgeSpec batches while preserving single-outflow invariant; constructor delegates without behavior change.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-002"
+    },
+    {
+      "id": "qa-002a",
+      "parent_id": "qa-002",
+      "scope": "file:hydrology/meanders/RiverNetwork.java",
+      "check": "insertSpecs preserves single-outflow invariant when minting nodes/edges.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-002"
+    },
+    {
+      "id": "qa-002b",
+      "parent_id": "qa-002",
+      "scope": "file:hydrology/meanders/RiverNetwork.java",
+      "check": "Constructor delegates to insertSpecs with byte-identical behavior (MeandersGoldenTest guard).",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-002"
+    },
+    {
+      "id": "qa-003",
+      "scope": "file:hydrology/LocalDrainageTracer.java",
+      "check": "attachSourceToExistingNode and attachSourceToNewDrain never assign a second outgoing edge to an existing node; junction minting goes exclusively through split().",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-003"
+    },
+    {
+      "id": "qa-003a",
+      "parent_id": "qa-003",
+      "scope": "file:hydrology/LocalDrainageTracer.java",
+      "check": "Neither attach function assigns a second outgoing edge to an existing node.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-003"
+    },
+    {
+      "id": "qa-003b",
+      "parent_id": "qa-003",
+      "scope": "file:hydrology/LocalDrainageTracer.java",
+      "check": "Junction minting in both attach functions goes exclusively through RiverNetwork.split().",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-003"
+    },
+    {
+      "id": "qa-004",
+      "scope": "*",
+      "check": "DL-013/DL-015 drop semantics: a local segment whose downstream end has no global point within LOCAL_ATTACH_RADIUS and no coast drain is dropped, never inserted as a datum-less dangling node.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "umbrella"
+    },
+    {
+      "id": "qa-005",
+      "parent_id": "qa-004",
+      "scope": "file:hydrology/LocalDrainageTracer.java",
+      "check": "Continuous nearest-global-point distance check is authoritative over the grid-based reach/adjacency seed at the LOCAL_ATTACH_RADIUS boundary (DL-015); a segment the continuous check rejects is dropped even if the grid seed marked it reachable.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-004"
+    },
+    {
+      "id": "qa-006",
+      "parent_id": "qa-004",
+      "scope": "file:hydrology/LocalDrainageTracer.java",
+      "check": "Interior dead-end segments (no global channel in radius, no coast drain) are discarded before insertSpecs is called -- no code path inserts them with a placeholder/zero elevation.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-004"
+    },
+    {
+      "id": "qa-007",
+      "scope": "*",
+      "check": "H4: boundaryElevByNodeIdx gains an entry for every local SOURCE and every coast DRAIN before the single ChannelElevationAssigner.assign call, across all code paths including empty-trace and no-global-channel cases.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "umbrella"
+    },
+    {
+      "id": "qa-008",
+      "parent_id": "qa-007",
+      "scope": "file:hydrology/GlobalNetworkBuilder.java",
+      "check": "build() returns network + boundaryElevByNodeIdx and no longer calls assign(); map is not cleared before caller consumes it.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-008"
+    },
+    {
+      "id": "qa-008a",
+      "parent_id": "qa-008",
+      "scope": "file:hydrology/GlobalNetworkBuilder.java",
+      "check": "build() returns (network, boundaryElevByNodeIdx) and no longer invokes ChannelElevationAssigner.assign().",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-008"
+    },
+    {
+      "id": "qa-008b",
+      "parent_id": "qa-008",
+      "scope": "file:hydrology/GlobalNetworkBuilder.java",
+      "check": "Boundary map is not cleared inside build() before the caller consumes it.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-008"
+    },
+    {
+      "id": "qa-009",
+      "parent_id": "qa-007",
+      "scope": "file:hydrology/LocalRiverProvider.java",
+      "check": "buildTile augments the boundary map with local ridge SOURCE and coast DRAIN entries, then calls assign exactly once over the unified graph.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-009"
+    },
+    {
+      "id": "qa-009a",
+      "parent_id": "qa-009",
+      "scope": "file:hydrology/LocalRiverProvider.java",
+      "check": "Boundary map is augmented with local SOURCE (decoded terrain at seed) and coast DRAIN (bilinear terrain datum) entries before the assign call.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-009"
+    },
+    {
+      "id": "qa-009b",
+      "parent_id": "qa-009",
+      "scope": "file:hydrology/LocalRiverProvider.java",
+      "check": "assign() is invoked exactly once, after augmentation, over the unified graph.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-009"
+    },
+    {
+      "id": "qa-010",
+      "scope": "*",
+      "check": "H5/DL-009: local trace tests the TRUE tile boundary (GRID-based onBorder), +PAD shift applied once when inserting into the padded graph, and crop/shift happen only once at the very end of buildTile.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "umbrella"
+    },
+    {
+      "id": "qa-011",
+      "parent_id": "qa-010",
+      "scope": "file:hydrology/LocalDrainageTracer.java",
+      "check": "onBorder/neighborIndex/leavesTile still operate against the true GRID tile boundary, not the padded (PADDED) edge.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-010"
+    },
+    {
+      "id": "qa-012",
+      "parent_id": "qa-010",
+      "scope": "file:hydrology/LocalRiverProvider.java",
+      "check": "Coordinate shift (+PAD) applied exactly once per local coordinate on insertion; final crop-to-GRID + shift-back is a single step with shiftUnits fully removed.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-012"
+    },
+    {
+      "id": "qa-012a",
+      "parent_id": "qa-012",
+      "scope": "file:hydrology/LocalRiverProvider.java",
+      "check": "+PAD shift is applied exactly once per local coordinate on insertion into the padded graph.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-012"
+    },
+    {
+      "id": "qa-012b",
+      "parent_id": "qa-012",
+      "scope": "file:hydrology/LocalRiverProvider.java",
+      "check": "Final crop-to-GRID + shift-back is a single step; shiftUnits fully removed with no dead call sites.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-012"
+    },
+    {
+      "id": "qa-013",
+      "parent_id": "qa-010",
+      "scope": "file:debug/tests/LocalRiverTest.java",
+      "check": "dumpTile rendering offsets remain correct for the unified graph (local + global) given the M-006 refactor.",
+      "status": "TODO",
+      "severity": "SHOULD",
+      "finding": null,
+      "group_id": "parent-qa-010"
+    },
+    {
+      "id": "qa-014",
+      "scope": "*",
+      "check": "collectUnits never invents elevations: only resamples geometry and reads Channel.bedElevations, with ElevationSampler used solely as oxbow/removedPaths fallback.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "umbrella"
+    },
+    {
+      "id": "qa-015",
+      "parent_id": "qa-014",
+      "scope": "file:hydrology/meanders/RiverNetwork.java",
+      "check": "collectUnits/addFeatureUnits read bedElevations for RIVER channels (no decoded-terrain lerp), and removedPaths/oxbows sample decoded terrain as fallback with no NaN units.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-015"
+    },
+    {
+      "id": "qa-015a",
+      "parent_id": "qa-015",
+      "scope": "file:hydrology/meanders/RiverNetwork.java",
+      "check": "RIVER channels read bedElevations directly via Channel.reSample, no decoded-terrain lerp derivation remains.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-015"
+    },
+    {
+      "id": "qa-015b",
+      "parent_id": "qa-015",
+      "scope": "file:hydrology/meanders/RiverNetwork.java",
+      "check": "removedPaths/oxbow features get a decoded-terrain fallback elevation with no NaN units emitted.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-015"
+    },
+    {
+      "id": "qa-016",
+      "scope": "file:hydrology/meanders/Channel.java",
+      "check": "reSample resamples bedElevations on the newT basis only when non-null (no-op when null); bedElev(t) does a linear blend matching sample()'s segment indexing.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-016"
+    },
+    {
+      "id": "qa-016a",
+      "parent_id": "qa-016",
+      "scope": "file:hydrology/meanders/Channel.java",
+      "check": "Channel.reSample no-ops the bedElevations resample when bedElevations is null (H2) -- checked at all call sites (ctor, buildLocalChannel, meander relaxation steps).",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-016"
+    },
+    {
+      "id": "qa-016b",
+      "parent_id": "qa-016",
+      "scope": "file:hydrology/meanders/Channel.java",
+      "check": "bedElev(t) linear-blends bedElevations[floor(t)] and [floor(t)+1] at u=t-floor(t), matching sample()'s segment indexing.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-016"
+    },
+    {
+      "id": "qa-017",
+      "scope": "file:math/spline/QuinticHermiteSpline.java",
+      "check": "A companion resample form exposes the exact newT list used by geometry resample (H1 keystone); existing reSample(samplingDist) remains byte-identical for geometry-only callers.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-017"
+    },
+    {
+      "id": "qa-017a",
+      "parent_id": "qa-017",
+      "scope": "file:math/spline/QuinticHermiteSpline.java",
+      "check": "New companion method exposes the exact newT list the resample built (H1).",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-017"
+    },
+    {
+      "id": "qa-017b",
+      "parent_id": "qa-017",
+      "scope": "file:math/spline/QuinticHermiteSpline.java",
+      "check": "Existing reSample(samplingDist) remains byte-identical for callers needing only geometry.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-017"
+    },
+    {
+      "id": "qa-018",
+      "scope": "*",
+      "check": "DL-012: a single shared int[] feature-id counter assigns ids across global, local, and oxbow units in the one collectUnits pass -- no separate counters, no double-increment, no id collisions.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "umbrella"
+    },
+    {
+      "id": "qa-019",
+      "scope": "*",
+      "check": "Determinism and no cross-tile shared state: graph construction produces identical output across repeated runs on the same input; no static mutable fields carry state between tile builds.",
+      "status": "TODO",
+      "severity": "SHOULD",
+      "finding": null,
+      "group_id": "umbrella"
+    },
+    {
+      "id": "qa-020",
+      "parent_id": "qa-019",
+      "scope": "file:hydrology/LocalDrainageTracer.java",
+      "check": "Point index for global-channel proximity queries is freshly built per traceLocalNetwork call over sim.getChannels(), not reused from Meanders' transient collision QuadTree.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-019"
+    },
+    {
+      "id": "qa-021",
+      "parent_id": "qa-019",
+      "scope": "*",
+      "check": "New insertSpecs/attach/collectUnits code does not rely on HashMap/HashSet iteration order for node/channel/unit ordering (would break golden-test determinism).",
+      "status": "TODO",
+      "severity": "SHOULD",
+      "finding": null,
+      "group_id": "parent-qa-019"
+    },
+    {
+      "id": "qa-022",
+      "scope": "file:config/HydrologyTuning.java",
+      "check": "LOCAL_ATTACH_RADIUS is documented in a comment as a first-cut, untuned constant pending visual calibration (mirrors MAX_MARGIN_FRACTION pattern).",
+      "status": "TODO",
+      "severity": "SHOULD",
+      "finding": null
+    },
+    {
+      "id": "qa-023",
+      "scope": "file:hydrology/LocalRiverProvider.java",
+      "check": "DL-011: local floodplain shell carve call remains commented-out/disabled, not silently re-enabled during the refactor.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "component-local-river-provider"
+    },
+    {
+      "id": "qa-024",
+      "scope": "*",
+      "check": "Javadoc sweep across M-006 files: no remaining reference to rasterizeGlobalMask, the dropped decoded-elevation lerp, or other stale mask/lerp language.",
+      "status": "TODO",
+      "severity": "SHOULD",
+      "finding": null,
+      "group_id": "umbrella"
+    },
+    {
+      "id": "qa-025",
+      "parent_id": "qa-024",
+      "scope": "file:hydrology/meanders/Channel.java",
+      "check": "bedElevations javadoc states collectUnits reads it and reSample keeps it index-aligned; drops the stale LocalRiverProvider-only claim.",
+      "status": "TODO",
+      "severity": "SHOULD",
+      "finding": null,
+      "group_id": "parent-qa-024"
+    },
+    {
+      "id": "qa-026",
+      "parent_id": "qa-024",
+      "scope": "file:hydrology/meanders/RiverNetwork.java",
+      "check": "collectUnits javadoc describes reading per-point bedElevations with oxbow-only decoded-terrain fallback, and notes coverage of global+local in one pass.",
+      "status": "TODO",
+      "severity": "SHOULD",
+      "finding": null,
+      "group_id": "parent-qa-024"
+    },
+    {
+      "id": "qa-027",
+      "parent_id": "qa-024",
+      "scope": "file:hydrology/meanders/Endpoint.java",
+      "check": "Endpoint.elevation javadoc is accurate post-unification (no stale claims about assignment timing/source).",
+      "status": "TODO",
+      "severity": "SHOULD",
+      "finding": null,
+      "group_id": "parent-qa-024"
+    },
+    {
+      "id": "qa-028",
+      "scope": "*",
+      "check": "Regression gate: globalRiverTest, localRiverTest, meandersTest, pipelineTest all run; MeandersGoldenTest, GlobalRiverGoldenTest, LocalRiverGoldenTest all pass (excluding known pre-existing SpatialIndexCorrectnessGoldenTest failure).",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "umbrella"
+    },
+    {
+      "id": "qa-028a",
+      "parent_id": "qa-028",
+      "scope": "*",
+      "check": "Four JavaExec harnesses (globalRiverTest, localRiverTest, meandersTest, pipelineTest) run without error.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-028"
+    },
+    {
+      "id": "qa-028b",
+      "parent_id": "qa-028",
+      "scope": "*",
+      "check": "MeandersGoldenTest and GlobalRiverGoldenTest pass byte-exact.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-028"
+    },
+    {
+      "id": "qa-028c",
+      "parent_id": "qa-028",
+      "scope": "file:src/test/.../LocalRiverGoldenTest.java",
+      "check": "LocalRiverGoldenTest structural invariants (attachment, monotonicity, no-edge-crossing, determinism) pass.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-028"
+    },
+    {
+      "id": "qa-029",
+      "scope": "*",
+      "check": "Build/test executed via cached gradle 9.2.1 (not PATH 8.14); gradle spotlessApply leaves tree clean (palantirJavaFormat).",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "umbrella"
+    },
+    {
+      "id": "qa-029a",
+      "parent_id": "qa-029",
+      "scope": "*",
+      "check": "Build/test commands invoked via cached gradle 9.2.1, not PATH's 8.14.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-029"
+    },
+    {
+      "id": "qa-029b",
+      "parent_id": "qa-029",
+      "scope": "*",
+      "check": "gradle spotlessApply leaves the tree clean (no formatting diffs).",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "parent-qa-029"
+    },
+    {
+      "id": "qa-030",
+      "scope": "file:src/test/.../LocalRiverGoldenTest.java",
+      "check": "Structural invariant assertions (attachment via split/JUNCTION or coast-DRAIN, monotonicity, no-edge-crossing, 5-run determinism) are non-trivially exercised by the synthetic trunk-channel seam, not vacuously true.",
+      "status": "TODO",
+      "severity": "SHOULD",
+      "finding": null
+    },
+    {
+      "id": "qa-031",
+      "scope": "*",
+      "check": "GOD_FUNCTION check: buildTile, traceLocalNetwork, collectUnits line counts/nesting after refactor.",
+      "status": "TODO",
+      "severity": "SHOULD",
+      "finding": null,
+      "group_id": "umbrella"
+    },
+    {
+      "id": "qa-032",
+      "scope": "file:hydrology/LocalDrainageTracer.java",
+      "check": "DUPLICATE_LOGIC check: attachSourceToExistingNode vs attachSourceToNewDrain for unwarranted duplication vs justified divergence.",
+      "status": "TODO",
+      "severity": "SHOULD",
+      "finding": null,
+      "group_id": "component-local-drainage-tracer"
+    },
+    {
+      "id": "qa-033",
+      "scope": "*",
+      "check": "INCONSISTENT_ERROR_HANDLING check: degenerate-input paths (empty trace, empty point index, no global channels) handled consistently across the new code.",
+      "status": "TODO",
+      "severity": "SHOULD",
+      "finding": null,
+      "group_id": "umbrella"
+    },
+    {
+      "id": "qa-034",
+      "scope": "*",
+      "check": "rasterizeGlobalMask and addLocalChannelUnits are fully removed from the codebase -- no leftover per-pixel global boolean mask field/array/method anywhere in hydrology package (DL-004).",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "umbrella"
+    },
+    {
+      "id": "qa-035",
+      "scope": "file:hydrology/LocalDrainageTracer.java",
+      "check": "traceLocalNetwork has void return type and mutates the passed-in network in place, per DL-005 user directive.",
+      "status": "TODO",
+      "severity": "MUST",
+      "finding": null,
+      "group_id": "component-local-drainage-tracer"
+    },
+    {
+      "id": "qa-036",
+      "scope": "file:hydrology/LocalRiverProvider.java",
+      "check": "Stages debug struct's local/global channel distinction (tag or id set) is correctly populated during buildTile, not merely declared.",
+      "status": "TODO",
+      "severity": "SHOULD",
+      "finding": null,
+      "group_id": "component-local-river-provider"
+    },
+    {
+      "id": "qa-037",
+      "scope": "file:hydrology/ChannelElevationAssigner.java",
+      "check": "assign's visibility change (to package-private per CI-M-003-003) does not expose it to unintended callers outside the hydrology package.",
+      "status": "TODO",
+      "severity": "SHOULD",
+      "finding": null,
+      "group_id": "concern-refactor-scope-preservation"
+    },
+    {
+      "id": "qa-038",
+      "scope": "file:hydrology/GlobalNetworkBuilder.java",
+      "check": "Owned-cell topology and gate-jitter/relax constants are unchanged by the M-003 assign-relocation refactor.",
+      "status": "TODO",
+      "severity": "SHOULD",
+      "finding": null,
+      "group_id": "concern-refactor-scope-preservation"
+    }
+  ]
+}

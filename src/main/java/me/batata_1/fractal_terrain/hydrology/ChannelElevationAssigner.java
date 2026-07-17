@@ -9,17 +9,21 @@ import java.util.Map;
 import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
 import me.batata_1.fractal_terrain.hydrology.meanders.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Responsibility: the bottom-up bed-elevation assignment for a just-relaxed global-river
- * {@link RiverNetwork} — set source/drain node elevations from boundary conditions, propagate junction
- * elevations leaves→drains (Kahn), then recompute each channel's per-point bed as a lerp from its start
- * elevation toward its end elevation. Invoked once per tile at the end of
- * {@link GlobalNetworkBuilder#build}.
+ * Responsibility: the bottom-up bed-elevation assignment for a relaxed {@link RiverNetwork} handed to it
+ * — set source/drain node elevations from boundary conditions, propagate junction elevations
+ * leaves→drains (Kahn), then recompute each channel's per-point bed as a lerp from its start elevation
+ * toward its end elevation. Operates on whatever network and boundary map it is given and carries no
+ * assumption that the network is global-only. Invoked once per tile from
+ * {@link LocalRiverProvider#buildTile} after {@link GlobalNetworkBuilder#build} returns the relaxed
+ * network and its boundary-elevation map.
  *
  * <p>Collaborators: {@link HydrologyTileGeometry#sampleBilinear} (padded-frame terrain sampling);
- * consumes and mutates the {@link RiverNetwork} built by {@link GlobalNetworkBuilder} (writes
- * {@link Endpoint#elevation} and {@link Channel#bedElevations}).
+ * consumes and mutates the {@link RiverNetwork} handed to it (writes {@link Endpoint#elevation} and
+ * {@link Channel#bedElevations}).
  *
  * <p>Invariants: purely functional over its parameters — no shared mutable state across tiles. Each
  * channel's per-point elevation is floored at the bed of the terminal {@code DRAIN} it ultimately flows
@@ -28,6 +32,8 @@ import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork;
  * {@link #resolveDrainElevations} rather than re-scanned per junction.
  */
 final class ChannelElevationAssigner {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ChannelElevationAssigner.class);
 
     private ChannelElevationAssigner() {}
 
@@ -58,11 +64,12 @@ final class ChannelElevationAssigner {
             if (ch == null) continue;
             final Endpoint startEndpoint = network.getNode(ch.startNodeId);
             final double startElev = (startEndpoint != null) ? startEndpoint.elevation : 0.0;
-            double lastPointElev = Double.isNaN(startElev) ? Double.POSITIVE_INFINITY : startElev;
+            if(Double.isNaN(startElev)) throw new IllegalArgumentException("startElev is NaN");
+            double lastPointElev = startElev;
             final double terminalDrainElev = drainElevByNodeId.getOrDefault(ch.endNodeId, Double.NaN);
-            final double drainFloor = Double.isNaN(terminalDrainElev) ? Double.NEGATIVE_INFINITY : terminalDrainElev;
+            if(Double.isNaN(terminalDrainElev)) throw new IllegalArgumentException("terminalDrainElev is NaN");
             for (double[] p : ch.spline.points()) {
-                lastPointElev = Math.clamp(sampleBilinear(decodedElev, p[0], p[1]), drainFloor, lastPointElev);
+                lastPointElev = Math.clamp(sampleBilinear(decodedElev, p[0], p[1]), terminalDrainElev, lastPointElev);
             }
             final Endpoint endEndpoint = network.getNode(ch.endNodeId);
             if (endEndpoint == null) continue;

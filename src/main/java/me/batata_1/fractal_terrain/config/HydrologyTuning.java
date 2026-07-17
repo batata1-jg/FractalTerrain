@@ -38,6 +38,18 @@ public final class HydrologyTuning {
     /** Resample spacing (native px) for a freshly traced local channel, in {@code LocalRiverProvider}. */
     public static final double RESAMPLE_DIST = 2.0;
 
+    /**
+     * Native-px proximity radius at which a local river is considered to meet a global channel: gates
+     * the local drainage tracer's reach-seed adjacency, its walk-termination exclusion, and its
+     * junction-attachment split -- all three now read this one radius instead of the removed per-pixel
+     * global mask. First-cut, untuned value pending visual calibration via {@code localRiverTest},
+     * mirroring {@code Meanders}'s {@code MAX_MARGIN_FRACTION} first-cut pattern: too small yields
+     * parallel double rivers (the local walk runs alongside the global channel instead of joining it);
+     * too large truncates local detail (interior tributaries get excluded/terminated well before they
+     * would naturally reach the global channel).
+     */
+    public static final double LOCAL_ATTACH_RADIUS = 4.0;
+
     /** Meander-simulation resample/migration step (native px), shared by {@code Meanders} and callers
      *  that need to reason about its point spacing (debug visualizers, tests). */
     public static final double DX = 1.5;

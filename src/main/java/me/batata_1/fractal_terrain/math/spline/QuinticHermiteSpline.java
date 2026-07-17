@@ -72,7 +72,24 @@ public record QuinticHermiteSpline(
         return p;
     }
 
+    /**
+     * The result of {@link #reSampleWithTs}: the resampled spline together with the arc-length
+     * parameter list ({@code ts}, in the original spline's t-basis) used to build it, so a caller can
+     * resample a parallel per-point array (e.g. a bed-elevation profile) on the identical basis.
+     */
+    public record Resampled(QuinticHermiteSpline spline, double[] ts) {}
+
     public QuinticHermiteSpline reSample(double samplingDist) {
+        return reSampleWithTs(samplingDist).spline();
+    }
+
+    /**
+     * Resamples this spline at {@code samplingDist} and exposes the arc-length parameter list it built
+     * by binary search, in addition to the resampled spline, so a caller can resample a parallel
+     * per-point array (e.g. {@link me.batata_1.fractal_terrain.hydrology.meanders.Channel#bedElevations})
+     * on the identical t-basis.
+     */
+    public Resampled reSampleWithTs(double samplingDist) {
         if (this.checkNaN()) throw new IllegalStateException();
         if (points.size() < 2) throw new IllegalStateException("spline must have at least 2 points");
         ArrayList<Double> newT = new ArrayList<>();
@@ -81,11 +98,15 @@ public record QuinticHermiteSpline(
             newT.add(nextInSpline(newT.getLast(), samplingDist));
             if (newT.getLast() >= getMaxT()) {
                 newT.add(getMaxT());
-                return new QuinticHermiteSpline(
-                        new ArrayList<>(newT.stream().map(this::sample).toList()),
-                        new ArrayList<>(newT.stream().map(this::firstDerivative).toList()),
-                        new ArrayList<>(
-                                newT.stream().map(this::secondDerivative).toList()));
+                return new Resampled(
+                        new QuinticHermiteSpline(
+                                new ArrayList<>(newT.stream().map(this::sample).toList()),
+                                new ArrayList<>(
+                                        newT.stream().map(this::firstDerivative).toList()),
+                                new ArrayList<>(newT.stream()
+                                        .map(this::secondDerivative)
+                                        .toList())),
+                        newT.stream().mapToDouble(Double::doubleValue).toArray());
             }
         }
         LOG.error("sampled {}-{}", sample(newT.removeLast()), sample(newT.removeLast()));

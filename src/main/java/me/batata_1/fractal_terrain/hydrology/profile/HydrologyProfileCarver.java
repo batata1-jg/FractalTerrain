@@ -49,7 +49,7 @@ public final class HydrologyProfileCarver {
     public float carve(double worldBlockX, double worldBlockZ, double shellElevAtPixel) {
         final double pixelX = worldBlockX / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION;
         final double pixelZ = worldBlockZ / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION;
-        return carveAtPixel(new double[]{pixelX,pixelZ}, shellElevAtPixel);
+        return carveAtPixel(new double[] {pixelX, pixelZ}, shellElevAtPixel);
     }
 
     /**
@@ -84,18 +84,7 @@ public final class HydrologyProfileCarver {
         return new PrefetchedUnits(localRiver.queryInfluence(pt, extraRadius));
     }
 
-    /**
-     * The merge core, over an already-gathered {@link PrefetchedUnits} (world relief-pixel coords, e.g.
-     * from {@link #prefetchChunk}). The point's elevation is the <b>minimum</b> (deepest) of
-     * {@link HydrologyProfile#computeForUnit} over every prefetched unit that reaches the point (radial
-     * distance below that unit's own {@link FractalTerrainConfig#riverInfluence influence} radius) — since
-     * {@code computeForUnit} returns {@code shellElevAtPixel + riverAreaDelta}, this is a min-composite
-     * bed carve consistent with the shell kernel's own min-composite: the deepest covering channel wins at
-     * a confluence, with no additive double-deepening (both channels share the same
-     * {@code shellElevAtPixel} anchor) and no abrupt mid-channel Voronoi seam between overlapping bed
-     * half-widths. {@code shellElevAtPixel} is the fallback returned unchanged when no unit reaches the
-     * point.
-     */
+
     public float carvePrefetched(PrefetchedUnits prefetched, double[] pt, double shellElevAtPixel) {
         final HydrologicalUnit[] units = prefetched.units();
         double target = shellElevAtPixel;
@@ -121,32 +110,10 @@ public final class HydrologyProfileCarver {
     /** Slack around the tile grid for the unit index bounds (units may overshoot the pad). */
     private static final double CARVE_INDEX_SLACK = 64.0;
 
-    /**
-     * Tile-level valley/floodplain shell carve (distinct from the per-pixel bed-residual refinement
-     * above): indexes {@code units} in an {@link ImmutableQuadTree} and, for every grid pixel, composes
-     * every nearby unit's {@link RosgenProfile#riverInfluenceElevation} via {@code min()} of an absolute floor target
-     * (never a relative subtract) — so global-then-local carves on the same buffer never double-deepen a
-     * confluence, regardless of call order. Each unit's {@code shellDelta} is computed against
-     * {@code ambientSnapshot} — the pristine, pre-carve original terrain — rather than the live buffer, so
-     * both the global and local passes derive their falloff lerp from the same original terrain and the
-     * min-composite is genuinely order-independent near confluences. The lens mask inside
-     * {@code shellDelta} forces the delta to 0 at each unit's own {@code riverInfluence}, so units outside
-     * a pixel's radius simply don't contribute. {@link FractalTerrainConfig#MAX_CARVE_DELTA} is evaluated
-     * against the live (pre-this-call) buffer value: a pixel whose composed target strays too far from its
-     * current elevation is uncarvable and left unchanged, so isolated deep shells never gouge holes or
-     * trenches. Static so both the global and local {@code LocalRiverProvider.buildTile} passes share one
-     * implementation.
-     *
-     * @param elevation flattened row-major {@code paddedSize × paddedSize} grid, carved in place
-     * @param ambientSnapshot pristine (pre-carve) original terrain, same layout as {@code elevation}, used
-     *     only to compute each unit's shell-delta falloff — never mutated
-     * @param units hydrological units (global or local) to carve into the grid
-     * @param paddedSize grid side length ({@code LocalRiverProvider} passes {@code PADDED} = 514)
-     */
-    public static void carveRiverShells(
-            float[] elevation, HydrologicalUnit[] units, int paddedSize) {
+    public static void carveRiverShells(float[] elevation, HydrologicalUnit[] units, int paddedSize) {
         if (units.length == 0) return;
-        final ImmutableRTree<HydrologicalUnit> index = new ImmutableRTree<>(Arrays.asList(units),HydrologicalUnit.PROTOTYPE);
+        final ImmutableRTree<HydrologicalUnit> index =
+                new ImmutableRTree<>(Arrays.asList(units), HydrologicalUnit.PROTOTYPE);
 
         for (int pi = 0; pi < paddedSize; pi++) {
             for (int pj = 0; pj < paddedSize; pj++) {
@@ -154,8 +121,7 @@ public final class HydrologyProfileCarver {
                 final float ambient = elevation[idx];
                 if (ambient < 0) continue;
                 final double[] pixel = {pi, pj};
-                final List<HydrologicalUnit> nearby =
-                        index.queryContaining(pixel);
+                final List<HydrologicalUnit> nearby = index.queryContaining(pixel);
                 if (nearby.isEmpty()) continue;
 
                 final double curElev = elevation[idx];
@@ -170,14 +136,16 @@ public final class HydrologyProfileCarver {
 
                     final RosgenType type = unit.rosgenType() == null ? RosgenType.A : unit.rosgenType();
                     final RosgenProfile profile = RosgenProfile.of(type);
-                    final double softMaxWeight = Math.exp(Math.pow(radialDist, -2)*10);
-                    softMaxSum += profile.riverInfluenceElevation(radialDist, unit.width(), curElev, unit.elevation())*softMaxWeight;
+                    double pow = Math.pow(radialDist, -1) * 10;
+                    if(pow>10) pow = 10;
+                    final double softMaxWeight = Math.exp(pow);
+                    softMaxSum += profile.riverInfluenceElevation(radialDist, unit.width(), curElev, unit.elevation())
+                            * softMaxWeight;
                     softMaxWeights += softMaxWeight;
                 }
-                if(softMaxWeights < 1e-8 ) continue;
+                if (softMaxWeights < 1e-6) continue;
                 elevation[idx] = (float) (softMaxSum / softMaxWeights);
             }
         }
     }
-
 }

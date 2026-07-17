@@ -2,7 +2,6 @@ package me.batata_1.fractal_terrain.hydrology.profile;
 
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
-import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
 
 /**
@@ -53,28 +52,27 @@ public enum RosgenProfile {
         }
 
         @Override
-        protected double bedDelta(double signedPerpDist,double width ) {
-            return width*Math.sqrt(1-signedPerpDist*signedPerpDist) /2;
+        protected double bedDelta(double signedPerpDist, double width) {
+            return width * Math.sqrt(1 - signedPerpDist * signedPerpDist) / 2;
         }
 
         @Override
         protected double floodPlainDelta(double signedPerpDist, double width, double floodPlainLength) {
-            if(width>1) if(-0.75<signedPerpDist&&signedPerpDist<-0.25) return 1;
+            if (width > 1) if (-0.75 < signedPerpDist && signedPerpDist < -0.25) return 1;
             return 0;
         }
 
         @Override
         protected double unAffectedDistCalculator(double width) {
-            return 1.12*width;
+            return 1.12 * width;
         }
-
     },
     B,
     C,
     D;
 
     public double unAffectedDist(double width) {
-        return Math.clamp(unAffectedDistCalculator(width),width/2,floodPlainLength(width));
+        return Math.clamp(unAffectedDistCalculator(width), width / 2, floodPlainLength(width));
     }
 
     protected double unAffectedDistCalculator(double width) {
@@ -118,32 +116,30 @@ public enum RosgenProfile {
         return 0;
     }
 
-
-
-    public double riverInfluenceElevation(
-            double radialDist,
-            double width,
-            double curElev,
-            double unitElev) {
+    public double riverInfluenceElevation(double radialDist, double width, double curElev, double unitElev) {
         double t = 0;
         final double riverInfluence = riverInfluence(width);
         final double floodPlainLength = floodPlainLength(width);
-        if(floodPlainLength<radialDist) {
-            t = (radialDist-floodPlainLength) / (riverInfluence-floodPlainLength);
+        if (floodPlainLength < radialDist) {
+            t = (radialDist - floodPlainLength) / (riverInfluence - floodPlainLength);
         }
-        if(riverInfluence < radialDist ) t = 1;
-        return (1-t)*unitElev + t*curElev ;
+        if (riverInfluence < radialDist) t = 1;
+        return (1 - t) * unitElev + t * curElev;
     }
 
     // ---- Bed (per-pixel residual trench, cut below the already-carved shell) ----
 
-
-    public double riverAreaDelta(double signedPerpDist, double alongDist , double width) {
+    public double riverAreaDelta(double signedPerpDist, double alongDist, double width) {
         final double floodPlainLen = floodPlainLength(width);
-        if(Math.hypot(signedPerpDist, alongDist) > floodPlainLen ) return 0;
-        final double marginLen = width/2;
-        if (Math.abs(signedPerpDist) <= marginLen ) return bedDelta(signedPerpDist/marginLen,width);
-        return floodPlainDelta(signedPerpDist>0?((signedPerpDist-marginLen)/(floodPlainLen-marginLen)):((marginLen+signedPerpDist)/(marginLen-floodPlainLen)),width,floodPlainLen);
+        if (Math.hypot(signedPerpDist, alongDist) > floodPlainLen) return 0;
+        final double marginLen = width / 2;
+        if (Math.abs(signedPerpDist) <= marginLen) return bedDelta(signedPerpDist / marginLen, width);
+        return floodPlainDelta(
+                signedPerpDist > 0
+                        ? ((signedPerpDist - marginLen) / (floodPlainLen - marginLen))
+                        : ((marginLen + signedPerpDist) / (marginLen - floodPlainLen)),
+                width,
+                floodPlainLen);
     }
 
     // range [-1,0] -> [-floodPlainLen,-marginLen] ;
@@ -153,7 +149,7 @@ public enum RosgenProfile {
     }
 
     // should be between the range -1 and 1
-    protected double bedDelta(double signedPerpDist,double width) {
+    protected double bedDelta(double signedPerpDist, double width) {
         return -1;
     }
 

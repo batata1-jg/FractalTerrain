@@ -79,8 +79,11 @@ public class LocalRiverTest {
         seeFloat(stages.flow, GRID, GRID, prefix + "01_flow");
         seeFloat(maskToFloat(stages.riverMask), GRID, GRID, prefix + "02_river_mask");
         seeFloat(stages.carvedElevation, GRID, GRID, prefix + "03_carved_elev");
+        // Both lists are channels of the SAME unified graph (see LocalRiverProvider.Stages), and the local
+        // trace shifts its segments by +PAD into the padded graph frame on insertion (DL-005), so both
+        // need the same PAD offset subtracted for tile-local pixel coords.
         seeFloat(rasterizeChannels(stages.channels, PAD), GRID, GRID, prefix + "04_global_channels");
-        seeFloat(rasterizeChannels(stages.localChannels, 0), GRID, GRID, prefix + "05_local_channels");
+        seeFloat(rasterizeChannels(stages.localChannels, PAD), GRID, GRID, prefix + "05_local_channels");
         LOG.info(
                 "tile ({},{}): {} global, {} local channels",
                 tx,

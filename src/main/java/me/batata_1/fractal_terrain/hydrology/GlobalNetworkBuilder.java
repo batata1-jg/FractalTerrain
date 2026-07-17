@@ -17,14 +17,15 @@ import me.batata_1.fractal_terrain.hydrology.meanders.*;
 /**
  * Responsibility: build the per-tile <em>global</em>-river subgraph — the 2×2 owned coarse cells plus
  * their one-cell halo, read off {@link GlobalRiverProvider}'s arrow field — into {@link RiverNetwork}
- * node/edge specs, then relax it down-gradient with a {@link Meanders} simulation and assign every
- * channel's bed elevation. This is the deterministic core unique to {@code LocalRiverProvider.buildTile}'s
- * step 1 ("global rivers: trace + relax + assign bed elevations"), extracted unchanged.
+ * node/edge specs, then relax it down-gradient with a {@link Meanders} simulation, returning the relaxed
+ * network together with the boundary-elevation map it accumulated for the caller to assign bed
+ * elevations. This is the deterministic core unique to {@code LocalRiverProvider.buildTile}'s step 1
+ * ("global rivers: trace + relax"), extracted unchanged.
  *
- * <p>Collaborators: {@link ChannelElevationAssigner} (bed-elevation propagation, invoked at the end of
- * {@link #build}); {@link HydrologyTileGeometry} (shared tile/coarse-cell geometry); {@link Meanders} /
- * {@link RiverNetwork} (the graph structure being built and relaxed); {@link GlobalRiverProvider} (the
- * coarse arrow/width/elevation source).
+ * <p>Collaborators: {@link ChannelElevationAssigner} (bed-elevation propagation, invoked by the caller
+ * after {@link #build} returns); {@link HydrologyTileGeometry} (shared tile/coarse-cell geometry);
+ * {@link Meanders} / {@link RiverNetwork} (the graph structure being built and relaxed);
+ * {@link GlobalRiverProvider} (the coarse arrow/width/elevation source).
  *
  * <p>Invariants: purely functional over its parameters — no shared mutable state, so per-tile builds
  * from different worker threads never interact. The owned-cell topology (2×2 centres, drains,
@@ -53,7 +54,14 @@ final class GlobalNetworkBuilder {
 
     private record CellInfo(int ccx, int ccz, int outDirection, int dcx, int dcz, double[] drain) {}
 
-    static Meanders build(int tileX, int tileZ, float[][] base, GlobalRiverProvider grp) {
+    /**
+     * The relaxed {@link Meanders} network together with the boundary-elevation map {@link #build}
+     * accumulated for it (source/drain node datum keyed by minted node id), for the caller to hand to
+     * {@link ChannelElevationAssigner#assign}.
+     */
+    record Result(Meanders network, Map<Integer, Double> boundaryElevByNodeIdx) {}
+
+    static Result build(int tileX, int tileZ, float[][] base, GlobalRiverProvider grp) {
         final float[] elev = base[0];
 
         final Map<Long, CellInfo> cells = new HashMap<>();
@@ -184,8 +192,8 @@ final class GlobalNetworkBuilder {
         if (edgeSpecs.isEmpty()) {
             final Meanders empty =
                     new Meanders(PADDED, new float[PADDED * PADDED], new float[PADDED * PADDED], nodeSpecs, edgeSpecs);
-            clearBuildState(cells, nodeSpecs, edgeSpecs, centerIdx, edgeNodeIdx, boundaryElevByNodeIdx);
-            return empty;
+            clearBuildState(cells, nodeSpecs, edgeSpecs, centerIdx, edgeNodeIdx);
+            return new Result(empty, boundaryElevByNodeIdx);
         }
 
         // Border confinement is now handled by the Meanders migration (per-channel, width-scaled).
@@ -200,30 +208,28 @@ final class GlobalNetworkBuilder {
 
         final Meanders sim = new Meanders(PADDED, gradX, gradZ, nodeSpecs, edgeSpecs);
         sim.relaxLowerGrad(Math.min(relaxSteps, MAX_RELAX_STEPS));
-        ChannelElevationAssigner.assign(sim.getNetwork(), boundaryElevByNodeIdx, base[0]);
-        clearBuildState(cells, nodeSpecs, edgeSpecs, centerIdx, edgeNodeIdx, boundaryElevByNodeIdx);
-        return sim;
+        clearBuildState(cells, nodeSpecs, edgeSpecs, centerIdx, edgeNodeIdx);
+        return new Result(sim, boundaryElevByNodeIdx);
     }
 
     /**
      * Release the transient build scaffolding accumulated by {@link #build}. Everything here has already
-     * been consumed (the {@link Meanders}/{@link RiverNetwork} copies the node/edge specs and
-     * {@link ChannelElevationAssigner#assign} drains the boundary-elevation map), so clearing them frees
-     * the references before the (returned) sim is handed back.
+     * been consumed (the {@link Meanders}/{@link RiverNetwork} copies the node/edge specs), so clearing
+     * them frees the references before the (returned) {@link Result} is handed back. The
+     * {@code boundaryElevByNodeIdx} map is not cleared here — it is part of the returned {@link Result}
+     * and is the caller's to consume.
      */
     private static void clearBuildState(
             Map<Long, CellInfo> cells,
             List<RiverNetwork.NodeSpec> nodeSpecs,
             List<RiverNetwork.EdgeSpec> edgeSpecs,
             Map<Long, Integer> centerIdx,
-            Map<EdgeKey, Integer> edgeNodeIdx,
-            Map<Integer, Double> boundaryElevByNodeIdx) {
+            Map<EdgeKey, Integer> edgeNodeIdx) {
         cells.clear();
         nodeSpecs.clear();
         edgeSpecs.clear();
         centerIdx.clear();
         edgeNodeIdx.clear();
-        boundaryElevByNodeIdx.clear();
     }
 
     /**

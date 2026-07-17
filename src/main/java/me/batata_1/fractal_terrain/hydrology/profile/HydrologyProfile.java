@@ -32,30 +32,28 @@ public final class HydrologyProfile {
      */
     public static double computeForUnit(double[] pt, HydrologicalUnit unit, double elevAtPixel) {
         final double[] normal = unit.normal();
-        if(normal==null) return elevAtPixel;
+        if (normal == null) return elevAtPixel;
         final double[] normTangent = VectorOps.perpendicular(normal);
 
         final double[] unitCoord = unit.coord();
 
         final double SignedPerpDist;
         final double alongDist;
-        final double[] ptToUnit = VectorOps.sub(pt,unitCoord);
+        final double[] ptToUnit = VectorOps.sub(pt, unitCoord);
         SignedPerpDist = VectorOps.dot(normal, ptToUnit);
         alongDist = Math.abs(VectorOps.dot(normTangent, ptToUnit));
 
         final RosgenProfile profile = RosgenProfile.of(unit.rosgenType() == null ? RosgenType.A : unit.rosgenType());
-        final double uninterpolatedDelta = profile.riverAreaDelta(SignedPerpDist,alongDist, unit.width());
+        final double uninterpolatedDelta = profile.riverAreaDelta(SignedPerpDist, alongDist, unit.width());
         final double unAffectedAreaDistMag = profile.unAffectedDist(unit.width());
-        final double[] unAffectedAreaDist = VectorOps.scale(normTangent,unAffectedAreaDistMag);
-        final double[] circlePtR = VectorOps.add(unitCoord,unAffectedAreaDist);
-        final double[] circlePtL = VectorOps.sub(unitCoord,unAffectedAreaDist);
-        if(
-            VectorOps.distanceSquared(circlePtL,pt)<=unAffectedAreaDistMag*unAffectedAreaDistMag &&
-            VectorOps.distanceSquared(circlePtR,pt)<=unAffectedAreaDistMag*unAffectedAreaDistMag
-        ) {
+        final double[] unAffectedAreaDist = VectorOps.scale(normTangent, unAffectedAreaDistMag);
+        final double[] circlePtR = VectorOps.add(unitCoord, unAffectedAreaDist);
+        final double[] circlePtL = VectorOps.sub(unitCoord, unAffectedAreaDist);
+        if (VectorOps.distanceSquared(circlePtL, pt) <= unAffectedAreaDistMag * unAffectedAreaDistMag
+                && VectorOps.distanceSquared(circlePtR, pt) <= unAffectedAreaDistMag * unAffectedAreaDistMag) {
             return elevAtPixel + uninterpolatedDelta;
         }
-        
+
         return elevAtPixel;
     }
 }

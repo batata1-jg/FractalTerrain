@@ -92,7 +92,7 @@ public class VectorOps {
         if (vec1.length != vec2.length) throw new RuntimeException("vectors with different lengths");
     }
 
-    //Only works for 2d
+    // Only works for 2d
     public static double[] perpendicular(double[] d) {
         return new double[] {d[1], -d[0]};
     }
