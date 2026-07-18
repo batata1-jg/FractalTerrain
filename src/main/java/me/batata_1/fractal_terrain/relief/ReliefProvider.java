@@ -124,7 +124,7 @@ public class ReliefProvider {
     }
 
     public Float getElev(int[] xz) {
-        return get_entry(xz, 0);
+       return get_entry(xz, 0);
     }
 
     public Float getBlurredElev(final int[] xz) {

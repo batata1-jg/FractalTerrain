@@ -96,11 +96,6 @@ public record FractalTerrainConfig() {
         return HydrologyTuning.riverInfluence(width);
     }
 
-    /** @see HydrologyTuning#widthFromFlow(double) */
-    public static double widthFromFlow(double rawFlow) {
-        return HydrologyTuning.widthFromFlow(rawFlow);
-    }
-
     /** @see HydrologyTuning#maxNativeWidth() */
     public static double maxNativeWidth() {
         return HydrologyTuning.maxNativeWidth();

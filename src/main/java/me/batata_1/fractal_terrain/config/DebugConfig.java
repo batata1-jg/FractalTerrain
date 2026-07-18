@@ -65,7 +65,7 @@ public final class DebugConfig {
      * </ul>
      */
     public static final Infinite3DVisualizer.DebugPaintModes VIZ_PAINT_CONTROL_MODE =
-            Infinite3DVisualizer.DebugPaintModes.RIVER_NET;
+            Infinite3DVisualizer.DebugPaintModes.HYDRO_ZONES;
 
     /** Generation steps suppressed while the visualizer is active. */
     public static final boolean DISABLE_BIOME_DECORATION = true || !DISABLE_3D_VISUALIZER;

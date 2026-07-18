@@ -125,26 +125,25 @@ public final class HydrologyProfileCarver {
                 if (nearby.isEmpty()) continue;
 
                 final double curElev = elevation[idx];
-                double softMaxSum = 0;
-                double softMaxWeights = 0;
+                HydrologicalUnit nearest = null;
+                double nearestDist = Double.POSITIVE_INFINITY;
                 for (HydrologicalUnit unit : nearby) {
                     final double[] coord = unit.coord();
                     final double dx = pixel[0] - coord[0];
                     final double dz = pixel[1] - coord[1];
                     final double radialDist = Math.hypot(dx, dz);
                     if (radialDist >= unit.getRadius()) continue; // outside this unit's influence
-
-                    final RosgenType type = unit.rosgenType() == null ? RosgenType.A : unit.rosgenType();
-                    final RosgenProfile profile = RosgenProfile.of(type);
-                    double pow = Math.pow(radialDist, -1) * 10;
-                    if(pow>10) pow = 10;
-                    final double softMaxWeight = Math.exp(pow);
-                    softMaxSum += profile.riverInfluenceElevation(radialDist, unit.width(), curElev, unit.elevation())
-                            * softMaxWeight;
-                    softMaxWeights += softMaxWeight;
+                    if (radialDist < nearestDist) {
+                        nearestDist = radialDist;
+                        nearest = unit;
+                    }
                 }
-                if (softMaxWeights < 1e-6) continue;
-                elevation[idx] = (float) (softMaxSum / softMaxWeights);
+                if (nearest == null) continue;
+
+                final RosgenType type = nearest.rosgenType() == null ? RosgenType.A : nearest.rosgenType();
+                final RosgenProfile profile = RosgenProfile.of(type);
+                elevation[idx] = (float)
+                        profile.riverInfluenceElevation(nearestDist, nearest.width(), curElev, nearest.elevation());
             }
         }
     }

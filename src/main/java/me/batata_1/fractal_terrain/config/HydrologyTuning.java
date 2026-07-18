@@ -86,7 +86,7 @@ public final class HydrologyTuning {
      * Multiplier applied to <em>global</em>-river widths only, converting their coarse-px flow widths into
      * native px. (Local widths already come out in native px, so they use {@link #widthFromFlow} directly.)
      */
-    public static final double GLOBAL_WIDTH_COORD_SCALE = 20f;
+    public static final double GLOBAL_WIDTH_COORD_SCALE = 10f;
 
     /**
      * Floodplain half-extent (native px) = {@code FLOODPLAIN_BASE + FLOODPLAIN_WIDTH_FACTOR · width}. This
@@ -98,14 +98,14 @@ public final class HydrologyTuning {
     public static final double FLOODPLAIN_WIDTH_FACTOR = 1.0f;
 
     /** Width of the blend-to-decoded band beyond the floodplain (native px). */
-    public static final double INFLUENCE_BLEND_MULTIPLIER = 2.2f;
+    public static final double INFLUENCE_BLEND_MULTIPLIER = 2f;
 
     /**
      * Hard cap (native px) on any river's influence radius — also the radius the cross-tile unit query
      * uses. Bounds the per-pixel carve/paint work and the query span; rivers whose computed
      * {@link #riverInfluence} would exceed this are clamped to it.
      */
-    public static final double MAX_INFLUENCE_RADIUS = 64.0f;
+    public static final double MAX_INFLUENCE_RADIUS = 128.0f;
 
     /**
      * Max {@code |intended shell floor − current terrain|} a pixel may carve — applies <em>only</em> to the
@@ -177,7 +177,7 @@ public final class HydrologyTuning {
      * ceiling is {@link #maxNativeWidth()}.
      */
     public static double widthFromFlow(double rawFlow) {
-        final double lawWidth = WIDTH_FLOW_SCALE * Math.log(Math.max(1.0, rawFlow + 1));
+        final double lawWidth = WIDTH_FLOW_SCALE * Math.sqrt(rawFlow);
         return Math.clamp(lawWidth, MIN_WIDTH, MAX_WIDTH);
     }
 

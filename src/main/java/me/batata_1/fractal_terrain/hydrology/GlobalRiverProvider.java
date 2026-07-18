@@ -4,8 +4,8 @@ import static me.batata_1.fractal_terrain.FractalTerrainConfig.GLOBAL_RIVER_CHAN
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.GLOBAL_WIDTH_COORD_SCALE;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.X;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.Z;
-import static me.batata_1.fractal_terrain.FractalTerrainConfig.widthFromFlow;
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
+import static me.batata_1.fractal_terrain.config.HydrologyTuning.widthFromFlow;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.NEIGHBOR_OFFSET_X;
 import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.NEIGHBOR_OFFSET_Z;

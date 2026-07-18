@@ -62,14 +62,16 @@ final class ChannelElevationAssigner {
         while (!ready.isEmpty()) {
             final Channel ch = network.getChannel(ready.poll());
             if (ch == null) continue;
-            final Endpoint startEndpoint = network.getNode(ch.startNodeId);
-            final double startElev = (startEndpoint != null) ? startEndpoint.elevation : 0.0;
+            final Endpoint startPoint = network.getNode(ch.startNodeId);
+            if(startPoint == null) throw new IllegalArgumentException("startPoint is null");
+            final double startElev = startPoint.elevation;
             if(Double.isNaN(startElev)) throw new IllegalArgumentException("startElev is NaN");
             double lastPointElev = startElev;
-            final double terminalDrainElev = drainElevByNodeId.getOrDefault(ch.endNodeId, Double.NaN);
-            if(Double.isNaN(terminalDrainElev)) throw new IllegalArgumentException("terminalDrainElev is NaN");
+            final double endPointElev = drainElevByNodeId.getOrDefault(ch.endNodeId, Double.NaN);
+            if(Double.isNaN(endPointElev)) throw new IllegalArgumentException("endPointElev is NaN");
             for (double[] p : ch.spline.points()) {
-                lastPointElev = Math.clamp(sampleBilinear(decodedElev, p[0], p[1]), terminalDrainElev, lastPointElev);
+//                LOG.info("[{},{}]", endPointElev,lastPointElev);
+                lastPointElev = Math.clamp(sampleBilinear(decodedElev, p[0], p[1]), endPointElev, lastPointElev);
             }
             final Endpoint endEndpoint = network.getNode(ch.endNodeId);
             if (endEndpoint == null) continue;

@@ -118,7 +118,7 @@ final class GlobalNetworkBuilder {
                         : PAD + b * COARSE_PX + COARSE_HALF;
                 final int idx = addNode(nodeSpecs, cx, cz, type);
                 centerIdx.put(cellKey(ccx, ccz), idx);
-                if (type == Endpoint.Type.DRAIN) boundaryElevByNodeIdx.put(idx, (double) grp.getElevation(ccx, ccz));
+                if (type == Endpoint.Type.DRAIN) boundaryElevByNodeIdx.put(idx, Math.max(0,(double) grp.getElevation(ccx, ccz)));
             }
         }
 
@@ -141,7 +141,7 @@ final class GlobalNetworkBuilder {
                         exitNode = getOrCreateEdgeNode(nodeSpecs, edgeNodeIdx, ccx, ccz, c.dcx(), c.dcz(), c.drain());
                     } else {
                         exitNode = addNode(nodeSpecs, c.drain()[0], c.drain()[1], Endpoint.Type.DRAIN);
-                        boundaryElevByNodeIdx.put(exitNode, (double) grp.getElevation(c.dcx(), c.dcz()));
+                        boundaryElevByNodeIdx.put(exitNode, Math.max(0,(double) grp.getElevation(c.dcx(), c.dcz())));
                     }
                     edgeSpecs.add(new RiverNetwork.EdgeSpec(
                             centre,
@@ -163,7 +163,7 @@ final class GlobalNetworkBuilder {
                         entryNode = getOrCreateEdgeNode(nodeSpecs, edgeNodeIdx, n.ccx(), n.ccz(), ccx, ccz, n.drain());
                     } else {
                         entryNode = addNode(nodeSpecs, n.drain()[0], n.drain()[1], Endpoint.Type.SOURCE);
-                        boundaryElevByNodeIdx.put(entryNode, (double) grp.getElevation(ccx, ccz));
+                        boundaryElevByNodeIdx.put(entryNode, Math.max(0,(double) grp.getElevation(ccx, ccz)));
                     }
                     edgeSpecs.add(new RiverNetwork.EdgeSpec(
                             entryNode,
@@ -254,8 +254,7 @@ final class GlobalNetworkBuilder {
         final double minZ = PAD + b * COARSE_PX;
         final double[] seed = sourceSeed(c.ccx(), c.ccz(), minX, minZ, FractalTerrainConfig.riverInfluence(width));
         final int seedNode = addNode(nodeSpecs, seed[0], seed[1], Endpoint.Type.SOURCE);
-        final double downstreamBed =
-                (c.outDirection() != -1) ? grp.getElevation(c.dcx(), c.dcz()) : grp.getElevation(c.ccx(), c.ccz());
+        final double downstreamBed = Math.max(0,(c.outDirection() != -1) ? grp.getElevation(c.dcx(), c.dcz()) : grp.getElevation(c.ccx(), c.ccz()));
         boundaryElevByNodeIdx.put(seedNode, Math.max(sampleBilinear(elev, seed[0], seed[1]), downstreamBed));
         edgeSpecs.add(new RiverNetwork.EdgeSpec(seedNode, centre, pts(seed, centreCoord), width));
     }

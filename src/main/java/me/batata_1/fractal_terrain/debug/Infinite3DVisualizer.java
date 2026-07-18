@@ -186,9 +186,7 @@ public class Infinite3DVisualizer {
             final double radialDist = Math.hypot(du, dv);
             if (radialDist >= unit.getRadius()) continue; // outside this unit's influence circle
 
-            final double perpDist =
-                    (unit.normal() != null) ? Math.abs(du * unit.normal()[0] + dv * unit.normal()[1]) : radialDist;
-            if (perpDist <= ChannelGeometry.bedHalfWidth(unit.width())) return BED_ZONE; // deepest possible zone
+            if (radialDist <= ChannelGeometry.bedHalfWidth(unit.width())) return BED_ZONE; // deepest possible zone
 
             if (deepest == BED_ZONE) continue;
             final RosgenProfile profile =

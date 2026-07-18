@@ -223,7 +223,7 @@ public class LocalRiverProvider {
             final Endpoint start = network.getNode(ch.startNodeId);
             final Endpoint end = network.getNode(ch.endNodeId);
             if (end == null) continue;
-            final double downstreamRef = sampleBilinear(carvedElevation, end.coord[0], end.coord[1]);
+            final double downstreamRef = Math.max(0,sampleBilinear(carvedElevation, end.coord[0], end.coord[1]));
             if (start != null) {
                 boundaryElev.putIfAbsent(
                         start.id, Math.max(sampleBilinear(carvedElevation, start.coord[0], start.coord[1]), downstreamRef));

@@ -1,5 +1,6 @@
 package me.batata_1.fractal_terrain.hydrology;
 
+import static me.batata_1.fractal_terrain.config.HydrologyTuning.widthFromFlow;
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.*;
 import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.computeFlow;
 import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.neighbor;
@@ -127,14 +128,13 @@ final class LocalDrainageTracer {
             Channel channel,
             int downstreamCell,
             float[] elev) {
-        final List<double[]> pts = channel.spline.points();
+        final ArrayList<double[]> pts = channel.spline.points();
         final double[] downstreamPt = pts.getLast();
         final Channel.ChannelPt nearestGlobal =
                 nearestWithin(globalIndex, downstreamPt[0], downstreamPt[1], HydrologyTuning.LOCAL_ATTACH_RADIUS);
 
-        final ArrayList<double[]> paddedPts = shiftToPaddedFrame(pts);
         final RiverNetwork.NodeSpec sourceSpec =
-                new RiverNetwork.NodeSpec(paddedPts.getFirst()[0], paddedPts.getFirst()[1], Endpoint.Type.SOURCE);
+                new RiverNetwork.NodeSpec(pts.getFirst()[0], pts.getFirst()[1], Endpoint.Type.SOURCE);
 
         if (nearestGlobal != null) {
             final Channel globalChannel = network.getChannel(nearestGlobal.channelId());
@@ -143,13 +143,13 @@ final class LocalDrainageTracer {
             if (downstreamChannelId == -1) return; // DL-015: split rejected the candidate; drop, don't force.
             // Snap the attaching edge's last point onto the exact junction coordinate split() just minted,
             // so the new edge's endpoint coincides with the node it terminates at (no confluence gap).
-            paddedPts.set(
-                    paddedPts.size() - 1,
+            pts.set(
+                    pts.size() - 1,
                     network.getNode(globalChannel.endNodeId).coord.clone());
             network.attachSourceToExistingNode(
                     sourceSpec,
                     globalChannel.endNodeId,
-                    paddedPts,
+                    pts,
                     channel.startWidth,
                     channel.endWidth,
                     HydrologyTuning.RESAMPLE_DIST);
@@ -158,16 +158,11 @@ final class LocalDrainageTracer {
 
         if (elev[downstreamCell] >= 0) return; // DL-013: no global channel in reach, no coast -> drop.
         final RiverNetwork.NodeSpec drainSpec =
-                new RiverNetwork.NodeSpec(paddedPts.getLast()[0], paddedPts.getLast()[1], Endpoint.Type.DRAIN);
+                new RiverNetwork.NodeSpec(pts.getLast()[0], pts.getLast()[1], Endpoint.Type.DRAIN);
         network.attachSourceToNewDrain(
-                sourceSpec, drainSpec, paddedPts, channel.startWidth, channel.endWidth, HydrologyTuning.RESAMPLE_DIST);
+                sourceSpec, drainSpec, pts, channel.startWidth, channel.endWidth, HydrologyTuning.RESAMPLE_DIST);
     }
 
-    private static ArrayList<double[]> shiftToPaddedFrame(List<double[]> pts) {
-        final ArrayList<double[]> shifted = new ArrayList<>(pts.size());
-        for (double[] p : pts) shifted.add(new double[] {p[0] + PAD, p[1] + PAD});
-        return shifted;
-    }
 
     /**
      * A fresh point index over every point of every channel in {@code channels}, shifted into the
@@ -281,9 +276,9 @@ final class LocalDrainageTracer {
             points.add(new double[] {(double) cell / GRID + 0.5, cell % GRID + 0.5});
             maxFlow = Math.max(maxFlow, flow[cell]);
         }
-        final double startWidth = FractalTerrainConfig.widthFromFlow(flow[cells.getFirst()]);
-        final double endWidth = FractalTerrainConfig.widthFromFlow(flow[cells.getLast()]);
-        final Channel channel = new Channel(FractalTerrainConfig.widthFromFlow(maxFlow), points, channelId);
+        final double startWidth = widthFromFlow(flow[cells.getFirst()]);
+        final double endWidth = widthFromFlow(flow[cells.getLast()]);
+        final Channel channel = new Channel(widthFromFlow(maxFlow), points, channelId);
         channel.setWidthProfile(startWidth, endWidth);
         if (!channel.isResampleable()) return null; // degenerate geometry: skip this channel
         try {
