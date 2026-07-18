@@ -26,11 +26,6 @@ import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
  * {@link FractalTerrainConfig#riverInfluence} are thin delegates to these (their width-only overloads
  * assume {@link RosgenType#A}).
  *
- * <p>{@link #lensMask} computes the flat-floor lens footprint of a single unit (intersection of two
- * discs of radius {@code r = fpl^2 / (2d) + d/2}, centred {@code +/-(r - d)} along the unit's tangent),
- * returning exactly {@code 1} inside and {@code 0} outside. <b>No live code calls it</b> — the shell
- * carve uses the radial lerp above instead. It is retained for the in-progress rework.
- *
  * <p>The floodplain and blending zones are unions of per-unit radial discs; the smoothness of that
  * union relies on adjacent units' discs overlapping, which requires unit spacing {@code dx <=
  * width/2} (enforced in {@link me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork}).

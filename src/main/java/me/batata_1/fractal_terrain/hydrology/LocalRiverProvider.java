@@ -189,13 +189,16 @@ public class LocalRiverProvider {
      *       {@code JUNCTION} instead).</li>
      *   <li>Seed the boundary map with those local {@code SOURCE}/{@code DRAIN} nodes, then run
      *       {@code assign} a second time over the now-unified graph.</li>
-     *   <li>Collect every unit (global + local, one shared feature-id counter) into the R-tree, carve the
-     *       global shell a second time, and crop the padded buffer to {@code GRID × GRID}.</li>
+     *   <li>Collect every unit (global + local, one shared feature-id counter) into the R-tree, run the
+     *       shell carve a second time, and crop the padded buffer to {@code GRID × GRID}.</li>
      * </ol>
      *
-     * <p>Both shell carves pass GLOBAL units only. Local channels are never shell-carved: they are traced
-     * with no coarse halo, so a local shell could be truncated at this tile's {@code PAD} border and seam
-     * against the neighbouring tile. Global floodplains use a 2×2-cell halo and are unaffected.
+     * <p>Both carve passes collect units <em>unfiltered</em>. That makes the first pass global-only by
+     * timing alone — the local network does not exist yet — while the second pass, running after the
+     * local trace, carves local shells too. Local shells are traced with no coarse halo, so one can be
+     * truncated at this tile's {@code PAD} border and seam against its neighbour; global floodplains use
+     * a 2×2-cell halo and are unaffected. {@code RiverNetwork.collectUnits} has a channel-id-filtering
+     * overload that would restrict the carve to global channels, but nothing calls it.
      *
      * <p>{@code stages} is a test/debug sink; production calls pass {@code null}.
      */

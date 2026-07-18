@@ -1,16 +1,13 @@
 # test/ (JUnit 5)
 
-The deterministic golden gate (`gradle test`, `useJUnitPlatform()`). Each test drives the exact
-production code path over a synthetic seeded fixture with no ONNX dependency, so a divergence in the
-deterministic hydrology/math fails immediately. The diffusion half has no automated gate — see
-`ARCHITECTURE.md` "Testing stance".
+JUnit 5 golden-gate tests, run via `gradle test` (`useJUnitPlatform()`).
 
-## Files (by subpackage)
+## Files
 
-| Test                                              | Covers                                                          |
-| ------------------------------------------------- | -------------------------------------------------------------- |
-| `hydrology/GlobalRiverGoldenTest.java`            | `GlobalRiverProvider` per-tile pipeline (`computeTileForTest`)  |
-| `hydrology/LocalRiverGoldenTest.java`             | `LocalRiverProvider` local-network trace (`traceLocalNetworkForTest`) |
-| `hydrology/SpatialIndexCorrectnessGoldenTest.java`| Spatial-index correctness (former `SpatialIndexBenchmark`)     |
-| `hydrology/meanders/MeandersGoldenTest.java`      | `Meanders` relaxation                                          |
-| `ml/pipeline/PipelineSessionReloadRaceTest.java`  | MUST-1 reload-race regression (single-volatile session swap)   |
+| File                                                | What                                                                                                          | When to read                                                       |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `hydrology/GlobalRiverGoldenTest.java`               | Golden-checksum + determinism gate for `GlobalRiverProvider.computeTileForTest` over a synthetic elevation field                                                        | Verifying/re-baselining the global river network build                                                     |
+| `hydrology/LocalRiverGoldenTest.java`                | Structural-invariant + determinism gate for `LocalRiverProvider.traceLocalNetworkForTest` over a synthetic single-trunk global network                                  | Verifying the local network trace: trunk attachment, bed monotonicity, tile-edge containment                |
+| `hydrology/SpatialIndexCorrectnessGoldenTest.java`   | R-tree-vs-brute-force cross-check + golden checksum over a synthetic `HydrologicalUnit` set                                                                             | Verifying spatial-index query correctness (former `SpatialIndexBenchmark` correctness portion)             |
+| `hydrology/meanders/MeandersGoldenTest.java`         | Graph-primitive invariants (split/merge/collision capture/endpoint alignment) plus a golden signature for meander migration                                             | Verifying `Meanders`/`RiverNetwork` graph operations and migration math                                     |
+| `ml/pipeline/PipelineSessionReloadRaceTest.java`     | Concurrency regression: asserts no torn read of the volatile `PipelineSession` triple under concurrent reload                                                           | Verifying `WorldPipeline` session-reload thread-safety                                                      |

@@ -38,6 +38,11 @@ final class LocalDrainageTracer {
 
     private LocalDrainageTracer() {}
 
+    /**
+     * Minimum accumulated flow for a cell to count as local river. Combined with the reach test and the
+     * global-proximity exclusion to build the river mask. Local to this tracer rather than a
+     * {@link HydrologyTuning} constant, so tuning it affects only the local network.
+     */
     private static final float FLOW_THRESHOLD = 40f;
 
     /** Half-extent of the fresh global-channel point index's bounds (channels never approach this). */
@@ -178,7 +183,7 @@ final class LocalDrainageTracer {
             final List<double[]> pts = ch.spline.points();
             for (int i = 0; i < pts.size(); i++) {
                 final double[] p = pts.get(i);
-                index.insertPoint(new Channel.ChannelPt(new double[] {p[0] - PAD, p[1] - PAD}, i, ch.channelId));
+                index.insertPoint(new Channel.ChannelPt(new double[] {p[0], p[1]}, i, ch.channelId));
             }
         }
         return index;

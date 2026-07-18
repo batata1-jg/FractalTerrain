@@ -1,5 +1,8 @@
 # terrablender/
 
+Terrablender integration entry point — currently an empty stub, not yet wired to any biome region
+registration.
+
 ## Files
 
 | File                   | What                                          | When to read                              |

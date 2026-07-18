@@ -40,8 +40,9 @@ import org.slf4j.Logger;
  * with recording disabled, so it produces no history.
  *
  * <p>{@link #collectUnits} packages the current network (plus recorded removed features) into a list of
- * {@link HydrologicalUnit}s, resampling every feature at {@code dx = width/2} so wider features carry
- * proportionally fewer points; the caller freezes the list into its spatial index of choice.
+ * {@link HydrologicalUnit}s, resampling every feature at {@code dx = max(width/2, MIN_CONVERT_SPACING)}
+ * so wider features carry proportionally fewer points; the caller freezes the list into its spatial
+ * index of choice.
  */
 public final class RiverNetwork {
 
@@ -668,14 +669,17 @@ public final class RiverNetwork {
     /**
      * Collect the network's {@link HydrologicalUnit}s (active channels of type
      * {@link HydrologicalFeature#RIVER} plus recorded removed features — oxbow lakes / abandoned
-     * rivers) in one pass over the unified graph — global and local channels alike, now that local
+     * rivers) in one pass over the unified graph — global and local channels alike, since local
      * segments are first-class graph members — as a mutable list the caller freezes into a single
-     * spatial index. Each feature is first resampled at {@code dx = width/2}; emitted coordinates are
-     * the network coordinate minus {@code (offsetX, offsetZ)} (e.g. to drop a halo pad). Per-point bed
-     * elevation is read directly from the already-assigned {@link Channel#bedElevations} — this pass
-     * never invents or re-derives it from decoded terrain; removed paths (oxbows/abandoned rivers) carry
-     * no {@code bedElevations}, so their elevation falls back to sampling {@code decodedElev} at each
-     * point.
+     * spatial index. Each feature is first resampled at {@code dx = max(width/2, MIN_CONVERT_SPACING)};
+     * emitted coordinates are the network coordinate minus {@code (offsetX, offsetZ)} (e.g. to drop a
+     * halo pad). Per-point bed elevation is read directly from the already-assigned
+     * {@link Channel#bedElevations} — this pass never invents or re-derives it from decoded terrain;
+     * removed paths (oxbows/abandoned rivers) carry no {@code bedElevations}, so their elevation falls
+     * back to sampling decoded terrain at each point.
+     *
+     * <p>Channels whose geometry is degenerate ({@code !isResampleable()}) or that overrun the spline
+     * length cap during resampling are skipped silently, contributing no units.
      *
      * <p>{@code nextFeatureId} is a single-element mutable counter threaded by the caller so every unit
      * this one pass emits — global and local alike — shares one tile-unique
@@ -688,13 +692,15 @@ public final class RiverNetwork {
     }
 
     /**
-     * As {@link #collectUnits(int, ElevationSampler, double, double, int[])}, but a graph channel's RIVER
-     * units are only emitted when {@code channelIdFilter} accepts its {@link Channel#channelId}; recorded
-     * removed features (oxbow/abandoned) are always emitted regardless (the local drainage tracer never
-     * produces removed paths, so this only ever filters live graph channels). Used by {@code
-     * LocalRiverProvider} to feed the tile-level shell carve global-river units only (DL-011: the local
-     * shell carve stays disabled) while the unfiltered overload above still assembles the single,
-     * authoritative unit list (global + local) for the tile's spatial index.
+     * As {@link #collectUnits(int, double, double, int[])}, but a graph channel's RIVER units are only
+     * emitted when {@code channelIdFilter} accepts its {@link Channel#channelId}; recorded removed
+     * features (oxbow/abandoned) are always emitted regardless (the local drainage tracer never produces
+     * removed paths, so this only ever filters live graph channels).
+     *
+     * <p><b>No caller passes a real filter today.</b> The only invocation is the unfiltered overload
+     * above delegating with {@code channelId -> true}. This exists to let a caller carve or index one
+     * subgraph (e.g. global-only channels) out of the unified network, but {@code LocalRiverProvider}
+     * currently collects unfiltered for every purpose.
      */
     public List<HydrologicalUnit> collectUnits(
             int time,

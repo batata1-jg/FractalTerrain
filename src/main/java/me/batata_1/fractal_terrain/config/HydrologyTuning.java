@@ -35,7 +35,7 @@ public final class HydrologyTuning {
     /** Sink-fill border-blend padding (native px) used by {@code LocalRiverProvider}'s tile carve. */
     public static final int FILL_PADDING = 64;
 
-    /** Resample spacing (native px) for a freshly traced local channel, in {@code LocalRiverProvider}. */
+    /** Resample spacing (native px) for a freshly traced local channel, in {@code LocalDrainageTracer}. */
     public static final double RESAMPLE_DIST = 2.0;
 
     /**
@@ -92,6 +92,10 @@ public final class HydrologyTuning {
 
     public static final double MAX_WIDTH = 16f;
 
+    /**
+     * Currently unused: no live code reads this, not even through the {@code FractalTerrainConfig} facade
+     * re-export.
+     */
     public static final double MAX_LOCAL_WIDTH = 6f;
 
     /**
@@ -103,7 +107,12 @@ public final class HydrologyTuning {
 
     public static final double FLOODPLAIN_WIDTH_FACTOR = 1.0f;
 
-    /** Width of the blend-to-decoded band beyond the floodplain (native px). */
+    /**
+     * Dimensionless multiplier on {@link #floodPlainLength} used to derive a river's outer influence
+     * radius (see {@code RosgenProfile#riverInfluence}): {@code riverInfluence = floodPlainLength ·
+     * INFLUENCE_BLEND_MULTIPLIER}, clamped to {@link #MAX_INFLUENCE_RADIUS}. Not itself a native-px
+     * width -- the blend band's actual width is {@code riverInfluence − floodPlainLength}.
+     */
     public static final double INFLUENCE_BLEND_MULTIPLIER = 2f;
 
     /**
@@ -114,33 +123,38 @@ public final class HydrologyTuning {
     public static final double MAX_INFLUENCE_RADIUS = 128.0f;
 
     /**
-     * Max {@code |intended shell floor − current terrain|} a pixel may carve — applies <em>only</em> to the
-     * tile-level pre-carve ({@code HydrologyProfileCarver.carveRiverShells}), not to the per-pixel
-     * refinement merge. A pixel beyond this delta is <em>uncarvable</em> and skipped (so the tile carve
-     * never gouges isolated holes or trenches); the hydrological units still record the intended shell
-     * floor elevation.
+     * Currently unused: no live code reads this, not even through the {@code FractalTerrainConfig} facade
+     * re-export. Original intent, per its name: a max {@code |intended shell floor − current terrain|} a
+     * pixel may carve, so a pixel beyond the delta would be left uncarved rather than gouged.
+     * {@code HydrologyProfileCarver.carveRiverShells} implements no such gate today -- every pixel within
+     * a unit's radius is pulled toward the shell floor regardless of delta.
      */
     public static final double MAX_CARVE_DELTA = 100;
 
     /**
-     * Depth (native px) the tile-carved shell floor sits below a feature's reference (bank) elevation --
-     * shallow, distinct from the much deeper per-pixel bed trench ({@link
-     * me.batata_1.fractal_terrain.hydrology.ChannelGeometry#depthForWidth}).
+     * Currently unused: no live code reads this. Original intent, per its name: how far (native px) the
+     * tile-carved shell floor would sit below a feature's reference (bank) elevation.
+     * {@code HydrologyProfileCarver.carveRiverShells} pulls each pixel toward a unit's reference
+     * elevation directly (via {@code RosgenProfile#riverInfluenceElevation}); no freeboard subtraction is
+     * applied anywhere in that path today.
      */
     public static final double FREEBOARD = 0.3f;
 
     /**
      * Fraction of the way from {@code width/2} to a river's {@code floodPlainLength} that the lens
      * sagitta {@link #d} sits -- keeps {@code d} strictly inside the required band {@code (width/2, fpl)}
-     * for every representable width, since {@code floodPlainLength(width) > width/2} always.
+     * for every representable width, since {@code floodPlainLength(width) > width/2} always. Reached only
+     * through {@link #d}, which today is itself reached only through dead code -- see {@link #d}.
      */
     private static final double D_FRACTION = 0.5;
 
     /**
-     * The lens sagitta (native px) for the shell-carve mask: the along-channel half-extent of a single
-     * unit's flat-floor footprint. Stays strictly inside the validity band {@code width/2 < d <
-     * floodPlainLength} across the whole width range (narrowest local channel to the widest
-     * native-rescaled global trunk) by construction -- see {@link #D_FRACTION}.
+     * The lens sagitta (native px) for {@code RosgenProfile#lensMask}'s flat-floor footprint mask. Stays
+     * strictly inside the validity band {@code width/2 < d < floodPlainLength} across the whole width
+     * range (narrowest local channel to the widest native-rescaled global trunk) by construction -- see
+     * {@link #D_FRACTION}. Currently reached only through dead code: {@code lensMask}'s own javadoc notes
+     * no live code calls it (the shell carve uses a radial lerp instead) -- it is retained for an
+     * in-progress rework.
      */
     public static double d(double width, double floodPlainLength) {
         final double halfWidth = width * 0.5;
