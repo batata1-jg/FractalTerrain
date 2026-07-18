@@ -62,6 +62,24 @@ public final class HydrologyTuning {
     public static final double MARGIN_INFLUENCE_FACTOR = 5.0;
 
     // ──────────────────────────────────────────────────────────────────────────
+    // Flow accumulation (see PipelinePreprocessing.computeFlow)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Baseline flow every cell starts with before any upstream contribution — the "rainfall" landing on
+     * a single cell. Scales the whole flow field uniformly, so raising it widens every channel via
+     * {@link #widthFromFlow}.
+     */
+    public static final float FLOW_INITIAL = 1f;
+
+    /**
+     * Extra flow added to the downstream cell at each routing step. Unlike {@link #FLOW_INITIAL} this
+     * accrues per <em>hop</em>, so it grows a channel with its length rather than with its catchment
+     * area; {@code 0} gives the classic upstream-cell-count accumulation.
+     */
+    public static final float FLOW_PER_CELL = 0f;
+
+    // ──────────────────────────────────────────────────────────────────────────
     // Hydrology — river width & carve-profile tuning (all property-overridable).
     // ──────────────────────────────────────────────────────────────────────────
 

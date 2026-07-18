@@ -56,20 +56,29 @@ public class PipelinePreprocessing {
     }
 
     /**
-     * Topological flow accumulation over a D8 drainage field. Every cell starts with unit flow;
-     * processing cells in upstream-to-downstream (Kahn topological) order, each cell's accumulated
-     * flow is pushed to the neighbour it drains into. The result is {@code sqrt}-scaled so the
-     * dynamic range stays manageable for downstream width/threshold use.
+     * Topological flow accumulation over a D8 drainage field. Every cell starts with {@code
+     * initialFlow}; processing cells in upstream-to-downstream (Kahn topological) order, each cell's
+     * accumulated flow is pushed to the neighbour it drains into, plus a {@code flowPerCell} gain
+     * contributed by that routing step.
+     *
+     * <p>The two knobs are independent: {@code initialFlow} is the baseline every cell (including a
+     * headwater source) carries before any upstream contribution, while {@code flowPerCell} is added
+     * once per downstream hop, so it scales flow with channel <em>length</em> rather than with
+     * catchment cell count. Passing {@code initialFlow = 1, flowPerCell = 0} reproduces the classic
+     * "flow = number of upstream cells" accumulation.
      *
      * @param drainageDirection one-hot D8 bitfield per cell (see {@link #computeDrainageDirection}).
      * @param gridSize side length of the square grid.
-     * @return per-cell sqrt-scaled flow accumulation, indexed {@code x * gridSize + z}.
+     * @param initialFlow baseline flow every cell starts with.
+     * @param flowPerCell extra flow added to the downstream cell at each routing step.
+     * @return per-cell flow accumulation, indexed {@code x * gridSize + z}.
      */
-    public static float[] computeFlow(final int[] drainageDirection, final int gridSize) {
+    public static float[] computeFlow(
+            final int[] drainageDirection, final int gridSize, final float initialFlow, final float flowPerCell) {
         final int[] inDegree = new int[gridSize * gridSize];
         final float[] flow = new float[gridSize * gridSize];
         Arrays.fill(inDegree, 0);
-        Arrays.fill(flow, 1);
+        Arrays.fill(flow, initialFlow);
         sourceQueue.clear();
         for (int cellIndex = 0; cellIndex < gridSize * gridSize; cellIndex++) {
             final int direction = neighbor(drainageDirection[cellIndex]);
@@ -88,7 +97,7 @@ public class PipelinePreprocessing {
             final int downstream = neighborIndex(current, direction, gridSize);
             if (downstream == -1) continue;
             if ((--inDegree[downstream]) == 0) sourceQueue.add(downstream);
-            flow[downstream] += flow[current];
+            flow[downstream] += flow[current] + flowPerCell;
         }
 
         return flow;
