@@ -71,7 +71,7 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
     private static final int DEFAULT_MAX_POINTS_NODE = 24;
 
     /**
-     * When {@code true}, {@link #queryRec} emits an indented, per-node trace (visit / prune / accept /
+     * When {@code true}, {@link #query} emits an indented, per-node trace (visit / prune / accept /
      * leaf-scan / descend) through {@link #LOG}. Compile-time constant: when {@code false} the JIT
      * removes the guarded branches, so production queries pay nothing.
      */

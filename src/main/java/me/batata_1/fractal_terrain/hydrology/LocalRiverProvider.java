@@ -213,11 +213,10 @@ public class LocalRiverProvider {
         final Map<Integer, Double> boundaryElev = new HashMap<>(globalResult.boundaryElevByNodeIdx());
 
         final float[] carvedElevation = base[0];
-        ChannelElevationAssigner.assign(network,boundaryElev, carvedElevation);
+        ChannelElevationAssigner.assign(network, boundaryElev, carvedElevation);
         LOG.info("passed first assignemnt");
 
-        final List<HydrologicalUnit> globalUnitsFirstCarvePass = network.collectUnits(
-                0, 0, 0, new int[] {0});
+        final List<HydrologicalUnit> globalUnitsFirstCarvePass = network.collectUnits(0, 0, 0, new int[] {0});
         HydrologyProfileCarver.carveRiverShells(
                 carvedElevation, globalUnitsFirstCarvePass.toArray(new HydrologicalUnit[0]), PADDED);
 
@@ -256,10 +255,11 @@ public class LocalRiverProvider {
             final Endpoint start = network.getNode(ch.startNodeId);
             final Endpoint end = network.getNode(ch.endNodeId);
             if (end == null) continue;
-            final double downstreamRef = Math.max(0,sampleBilinear(carvedElevation, end.coord[0], end.coord[1]));
+            final double downstreamRef = Math.max(0, sampleBilinear(carvedElevation, end.coord[0], end.coord[1]));
             if (start != null) {
                 boundaryElev.putIfAbsent(
-                        start.id, Math.max(sampleBilinear(carvedElevation, start.coord[0], start.coord[1]), downstreamRef));
+                        start.id,
+                        Math.max(sampleBilinear(carvedElevation, start.coord[0], start.coord[1]), downstreamRef));
             }
             if (end.type == Endpoint.Type.DRAIN) {
                 boundaryElev.putIfAbsent(end.id, downstreamRef);
@@ -268,14 +268,13 @@ public class LocalRiverProvider {
 
         // 5. ONE bed-elevation assignment over the whole unified graph.
         ChannelElevationAssigner.assign(network, boundaryElev, carvedElevation);
+        LOG.info("passed second assignemnt");
 
         final int[] nextFeatureId = {0};
         final List<HydrologicalUnit> unitPoints = network.collectUnits(0, PAD, PAD, nextFeatureId);
         final ImmutableRTree<HydrologicalUnit> unitIndex = new ImmutableRTree<>(unitPoints, HydrologicalUnit.PROTOTYPE);
 
-
-        final List<HydrologicalUnit> globalUnitsForCarve = network.collectUnits(
-                0, 0, 0, new int[] {0});
+        final List<HydrologicalUnit> globalUnitsForCarve = network.collectUnits(0, 0, 0, new int[] {0});
 
         HydrologyProfileCarver.carveRiverShells(
                 carvedElevation, globalUnitsForCarve.toArray(new HydrologicalUnit[0]), PADDED);

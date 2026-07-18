@@ -73,7 +73,6 @@ public record FractalTerrainConfig() {
     public static final double FLOODPLAIN_WIDTH_FACTOR = HydrologyTuning.FLOODPLAIN_WIDTH_FACTOR;
     public static final double INFLUENCE_BLEND_MULTIPLIER = HydrologyTuning.INFLUENCE_BLEND_MULTIPLIER;
     public static final double MAX_INFLUENCE_RADIUS = HydrologyTuning.MAX_INFLUENCE_RADIUS;
-    public static final double MAX_CARVE_DELTA = HydrologyTuning.MAX_CARVE_DELTA;
 
     /** @see HydrologyTuning#floodPlainLength(double, RosgenType) */
     public static double floodPlainLength(double width, RosgenType type) {

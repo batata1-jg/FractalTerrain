@@ -14,6 +14,8 @@ import me.batata_1.fractal_terrain.relief.DecoderChannels;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.TestOnly;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * When turned on in FractalTerrainConfig, projects anything into the minecraft world
@@ -24,6 +26,7 @@ import org.jetbrains.annotations.TestOnly;
 public class Infinite3DVisualizer {
 
     private static final BlockState DEFAULT = Blocks.WHITE_CONCRETE.defaultBlockState();
+    private static final Logger LOG = LoggerFactory.getLogger(Infinite3DVisualizer.class);
 
     public enum DebugModes {
         /** Elevation <em>after</em> the carving step: the carved+filled ch0 imported by ReliefProvider. */
@@ -178,9 +181,10 @@ public class Infinite3DVisualizer {
         final double[] pt = mutableCoordsXZ.get();
         pt[0] = xx * 0.2; // block -> relief-pixel frame (÷ GLOBAL_SCALE_CORRECTION)
         pt[1] = zz * 0.2;
+        LOG.info("[");
         final HydrologicalUnit[] units =
                 FractalTerrainInstance.getLocalRiverProvider().queryInfluence(pt);
-
+        LOG.info("]");
         BlockState deepest = DEFAULT;
         for (final HydrologicalUnit unit : units) {
             final double du = pt[0] - unit.coord()[0];

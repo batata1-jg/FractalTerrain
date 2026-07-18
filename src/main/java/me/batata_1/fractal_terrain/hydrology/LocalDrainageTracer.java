@@ -1,5 +1,6 @@
 package me.batata_1.fractal_terrain.hydrology;
 
+import static me.batata_1.fractal_terrain.config.HydrologyTuning.FLOW_THRESHOLD;
 import static me.batata_1.fractal_terrain.config.HydrologyTuning.widthFromFlow;
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.*;
 import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.computeFlow;
@@ -7,7 +8,6 @@ import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.neighb
 
 import java.util.ArrayList;
 import java.util.List;
-import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
 import me.batata_1.fractal_terrain.hydrology.meanders.Endpoint;
@@ -38,15 +38,8 @@ final class LocalDrainageTracer {
 
     private LocalDrainageTracer() {}
 
-    /**
-     * Minimum accumulated flow for a cell to count as local river. Combined with the reach test and the
-     * global-proximity exclusion to build the river mask. Local to this tracer rather than a
-     * {@link HydrologyTuning} constant, so tuning it affects only the local network.
-     */
-    private static final float FLOW_THRESHOLD = 40f;
-
     /** Half-extent of the fresh global-channel point index's bounds (channels never approach this). */
-    private static final double POINT_INDEX_EXTENT = 1e9;
+    private static final double POINT_INDEX_EXTENT = 1e3;
 
     /**
      * Traces the local drainage network and mutates {@code network} in place: flow accumulation → reach
@@ -73,14 +66,14 @@ final class LocalDrainageTracer {
     static void traceLocalNetwork(
             int[] drainage, float[] elev, RiverNetwork network, @Nullable LocalRiverProvider.Stages stages) {
         final int cellCount = PADDED * PADDED;
-        final float[] flow =
-                computeFlow(drainage, PADDED, HydrologyTuning.FLOW_INITIAL, HydrologyTuning.FLOW_PER_CELL);
+        final float[] flow = computeFlow(drainage, PADDED, HydrologyTuning.FLOW_INITIAL_LOCAL, HydrologyTuning.FLOW_PER_CELL_LOCAL);
         final QuadTree<Channel.ChannelPt> globalIndex = buildGlobalPointIndex(network.getChannels());
         final boolean[] reaches = computeReaches(drainage, elev, globalIndex);
         final boolean[] riverMask = new boolean[cellCount];
         for (int cell = 0; cell < cellCount; cell++) {
-            riverMask[cell] =
-                    flow[cell] >= FLOW_THRESHOLD && reaches[cell] && !nearGlobal(globalIndex, cell / PADDED, cell % PADDED);
+            riverMask[cell] = flow[cell] >= FLOW_THRESHOLD
+                    && reaches[cell]
+                    && !nearGlobal(globalIndex, cell / PADDED, cell % PADDED);
         }
 
         final int[] downstream = new int[cellCount];
@@ -166,7 +159,6 @@ final class LocalDrainageTracer {
         network.attachSourceToNewDrain(
                 sourceSpec, drainSpec, pts, channel.startWidth, channel.endWidth, HydrologyTuning.RESAMPLE_DIST);
     }
-
 
     /**
      * A fresh point index over every point of every channel in {@code channels}, shifted into the

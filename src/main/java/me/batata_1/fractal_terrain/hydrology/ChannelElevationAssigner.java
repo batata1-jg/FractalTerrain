@@ -27,7 +27,7 @@ import org.slf4j.LoggerFactory;
  * </ol>
  *
  * <p>Operates on whatever network and boundary map it is given and assumes nothing about the network
- * being global-only. {@link LocalRiverProvider#buildTile} invokes it <b>twice</b> per tile — once on the
+ * being global-only.  invokes it <b>twice</b> per tile — once on the
  * global-only graph and again after the local network is attached.
  *
  * <p>Collaborators: {@link HydrologyTileGeometry#sampleBilinear} (padded-frame terrain sampling);
@@ -76,14 +76,14 @@ final class ChannelElevationAssigner {
             final Channel ch = network.getChannel(ready.poll());
             if (ch == null) continue;
             final Endpoint startPoint = network.getNode(ch.startNodeId);
-            if(startPoint == null) throw new IllegalArgumentException("startPoint is null");
+            if (startPoint == null) throw new IllegalArgumentException("startPoint is null");
             final double startElev = startPoint.elevation;
-            if(Double.isNaN(startElev)) throw new IllegalArgumentException("startElev is NaN");
+            if (Double.isNaN(startElev)) throw new IllegalArgumentException("startElev is NaN");
             double lastPointElev = startElev;
             final double endPointElev = drainElevByNodeId.getOrDefault(ch.endNodeId, Double.NaN);
-            if(Double.isNaN(endPointElev)) throw new IllegalArgumentException("endPointElev is NaN");
+            if (Double.isNaN(endPointElev)) throw new IllegalArgumentException("endPointElev is NaN");
             for (double[] p : ch.spline.points()) {
-//                LOG.info("[{},{}]", endPointElev,lastPointElev);
+                //                LOG.info("[{},{}]", endPointElev,lastPointElev);
                 lastPointElev = Math.clamp(sampleBilinear(decodedElev, p[0], p[1]), endPointElev, lastPointElev);
             }
             final Endpoint endEndpoint = network.getNode(ch.endNodeId);

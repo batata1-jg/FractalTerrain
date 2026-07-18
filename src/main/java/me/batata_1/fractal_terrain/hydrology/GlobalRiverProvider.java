@@ -1,11 +1,9 @@
 package me.batata_1.fractal_terrain.hydrology;
 
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.GLOBAL_RIVER_CHANNELS;
-
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.X;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.Z;
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
-import static me.batata_1.fractal_terrain.config.HydrologyTuning.widthFromFlow;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.NEIGHBOR_OFFSET_X;
 import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.NEIGHBOR_OFFSET_Z;
@@ -245,7 +243,7 @@ public class GlobalRiverProvider {
         //    NOTE: flow accumulation comes from the raw steepest-descent field, so cells on a
         //    sink-reroute segment get width from natural flow rather than the rerouted drainage.
         final float[] flowAccumulation = PipelinePreprocessing.computeFlow(
-                drainageDirection, PADDED_SIDE, HydrologyTuning.FLOW_INITIAL, HydrologyTuning.FLOW_PER_CELL);
+                drainageDirection, PADDED_SIDE, HydrologyTuning.FLOW_INITIAL_GLOBAL, HydrologyTuning.FLOW_PER_CELL_GLOBAL);
         final float[] widths = new float[PADDED_SIDE * PADDED_SIDE];
         for (int px = 0; px < arrows.length; px++) {
             if (arrows[px] != 0) widths[px] = (float) HydrologyTuning.widthFromFlow(flowAccumulation[px]);
@@ -370,7 +368,6 @@ public class GlobalRiverProvider {
         }
         return ramped;
     }
-
 
     /** Divisor in the coarse→native elevation scale map ({@code nativeElev = coarseElev² / SCALE}). */
     private static final float ELEV_NATIVE_SCALE = 5f;

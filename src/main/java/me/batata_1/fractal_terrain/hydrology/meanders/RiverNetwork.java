@@ -665,7 +665,6 @@ public final class RiverNetwork {
     // Conversion to the queryable, persistable unit tree
     // ---------------------------------------------------------------------------------------------
 
-
     /**
      * Collect the network's {@link HydrologicalUnit}s (active channels of type
      * {@link HydrologicalFeature#RIVER} plus recorded removed features — oxbow lakes / abandoned
@@ -686,8 +685,7 @@ public final class RiverNetwork {
      * {@link HydrologicalUnit#id() id} space — every point of one feature gets the same id, and the
      * counter advances once per feature.
      */
-    public List<HydrologicalUnit> collectUnits(
-            int time, double offsetX, double offsetZ, int[] nextFeatureId) {
+    public List<HydrologicalUnit> collectUnits(int time, double offsetX, double offsetZ, int[] nextFeatureId) {
         return collectUnits(time, offsetX, offsetZ, nextFeatureId, channelId -> true);
     }
 
@@ -703,11 +701,7 @@ public final class RiverNetwork {
      * currently collects unfiltered for every purpose.
      */
     public List<HydrologicalUnit> collectUnits(
-            int time,
-            double offsetX,
-            double offsetZ,
-            int[] nextFeatureId,
-            IntPredicate channelIdFilter) {
+            int time, double offsetX, double offsetZ, int[] nextFeatureId, IntPredicate channelIdFilter) {
         final List<HydrologicalUnit> units = new ArrayList<>();
         for (Channel ch : channels.values()) {
             if (!channelIdFilter.test(ch.channelId)) continue;
@@ -759,7 +753,6 @@ public final class RiverNetwork {
         }
         return units;
     }
-
 
     private static void addFeatureUnits(
             List<HydrologicalUnit> out,

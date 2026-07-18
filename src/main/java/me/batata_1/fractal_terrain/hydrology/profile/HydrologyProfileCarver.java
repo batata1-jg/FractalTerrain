@@ -6,7 +6,6 @@ import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
-import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 
 /**
@@ -86,7 +85,6 @@ public final class HydrologyProfileCarver {
     private PrefetchedUnits queryUnits(double[] pt, double extraRadius) {
         return new PrefetchedUnits(localRiver.queryInfluence(pt, extraRadius));
     }
-
 
     public float carvePrefetched(PrefetchedUnits prefetched, double[] pt, double shellElevAtPixel) {
         final HydrologicalUnit[] units = prefetched.units();
