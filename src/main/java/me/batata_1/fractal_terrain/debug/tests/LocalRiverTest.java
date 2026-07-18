@@ -19,10 +19,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Standalone smoke test for {@link LocalRiverProvider} (the river-pipeline owner). Loads the models,
- * injects a {@link GlobalRiverProvider} directly (so the {@code FractalTerrainInstance} singleton is
- * never touched), and for a few tiles dumps PNGs of the flow accumulation, local river mask, carved
- * elevation, and traced channels under {@code <DEFAULT_DEBUG_PATH>/local_river/}. Run with
+ * Standalone smoke test for {@link LocalRiverProvider} (the river-pipeline owner). Loads the models via
+ * {@code FractalTerrainInstance.initPipeline()}, but constructs its own {@link GlobalRiverProvider} and
+ * {@link LocalRiverProvider} directly rather than going through {@code FractalTerrainInstance}'s provider
+ * accessors, and for a few tiles dumps PNGs of the flow accumulation, local river mask, carved elevation,
+ * and traced channels under {@code <DEFAULT_DEBUG_PATH>/local_river/}. Run with
  * {@code ./gradlew localRiverTest}.
  */
 @TestOnly

@@ -29,11 +29,10 @@ import org.jetbrains.annotations.Nullable;
  * <p>Invariants: purely functional over its parameters plus the one {@link RiverNetwork} it mutates in
  * place — no state shared across tiles, so per-tile traces from different worker threads never
  * interact. A channel is only attached when its whole segment stays interior to the tile's TRUE boundary
- * ({@link #leavesTile}, still {@link HydrologyTileGeometry#GRID}-based, not the padded frame — H5). No
- * per-pixel global boolean mask is built anywhere: proximity to a global channel is read from a point
- * index freshly built over {@link RiverNetwork#getChannels()} every call (the transient Meanders
- * collision {@link QuadTree} is cleared every simulation step and cannot be reused, so this index is its
- * own, separate, throwaway structure) — see {@link #buildGlobalPointIndex}.
+ * ({@link #leavesTile} is {@link HydrologyTileGeometry#GRID}-based, not the padded frame — H5).
+ * Proximity to a global channel is read from a point index built over {@link RiverNetwork#getChannels()}
+ * on every call; it is a throwaway structure of its own, because the Meanders collision {@link QuadTree}
+ * is cleared every simulation step and cannot be reused — see {@link #buildGlobalPointIndex}.
  */
 final class LocalDrainageTracer {
 
@@ -46,12 +45,11 @@ final class LocalDrainageTracer {
 
     /**
      * Traces the local drainage network and mutates {@code network} in place: flow accumulation → reach
-     * test → segment walk, as before, but every surviving interior segment is now attached directly to
-     * {@code network} as a graph edge instead of being returned in a detached list. Proximity to a global
-     * channel — read from a point index freshly built over {@code network.getChannels()} (see
-     * {@link #buildGlobalPointIndex}) — replaces both the walk-termination exclusion and the reach-seed
-     * adjacency the removed pixel mask used to provide ({@link HydrologyTuning#LOCAL_ATTACH_RADIUS} gates
-     * both, plus the junction-attachment split below).
+     * test → segment walk, attaching every surviving interior segment directly to {@code network} as a
+     * graph edge. Proximity to a global channel — read from a point index built over
+     * {@code network.getChannels()} (see {@link #buildGlobalPointIndex}) — gates walk termination, the
+     * reach seed, and the junction-attachment split alike, all against
+     * {@link HydrologyTuning#LOCAL_ATTACH_RADIUS}. There is no per-pixel global boolean mask.
      *
      * <p>Each surviving segment's upstream ridge cell becomes a SOURCE node; its downstream end either
      * splits the nearest global channel (minting a JUNCTION) when a global-channel point lies within
@@ -64,8 +62,8 @@ final class LocalDrainageTracer {
      * tolerate an empty channel list without error.
      *
      * <p>Returns nothing — see {@code LocalRiverProvider.buildTile} for how the caller augments the
-     * boundary-elevation map (reading the nodes this method minted) and runs the single
-     * assign/collectUnits pass over the now-unified graph.
+     * boundary-elevation map (reading the nodes this method minted) and runs the bed-assignment and
+     * unit-collection passes over the unified graph.
      */
     static void traceLocalNetwork(
             int[] drainage, float[] elev, RiverNetwork network, @Nullable LocalRiverProvider.Stages stages) {

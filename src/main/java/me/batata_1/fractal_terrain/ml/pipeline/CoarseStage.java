@@ -102,7 +102,7 @@ final class CoarseStage {
         // Coordinates are intentionally swapped
         float[][][] syn = s.syntheticMapFactory().sample(j1, i1, j1 + S, i1 + S);
 
-        // Modify temp channel (index 1): where <= 20, scale toward 20
+        // Modify temp channel (index 1): where <= 20, scale the distance below 20 by 1.25x (exaggerates cold)
         for (int r = 0; r < S; r++)
             for (int c = 0; c < S; c++) {
                 float v = syn[1][r][c];

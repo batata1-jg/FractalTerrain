@@ -6,7 +6,7 @@ package me.batata_1.fractal_terrain.ml.pipeline;
  *
  * <p><b>Reload-race contract (MUST-1).</b> These three values must move together: a
  * {@link SyntheticMapFactory} is only ever paired with the exact {@code seed} it was constructed from,
- * and the Gaussian-noise draws in {@code WorldPipeline}'s tile compute derive from that same {@code seed}.
+ * and the Gaussian-noise draws in each stage's tile compute derive from that same {@code seed}.
  * Previously the pipeline held them as three separate {@code volatile} fields and a reload
  * ({@code updateInstance}) rewrote them in sequence; a worker computing a tile read the fields
  * independently, so a reload interleaved between two reads could mix an old synthetic map with a new

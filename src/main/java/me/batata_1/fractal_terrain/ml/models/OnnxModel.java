@@ -143,7 +143,8 @@ public final class OnnxModel implements AutoCloseable {
         }
     }
     /**
-     * Optimizes model bytes and caches the optimized file in the config directory.
+     * Optimizes model bytes and caches the optimized file in the model asset directory
+     * ({@link ModelAssetManager}'s {@code onnx-cache} subfolder).
      * Falls back to the source model bytes if optimization or cache I/O fails.
      */
     private OptimizedModelLoadResult optimizeModelAtRuntime(byte[] sourceModelBytes, boolean forceRebuildFromSource) {

@@ -23,12 +23,14 @@ public final class HydrologyProfilePainter {
 
     /**
      * Top Y (inclusive) up to which river water should fill the column {@code (dx, dz)}, or
-     * {@code reliefHeight} when no river water applies there. Reads {@link Types#RIVER_DIFFERENCE}: where the
-     * carve lowered the terrain ({@code diff < 0}) the channel fills with water up to the shell surface
-     * ({@code reliefHeight − diff}) — {@code RIVER_DIFFERENCE} is now the bed-residual delta cut below the
-     * tile-carved shell, not below the original decoded terrain. This mirrors the carver: negative carve
-     * delta → water in the carved channel. The chunk filler turns the air between {@code reliefHeight} and
-     * this top into water.
+     * {@code reliefHeight} when no river water applies there. Reads {@link Types#RIVER_DIFFERENCE} — the
+     * bed-residual delta cut below the tile-carved shell, not below the original decoded terrain — and
+     * where that delta is negative fills to {@code reliefHeight − diff}. The chunk filler turns the air
+     * between {@code reliefHeight} and this top into water.
+     *
+     * <p><b>Yields no water today.</b> {@code PopulateNoiseStep} computes {@code RIVER_DIFFERENCE} from a
+     * bed-residual stage that is currently a no-op, so the heightmap is uniformly {@code 0} and this
+     * method always returns {@code reliefHeight}.
      */
     public int riverWaterTop(FractalTerrainHeightmap heightmaps, int dx, int dz, int reliefHeight) {
         final float diff = heightmaps.get(Types.RIVER_DIFFERENCE, dx, dz);

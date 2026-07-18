@@ -8,9 +8,7 @@ import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
  * Turns a binary mask into a list of smooth splines tracing its 1-pixel skeleton.
  *
  * <p>The pipeline is: {@link #zhangSuen} thinning → {@link #tracePolylines} (endpoint/junction
- * seeded walks plus closed loops) → Catmull-Rom fit + arc-length resampling. This is the
- * canonical home for the logic that used to live inside
- * {@code relief.GlobalFillRocksPredicate}; that class now delegates here.
+ * seeded walks plus closed loops) → Catmull-Rom fit + arc-length resampling.
  *
  * <p>Output spline points are in the SAME coordinate frame as the input mask (mask-relative,
  * {@code (row, col)}); callers add any tile/pad origin themselves.

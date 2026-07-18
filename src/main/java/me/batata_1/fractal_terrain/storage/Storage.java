@@ -30,11 +30,12 @@ import org.slf4j.Logger;
  * {@code null} path to the constructor also forces <em>cache-only</em> behaviour: nothing touches the
  * filesystem and entries are never persisted regardless of the payload's serialize support.
  *
- * <p><b>Concurrency:</b> the read path ({@link #getEntry}) is lock-free for cache hits and uses
- * single-flight {@link ConcurrentHashMap#computeIfAbsent} on a miss, so any number of reader
- * threads may run concurrently. The only locked state is the eviction bookkeeping
- * ({@link #cachedEntryByteSizes} / {@link #totalCachedBytes}), guarded by {@link #evictionLock},
- * which readers never touch. See the class-level refactor plan for the lock-ordering argument.
+ * <p><b>Concurrency:</b> the read path ({@link #getEntry}) is lock-free for cache hits. On a miss,
+ * {@link #fetchEntry} single-flights via a plain {@code get} followed by {@code CACHE.putIfAbsent}
+ * (deliberately NOT {@link ConcurrentHashMap#computeIfAbsent}, which would hold a bin lock across the
+ * load), so any number of reader threads may run concurrently and only the losing threads await the
+ * winner's future. The only locked state is the eviction bookkeeping ({@link #cachedEntryByteSizes} /
+ * {@link #totalCachedBytes}), guarded by {@link #evictionLock}, which readers never touch.
  *
  * <p><b>Cache-write boundary / immutability:</b> {@link #persistAndRecord} and the disk-reload path in
  * {@link #loadInto} are the only two places a payload transitions from "just produced" to "published

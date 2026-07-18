@@ -13,23 +13,36 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Responsibility: the bottom-up bed-elevation assignment for a relaxed {@link RiverNetwork} handed to it
- * — set source/drain node elevations from boundary conditions, propagate junction elevations
- * leaves→drains (Kahn), then recompute each channel's per-point bed as a lerp from its start elevation
- * toward its end elevation. Operates on whatever network and boundary map it is given and carries no
- * assumption that the network is global-only. Invoked once per tile from
- * {@link LocalRiverProvider#buildTile} after {@link GlobalNetworkBuilder#build} returns the relaxed
- * network and its boundary-elevation map.
+ * Bed-elevation assignment for a relaxed {@link RiverNetwork}, in three phases:
+ *
+ * <ol>
+ *   <li>Seed every {@code SOURCE}/{@code DRAIN} node's elevation from the boundary map (missing entries
+ *       default to {@code 0.0}).</li>
+ *   <li>Propagate junction elevations leaves→drains in Kahn order: each channel walks its spline points
+ *       taking a running terrain sample clamped into {@code [drainElev, previousPoint]}, and a junction
+ *       adopts the minimum arriving elevation once all its incoming channels have reported.</li>
+ *   <li>Recompute every channel's per-point bed: a terrain sample floored at the channel's end elevation,
+ *       blended toward that end elevation by the along-channel fraction, then forced monotone
+ *       non-increasing against the previous point.</li>
+ * </ol>
+ *
+ * <p>Operates on whatever network and boundary map it is given and assumes nothing about the network
+ * being global-only. {@link LocalRiverProvider#buildTile} invokes it <b>twice</b> per tile — once on the
+ * global-only graph and again after the local network is attached.
  *
  * <p>Collaborators: {@link HydrologyTileGeometry#sampleBilinear} (padded-frame terrain sampling);
  * consumes and mutates the {@link RiverNetwork} handed to it (writes {@link Endpoint#elevation} and
  * {@link Channel#bedElevations}).
  *
- * <p>Invariants: purely functional over its parameters — no shared mutable state across tiles. Each
- * channel's per-point elevation is floored at the bed of the terminal {@code DRAIN} it ultimately flows
- * into (not the local coarse cell), so a whole source→junction→drain path is monotone non-increasing
- * down to a single, path-consistent minimum; the drain bed of every node is resolved once up front by
- * {@link #resolveDrainElevations} rather than re-scanned per junction.
+ * <p>Invariants: purely functional over its parameters — no shared mutable state across tiles. Phase 2
+ * floors each path at the bed of the terminal {@code DRAIN} it ultimately flows into (not the local
+ * coarse cell), so a whole source→junction→drain path descends to a single path-consistent minimum; the
+ * drain bed of every node is resolved once up front by {@link #resolveDrainElevations} rather than
+ * re-scanned per junction.
+ *
+ * <p>Phase 2 throws {@link IllegalArgumentException} on a missing start node, a {@code NaN} start
+ * elevation, or a node whose drain elevation is unresolvable — i.e. broken topology fails loudly here
+ * rather than silently producing {@code NaN} beds.
  */
 final class ChannelElevationAssigner {
 

@@ -20,9 +20,9 @@ import org.jetbrains.annotations.NotNull;
  * so a point-stabbing query returns exactly the units whose influence reaches the point. It carries
  * the channel {@code normal} (unit perpendicular to the centreline at this point, used to project
  * query points across the channel), the local channel {@code width}, the reference (bank) {@code
- * elevation} the tile-level shell carve floors against (see {@code RosgenProfile#shellFloor}), the
- * simulation {@code time} (meander step) at which it was recorded, and an {@code id} grouping every
- * point of the same feature.
+ * elevation} the tile-level shell carve lerps toward (see
+ * {@link RosgenProfile#riverInfluenceElevation}), the simulation {@code time} (meander step) at which
+ * it was recorded, and an {@code id} grouping every point of the same feature.
  *
  * <p>The {@code id} groups the points that belong to one hydrological feature so the carve/paint
  * query can gather and merge them per feature. It is <em>not necessarily a channel id</em> — it is a
@@ -34,7 +34,10 @@ import org.jetbrains.annotations.NotNull;
  * construction and every query point-scan pay no boxing or copying. Because records compare array
  * components by reference, {@link #equals} / {@link #hashCode} are overridden to compare contents.
  *
- * <p>{@link RosgenType} is inert for now: it is stored but no behaviour keys off it yet.
+ * <p>{@link RosgenType} selects the {@link RosgenProfile} used by {@link #getRadius()} and by the
+ * tile-level shell carve. A {@code null} rosgenType is treated as {@link RosgenType#A} at every such
+ * site. Because only {@code A} overrides any profile method today, the choice is currently observable
+ * only as "A vs. not-A".
  */
 public record HydrologicalUnit(
         HydrologicalFeature type,
@@ -64,7 +67,7 @@ public record HydrologicalUnit(
         OXBOW_LAKE
     }
 
-    /** Rosgen stream classification (A–D). Stored but unused for now. */
+    /** Rosgen stream classification (A–D); selects the unit's {@link RosgenProfile}. */
     public enum RosgenType {
         A,
         B,

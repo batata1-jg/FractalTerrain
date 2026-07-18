@@ -1,8 +1,10 @@
 # pipeline/
 
-Diffusion inference: `WorldPipeline` orchestrates four extracted stage collaborators (M-009). All stages
-snapshot one immutable `PipelineSession` per tile/batch to avoid a torn `(seed, map, tau)` read (MUST-1,
-see `ARCHITECTURE.md`).
+Diffusion inference: `WorldPipeline` orchestrates four extracted stage collaborators (M-009). The three
+diffusion stages (`CoarseStage`/`LatentStage`/`DecoderStage`) each snapshot one immutable
+`PipelineSession` per tile/batch to avoid a torn `(seed, map, tau)` read (MUST-1, see `ARCHITECTURE.md`);
+`ClimateProvider` is the exception — it never reads `PipelineSession` since climate derivation has no
+seed-dependent noise draw.
 
 ## Files
 

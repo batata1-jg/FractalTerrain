@@ -66,7 +66,7 @@ public class Infinite3DVisualizer {
      *   <li>{@link #RIVER_NET} — {@link #debugRiver}: global/local river + coast markers.</li>
      *   <li>{@link #PV} — {@link #debugPV}: peaks-and-valleys bands quantized from biome weirdness.</li>
      *   <li>{@link #HYDRO_ZONES} — {@link #debugHydroZones}: per-block carve zone (bed / floodplain /
-     *       blending) of the nearest influencing hydrological unit.</li>
+     *       blending), the deepest zone reached across every influencing hydrological unit.</li>
      * </ul>
      */
     public enum DebugPaintModes {
@@ -164,13 +164,15 @@ public class Infinite3DVisualizer {
      * min-composite (deepest covering channel wins) rather than a single nearest-unit seam:
      *
      * <ul>
-     *   <li><b>bed</b> ({@code perpDist ≤ bedHalfWidth}, cross-channel) → red;</li>
+     *   <li><b>bed</b> ({@code radialDist ≤ bedHalfWidth}) → red;</li>
      *   <li><b>floodplain</b> ({@code radialDist ≤ floodPlainLength}) → orange;</li>
      *   <li><b>blending</b> (out to the unit's influence radius) → pink.</li>
      * </ul>
      *
-     * <p>Distances use the same {@code normal}/radial split as the carver, so this is a faithful preview
-     * of which zone each block falls in.
+     * <p>{@code radialDist} is the plain Euclidean distance from the point to the unit's centre — the
+     * same measure {@link HydrologicalUnit#channelContains} and {@code HydrologyProfileCarver#carvePrefetched}
+     * use — not a perpendicular/along-channel decomposition, so this is an approximation near sharply
+     * curved channels rather than an exact geometric preview.
      */
     public BlockState debugHydroZones(int xx, int y, int zz) {
         final double[] pt = mutableCoordsXZ.get();

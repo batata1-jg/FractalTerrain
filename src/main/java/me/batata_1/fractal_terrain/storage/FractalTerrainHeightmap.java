@@ -23,9 +23,9 @@ import net.minecraft.world.level.ChunkPos;
  * <p>{@link Types#ELEVATION} is special: the {@code creator} only produces the <em>raw</em>
  * smoothstep-interpolated relief elevation. After every heightmap is filled,
  * {@link FractalTerrainHeightmapCache} runs a second pass
- * ({@link me.batata_1.fractal_terrain.world.gen.populatenoise.PopulateNoiseStep#finalElev}) that
- * recomputes ELEVATION from the full set of channels (gradients, residual, biome parameters), applying
- * the final terrain tweaks (biome-aware shaping, ocean-height correction, bottomY clamp).
+ * ({@link me.batata_1.fractal_terrain.world.gen.populatenoise.PopulateNoiseStep#updateToFinalElev})
+ * that recomputes ELEVATION from the full set of channels (gradients, residual, biome parameters),
+ * applying the final terrain tweaks (biome-aware shaping, ocean-height correction, bottomY clamp).
  */
 public record FractalTerrainHeightmap(float[][] data) {
 

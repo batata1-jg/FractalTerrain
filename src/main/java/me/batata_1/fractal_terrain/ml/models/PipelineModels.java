@@ -7,9 +7,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Holds the three ONNX models used by WorldPipeline. Loaded once at mod init
- * and shared across pipeline instances. Load runs on a background thread so
- * the game thread is not blocked during startup.
+ * Holds the four ONNX models (coarse, base, decoder, fuzed) used by WorldPipeline. Loaded once at mod
+ * init and shared across pipeline instances. Load runs on a background thread so the game thread is not
+ * blocked during startup.
  */
 public final class PipelineModels implements AutoCloseable {
 

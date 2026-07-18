@@ -132,7 +132,7 @@ final class DecoderStage {
             newSample[k] = (cosT * xT[k] - sinT * EDMScheduler.SIGMA_DATA * pred) / EDMScheduler.SIGMA_DATA;
         }
 
-        // post proessing
+        // post-processing
         Object[][] inputs = new Object[3][3];
         inputs[0] = new Object[] {"residual_init", newSample, new long[] {1, 512, 512}};
         inputs[1] = new Object[] {"latents_init", latentSlice.dataUnsafe(), new long[] {6, 64, 64}};

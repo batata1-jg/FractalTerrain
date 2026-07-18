@@ -31,10 +31,11 @@ import org.slf4j.LoggerFactory;
  * </ul>
  *
  * <p>Quadrant assignment ({@link #findSection}) maps a point onto an infinite tiling of cell size
- * {@code m}: {@code floorMod(floor(coord / m), 2)} per axis. The root square is snapped to a
- * power-of-two aligned cell that contains the whole point set, so this absolute tiling agrees
- * exactly with recursive midpoint bisection — construction, the sort comparator, and query descent
- * all use the same quadrant rule.
+ * {@code m}: {@code floorMod(floor(coord / m), 2)} per axis. The root square's origin and size are
+ * derived from the point bounding box (lower corner minus a fixed 5-unit margin per axis, side
+ * {@code max(width, height) + 10}) — NOT snapped to any power-of-two-aligned global grid. Because
+ * construction, the sort comparator, and query descent all recursively halve that same root square,
+ * the quadrant rule stays consistent across all three regardless of the root's alignment.
  *
  * <p><b>Node squares &amp; traversal coordinates ({@code ox}, {@code oz}, {@code size}).</b> Node
  * bounds are never stored (see {@link #nodes}); instead every recursive walk — construction
@@ -92,9 +93,9 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
     private static final boolean CHECK_QUERY_NAN = false;
 
     /**
-     * When {@code true}, the constructor logs the root-cell alignment — the point bounding box, how many
-     * times the cell size had to double, and the resulting {@code (rootOriginX, rootOriginZ, rootSize)} —
-     * via {@link #LOG}. Compile-time constant: zero cost when {@code false}.
+     * When {@code true}, the constructor logs the root-cell sizing — the point bounding box and the
+     * resulting {@code (rootOriginX, rootOriginZ, rootSize)} — via {@link #LOG}. Compile-time constant:
+     * zero cost when {@code false}.
      */
     private static final boolean DEBUG_BUILD = false;
 
@@ -182,9 +183,10 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
                         "ImmutableQuadTree input point has non-finite coordinates (" + px + ", " + pz + "): " + p);
         }
 
-        // Snap the root to a power-of-two aligned cell containing every point, so the absolute
-        // findSection tiling matches recursive bisection at every level. Alignment is derived from the
-        // point bbox only — the supplied min/max is coverage metadata (it may be unbounded ±INF).
+        // Size the root square to the point bbox (plus a fixed margin) so every point falls inside it.
+        // findSection tiling matches recursive bisection at every level because every level halves this
+        // same root square. Derived from the point bbox only — the supplied min/max is coverage
+        // metadata (it may be unbounded ±INF).
         if (sorted.isEmpty()) {
             this.rootSize = 1.0;
             this.rootOriginX = 0.0;

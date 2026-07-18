@@ -54,9 +54,12 @@ import org.slf4j.LoggerFactory;
  * per-tile pipeline sequencing; the actual per-stage math is delegated to
  * {@link GlobalNetworkBuilder} (global-river trace + relax), {@link LocalDrainageTracer} (drainage-derived
  * local network, attached in place onto the global graph) and {@link ChannelElevationAssigner}
- * (bed-elevation propagation, invoked here once local insertion has finished so every source/junction/
- * drain in the unified graph is seeded). {@link HydrologyTileGeometry} is the shared tile-frame geometry
- * all three depend on.
+ * (bed-elevation propagation). {@link HydrologyTileGeometry} is the shared tile-frame geometry all three
+ * depend on.
+ *
+ * <p>{@code assign} and the global shell carve each run <b>twice</b> per tile: once on the global-only
+ * graph, to give the drainage trace a carved valley to route through, and again on the unified graph
+ * after the local network is attached. See {@link #buildTile} for the exact ordering.
  *
  * <p><b>Invariants:</b> {@link #units}/{@link #carved} (a {@link NonIntersectingSpatialIndex} /
  * {@link NonIntersectingInfiniteTensor} pair) are reused per-tile and single-threaded per key — the
@@ -169,6 +172,33 @@ public class LocalRiverProvider {
     // Core pipeline
     // -------------------------------------------------------------------------
 
+    /**
+     * The whole per-tile pipeline, producing both cache artifacts from one pass over a padded
+     * {@code PADDED × PADDED} buffer of decoded terrain. Ordering, which is load-bearing:
+     *
+     * <ol>
+     *   <li>Trace + relax the global network ({@link GlobalNetworkBuilder}), which also returns the
+     *       boundary elevations it accumulated for its source/drain nodes.</li>
+     *   <li>{@link ChannelElevationAssigner#assign} over the global-only graph, then carve the global
+     *       shell into the decoded elevation — so the drainage field in step 3 sees valleys.</li>
+     *   <li>Sink-fill + drainage direction over that carved elevation.</li>
+     *   <li>Trace the local network and attach it in place onto the SAME graph
+     *       ({@link LocalDrainageTracer#traceLocalNetwork}, void). A before/after channel-id snapshot
+     *       identifies the freshly-minted local channels: a minted channel is local iff its start node is
+     *       a new {@code SOURCE} (a {@code split()}-grown global downstream half starts at a
+     *       {@code JUNCTION} instead).</li>
+     *   <li>Seed the boundary map with those local {@code SOURCE}/{@code DRAIN} nodes, then run
+     *       {@code assign} a second time over the now-unified graph.</li>
+     *   <li>Collect every unit (global + local, one shared feature-id counter) into the R-tree, carve the
+     *       global shell a second time, and crop the padded buffer to {@code GRID × GRID}.</li>
+     * </ol>
+     *
+     * <p>Both shell carves pass GLOBAL units only. Local channels are never shell-carved: they are traced
+     * with no coarse halo, so a local shell could be truncated at this tile's {@code PAD} border and seam
+     * against the neighbouring tile. Global floodplains use a 2×2-cell halo and are unaffected.
+     *
+     * <p>{@code stages} is a test/debug sink; production calls pass {@code null}.
+     */
     private TileResult buildTile(int tileX, int tileZ, @Nullable Stages stages) {
         final GlobalRiverProvider grp = globalRiverProvider();
         final float[][] base = DecoderChannels.decode(tileX, tileZ, PAD); // padded 514, channels 0..6

@@ -12,7 +12,7 @@ import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
  * Turns a binary mask into a list of smooth splines tracing its <em>border</em> (the contour
  * between {@code true} and {@code false} regions) via the marching-squares algorithm.
  *
- * <p>This is the contour-tracing counterpart to {@code hydrology.Skeletonizer}: it exposes the
+ * <p>This is the contour-tracing counterpart to {@link Skeletonizer}: it exposes the
  * same public shape ({@link #trace(boolean[][])} returning resampled {@link QuinticHermiteSpline}s,
  * plus a static core), but instead of thinning the region to its medial axis it walks the cell-edge
  * crossings of the region boundary. Use it when a filled mask should be represented by its outline

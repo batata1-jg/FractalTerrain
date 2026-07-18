@@ -15,15 +15,18 @@ import org.slf4j.Logger;
 /**
  * Dense N-dimensional float tensor.
  *
- * <p><b>Immutability contract:</b> {@link #data}/{@link #shape} are {@code private final} and never
- * exposed as a mutable reference. Instances are freely mutable while under construction by their
- * producer thread; once a tensor is published into a {@link me.batata_1.fractal_terrain.storage.Storage}
- * cache, {@link #freeze()} is called at that cache-write boundary (see {@code Storage#persistAndRecord}
- * / {@code Storage#loadInto}), and every mutating method ({@link #set}, {@link #writeFrom},
- * {@link #dataUnsafe()}, {@link #addFrom}, {@link #copyFrom}) throws {@link IllegalStateException}
- * thereafter. Reads ({@link #get(int)}, {@link #readInto}, {@link #copyRange}, {@link #entryAt}) never
- * allocate and remain available regardless of frozen state, so cached tensors stay safe to read
- * concurrently from any worker thread without per-read copies.
+ * <p><b>Immutability contract:</b> {@link #shape} is {@code private final} and never exposed as a
+ * mutable reference. {@link #data} is {@code public final} — the array reference itself cannot be
+ * reassigned, but {@link #freeze()} does NOT guard its contents against direct external writes
+ * (e.g. {@code tensor.data[i] = x}); only mutation routed through this class's own methods
+ * ({@link #set}, {@link #writeFrom}, {@link #dataUnsafe()}, {@link #addFrom}, {@link #copyFrom}) is
+ * checked and throws {@link IllegalStateException} once frozen. Instances are freely mutable while
+ * under construction by their producer thread; once a tensor is published into a
+ * {@link me.batata_1.fractal_terrain.storage.Storage} cache, {@link #freeze()} is called at that
+ * cache-write boundary (see {@code Storage#persistAndRecord} / {@code Storage#loadInto}). Reads
+ * ({@link #get(int)}, {@link #readInto}, {@link #entryAt}) never allocate and remain available
+ * regardless of frozen state; {@link #copyRange} is also always available but allocates a fresh
+ * array on every call.
  */
 public class FloatTensor implements Persistable<FloatTensor> {
 

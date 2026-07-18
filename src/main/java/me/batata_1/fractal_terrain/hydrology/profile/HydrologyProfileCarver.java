@@ -13,15 +13,17 @@ import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
  * The elevation side of the hydrology profile. Two carve stages live here:
  *
  * <ul>
+ *   <li><b>Tile-level shell carve</b> ({@link #carveRiverShells}, static) — the valley/floodplain carve
+ *       run over a whole padded relief tile by {@code LocalRiverProvider.buildTile}. For each pixel it
+ *       selects the single <em>nearest</em> influencing unit and lerps the elevation toward that unit's
+ *       reference elevation ({@link RosgenProfile#riverInfluenceElevation}). {@code buildTile} calls it
+ *       twice, both times over GLOBAL units only (local channels are never shell-carved).</li>
  *   <li><b>Per-pixel refinement</b> ({@link #carve}, {@link #carveAtPixel}, {@link #carvePrefetched}) —
  *       queries the per-tile river network ({@link LocalRiverProvider#queryInfluence}) and takes the
- *       minimum (deepest) {@link HydrologyProfile#computeForUnit} elevation over every influencing unit —
- *       the bed residual cut below the already-carved shell. Applied in {@code PopulateNoiseStep} on top
- *       of the tile shell carve; {@code RIVER_DIFFERENCE = carve(...) − shellElev}.</li>
- *   <li><b>Tile-level shell pre-carve</b> ({@link #carveRiverShells}, static) — the valley/floodplain
- *       shell carve run once per relief tile (both global and local passes) by
- *       {@code LocalRiverProvider.buildTile}, pulling the decoded elevation toward each unit's shell
- *       floor (bank + freeboard).</li>
+ *       minimum (deepest) {@link HydrologyProfile#computeForUnit} elevation over every influencing unit.
+ *       <b>Currently inert</b>: {@code computeForUnit} is a no-op returning its input, so this stage
+ *       returns the shell elevation unchanged. {@code PopulateNoiseStep} additionally has its
+ *       {@link #carvePrefetched} call commented out, so nothing invokes it during chunk fill at all.</li>
  * </ul>
  *
  * All geometry is in the relief-pixel frame; only {@link #carve} converts from world/block coordinates
@@ -44,7 +46,8 @@ public final class HydrologyProfileCarver {
      * Refined elevation at world/block coordinates {@code (worldBlockX, worldBlockZ)} whose already-carved
      * shell elevation is {@code shellElevAtPixel}. World coords are converted into the relief-pixel frame
      * (divide by {@link FractalTerrainConfig#GLOBAL_SCALE_CORRECTION}) that the unit query uses. Returns
-     * {@code shellElevAtPixel} unchanged when no feature influences the point.
+     * {@code shellElevAtPixel} unchanged when no feature influences the point — which today is every
+     * point, since the underlying {@link HydrologyProfile#computeForUnit} is a no-op.
      */
     public float carve(double worldBlockX, double worldBlockZ, double shellElevAtPixel) {
         final double pixelX = worldBlockX / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION;
@@ -110,6 +113,20 @@ public final class HydrologyProfileCarver {
     /** Slack around the tile grid for the unit index bounds (units may overshoot the pad). */
     private static final double CARVE_INDEX_SLACK = 64.0;
 
+    /**
+     * Carves the valley/floodplain shell for {@code units} into {@code elevation} in place (a
+     * {@code paddedSize × paddedSize} row-major tile buffer, relief-pixel frame).
+     *
+     * <p>Per pixel: stab a freshly-built R-tree over {@code units}, keep the candidates whose influence
+     * circle actually contains the pixel, take the <em>nearest</em> one, and overwrite the pixel with
+     * {@link RosgenProfile#riverInfluenceElevation}. Only the nearest unit contributes — contributions
+     * are not composited — so a confluence takes the profile of whichever channel passes closest rather
+     * than the deepest. Pixels with a negative ambient elevation (ocean) are skipped.
+     *
+     * <p>Writes into the same buffer it reads, so repeated calls on one buffer compound: {@code buildTile}
+     * relies on this, carving the global shell once before the drainage trace and again after the
+     * unified bed-elevation assignment.
+     */
     public static void carveRiverShells(float[] elevation, HydrologicalUnit[] units, int paddedSize) {
         if (units.length == 0) return;
         final ImmutableRTree<HydrologicalUnit> index =

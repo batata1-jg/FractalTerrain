@@ -4,6 +4,13 @@ import java.util.concurrent.atomic.AtomicLong;
 import me.batata_1.fractal_terrain.debug.Debug;
 import org.slf4j.Logger;
 
+/**
+ * VRAM-baseline sampler: polls {@code nvidia-smi} for GPU memory for a couple of seconds and reports the
+ * peak/delta against a 2500 MB budget. Despite the class name and the {@code pipelineTest} Gradle task,
+ * this harness currently makes no calls into {@code WorldPipeline} or {@code ModelAssetManager} — no
+ * inference runs, so the reported "pipeline delta" is effectively an idle GPU-memory baseline rather than
+ * a measurement of actual pipeline VRAM usage.
+ */
 public class PipelineTest {
 
     private static final Logger LOG = Debug.getLogger(PipelineTest.class);

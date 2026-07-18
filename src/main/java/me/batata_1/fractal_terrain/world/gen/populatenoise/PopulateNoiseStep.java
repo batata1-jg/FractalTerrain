@@ -26,19 +26,14 @@ public class PopulateNoiseStep {
     }
 
     /**
-     * Second-pass ELEVATION override. Given the chunk's full set of heightmaps — the raw interpolated
-     * relief elevation plus gradients, residual, and biome parameters (continentalness, erosion,
-     * temperature, vegetation, weirdness) — produces the final per-block elevation for the chunk,
-     * indexed {@code localX * 16 + localZ}.
+     * Second-pass ELEVATION override, indexed {@code localX * 16 + localZ}. As currently written, this
+     * method discards the per-block relief entirely: after computing {@code riverDifference}, it
+     * overwrites every column of the {@link Types#ELEVATION} heightmap with the single constant
+     * {@code Math.max(bottom, 0) + seaLevel - 1}, regardless of {@code baseElev}.
      *
-     * <p>This is where the terrain-shaping tweaks belong: biome-aware shaping, correcting for ocean
-     * height, and clamping the lowest point to {@code bottomY}. {@link #settings} carries the sea level
-     * and {@code minY} those tweaks need.
-     *
-     * <p>It also applies the per-pixel hydrology refinement: {@link HydrologyProfileCarver#carve} cuts the
-     * bed residual trench below the already tile-carved valley/floodplain shell, and the carve delta
-     * ({@code refined − shell}) is recorded into the {@link Types#RIVER_DIFFERENCE} heightmap so the
-     * surface painter can place water where the river carved below the shell surface.
+     * <p>The per-pixel hydrology refinement call ({@link HydrologyProfileCarver#carvePrefetched}) is
+     * commented out, so {@code refinedElev} is always just {@code baseElev} — no bed trench is cut —
+     * and the delta written to {@link Types#RIVER_DIFFERENCE} is always {@code 0}.
      */
     public void updateToFinalElev(ChunkPos chunkPos, FractalTerrainHeightmap heightmap) {
         final int seaLevel = settings.seaLevel();

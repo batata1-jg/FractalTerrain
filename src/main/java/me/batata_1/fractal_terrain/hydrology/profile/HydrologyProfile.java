@@ -6,29 +6,30 @@ import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
 import me.batata_1.fractal_terrain.math.VectorOps;
 
 /**
- * Shared primitives for the two sides of the same coin — {@link HydrologyProfileCarver} (elevation) and
- * {@code HydrologyProfilePainter} (blocks/biomes/vegetation). Both consume the flat
- * {@link HydrologicalUnit}[] returned by
- * {@link me.batata_1.fractal_terrain.hydrology.LocalRiverProvider#queryInfluence} the same way: every
- * unit contributes a per-unit value ({@link #computeForUnit} for elevation), and the caller merges the
- * contributions in one flat distance-weighted average (weight 1 at the unit, 0 at that unit's own
- * {@link FractalTerrainConfig#riverInfluence influence} radius).
+ * Per-unit elevation primitive shared by the two sides of the hydrology profile —
+ * {@link HydrologyProfileCarver} (elevation) and {@code HydrologyProfilePainter}
+ * (blocks/biomes/vegetation). Both consume the flat {@link HydrologicalUnit}[] returned by
+ * {@link me.batata_1.fractal_terrain.hydrology.LocalRiverProvider#queryInfluence}: every unit
+ * contributes a per-unit value ({@link #computeForUnit} for elevation) and the caller merges the
+ * contributions, taking the minimum (deepest) across influencing units.
+ *
+ * <p><b>The per-pixel bed stage is currently disabled</b> — see {@link #computeForUnit}.
  */
 public final class HydrologyProfile {
 
     private HydrologyProfile() {}
 
     /**
-     * The elevation this single unit would carve the point {@code (pixelX, pixelZ)} to, if it were the
-     * only unit in the world (relief-pixel frame throughout). Projects the point onto the line through
-     * the unit's coordinate along the unit's channel-perpendicular normal; the absolute perpendicular
-     * projected distance is the bed cross-section parameter fed to the unit's {@link RosgenProfile}.
+     * <b>Currently a no-op: returns {@code elevAtPixel} unchanged.</b> The per-unit bed cross-section
+     * math is commented out below pending the in-progress river rework, so no per-pixel bed residual is
+     * cut anywhere in the mod today. Because {@code PopulateNoiseStep} derives
+     * {@code Types.RIVER_DIFFERENCE} from this stage's delta, that heightmap is uniformly {@code 0} and
+     * {@code HydrologyProfilePainter} consequently places no river water.
      *
-     * <p>Anchors on {@code shellElevAtPixel} — the elevation already carved into the tile-level
-     * valley/floodplain shell at this pixel by {@code HydrologyProfileCarver#carveRiverShells} — and cuts
-     * only the per-pixel bed residual below it ({@link RosgenProfile#riverAreaDelta}), within the bed
-     * half-width. This is cross-stage conservation (the shell carve and this residual sum to the intended
-     * trench): the detail stage never re-cuts from the original terrain.
+     * <p>When re-enabled, the commented-out body anchors on {@code elevAtPixel} — the elevation already
+     * carved into the tile-level valley shell by {@link HydrologyProfileCarver#carveRiverShells} — and
+     * cuts only the bed residual below it ({@link RosgenProfile#riverAreaDelta}), so the detail stage
+     * never re-cuts from the original decoded terrain.
      */
     public static double computeForUnit(double[] pt, HydrologicalUnit unit, double elevAtPixel) {
         return elevAtPixel;

@@ -272,10 +272,13 @@ public class BiomeProvider {
     }
 
     /**
-     * River-humidity PDF for biome tile {@code (tileX, tileZ)}: for each of the 512×512 pixels, the
-     * nearest local-river distance is mapped through an exponential falloff (closer ⇒ more humid).
-     * Pixels with no river within the query radius get 0. Indexed {@code ix*512 + iz}, matching the
-     * relief/biome flat layout.
+     * Unused: no call site references this method. Its per-pixel loop body is commented out, so as
+     * written it is a no-op that always returns an all-zero {@link #TILE_PIXELS}-length array.
+     *
+     * <p>The commented-out body would have computed a river-humidity PDF for biome tile
+     * {@code (tileX, tileZ)}: for each of the 512×512 pixels, the nearest local-river distance mapped
+     * through an exponential falloff (closer ⇒ more humid), 0 where no river lies within the query
+     * radius, indexed {@code ix*512 + iz} to match the relief/biome flat layout.
      */
     private static float[] riverHumidity(int tileX, int tileZ) {
         final LocalRiverProvider localRivers = FractalTerrainInstance.getLocalRiverProvider();

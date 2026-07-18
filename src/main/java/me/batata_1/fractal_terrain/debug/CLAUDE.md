@@ -1,7 +1,9 @@
 # debug/
 
-Logging facade plus PNG/TIFF visualizers and manual `main()` harnesses. `Debug.getLogger(Class)` is the
-single logging entry point every `*_LOGGER`/`LOG` field should use (see `ARCHITECTURE.md` "Logging").
+Logging facade (`Debug.getLogger`) plus PNG/TIFF visualizers and manual `main()` harnesses. Not all
+`*_LOGGER`/`LOG` fields in the codebase go through it — some classes still call `LoggerFactory.getLogger`
+directly, including `GlobalRiverTest`, `LocalRiverTest`, `MeandersTest`, and `SpatialIndexBenchmark` in
+`tests/`.
 
 ## Files
 

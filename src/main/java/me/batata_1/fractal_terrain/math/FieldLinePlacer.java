@@ -13,8 +13,9 @@ import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
  * derivative ({@code fwidth}) normalisation pass divides each value by the local gradient magnitude
  * so the traced lines stay uniformly thin across the whole image.
  *
- * <p>The output grid is sampled at TWICE the input resolution per axis (so the returned array is 4×
- * the input length); the higher resolution lets a downstream skeletonizer resolve more/finer lines.
+ * <p>The output grid is sampled at {@link #UPSAMPLE} times the input resolution per axis (so the
+ * returned array is {@code UPSAMPLE * UPSAMPLE} times the input length); the higher resolution lets
+ * a downstream skeletonizer resolve more/finer lines.
  */
 public class FieldLinePlacer {
 
@@ -55,7 +56,7 @@ public class FieldLinePlacer {
 
     /**
      * Compute the field-line image for the given ridge/valley point sets. Returns a flat
-     * {@code float[outputHeight * outputWidth]} (= {@code 4 * width * height}) in row-major order,
+     * {@code float[outputHeight * outputWidth]} (= {@code UPSAMPLE * UPSAMPLE * width * height}) in row-major order,
      * after the {@link #normalizeByFwidth} pass. The supplied trees must be in the same coordinate
      * frame that {@code (row*resolution, col*resolution)} addresses.
      */

@@ -45,7 +45,11 @@ public final class SyntheticMapFactory {
     private static float cachedTempStdP99;
     private static boolean dataLoaded = false;
 
-    /** @param worldSeed 64-bit world seed (Python: seed & 0xFFFFFFFFFFFFFFFF). Per-channel seeds use lower 32 bits. */
+    /**
+     * @param worldSeed 64-bit world seed (Python: seed & 0xFFFFFFFFFFFFFFFF). Per-channel seeds are
+     *     masked to the lower 31 bits ({@code & 0x7FFFFFFF}) to stay non-negative for
+     *     {@link FastNoiseLite}'s {@code int} seed constructor.
+     */
     public SyntheticMapFactory(long worldSeed) {
         loadDataIfNeeded();
         this.dataQuantiles = cachedDataQuantiles;
