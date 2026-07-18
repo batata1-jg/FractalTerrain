@@ -89,22 +89,10 @@ public final class HydrologyTuning {
     /** Scale on {@code sqrt(flow)} shared by the global and local networks (see {@link #widthFromFlow}). */
     public static final double WIDTH_FLOW_SCALE = 0.02f;
 
-    /**
-     * Cap on every river width <em>in the width-law frame</em> (the frame {@link #widthFromFlow}'s caller
-     * works in). Local channels call {@code widthFromFlow} directly in native px, so they are capped at
-     * {@code MAX_WIDTH} native px. Global rivers call it in the coarse frame and are rescaled by
-     * {@link #GLOBAL_WIDTH_COORD_SCALE} afterwards ({@code GlobalRiverProvider.globalRiverWidth}), so their
-     * native-px cap is {@code MAX_WIDTH * GLOBAL_WIDTH_COORD_SCALE} — see {@link #maxNativeWidth()}.
-     */
+
     public static final double MAX_WIDTH = 16f;
 
     public static final double MAX_LOCAL_WIDTH = 6f;
-
-    /**
-     * Multiplier applied to <em>global</em>-river widths only, converting their coarse-px flow widths into
-     * native px. (Local widths already come out in native px, so they use {@link #widthFromFlow} directly.)
-     */
-    public static final double GLOBAL_WIDTH_COORD_SCALE = 10f;
 
     /**
      * Floodplain half-extent (native px) = {@code FLOODPLAIN_BASE + FLOODPLAIN_WIDTH_FACTOR · width}. This
@@ -187,26 +175,13 @@ public final class HydrologyTuning {
         return riverInfluence(width, RosgenType.A);
     }
 
-    /**
-     * The single river-width law shared by the global and local networks:
-     * {@code clamp(WIDTH_FLOW_SCALE · log(max(1, rawFlow + 1)), MIN_WIDTH, MAX_WIDTH)}. Global callers
-     * additionally multiply the result by {@link #GLOBAL_WIDTH_COORD_SCALE} to convert coarse-px flow into
-     * native px — the {@link #MAX_WIDTH} cap applies <em>before</em> that rescale, so the global native-px
-     * ceiling is {@link #maxNativeWidth()}.
-     */
+
     public static double widthFromFlow(double rawFlow) {
         final double lawWidth = WIDTH_FLOW_SCALE * Math.sqrt(rawFlow);
         return Math.clamp(lawWidth, MIN_WIDTH, MAX_WIDTH);
     }
 
-    /**
-     * The largest width (native px) any {@code HydrologicalUnit} can carry: the global-river cap after its
-     * coarse→native rescale ({@link #MAX_WIDTH} · {@link #GLOBAL_WIDTH_COORD_SCALE}). Bounds the
-     * channel-membership query radius ({@code HydrologyProfilePainter.insideChannel} queries
-     * {@code maxNativeWidth()/2} around the point: any unit whose half-width disc could contain the point
-     * must lie inside that radius).
-     */
     public static double maxNativeWidth() {
-        return MAX_WIDTH * GLOBAL_WIDTH_COORD_SCALE;
+        return MAX_WIDTH;
     }
 }

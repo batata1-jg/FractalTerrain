@@ -1,7 +1,7 @@
 package me.batata_1.fractal_terrain.hydrology;
 
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.GLOBAL_RIVER_CHANNELS;
-import static me.batata_1.fractal_terrain.FractalTerrainConfig.GLOBAL_WIDTH_COORD_SCALE;
+
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.X;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.Z;
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
@@ -20,6 +20,7 @@ import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.math.MarchingSquares;
 import me.batata_1.fractal_terrain.math.Skeletonizer;
 import me.batata_1.fractal_terrain.storage.TileKey;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
@@ -247,7 +248,7 @@ public class GlobalRiverProvider {
                 drainageDirection, PADDED_SIDE, HydrologyTuning.FLOW_INITIAL, HydrologyTuning.FLOW_PER_CELL);
         final float[] widths = new float[PADDED_SIDE * PADDED_SIDE];
         for (int px = 0; px < arrows.length; px++) {
-            if (arrows[px] != 0) widths[px] = globalRiverWidth(flowAccumulation[px]);
+            if (arrows[px] != 0) widths[px] = (float) HydrologyTuning.widthFromFlow(flowAccumulation[px]);
         }
 
         // 6b. river-bed elevation: original (un-ramped) coarse elevation mapped to native scale and
@@ -255,17 +256,7 @@ public class GlobalRiverProvider {
         final float[] riverElevation = computeRiverElevation(arrows, elevation);
 
         // 7. result: crop the central 64×64 into a [3,64,64] tile.
-        final FloatTensor tile = new FloatTensor(new int[] {GLOBAL_RIVER_CHANNELS, TILE_SIZE, TILE_SIZE});
-        final int pixelsPerChannel = TILE_SIZE * TILE_SIZE;
-        for (int x = 0; x < TILE_SIZE; x++) {
-            for (int z = 0; z < TILE_SIZE; z++) {
-                final int paddedIndex = (PAD + x) * PADDED_SIDE + (PAD + z);
-                final int localIndex = x * TILE_SIZE + z;
-                tile.set(localIndex, Float.intBitsToFloat(arrows[paddedIndex]));
-                tile.set(pixelsPerChannel + localIndex, widths[paddedIndex]);
-                tile.set(2 * pixelsPerChannel + localIndex, riverElevation[paddedIndex]);
-            }
-        }
+        final FloatTensor tile = getTile(arrows, widths, riverElevation);
 
         if (stages != null) {
             stages.riverElevation = riverElevation;
@@ -283,6 +274,21 @@ public class GlobalRiverProvider {
             stages.arrows = arrows;
             stages.widths = widths;
             stages.tile = tile;
+        }
+        return tile;
+    }
+
+    private static @NotNull FloatTensor getTile(int[] arrows, float[] widths, float[] riverElevation) {
+        final FloatTensor tile = new FloatTensor(new int[] {GLOBAL_RIVER_CHANNELS, TILE_SIZE, TILE_SIZE});
+        final int pixelsPerChannel = TILE_SIZE * TILE_SIZE;
+        for (int x = 0; x < TILE_SIZE; x++) {
+            for (int z = 0; z < TILE_SIZE; z++) {
+                final int paddedIndex = (PAD + x) * PADDED_SIDE + (PAD + z);
+                final int localIndex = x * TILE_SIZE + z;
+                tile.set(localIndex, Float.intBitsToFloat(arrows[paddedIndex]));
+                tile.set(pixelsPerChannel + localIndex, widths[paddedIndex]);
+                tile.set(2 * pixelsPerChannel + localIndex, riverElevation[paddedIndex]);
+            }
         }
         return tile;
     }
@@ -365,17 +371,6 @@ public class GlobalRiverProvider {
         return ramped;
     }
 
-    /**
-     * Map a flow-accumulation value to a global-river width. Uses the shared
-     * {@link me.batata_1.fractal_terrain.FractalTerrainConfig#widthFromFlow width law} (identical to the
-     * local network — including its {@code MAX_WIDTH} cap, applied <em>before</em> the rescale) and then
-     * multiplies by {@link GLOBAL_WIDTH_COORD_SCALE} to convert the coarse-px flow width into native px,
-     * so the native ceiling is {@code FractalTerrainConfig.maxNativeWidth()}. Width grows with upstream
-     * drainage: large rivers downstream, thin tributaries near the ridges.
-     */
-    private static float globalRiverWidth(float flowAccumulation) {
-        return (float) (widthFromFlow(flowAccumulation) * GLOBAL_WIDTH_COORD_SCALE);
-    }
 
     /** Divisor in the coarse→native elevation scale map ({@code nativeElev = coarseElev² / SCALE}). */
     private static final float ELEV_NATIVE_SCALE = 5f;
