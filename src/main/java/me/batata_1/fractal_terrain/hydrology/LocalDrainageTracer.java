@@ -66,7 +66,8 @@ final class LocalDrainageTracer {
     static void traceLocalNetwork(
             int[] drainage, float[] elev, RiverNetwork network, @Nullable LocalRiverProvider.Stages stages) {
         final int cellCount = PADDED * PADDED;
-        final float[] flow = computeFlow(drainage, PADDED, HydrologyTuning.FLOW_INITIAL_LOCAL, HydrologyTuning.FLOW_PER_CELL_LOCAL);
+        final float[] flow =
+                computeFlow(drainage, PADDED, HydrologyTuning.FLOW_INITIAL_LOCAL, HydrologyTuning.FLOW_PER_CELL_LOCAL);
         final QuadTree<Channel.ChannelPt> globalIndex = buildGlobalPointIndex(network.getChannels());
         final boolean[] reaches = computeReaches(drainage, elev, globalIndex);
         final boolean[] riverMask = new boolean[cellCount];

@@ -1,7 +1,5 @@
 package me.batata_1.fractal_terrain.storage;
 
-import static me.batata_1.fractal_terrain.FractalTerrainInstance.getPopulateNoiseStep;
-
 import java.util.concurrent.ConcurrentHashMap;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
 import net.minecraft.server.level.ServerChunkCache;
@@ -46,7 +44,7 @@ public final class FractalTerrainHeightmapCache {
         // Now that every other heightmap (gradients, residual, biome parameters) is available, recompute
         // ELEVATION from the full set — biome-aware shaping, ocean-height correction, bottomY clamp — and
         // overwrite it in place. (The record shares the same backing array, so the new values are visible.)
-       // getPopulateNoiseStep().updateToFinalElev(pos, heightmap);
+        // getPopulateNoiseStep().updateToFinalElev(pos, heightmap);
         return heightmap;
     }
 

@@ -243,7 +243,10 @@ public class GlobalRiverProvider {
         //    NOTE: flow accumulation comes from the raw steepest-descent field, so cells on a
         //    sink-reroute segment get width from natural flow rather than the rerouted drainage.
         final float[] flowAccumulation = PipelinePreprocessing.computeFlow(
-                drainageDirection, PADDED_SIDE, HydrologyTuning.FLOW_INITIAL_GLOBAL, HydrologyTuning.FLOW_PER_CELL_GLOBAL);
+                drainageDirection,
+                PADDED_SIDE,
+                HydrologyTuning.FLOW_INITIAL_GLOBAL,
+                HydrologyTuning.FLOW_PER_CELL_GLOBAL);
         final float[] widths = new float[PADDED_SIDE * PADDED_SIDE];
         for (int px = 0; px < arrows.length; px++) {
             if (arrows[px] != 0) widths[px] = (float) HydrologyTuning.widthFromFlow(flowAccumulation[px]);

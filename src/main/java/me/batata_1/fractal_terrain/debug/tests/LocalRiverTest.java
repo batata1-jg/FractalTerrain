@@ -77,8 +77,8 @@ public class LocalRiverTest {
             LOG.warn("tile ({},{}): debugStages failed ({}); cell profile above still dumped", tx, tz, e.toString(), e);
             return;
         }
-        seeFloat(stages.flow, GRID+2, GRID+2, prefix + "01_flow");
-        seeFloat(maskToFloat(stages.riverMask), GRID+2, GRID+2, prefix + "02_river_mask");
+        seeFloat(stages.flow, GRID + 2, GRID + 2, prefix + "01_flow");
+        seeFloat(maskToFloat(stages.riverMask), GRID + 2, GRID + 2, prefix + "02_river_mask");
         seeFloat(stages.carvedElevation, GRID, GRID, prefix + "03_carved_elev");
         // Both lists are channels of the SAME unified graph (see LocalRiverProvider.Stages), and the local
         // trace shifts its segments by +PAD into the padded graph frame on insertion (DL-005), so both

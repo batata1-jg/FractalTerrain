@@ -382,34 +382,10 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
      * nothing is ever wrongly pruned. Appends into {@code out} (not cleared) and returns it.
      */
     public List<T> queryContaining(final double[] queryPoint, final double inflateRadius, final List<T> out) {
-        if (queryPoint.length != 2) throw new IllegalStateException();
-        if (elements.length == 0) return out;
-
-        int capacity = 64;
-        int[] nodeStack = new int[capacity];
-        int stackSize = 0;
-        final int root = rootNodeIndex();
-        if (mbrContainsInflated(root, queryPoint, inflateRadius)) nodeStack[stackSize++] = root;
-
-        while (stackSize > 0) {
-            final int nodeIndex = nodeStack[--stackSize];
-            final int childStart = nodeChildStart[nodeIndex];
-            final int childCount = nodeChildCount[nodeIndex];
-            if (isLeaf(nodeIndex)) {
-                for (int slot = childStart; slot < childStart + childCount; slot++) {
-                    final T element = elements[slot];
-                    if (element.containsPointInflated(queryPoint, inflateRadius)) out.add(element);
-                }
-                continue;
-            }
-            if (stackSize + childCount > capacity) {
-                capacity = Math.max(capacity << 1, stackSize + childCount);
-                nodeStack = Arrays.copyOf(nodeStack, capacity);
-            }
-            for (int child = childStart; child < childStart + childCount; child++) {
-                if (mbrContainsInflated(child, queryPoint, inflateRadius)) nodeStack[stackSize++] = child;
-            }
-        }
+        stab(queryPoint, inflateRadius, element -> {
+            out.add(element);
+            return false; // never stop: collect them all
+        });
         return out;
     }
 
@@ -425,6 +401,27 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
      */
     public boolean anyContaining(
             final double[] queryPoint, final double inflateRadius, final Predicate<T> acceptanceTest) {
+        return stab(queryPoint, inflateRadius, acceptanceTest::test);
+    }
+
+    /**
+     * Receives each stored shape that contains the query point, in traversal order. Returning
+     * {@code true} ends the walk immediately (the early-exit hook behind {@link #anyContaining}).
+     */
+    @FunctionalInterface
+    private interface StabVisitor<T> {
+        boolean visit(T element);
+    }
+
+    /**
+     * The one stabbing traversal both public queries ride on: an explicit node stack seeded with the
+     * root, MBR-pruned per child (inflated by {@code inflateRadius} per axis, a conservative superset of
+     * the per-element Euclidean inflate), handing every element that passes
+     * {@link SpatialIndexShape#containsPointInflated} to {@code visitor}.
+     *
+     * @return {@code true} iff {@code visitor} ended the walk early
+     */
+    private boolean stab(final double[] queryPoint, final double inflateRadius, final StabVisitor<T> visitor) {
         if (queryPoint.length != 2) throw new IllegalStateException();
         if (elements.length == 0) return false;
 
@@ -434,15 +431,14 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
         final int root = rootNodeIndex();
         if (mbrContainsInflated(root, queryPoint, inflateRadius)) nodeStack[stackSize++] = root;
 
-        while (stackSize > 0) {
+        while (stackSize > 0 ) {
             final int nodeIndex = nodeStack[--stackSize];
             final int childStart = nodeChildStart[nodeIndex];
             final int childCount = nodeChildCount[nodeIndex];
             if (isLeaf(nodeIndex)) {
                 for (int slot = childStart; slot < childStart + childCount; slot++) {
                     final T element = elements[slot];
-                    if (element.containsPointInflated(queryPoint, inflateRadius) && acceptanceTest.test(element))
-                        return true;
+                    if (element.containsPointInflated(queryPoint, inflateRadius) && visitor.visit(element)) return true;
                 }
                 continue;
             }
