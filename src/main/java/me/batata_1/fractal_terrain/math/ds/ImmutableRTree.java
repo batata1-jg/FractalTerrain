@@ -71,6 +71,14 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
      */
     private static final boolean VALIDATE_ON_BUILD = false;
 
+    /**
+     * Safety bound on the number of node-stack pops a single {@link #stab} walk may perform. A
+     * correctly-built tree visits at most {@code nodeChildStart.length} nodes, so this is a generous
+     * upper bound meant only to catch a corrupt/cyclic node structure; exceeding it logs a warning and
+     * ends the walk early instead of hanging.
+     */
+    private static final int MAX_STACK_ITERATIONS = 1_000_000;
+
     private static final Logger LOG = LoggerFactory.getLogger(ImmutableRTree.class);
 
     /** Every stored element, exactly once, in STR leaf order (no null slots). */
@@ -431,7 +439,16 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
         final int root = rootNodeIndex();
         if (mbrContainsInflated(root, queryPoint, inflateRadius)) nodeStack[stackSize++] = root;
 
-        while (stackSize > 0 ) {
+        int iterations = 0;
+        while (stackSize > 0) {
+            if (++iterations > MAX_STACK_ITERATIONS) {
+                LOG.warn(
+                        "ImmutableRTree.stab exceeded MAX_STACK_ITERATIONS ({}) with stackSize={} remaining;"
+                                + " aborting walk early (node structure may be corrupt)",
+                        MAX_STACK_ITERATIONS,
+                        stackSize);
+                break;
+            }
             final int nodeIndex = nodeStack[--stackSize];
             final int childStart = nodeChildStart[nodeIndex];
             final int childCount = nodeChildCount[nodeIndex];
