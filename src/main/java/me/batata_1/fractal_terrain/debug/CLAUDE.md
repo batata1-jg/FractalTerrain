@@ -19,6 +19,7 @@ directly, including `GlobalRiverTest`, `LocalRiverTest`, `MeandersTest`, and `Sp
 | `SplineVisualizer.java`       | Renders splines to an image                                         | Debugging spline fitting                              |
 | `MemoryProfiler.java`         | Heap/memory sampling helper                                         | Profiling memory during generation                    |
 | `TiffConverter.java`          | Converts dumps to/from TIFF                                         | Reading/writing TIFF debug output                     |
+| `TimeLimitedCodeBlock.java`   | Runs a code block on a worker thread with a timeout, then aborts    | Bounding a debug/harness operation that may hang       |
 
 ## Subdirectories
 

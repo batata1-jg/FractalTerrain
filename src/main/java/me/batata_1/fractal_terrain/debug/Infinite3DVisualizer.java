@@ -2,6 +2,7 @@ package me.batata_1.fractal_terrain.debug;
 
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.CH;
 
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
@@ -181,28 +182,28 @@ public class Infinite3DVisualizer {
         final double[] pt = mutableCoordsXZ.get();
         pt[0] = xx * 0.2; // block -> relief-pixel frame (÷ GLOBAL_SCALE_CORRECTION)
         pt[1] = zz * 0.2;
-        LOG.info("[");
+      //  LOG.info("[");
         final HydrologicalUnit[] units =
                 FractalTerrainInstance.getLocalRiverProvider().queryInfluence(pt);
-        LOG.info("]");
+        //LOG.info("]");
         BlockState deepest = DEFAULT;
-        for (final HydrologicalUnit unit : units) {
-            final double du = pt[0] - unit.coord()[0];
-            final double dv = pt[1] - unit.coord()[1];
-            final double radialDist = Math.hypot(du, dv);
-            if (radialDist >= unit.getRadius()) continue; // outside this unit's influence circle
-
-            if (radialDist <= ChannelGeometry.bedHalfWidth(unit.width())) return BED_ZONE; // deepest possible zone
-
-            if (deepest == BED_ZONE) continue;
-            final RosgenProfile profile =
-                    RosgenProfile.of(unit.rosgenType() == null ? HydrologicalUnit.RosgenType.A : unit.rosgenType());
-            if (radialDist <= profile.floodPlainLength(unit.width())) {
-                deepest = FLOODPLAIN_ZONE;
-            } else if (deepest == DEFAULT) {
-                deepest = BLENDING_ZONE;
-            }
-        }
+//        for (final HydrologicalUnit unit : units[0]) {
+//            final double du = pt[0] - unit.coord()[0];
+//            final double dv = pt[1] - unit.coord()[1];
+//            final double radialDist = Math.hypot(du, dv);
+//            if (radialDist >= unit.getRadius()) continue; // outside this unit's influence circle
+//
+//            if (radialDist <= ChannelGeometry.bedHalfWidth(unit.width())) return BED_ZONE; // deepest possible zone
+//
+//            if (deepest == BED_ZONE) continue;
+//            final RosgenProfile profile =
+//                    RosgenProfile.of(unit.rosgenType() == null ? HydrologicalUnit.RosgenType.A : unit.rosgenType());
+//            if (radialDist <= profile.floodPlainLength(unit.width())) {
+//                deepest = FLOODPLAIN_ZONE;
+//            } else if (deepest == DEFAULT) {
+//                deepest = BLENDING_ZONE;
+//            }
+//        }
         return deepest;
     }
 

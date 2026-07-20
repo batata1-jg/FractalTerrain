@@ -91,7 +91,9 @@ public final class Meanders {
 
     /** Relax the whole network down-gradient for {@code steps} steps (cutoffs + collisions run). */
     public void relaxLowerGrad(int steps) {
-        for (int i = 1; i <= steps; i++) relaxStep(i);
+        for (int i = 1; i <= steps; i++) {
+            relaxStep(i);
+        }
     }
 
     public void simulate(int n) {

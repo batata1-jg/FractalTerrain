@@ -38,7 +38,7 @@ public class LocalRiverTest {
     private static final int PAD = 1;
 
     /** Tiles (tx, tz) to render. */
-    private static final int[][] TILES = {{-3, -3}, {-4, -3}, {-3, -4}, {-4, -4}
+    private static final int[][] TILES = {{-3, -3}
         // {0, -1},
         //    {-1,-1}
         //   {-1,-1},{0,-1},{0,-2}

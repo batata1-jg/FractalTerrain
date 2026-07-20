@@ -443,10 +443,14 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
         while (stackSize > 0) {
             if (++iterations > MAX_STACK_ITERATIONS) {
                 LOG.warn(
-                        "ImmutableRTree.stab exceeded MAX_STACK_ITERATIONS ({}) with stackSize={} remaining;"
-                                + " aborting walk early (node structure may be corrupt)",
+                        "ImmutableRTree.stab exceeded MAX_STACK_ITERATIONS ({}) with stackSize={} remaining"
+                                + " (queryPoint=[{}, {}], inflateRadius={}); aborting walk early (node structure"
+                                + " may be corrupt)",
                         MAX_STACK_ITERATIONS,
-                        stackSize);
+                        stackSize,
+                        queryPoint[X],
+                        queryPoint[Z],
+                        inflateRadius);
                 break;
             }
             final int nodeIndex = nodeStack[--stackSize];
