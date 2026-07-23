@@ -99,6 +99,48 @@ from-scratch orient-and-prune over the atomic view (deleting `split`, `merge`, `
   drift (per-spline-point `ownFlow` otherwise varies with point count) — so the correction is
   **load-bearing for determinism**, not cosmetic.
 
+**Accumulation + per-drain-basin scale, pinned:**
+
+```java
+// Walks the ATOMIC adjacency (List<List<Integer>>), never Endpoint.incoming (a HashSet) —
+// invariant: confluence sum order must not depend on HashMap/HashSet iteration (Determinism).
+void accumulateAndScaleFlow(AtomicView atomic) {
+    int n = atomic.size();
+
+    // "children" in totalFlow[node] = ownFlow[node] + Σ totalFlow[children] means tributaries:
+    // predecessors u of an edge u -> node in the atomic adjacency. Build them once, each list
+    // sorted ascending by atomic id so the summation order at every confluence is pinned.
+    List<List<Integer>> predecessors = buildPredecessorsSortedById(atomic);
+
+    int[] remainingIn = new int[n];
+    for (int v = 0; v < n; v++) remainingIn[v] = predecessors.get(v).size();
+
+    double[] totalFlow = new double[n];
+    TreeSet<Integer> ready = new TreeSet<>(); // ascending atomic id — deterministic frontier order
+    for (int v = 0; v < n; v++) if (remainingIn[v] == 0) ready.add(v); // sources first (in-degree 0)
+
+    while (!ready.isEmpty()) {
+        int node = ready.pollFirst();
+        double sum = atomic.ownFlow[node];
+        for (int tributary : predecessors.get(node)) { // already finalized, ascending-id order
+            sum += totalFlow[tributary];
+        }
+        totalFlow[node] = sum;
+        for (int next : atomic.adjacency.get(node)) {   // node's single downstream successor (K1)
+            if (--remainingIn[next] == 0) ready.add(next);
+        }
+    }
+
+    // Per-drain-basin single uniform scale — NOT per source->drain path.
+    for (int drain : sortedDrainIds(atomic)) {
+        double scale = atomic.anchorFlow[drain] / totalFlow[drain]; // ONE scale for the whole basin
+        for (int node : basinOf(atomic, drain, predecessors)) {     // every node feeding this drain
+            atomic.flow[node] = totalFlow[node] * scale;
+        }
+    }
+}
+```
+
 ### Derived-width routing (K2 — the scalars Meanders needs)
 
 `Channel.width`/`depth` become derived accessors. The single-`width` reads split by source endpoint:
@@ -132,6 +174,72 @@ there is no reliance on interior spacing). Carry each collapsed node's `Endpoint
 is `SOURCE`) and drains (`endNodeId` is `DRAIN`). Velocity/acceleration are **not** carried — re-inferred by
 `createCatmullRom` on rebuild.
 
+**Atomic-view data structure** (per-node position/flow/role/provenance, parallel to the adjacency):
+
+```java
+final class AtomicView {
+    double[] x, z;                 // position, parallel arrays indexed by atomic id
+    double[] flow;                 // per-point flow, carried from Channel.flow[i]
+    double[] ownFlow;              // FLOW_PER_CELL_LOCAL/GLOBAL, or SOURCE seed / DRAIN anchor
+    double[] anchorFlow;           // valid only where role == DRAIN — the per-basin scale target
+    Endpoint.Type[] role;          // SOURCE / DRAIN / JUNCTION / null (interior point)
+    int[] canonicalId;             // valid only where role == SOURCE || DRAIN — the Endpoint id to preserve
+    List<List<Integer>> adjacency; // adjacency[u]: directed tree-successor edge(s), indexed by atomic id
+}
+```
+
+**`viewAtomic()` pseudocode:**
+
+```java
+AtomicView viewAtomic(RiverNetwork net) {
+    AtomicView atomic = new AtomicView();
+    Map<Integer, Integer> endpointToAtomicId = new HashMap<>(); // canonical Endpoint id -> atomic id
+
+    List<Integer> channelIds = new ArrayList<>(net.channels.keySet());
+    Collections.sort(channelIds); // mirror detectCrossings' Collections.sort(channelIds) — pins
+                                  // atomic-id assignment against HashMap iteration order (Determinism)
+
+    for (int channelId : channelIds) {
+        Channel ch = net.channels.get(channelId);
+        int last = ch.points.size() - 1;
+        int[] atomicIdOfPoint = new int[ch.points.size()];
+
+        for (int i = 0; i <= last; i++) {
+            if (i != 0 && i != last) {
+                // interior point: ALWAYS mints a fresh atomic node — keyed on nothing but its
+                // position in this channel, never collapsed with any other point (no epsilon)
+                atomicIdOfPoint[i] = atomic.mintNode(ch.points.get(i), ch.flow[i],
+                        /* role */ null, /* canonicalId */ NONE);
+                continue;
+            }
+
+            // endpoint point: collapse keyed on the canonical Endpoint node id — first channel
+            // touching this Endpoint mints the atomic node, every later channel reusing the same
+            // Endpoint id reuses it, so channels sharing a graph node share one atomic node
+            int endpointNodeId = (i == 0) ? ch.startNodeId : ch.endNodeId;
+            Integer existing = endpointToAtomicId.get(endpointNodeId);
+            if (existing != null) {
+                atomicIdOfPoint[i] = existing;
+                continue;
+            }
+
+            Endpoint ep = net.nodes.get(endpointNodeId);
+            boolean boundary = ep.type == SOURCE || ep.type == DRAIN;
+            int atomicId = atomic.mintNode(ch.points.get(i), ch.flow[i],
+                    /* role */ ep.type, /* canonicalId */ boundary ? endpointNodeId : NONE);
+            endpointToAtomicId.put(endpointNodeId, atomicId);
+            atomicIdOfPoint[i] = atomicId;
+        }
+
+        for (int i = 0; i < last; i++) {
+            atomic.adjacency.get(atomicIdOfPoint[i]).add(atomicIdOfPoint[i + 1]); // directed i -> i+1
+        }
+        // velocity/acceleration NOT carried — createCatmullRom re-infers them on rebuild
+    }
+    return atomic;
+}
+```
+
 **`update()` — atomic → canonical.** Requires the atomic view fully directed with **exactly one outgoing
 edge per non-drain node** — assert this explicitly (this is invariant **K1**). Walk each maximal directed
 chain between structural nodes (source / drain / in-degree ≥ 2 confluence) into a `Channel`: positions →
@@ -142,6 +250,94 @@ JUNCTION-equivalent structural nodes get freshly minted ids. `bedElevations` are
 preserved (the seam is bed-elevation-agnostic). Sources 1-out, DRAIN 0-out, JUNCTION exactly-1-out. A cheap
 bounded-walk assertion (each source reaches a drain in ≤ node-count hops) may guard `update()` defensively,
 but acyclicity holds **by construction** (Phase 3 step 2), not by that guard.
+
+**Single-outflow check (K1)** — used by `update()`, modeled on `Endpoint.java:53-59` degree + `Endpoint.Type`:
+
+```java
+void assertSingleOutflow(AtomicView atomic) { // K1
+    for (int id = 0; id < atomic.size(); id++) {
+        int outdeg = atomic.adjacency.get(id).size(); // directed tree-successor slot only —
+                                                        // never counts undirected crossing edges
+        switch (atomic.role[id]) {
+            case SOURCE -> assert outdeg == 1 : "SOURCE must have exactly one outgoing edge";
+            case DRAIN  -> assert outdeg == 0 : "DRAIN must have no outgoing edge";
+            default     -> assert outdeg == 1 : "JUNCTION/interior must have exactly one outgoing edge";
+        }
+    }
+}
+```
+
+**`update()` pseudocode** — maximal directed chains between structural nodes (source / drain /
+in-degree ≥ 2 confluence), rebuilt into `Channel`s via `createCatmullRom`, with type-based
+SOURCE/DRAIN canonical-id preservation and only JUNCTION-equivalents re-minted:
+
+```java
+RiverNetwork update(AtomicView atomic) {
+    assertSingleOutflow(atomic); // K1 — asserted before any mutation
+
+    // structural nodes = source / drain / confluence (in-degree >= 2); sorted for deterministic
+    // emission order, independent of HashMap/HashSet iteration
+    TreeSet<Integer> structural = new TreeSet<>();
+    int[] indegree = computeIndegree(atomic); // count of predecessors per atomic id
+    for (int id = 0; id < atomic.size(); id++) {
+        if (atomic.role[id] == SOURCE || atomic.role[id] == DRAIN || indegree[id] >= 2) {
+            structural.add(id);
+        }
+    }
+
+    // Preserve the canonical id of every atomic node whose carried provenance is SOURCE or DRAIN
+    // (Finding: boundary-elevation lookups key on these ids). JUNCTION-equivalents (everything
+    // else in `structural`) fall through to NONE and are minted fresh below.
+    int[] canonicalIdOf = new int[atomic.size()];
+    Arrays.fill(canonicalIdOf, NONE);
+    for (int id : structural) {
+        if (atomic.role[id] == SOURCE || atomic.role[id] == DRAIN) {
+            canonicalIdOf[id] = atomic.canonicalId[id];
+        }
+    }
+
+    RiverNetwork out = new RiverNetwork();
+    for (int start : structural) {                        // sorted — deterministic emission order
+        if (atomic.role[start] == DRAIN) continue;         // drains only terminate a chain, never start one
+        int cur = onlyOutgoing(atomic, start);              // K1: exactly one outgoing edge
+        List<Integer> chain = new ArrayList<>(List.of(start));
+        while (!structural.contains(cur)) {
+            chain.add(cur);
+            cur = onlyOutgoing(atomic, cur);                // interior node: single outgoing edge (K1)
+        }
+        chain.add(cur);                                      // cur: the next structural node (confluence or drain)
+        emitChannel(out, atomic, chain, canonicalIdOf);
+    }
+    return out;
+}
+
+void emitChannel(RiverNetwork out, AtomicView atomic, List<Integer> chain, int[] canonicalIdOf) {
+    List<Vec2> points = new ArrayList<>();
+    double[] flow = new double[chain.size()];
+    for (int i = 0; i < chain.size(); i++) {
+        points.add(atomic.pos(chain.get(i)));
+        flow[i] = atomic.flow[chain.get(i)];
+    }
+    Spline spline = QuinticHermiteSpline.createCatmullRom(points); // re-derives velocity/acceleration;
+                                                                     // NOT lossless — accepted (Finding)
+    int startId = mintOrReuseCanonicalId(canonicalIdOf, chain.get(0));            // fresh iff JUNCTION-equivalent
+    int endId   = mintOrReuseCanonicalId(canonicalIdOf, chain.get(chain.size() - 1));
+    out.mintChannel(startId, endId, points, flow, spline); // routes through the same K1 guard as today
+    // bedElevations intentionally NOT preserved — the seam is bed-elevation-agnostic (Finding)
+}
+
+// Defensive only — acyclicity holds BY CONSTRUCTION (Phase 3 step 2), not by this guard.
+void assertBoundedWalk(AtomicView atomic) {
+    int limit = atomic.size();
+    for (int sourceId : sortedSourceIds(atomic)) {
+        int cur = sourceId, hops = 0;
+        while (atomic.role[cur] != DRAIN) {
+            assert ++hops <= limit : "cycle suspected: source " + sourceId + " did not reach a drain";
+            cur = onlyOutgoing(atomic, cur);
+        }
+    }
+}
+```
 
 ## Sequencing (risk order — each step lands with its own test before the next)
 
@@ -184,6 +380,38 @@ but acyclicity holds **by construction** (Phase 3 step 2), not by that guard.
   instead **delete** them as dead code in Phase 2 (they already carry no scalar-width dependency). If a
   reviewer prefers to keep them, they must be given `flow[]` upkeep at that point and the keep justified;
   the plan's default is deletion.
+
+**`flowAt(t)` + `reSample`/`keepOnly` flow maintenance:**
+
+```java
+double flowAt(double t) {
+    // Mirrors bedElev(t) (Channel.java:120-124) but UNCONDITIONAL — flow[] is never null, so
+    // there is no null-gated branch the way bedElev has.
+    int i = (int) Math.floor(t);
+    int lo = clamp(i, 0, flow.length - 1);
+    int hi = clamp(i + 1, 0, flow.length - 1);
+    double frac = t - i;
+    return lerp(flow[lo], flow[hi], frac);
+}
+
+Channel reSample(...) {
+    List<Vec2> newPoints = ...; // existing resample logic, unchanged
+    double[] newFlow = new double[newPoints.size()];
+    for (int i = 0; i < newPoints.size(); i++) {
+        newFlow[i] = flowAt(tOf(newPoints.get(i))); // computed unconditionally — unlike bedElev's null check
+    }
+    return new Channel(newPoints, newFlow, /* ... */);
+}
+
+Channel keepOnly(int[] indexesToKeep) {
+    double[] newFlow = new double[indexesToKeep.length];
+    for (int i = 0; i < indexesToKeep.length; i++) {
+        newFlow[i] = flow[indexesToKeep[i]]; // straight slice — kept points carry their own flow verbatim
+    }
+    return new Channel(/* points sliced the same way */, newFlow, /* ... */);
+}
+```
+
 - Thread flow through construction. There are exactly **four** `new Channel(...)` sites (full-repo grep):
   `mintChannel:196`, `split:295`, `merge:341`, and `LocalDrainageTracer.buildLocalChannel:278` — all four
   currently width-taking, all four must be accounted for:
@@ -273,6 +501,81 @@ but acyclicity holds **by construction** (Phase 3 step 2), not by that guard.
      prepended to `v`'s existing acyclic drain-path, so the union stays acyclic and single-outflow (K1)
      holds. No three-color / cycle guard is needed — acyclicity is structural, backed by the
      set-outgoing-exactly-once + immutable-`streamMarked`-outgoing rules above.
+
+     **Two-mark DFS pseudocode:**
+
+     ```java
+     void manageCollisions(AtomicView atomic) {
+         CollisionGraph g = detectCrossings(atomic); // step 1: pinned undirected crossing edges,
+                                                       // ascending atomic-node-id order per node
+
+         boolean[] visited = new boolean[atomic.size()];
+         boolean[] streamMarked = new boolean[atomic.size()];
+         int[] outgoing = new int[atomic.size()];
+         Arrays.fill(outgoing, -1); // -1 = unset
+
+         for (int sourceId : sortedSourceIds(atomic)) { // sorted-source-id order (mandatory — Determinism)
+             if (!visited[sourceId]) {
+                 dfsVisit(atomic, g, sourceId, new ArrayDeque<>(), visited, streamMarked, outgoing);
+             }
+         }
+         // steps 3-5 continue below (kept edges, prune + ABANDONED_RIVER, accumulate, update())
+     }
+
+     // Returns true iff `node`'s branch reached a drain/streamMarked terminus (promoted, or was
+     // already a terminus on entry). `stack` is the current path from the originating source.
+     boolean dfsVisit(AtomicView atomic, CollisionGraph g, int node, Deque<Integer> stack,
+                       boolean[] visited, boolean[] streamMarked, int[] outgoing) {
+         if (streamMarked[node] || atomic.role[node] == DRAIN) return true; // already a terminus
+         if (visited[node]) return false; // on-stack ancestor or exhausted branch — NOT promoted, NOT marked
+
+         visited[node] = true;
+         stack.push(node);
+
+         // pinned per-node adjacency order: directed tree-successor edge first (if the node still
+         // has one), then undirected crossing partners ascending by atomic node id (Determinism —
+         // the exact tie-break trunk selection turns on)
+         List<Integer> neighbors = new ArrayList<>();
+         if (g.treeSuccessor[node] != NONE) neighbors.add(g.treeSuccessor[node]);
+         neighbors.addAll(g.crossingPartners.get(node)); // already ascending by construction
+
+         for (int next : neighbors) {
+             if (streamMarked[next] || atomic.role[next] == DRAIN) {
+                 // Promotion happens ONLY here: reaching a DRAIN or an already-streamMarked node.
+                 // Promotes only the not-yet-streamMarked SUFFIX of the current stack — every node
+                 // on `stack` is guaranteed not-yet-marked (an already-streamMarked node is never
+                 // pushed, per the entry guard above), so the whole stack is that suffix.
+                 promoteSuffix(stack, next, streamMarked, outgoing);
+                 stack.pop();
+                 return true;
+             }
+             if (!visited[next] && dfsVisit(atomic, g, next, stack, visited, streamMarked, outgoing)) {
+                 stack.pop(); // promotion already happened for this whole stack, deeper in the recursion
+                 return true;
+             }
+             // else: `next` is visited-but-unmarked (dead branch / ancestor) — try the next neighbor
+         }
+
+         stack.pop();
+         return false; // exhausted — node stays merely visited, unpromoted; pruned in step 4
+     }
+
+     // Wires each node on `stack` (top-of-stack first) to its single outgoing edge toward
+     // `terminus`, then streamMarks it. Each node's outgoing edge is set EXACTLY ONCE, at the
+     // instant it transitions unmarked -> streamMarked; an already-streamMarked node's outgoing
+     // edge is IMMUTABLE and is never revisited by this method.
+     void promoteSuffix(Deque<Integer> stack, int terminus, boolean[] streamMarked, int[] outgoing) {
+         int next = terminus;
+         for (int node : stack) {                 // top-of-stack first
+             assert !streamMarked[node];           // invariant: set-outgoing-exactly-once
+             assert outgoing[node] == -1;
+             outgoing[node] = next;
+             streamMarked[node] = true;
+             next = node;
+         }
+     }
+     ```
+
   3. **Kept edges = promoted (`streamMarked`-outgoing) edges only** — not "any edge between two marked
      nodes," which would leave un-oriented diamonds that break `update()`.
   4. Prune unmarked nodes. A branch that never reached a drain/`streamMarked` node is simply never promoted
