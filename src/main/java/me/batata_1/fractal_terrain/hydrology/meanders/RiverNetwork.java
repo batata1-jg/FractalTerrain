@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.function.IntPredicate;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.debug.Debug;
@@ -206,6 +207,266 @@ public final class RiverNetwork {
         start.outgoing = id;
         end.incoming.add(id);
         return id;
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // The two views + the seam (Phase 1)
+    //
+    // The canonical (channel) view is the field storage above (channels/nodes maps + id counters).
+    // The atomic (node) view ({@link AtomicView}) is a List<List<Integer>> adjacency over per-node
+    // data where every interior spline point is a first-class node. {@link #viewAtomic()} converts
+    // canonical -> atomic; {@link #update} folds an atomic view back into `this` IN PLACE.
+    //
+    // NOTHING in production calls these yet (they land behavior-neutral in Phase 1). Phase 1 carries
+    // only position + topology + role/canonicalId; the flow arrays (ownFlow/anchorFlow/derived flow)
+    // referenced by the plan's pseudocode arrive in Phase 2 and are omitted here.
+    // ---------------------------------------------------------------------------------------------
+
+    /** Sentinel for "no canonical id" (interior/JUNCTION-equivalent atomic nodes). */
+    private static final int NONE = -1;
+
+    /**
+     * Placeholder width for channels re-emitted by {@link #emitChannel} in Phase 1. The atomic view
+     * does not yet carry flow (Phase 2), and the round-trip golden checks points + topology only, so
+     * this value is behaviour-neutral; it is replaced by flow-derived width once Phase 2 threads
+     * {@code double[] flow} through the atomic view and {@code Channel}.
+     */
+    private static final double EMIT_PLACEHOLDER_WIDTH = 1.0;
+
+    /**
+     * Atomic (node) view of the network: parallel per-node data plus a directed adjacency where every
+     * interior spline point is a first-class node. Built once by {@link #viewAtomic()} (growing via
+     * {@link #addNode}), read by {@link #update}. Positions/topology/role/canonicalId only in Phase 1
+     * — the {@code flow}/{@code ownFlow}/{@code anchorFlow} arrays from the plan's pseudocode arrive in
+     * Phase 2.
+     */
+    public static final class AtomicView {
+        private final List<double[]> position = new ArrayList<>();
+        /** SOURCE / DRAIN / JUNCTION, or {@code null} for an interior spline point. */
+        private final List<Endpoint.Type> role = new ArrayList<>();
+        /** Valid only where {@link #role} is SOURCE or DRAIN — the canonical {@link Endpoint} id to preserve. */
+        private final List<Integer> canonicalId = new ArrayList<>();
+        /** {@code adjacency.get(u)}: directed tree-successor edge(s) out of atomic node {@code u}. */
+        final List<List<Integer>> adjacency = new ArrayList<>();
+
+        int size() {
+            return position.size();
+        }
+
+        Endpoint.Type role(int id) {
+            return role.get(id);
+        }
+
+        int canonicalId(int id) {
+            return canonicalId.get(id);
+        }
+
+        /** A fresh copy of the position of atomic node {@code id}. */
+        double[] pos(int id) {
+            return position.get(id).clone();
+        }
+
+        /** Append a new atomic node (position cloned) and return its atomic id. */
+        int addNode(double[] pos, Endpoint.Type role, int canonicalId) {
+            final int id = position.size();
+            position.add(pos.clone());
+            this.role.add(role);
+            this.canonicalId.add(canonicalId);
+            adjacency.add(new ArrayList<>());
+            return id;
+        }
+    }
+
+    /**
+     * Canonical -> atomic. Iterates channels in sorted-by-id order (mirrors {@link #detectCrossings}'s
+     * {@code Collections.sort(channelIds)}) so atomic-id assignment is reproducible and HashMap
+     * iteration order never leaks in. Each channel's interior points become fresh atomic nodes; the two
+     * endpoints collapse keyed on the canonical {@link Endpoint} node id (the first channel touching a
+     * node adds it, later channels reuse it), so channels sharing a graph node share one atomic node.
+     * SOURCE/DRAIN provenance (and their canonical id) is carried so {@link #update} can preserve their
+     * ids. Velocity/acceleration are not carried — {@code createCatmullRom} re-infers them on rebuild.
+     */
+    public AtomicView viewAtomic() {
+        final AtomicView atomic = new AtomicView();
+        final Map<Integer, Integer> endpointToAtomicId = new HashMap<>(); // canonical Endpoint id -> atomic id
+
+        final List<Integer> channelIds = new ArrayList<>(channels.keySet());
+        Collections.sort(channelIds);
+
+        for (int channelId : channelIds) {
+            final Channel ch = channels.get(channelId);
+            final List<double[]> pts = ch.spline.points();
+            final int last = pts.size() - 1;
+            final int[] atomicIdOfPoint = new int[pts.size()];
+
+            for (int i = 0; i <= last; i++) {
+                if (i != 0 && i != last) {
+                    // interior point: always a fresh atomic node, keyed on nothing but its position in
+                    // this channel (no epsilon collapse).
+                    atomicIdOfPoint[i] = atomic.addNode(pts.get(i), null, NONE);
+                    continue;
+                }
+                // endpoint point: collapse keyed on the canonical Endpoint node id.
+                final int endpointNodeId = (i == 0) ? ch.startNodeId : ch.endNodeId;
+                final Integer existing = endpointToAtomicId.get(endpointNodeId);
+                if (existing != null) {
+                    atomicIdOfPoint[i] = existing;
+                    continue;
+                }
+                final Endpoint ep = nodes.get(endpointNodeId);
+                final boolean boundary = ep.type == Endpoint.Type.SOURCE || ep.type == Endpoint.Type.DRAIN;
+                final int atomicId = atomic.addNode(pts.get(i), ep.type, boundary ? endpointNodeId : NONE);
+                endpointToAtomicId.put(endpointNodeId, atomicId);
+                atomicIdOfPoint[i] = atomicId;
+            }
+
+            for (int i = 0; i < last; i++) {
+                atomic.adjacency.get(atomicIdOfPoint[i]).add(atomicIdOfPoint[i + 1]); // directed i -> i+1
+            }
+        }
+        return atomic;
+    }
+
+    /**
+     * Single-outflow check (invariant K1), modelled on {@link Endpoint#degree()} + {@link Endpoint.Type}:
+     * SOURCE exactly 1 outgoing, DRAIN 0 outgoing, JUNCTION/interior exactly 1 outgoing. Counts only the
+     * directed tree-successor slot ({@code adjacency.get(id).size()}). Throws (rather than {@code assert})
+     * so the guard holds regardless of whether {@code -ea} is enabled — the plan pins this as a hard
+     * precondition of {@link #update}.
+     */
+    void assertSingleOutflow(AtomicView atomic) {
+        for (int id = 0; id < atomic.size(); id++) {
+            final int outdeg = atomic.adjacency.get(id).size();
+            final Endpoint.Type role = atomic.role(id);
+            if (role == Endpoint.Type.DRAIN) {
+                if (outdeg != 0) throw new IllegalStateException("DRAIN node " + id + " must have no outgoing edge");
+            } else {
+                // SOURCE / JUNCTION / interior all require exactly one outgoing edge
+                if (outdeg != 1)
+                    throw new IllegalStateException((role == null ? "interior" : role.toString()) + " node " + id
+                            + " must have exactly one outgoing edge, had " + outdeg);
+            }
+        }
+    }
+
+    /**
+     * Atomic -> canonical, IN PLACE. Mutates {@code this}: clears {@code channels}/{@code nodes}/
+     * {@code quadTree}, resets the id counters (node counter set PAST every preserved id so a fresh
+     * JUNCTION-equivalent id can never collide with a preserved SOURCE/DRAIN id), then re-emits maximal
+     * directed chains between structural nodes (source / drain / in-degree &ge; 2 confluence) as
+     * {@link Channel}s wired directly into {@code this}. The canonical id of every atomic node whose
+     * provenance is SOURCE or DRAIN is preserved (boundary-elevation lookups key on these); every
+     * JUNCTION-equivalent structural node gets a fresh id. {@code bedElevations} are intentionally not
+     * preserved. Does NOT allocate a new {@code RiverNetwork} — returns {@code this} for chaining.
+     */
+    public RiverNetwork update(AtomicView atomic) {
+        assertSingleOutflow(atomic); // K1 — before any mutation
+
+        final int n = atomic.size();
+        final int[] indegree = new int[n];
+        for (int u = 0; u < n; u++) for (int v : atomic.adjacency.get(u)) indegree[v]++;
+
+        // structural nodes = source / drain / confluence (in-degree >= 2); sorted for a deterministic
+        // emission order independent of HashMap/HashSet iteration.
+        final TreeSet<Integer> structural = new TreeSet<>();
+        for (int id = 0; id < n; id++) {
+            final Endpoint.Type role = atomic.role(id);
+            if (role == Endpoint.Type.SOURCE || role == Endpoint.Type.DRAIN || indegree[id] >= 2) {
+                structural.add(id);
+            }
+        }
+
+        // Preserve the canonical id of every SOURCE/DRAIN atomic node; find the max so fresh ids start
+        // past it. JUNCTION-equivalents stay NONE for now and get a fresh id below.
+        final int[] canonicalIdOf = new int[n];
+        Arrays.fill(canonicalIdOf, NONE);
+        int maxPreserved = -1;
+        for (int id : structural) {
+            final Endpoint.Type role = atomic.role(id);
+            if (role == Endpoint.Type.SOURCE || role == Endpoint.Type.DRAIN) {
+                canonicalIdOf[id] = atomic.canonicalId(id);
+                maxPreserved = Math.max(maxPreserved, atomic.canonicalId(id));
+            }
+        }
+
+        // IN-PLACE reset: wipe the canonical view; set the node counter PAST every preserved id.
+        this.channels.clear();
+        this.nodes.clear();
+        this.quadTree.clear();
+        this.nextChannelId = 0;
+        this.nextNodeId = maxPreserved + 1;
+
+        // Assign fresh, deterministic (sorted) ids to JUNCTION-equivalent structural nodes so each
+        // structural atomic node maps to exactly one canonical id (a confluence is shared across chains).
+        for (int id : structural) {
+            if (canonicalIdOf[id] == NONE) canonicalIdOf[id] = nextNodeId++;
+        }
+
+        for (int start : structural) { // sorted — deterministic emission order
+            if (atomic.role(start) == Endpoint.Type.DRAIN) continue; // drains only terminate a chain
+            int cur = onlyOutgoing(atomic, start);
+            final List<Integer> chain = new ArrayList<>();
+            chain.add(start);
+            while (!structural.contains(cur)) {
+                chain.add(cur);
+                cur = onlyOutgoing(atomic, cur); // interior node: single outgoing edge (K1)
+            }
+            chain.add(cur); // cur: the next structural node (confluence or drain)
+            emitChannel(atomic, chain, canonicalIdOf);
+        }
+        return this;
+    }
+
+    /** The single directed tree-successor of {@code id} (K1 guarantees exactly one for non-drain nodes). */
+    private static int onlyOutgoing(AtomicView atomic, int id) {
+        return atomic.adjacency.get(id).get(0);
+    }
+
+    /**
+     * Builds a {@link Channel} from {@code chain} and wires it directly into {@code this}, reusing the
+     * kept {@link #insertChannel} QuadTree helper. The start/end canonical ids come from
+     * {@code canonicalIdOf} (preserved SOURCE/DRAIN, or fresh JUNCTION-equivalent). Applies the inlined
+     * single-outflow (K1) guard {@code mintChannel} used. {@code bedElevations} are not preserved.
+     */
+    private void emitChannel(AtomicView atomic, List<Integer> chain, int[] canonicalIdOf) {
+        final ArrayList<double[]> points = new ArrayList<>(chain.size());
+        for (int atomicId : chain) points.add(atomic.pos(atomicId));
+
+        final int startAtomic = chain.get(0);
+        final int endAtomic = chain.get(chain.size() - 1);
+        final Endpoint start = ensureNode(atomic, startAtomic, canonicalIdOf[startAtomic], points.getFirst());
+        final Endpoint end = ensureNode(atomic, endAtomic, canonicalIdOf[endAtomic], points.getLast());
+
+        // inlined K1 guard (mintChannel:203-205): the start endpoint must not already own an outgoing edge
+        if (start.outgoing != NONE) {
+            throw new IllegalStateException("node " + start.id + " would have >1 outgoing edge");
+        }
+
+        final int id = nextChannelId++;
+        final Channel ch = new Channel(EMIT_PLACEHOLDER_WIDTH, points, id);
+        ch.startNodeId = start.id;
+        ch.endNodeId = end.id;
+        channels.put(id, ch);
+        start.outgoing = id;
+        end.incoming.add(id);
+        insertChannel(ch); // kept QuadTree helper (also used by manageCutoffs)
+        // bedElevations intentionally NOT preserved — the seam is bed-elevation-agnostic
+    }
+
+    /**
+     * Fetches (or lazily creates) the {@link Endpoint} for a structural atomic node in {@code this}. A
+     * SOURCE/DRAIN atomic node keeps its type; every other structural node becomes a JUNCTION. Endpoints
+     * are shared across chains (a confluence is the end of one chain and the start of others).
+     */
+    private Endpoint ensureNode(AtomicView atomic, int atomicId, int canonicalId, double[] pos) {
+        final Endpoint existing = nodes.get(canonicalId);
+        if (existing != null) return existing;
+        final Endpoint.Type role = atomic.role(atomicId);
+        final Endpoint.Type type =
+                (role == Endpoint.Type.SOURCE || role == Endpoint.Type.DRAIN) ? role : Endpoint.Type.JUNCTION;
+        final Endpoint ep = new Endpoint(canonicalId, type, pos.clone());
+        nodes.put(canonicalId, ep);
+        return ep;
     }
 
     // ---------------------------------------------------------------------------------------------
