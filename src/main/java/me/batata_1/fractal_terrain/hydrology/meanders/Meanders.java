@@ -108,7 +108,7 @@ public final class Meanders {
             ch.reSample(HydrologyTuning.DX);
             ch.spline = QuinticHermiteSpline.createCatmullRom(ch.spline.points());
             migrate.accept(ch);
-            ch.reSample(Math.sqrt(ch.width));
+            ch.reSample(Math.sqrt(ch.intakeWidth())); // intake: finest spacing, gap-free discs
             network.manageCutoffs(ch, i);
         }
         dumpNetwork("01_migrated");
@@ -142,7 +142,7 @@ public final class Meanders {
         final double[] localRates = ch.computeLocalRates();
         Debug.isNan(localRates);
         final double sigmaToTheMinus2over3 = Math.pow(sinuosity, -TWO_THIRDS);
-        final double alpha = 2 * FRICTION / ch.depth;
+        final double alpha = 2 * FRICTION / ch.depth();
         final double expTerm = Math.exp(-alpha * HydrologyTuning.DX);
         double integralTerm = 0;
         final double[] migRates = new double[ch.spline.points().size()];
@@ -171,8 +171,8 @@ public final class Meanders {
             }
             final double rate = Math.clamp(DT * migrationRates[i], -maxMigrationMagnetude, maxMigrationMagnetude);
             final double[] point = ch.spline.points().get(i);
-            final double[] migrationVector =
-                    VectorOps.scale(ch.spline.normal(i), -rate * borderDamping(point[0], point[1], ch.width));
+            final double[] migrationVector = VectorOps.scale(
+                    ch.spline.normal(i), -rate * borderDamping(point[0], point[1], ch.dischargeWidth()));
             double[] migratedPoint = VectorOps.add(point, migrationVector);
             Debug.isNan(migratedPoint);
             migratedPoints.add(migratedPoint);
@@ -199,7 +199,7 @@ public final class Meanders {
 
             if (magnitude > MAX_GRAD_MIGRATION)
                 displacement = VectorOps.scale(displacement, MAX_GRAD_MIGRATION / magnitude);
-            displacement = VectorOps.scale(displacement, borderDamping(point[0], point[1], ch.width));
+            displacement = VectorOps.scale(displacement, borderDamping(point[0], point[1], ch.dischargeWidth()));
             migratedPoints.add(VectorOps.add(point, displacement));
         }
         ch.spline = QuinticHermiteSpline.createCatmullRom(migratedPoints);

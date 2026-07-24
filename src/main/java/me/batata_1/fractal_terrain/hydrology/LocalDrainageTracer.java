@@ -1,7 +1,6 @@
 package me.batata_1.fractal_terrain.hydrology;
 
 import static me.batata_1.fractal_terrain.config.HydrologyTuning.FLOW_THRESHOLD;
-import static me.batata_1.fractal_terrain.config.HydrologyTuning.widthFromFlow;
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.*;
 import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.computeFlow;
 import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.neighbor;
@@ -145,20 +144,14 @@ final class LocalDrainageTracer {
                     pts.size() - 1,
                     network.getNode(globalChannel.endNodeId).coord.clone());
             network.attachSourceToExistingNode(
-                    sourceSpec,
-                    globalChannel.endNodeId,
-                    pts,
-                    channel.startWidth,
-                    channel.endWidth,
-                    HydrologyTuning.RESAMPLE_DIST);
+                    sourceSpec, globalChannel.endNodeId, pts, channel.flow, HydrologyTuning.RESAMPLE_DIST);
             return;
         }
 
         if (elev[downstreamCell] >= 0) return; // DL-013: no global channel in reach, no coast -> drop.
         final RiverNetwork.NodeSpec drainSpec =
                 new RiverNetwork.NodeSpec(pts.getLast()[0], pts.getLast()[1], Endpoint.Type.DRAIN);
-        network.attachSourceToNewDrain(
-                sourceSpec, drainSpec, pts, channel.startWidth, channel.endWidth, HydrologyTuning.RESAMPLE_DIST);
+        network.attachSourceToNewDrain(sourceSpec, drainSpec, pts, channel.flow, HydrologyTuning.RESAMPLE_DIST);
     }
 
     /**
@@ -268,15 +261,13 @@ final class LocalDrainageTracer {
 
     private static @Nullable Channel buildLocalChannel(List<Integer> cells, float[] flow, int channelId) {
         final ArrayList<double[]> points = new ArrayList<>(cells.size());
-        float maxFlow = 0;
-        for (int cell : cells) {
+        final double[] channelFlow = new double[cells.size()];
+        for (int i = 0; i < cells.size(); i++) {
+            final int cell = cells.get(i);
             points.add(new double[] {(double) cell / GRID + 0.5, cell % GRID + 0.5});
-            maxFlow = Math.max(maxFlow, flow[cell]);
+            channelFlow[i] = flow[cell]; // real per-point flow (aligned to the pre-resample points)
         }
-        final double startWidth = widthFromFlow(flow[cells.getFirst()]);
-        final double endWidth = widthFromFlow(flow[cells.getLast()]);
-        final Channel channel = new Channel(widthFromFlow(maxFlow), points, channelId);
-        channel.setWidthProfile(startWidth, endWidth);
+        final Channel channel = new Channel(points, channelFlow, channelId);
         if (!channel.isResampleable()) return null; // degenerate geometry: skip this channel
         try {
             channel.reSample(HydrologyTuning.RESAMPLE_DIST);

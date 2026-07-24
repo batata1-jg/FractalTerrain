@@ -148,7 +148,7 @@ final class GlobalNetworkBuilder {
                             centre,
                             exitNode,
                             pts(centreCoord, gateInside(centreCoord, c.drain(), ccx, ccz), c.drain()),
-                            width));
+                            grp.getFlow(ccx, ccz)));
                 }
 
                 // places the edges that connects sources/junctions in the boarders to the center of the cell
@@ -170,7 +170,7 @@ final class GlobalNetworkBuilder {
                             entryNode,
                             centre,
                             pts(n.drain(), gateInside(centreCoord, n.drain(), ccx, ccz), centreCoord),
-                            Math.max(grp.getWidth(n.ccx(), n.ccz()), FractalTerrainConfig.MIN_WIDTH)));
+                            grp.getFlow(n.ccx(), n.ccz())));
                 }
 
                 if (GlobalRiverProvider.isSource(grp.getArrow(ccx, ccz))) {
@@ -258,7 +258,8 @@ final class GlobalNetworkBuilder {
         final double downstreamBed = Math.max(
                 0, (c.outDirection() != -1) ? grp.getElevation(c.dcx(), c.dcz()) : grp.getElevation(c.ccx(), c.ccz()));
         boundaryElevByNodeIdx.put(seedNode, Math.max(sampleBilinear(elev, seed[0], seed[1]), downstreamBed));
-        edgeSpecs.add(new RiverNetwork.EdgeSpec(seedNode, centre, pts(seed, centreCoord), width));
+        edgeSpecs.add(
+                new RiverNetwork.EdgeSpec(seedNode, centre, pts(seed, centreCoord), grp.getFlow(c.ccx(), c.ccz())));
     }
 
     // -------------------------------------------------------------------------

@@ -25,7 +25,7 @@ import org.slf4j.Logger;
 
 /**
  * Builds the large-scale ("global") river network off the coarse elevation map, one 64×64 coarse-px
- * tile at a time. Each tile is emitted as a {@code [GLOBAL_RIVER_CHANNELS=2, 64, 64]}
+ * tile at a time. Each tile is emitted as a {@code [GLOBAL_RIVER_CHANNELS=4, 64, 64]}
  * {@link FloatTensor} (cache-only, since the backing {@link NonIntersectingInfiniteTensor} is built
  * with a {@code null} path in production):
  *
@@ -35,6 +35,9 @@ import org.slf4j.Logger;
  *   <li><b>channel 1</b> — the river width at that pixel (0 on non-river pixels).
  *   <li><b>channel 2</b> — the river-bed elevation (native-px scale), forced monotonically
  *       non-increasing downstream; consumed by {@code ReliefProvider.carveRiver}.
+ *   <li><b>channel 3</b> — the raw flow accumulation ({@code widthFromFlow(flow) == width} on river
+ *       pixels); carried by {@code GlobalNetworkBuilder} into edge specs so the local network derives
+ *       width from flow without a lossy {@code widthFromFlow} inversion. See {@link #getFlow}.
  * </ul>
  *
  * <p>Arrow bitfield (channel 0), using the neighbour ordering of {@link PipelinePreprocessing}. Routing
@@ -108,6 +111,16 @@ public class GlobalRiverProvider {
     /** River width at global coarse-px {@code (cx, cz)} (0 on non-river pixels). */
     public float getWidth(int cx, int cz) {
         return riverTiles.getValue(new int[] {1, cx, cz});
+    }
+
+    /**
+     * Raw flow-accumulation at global coarse-px {@code (cx, cz)} (channel 3). {@link #getWidth} equals
+     * {@code widthFromFlow(getFlow(cx, cz))} on river pixels; {@code GlobalNetworkBuilder} carries this
+     * flow (not the derived width) into its {@code EdgeSpec}s so the local network can build width from
+     * flow without a lossy {@code widthFromFlow} inversion.
+     */
+    public float getFlow(int cx, int cz) {
+        return riverTiles.getValue(new int[] {3, cx, cz});
     }
 
     /**
@@ -256,8 +269,8 @@ public class GlobalRiverProvider {
         //     forced monotonically non-increasing downstream along the arrow network.
         final float[] riverElevation = computeRiverElevation(arrows, elevation);
 
-        // 7. result: crop the central 64×64 into a [3,64,64] tile.
-        final FloatTensor tile = getTile(arrows, widths, riverElevation);
+        // 7. result: crop the central 64×64 into a [GLOBAL_RIVER_CHANNELS,64,64] tile (channel 3 = flow).
+        final FloatTensor tile = getTile(arrows, widths, riverElevation, flowAccumulation);
 
         if (stages != null) {
             stages.riverElevation = riverElevation;
@@ -279,7 +292,7 @@ public class GlobalRiverProvider {
         return tile;
     }
 
-    private static @NotNull FloatTensor getTile(int[] arrows, float[] widths, float[] riverElevation) {
+    private static @NotNull FloatTensor getTile(int[] arrows, float[] widths, float[] riverElevation, float[] flows) {
         final FloatTensor tile = new FloatTensor(new int[] {GLOBAL_RIVER_CHANNELS, TILE_SIZE, TILE_SIZE});
         final int pixelsPerChannel = TILE_SIZE * TILE_SIZE;
         for (int x = 0; x < TILE_SIZE; x++) {
@@ -289,6 +302,9 @@ public class GlobalRiverProvider {
                 tile.set(localIndex, Float.intBitsToFloat(arrows[paddedIndex]));
                 tile.set(pixelsPerChannel + localIndex, widths[paddedIndex]);
                 tile.set(2 * pixelsPerChannel + localIndex, riverElevation[paddedIndex]);
+                // channel 3: raw flow accumulation — persisted so GlobalNetworkBuilder derives width from
+                // flow (widthFromFlow) rather than inverting the persisted width (see plan Phase 2).
+                tile.set(3 * pixelsPerChannel + localIndex, flows[paddedIndex]);
             }
         }
         return tile;

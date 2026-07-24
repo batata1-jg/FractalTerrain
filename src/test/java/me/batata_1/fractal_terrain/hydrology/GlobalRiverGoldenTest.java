@@ -108,6 +108,12 @@ class GlobalRiverGoldenTest {
         }
     }
 
-    /** Captured by running {@link #globalNetworkMatchesGolden} once and logging it. */
-    private static final long GOLDEN_CHECKSUM = -992928566221604883L;
+    /**
+     * Captured by running {@link #globalNetworkMatchesGolden} once and logging it. Re-baselined in Phase 2:
+     * the global tile gained a 4th channel (raw flow accumulation), so the whole-tile checksum changes;
+     * channels 0-2 (arrows / width / bed elevation) are byte-for-byte unchanged (their computation is
+     * untouched — only an additive flow channel was written), and {@code assertHasRivers} confirms the tile
+     * still contains rivers, so this is a re-baseline over confirmed-sane output.
+     */
+    private static final long GOLDEN_CHECKSUM = 2603768671405312821L;
 }

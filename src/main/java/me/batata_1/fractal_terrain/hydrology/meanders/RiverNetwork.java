@@ -15,6 +15,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.IntPredicate;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
+import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
@@ -74,8 +75,14 @@ public final class RiverNetwork {
     /** A vertex of the supplied initial network. */
     public record NodeSpec(double x, double z, Endpoint.Type type) {}
 
-    /** A directed edge of the supplied initial network; {@code pts} include the two endpoints. */
-    public record EdgeSpec(int startNodeIdx, int endNodeIdx, ArrayList<double[]> pts, double width) {}
+    /**
+     * A directed edge of the supplied initial network; {@code pts} include the two endpoints. {@code flow}
+     * is the (per-cell) raw flow-accumulation value for the edge — width is derived from it downstream via
+     * {@link HydrologyTuning#widthFromFlow}. The channel built from this spec carries a constant per-point
+     * {@code flow[]} = this value (see {@link #mintChannel}); real per-point flow is assigned to the
+     * unified network later by {@code accumulateAndCorrectFlow}.
+     */
+    public record EdgeSpec(int startNodeIdx, int endNodeIdx, ArrayList<double[]> pts, double flow) {}
 
     private record Crossing(int channelIdA, int posA, int channelIdB, int posB, double widthA, double widthB) {}
 
@@ -122,9 +129,16 @@ public final class RiverNetwork {
         for (EdgeSpec es : edgeSpecs) {
             final int startNodeId = specIndexToNodeId.get(es.startNodeIdx());
             final int endNodeId = specIndexToNodeId.get(es.endNodeIdx());
-            mintChannel(startNodeId, endNodeId, es.pts(), es.width(), es.width(), resampleDist);
+            mintChannel(startNodeId, endNodeId, es.pts(), constantFlow(es.pts().size(), es.flow()), resampleDist);
         }
         return specIndexToNodeId;
+    }
+
+    /** A per-point flow array of {@code n} entries all equal to {@code flow} (the constant-flow edge case). */
+    private static double[] constantFlow(int n, double flow) {
+        final double[] f = new double[n];
+        Arrays.fill(f, flow);
+        return f;
     }
 
     /**
@@ -136,17 +150,12 @@ public final class RiverNetwork {
      * Returns the minted node's id.
      */
     public int attachSourceToExistingNode(
-            NodeSpec sourceSpec,
-            int existingEndNodeId,
-            ArrayList<double[]> pts,
-            double startWidth,
-            double endWidth,
-            double resampleDist) {
+            NodeSpec sourceSpec, int existingEndNodeId, ArrayList<double[]> pts, double[] flow, double resampleDist) {
         final int sourceNodeId = nextNodeId++;
         nodes.put(
                 sourceNodeId,
                 new Endpoint(sourceNodeId, sourceSpec.type(), new double[] {sourceSpec.x(), sourceSpec.z()}));
-        mintChannel(sourceNodeId, existingEndNodeId, pts, startWidth, endWidth, resampleDist);
+        mintChannel(sourceNodeId, existingEndNodeId, pts, flow, resampleDist);
         return sourceNodeId;
     }
 
@@ -158,12 +167,7 @@ public final class RiverNetwork {
      * {@code {sourceNodeId, drainNodeId}}.
      */
     public int[] attachSourceToNewDrain(
-            NodeSpec sourceSpec,
-            NodeSpec drainSpec,
-            ArrayList<double[]> pts,
-            double startWidth,
-            double endWidth,
-            double resampleDist) {
+            NodeSpec sourceSpec, NodeSpec drainSpec, ArrayList<double[]> pts, double[] flow, double resampleDist) {
         final int sourceNodeId = nextNodeId++;
         nodes.put(
                 sourceNodeId,
@@ -171,30 +175,22 @@ public final class RiverNetwork {
         final int drainNodeId = nextNodeId++;
         nodes.put(
                 drainNodeId, new Endpoint(drainNodeId, drainSpec.type(), new double[] {drainSpec.x(), drainSpec.z()}));
-        mintChannel(sourceNodeId, drainNodeId, pts, startWidth, endWidth, resampleDist);
+        mintChannel(sourceNodeId, drainNodeId, pts, flow, resampleDist);
         return new int[] {sourceNodeId, drainNodeId};
     }
 
     /**
      * Shared edge-minting core behind {@link #insertSpecs}, {@link #attachSourceToExistingNode} and
-     * {@link #attachSourceToNewDrain}: builds the {@link Channel} at {@code Math.min(startWidth,
-     * endWidth)} (so {@link #collectUnits}'s {@code width/2} resample spacing never exceeds half the
-     * <em>narrowest</em> point along a tapered channel's start->end profile, keeping the gap-free-discs
-     * invariant), applies the start/end width taper, resamples at {@code resampleDist} (a no-op on
-     * {@link Channel#bedElevations}, which is always null at insertion time -- H2), wires the directed
-     * edge between the two given node ids, and enforces the single-outflow invariant. Returns the minted
-     * channel id.
+     * {@link #attachSourceToNewDrain}: builds the {@link Channel} from the per-point {@code flow} array
+     * (aligned to {@code pts}), resamples at {@code resampleDist} ({@link Channel#reSample} blends the flow
+     * array along with the geometry; a no-op on {@link Channel#bedElevations}, which is always null at
+     * insertion time -- H2), wires the directed edge between the two given node ids, enforces the
+     * single-outflow invariant, and seeds/anchors the boundary nodes' {@link Endpoint#sourceFlow}. Returns
+     * the minted channel id.
      */
-    private int mintChannel(
-            int startNodeId,
-            int endNodeId,
-            List<double[]> pts,
-            double startWidth,
-            double endWidth,
-            double resampleDist) {
+    private int mintChannel(int startNodeId, int endNodeId, List<double[]> pts, double[] flow, double resampleDist) {
         final int id = nextChannelId++;
-        final Channel ch = new Channel(Math.min(startWidth, endWidth), new ArrayList<>(pts), id);
-        ch.setWidthProfile(startWidth, endWidth);
+        final Channel ch = new Channel(new ArrayList<>(pts), flow, id);
         ch.reSample(resampleDist);
         ch.startNodeId = startNodeId;
         ch.endNodeId = endNodeId;
@@ -206,6 +202,11 @@ public final class RiverNetwork {
         }
         start.outgoing = id;
         end.incoming.add(id);
+        // Seed/anchor the boundary nodes so the canonical<->atomic seam (viewAtomic/accumulate) carries a
+        // meaningful ownFlow (SOURCE seed) / anchorFlow (DRAIN anchor). Uses the edge's endpoint flow — for
+        // the constant-flow global path this is the edge's flow value; deleted in Phase 3 with mintChannel.
+        if (start.type == Endpoint.Type.SOURCE) start.sourceFlow = flow[0];
+        if (end.type == Endpoint.Type.DRAIN) end.sourceFlow = flow[flow.length - 1];
         return id;
     }
 
@@ -225,20 +226,16 @@ public final class RiverNetwork {
     /** Sentinel for "no canonical id" (interior/JUNCTION-equivalent atomic nodes). */
     private static final int NONE = -1;
 
-    /**
-     * Placeholder width for channels re-emitted by {@link #emitChannel} in Phase 1. The atomic view
-     * does not yet carry flow (Phase 2), and the round-trip golden checks points + topology only, so
-     * this value is behaviour-neutral; it is replaced by flow-derived width once Phase 2 threads
-     * {@code double[] flow} through the atomic view and {@code Channel}.
-     */
-    private static final double EMIT_PLACEHOLDER_WIDTH = 1.0;
+    /** The per-cell own-flow constant carried by interior/junction atomic nodes (see {@link #viewAtomic()}). */
+    private static final double FLOW_PER_CELL = HydrologyTuning.FLOW_PER_CELL_LOCAL;
 
     /**
      * Atomic (node) view of the network: parallel per-node data plus a directed adjacency where every
      * interior spline point is a first-class node. Built once by {@link #viewAtomic()} (growing via
-     * {@link #addNode}), read by {@link #update}. Positions/topology/role/canonicalId only in Phase 1
-     * — the {@code flow}/{@code ownFlow}/{@code anchorFlow} arrays from the plan's pseudocode arrive in
-     * Phase 2.
+     * {@link #addNode}), read by {@link #update}. Carries per-node position/role/canonicalId plus the
+     * flow inputs {@code ownFlow} (the per-cell constant / SOURCE seed) and {@code anchorFlow}
+     * (DRAIN-only ceiling+target); the DERIVED per-node {@code flow} is populated by
+     * {@link #accumulateAndCorrectFlow} before {@link #update} reads it.
      */
     public static final class AtomicView {
         private final List<double[]> position = new ArrayList<>();
@@ -246,8 +243,14 @@ public final class RiverNetwork {
         private final List<Endpoint.Type> role = new ArrayList<>();
         /** Valid only where {@link #role} is SOURCE or DRAIN — the canonical {@link Endpoint} id to preserve. */
         private final List<Integer> canonicalId = new ArrayList<>();
+        /** CARRIED input: the per-cell constant {@link #FLOW_PER_CELL} (interior/junction) or the SOURCE seed. */
+        private final List<Double> ownFlow = new ArrayList<>();
+        /** CARRIED input, meaningful only where {@link #role} is DRAIN: the clamp ceiling + near-drain target. */
+        private final List<Double> anchorFlow = new ArrayList<>();
         /** {@code adjacency.get(u)}: directed tree-successor edge(s) out of atomic node {@code u}. */
         final List<List<Integer>> adjacency = new ArrayList<>();
+        /** DERIVED per-node flow; {@code null} until {@link #accumulateAndCorrectFlow} runs. */
+        double[] flow;
 
         int size() {
             return position.size();
@@ -261,17 +264,32 @@ public final class RiverNetwork {
             return canonicalId.get(id);
         }
 
+        double ownFlow(int id) {
+            return ownFlow.get(id);
+        }
+
+        double anchorFlow(int id) {
+            return anchorFlow.get(id);
+        }
+
+        /** The DERIVED per-node flow at {@code id}, falling back to {@code ownFlow} when not yet accumulated. */
+        double flow(int id) {
+            return (flow != null) ? flow[id] : ownFlow.get(id);
+        }
+
         /** A fresh copy of the position of atomic node {@code id}. */
         double[] pos(int id) {
             return position.get(id).clone();
         }
 
         /** Append a new atomic node (position cloned) and return its atomic id. */
-        int addNode(double[] pos, Endpoint.Type role, int canonicalId) {
+        int addNode(double[] pos, Endpoint.Type role, int canonicalId, double ownFlow, double anchorFlow) {
             final int id = position.size();
             position.add(pos.clone());
             this.role.add(role);
             this.canonicalId.add(canonicalId);
+            this.ownFlow.add(ownFlow);
+            this.anchorFlow.add(anchorFlow);
             adjacency.add(new ArrayList<>());
             return id;
         }
@@ -302,8 +320,9 @@ public final class RiverNetwork {
             for (int i = 0; i <= last; i++) {
                 if (i != 0 && i != last) {
                     // interior point: always a fresh atomic node, keyed on nothing but its position in
-                    // this channel (no epsilon collapse).
-                    atomicIdOfPoint[i] = atomic.addNode(pts.get(i), null, NONE);
+                    // this channel (no epsilon collapse). Carries the per-cell ownFlow constant; the
+                    // derived flow is populated later by accumulateAndCorrectFlow, not carried here.
+                    atomicIdOfPoint[i] = atomic.addNode(pts.get(i), null, NONE, FLOW_PER_CELL, 0.0);
                     continue;
                 }
                 // endpoint point: collapse keyed on the canonical Endpoint node id.
@@ -315,7 +334,12 @@ public final class RiverNetwork {
                 }
                 final Endpoint ep = nodes.get(endpointNodeId);
                 final boolean boundary = ep.type == Endpoint.Type.SOURCE || ep.type == Endpoint.Type.DRAIN;
-                final int atomicId = atomic.addNode(pts.get(i), ep.type, boundary ? endpointNodeId : NONE);
+                // ownFlow: SOURCE carries its captured seed (ep.sourceFlow); DRAIN/JUNCTION carry the
+                // per-cell constant. anchorFlow: DRAIN carries its anchor (ep.sourceFlow), else unused.
+                final double ownFlow = (ep.type == Endpoint.Type.SOURCE) ? ep.sourceFlow : FLOW_PER_CELL;
+                final double anchorFlow = (ep.type == Endpoint.Type.DRAIN) ? ep.sourceFlow : 0.0;
+                final int atomicId =
+                        atomic.addNode(pts.get(i), ep.type, boundary ? endpointNodeId : NONE, ownFlow, anchorFlow);
                 endpointToAtomicId.put(endpointNodeId, atomicId);
                 atomicIdOfPoint[i] = atomicId;
             }
@@ -430,7 +454,11 @@ public final class RiverNetwork {
      */
     private void emitChannel(AtomicView atomic, List<Integer> chain, int[] canonicalIdOf) {
         final ArrayList<double[]> points = new ArrayList<>(chain.size());
-        for (int atomicId : chain) points.add(atomic.pos(atomicId));
+        final double[] flow = new double[chain.size()];
+        for (int i = 0; i < chain.size(); i++) {
+            points.add(atomic.pos(chain.get(i)));
+            flow[i] = atomic.flow(chain.get(i)); // DERIVED flow (populated by accumulateAndCorrectFlow)
+        }
 
         final int startAtomic = chain.get(0);
         final int endAtomic = chain.get(chain.size() - 1);
@@ -443,7 +471,7 @@ public final class RiverNetwork {
         }
 
         final int id = nextChannelId++;
-        final Channel ch = new Channel(EMIT_PLACEHOLDER_WIDTH, points, id);
+        final Channel ch = new Channel(points, flow, id);
         ch.startNodeId = start.id;
         ch.endNodeId = end.id;
         channels.put(id, ch);
@@ -465,8 +493,115 @@ public final class RiverNetwork {
         final Endpoint.Type type =
                 (role == Endpoint.Type.SOURCE || role == Endpoint.Type.DRAIN) ? role : Endpoint.Type.JUNCTION;
         final Endpoint ep = new Endpoint(canonicalId, type, pos.clone());
+        // Restore the carried seed/anchor so a subsequent viewAtomic() reads the same ownFlow/anchorFlow
+        // (keeps the seam round trip idempotent for flow, mirroring the SOURCE/DRAIN id preservation).
+        if (type == Endpoint.Type.SOURCE) ep.sourceFlow = atomic.ownFlow(atomicId);
+        else if (type == Endpoint.Type.DRAIN) ep.sourceFlow = atomic.anchorFlow(atomicId);
         nodes.put(canonicalId, ep);
         return ep;
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Flow accumulation + drain correction (populates the atomic view's DERIVED per-node flow)
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Populate {@code atomic.flow[]} (the DERIVED per-node flow that drives width) from the carried inputs
+     * {@code ownFlow[]} (per-cell constant / SOURCE seed) and {@code anchorFlow[]} (DRAIN-only). Reverse-
+     * topological accumulation over the ATOMIC adjacency (never {@link Endpoint#incoming}, a HashSet), so
+     * the confluence sum order is pinned by ascending atomic id and the {@code doubleToLongBits} goldens
+     * stay bit-stable. Then per drain (sorted): clamp every basin node to the anchor ceiling, set the drain
+     * to its anchor exactly, and lerp the last &le; {@link HydrologyTuning#DRAIN_FLOW_SMOOTH_MAX_NODES}
+     * mainstem nodes up to the anchor when the jump exceeds {@link HydrologyTuning#DRAIN_FLOW_SMOOTH_STEP}
+     * — NO basin-wide rescale. Call this before {@link #update} reads the derived flow.
+     */
+    public void accumulateAndCorrectFlow(AtomicView atomic) {
+        final int n = atomic.size();
+
+        // predecessors u of each edge u -> node, each list sorted ascending by atomic id so every
+        // confluence sum order is pinned (Determinism).
+        final List<List<Integer>> predecessors = new ArrayList<>(n);
+        for (int v = 0; v < n; v++) predecessors.add(new ArrayList<>());
+        for (int u = 0; u < n; u++)
+            for (int v : atomic.adjacency.get(u)) predecessors.get(v).add(u);
+        for (List<Integer> preds : predecessors) Collections.sort(preds);
+
+        final int[] remainingIn = new int[n];
+        for (int v = 0; v < n; v++) remainingIn[v] = predecessors.get(v).size();
+
+        final double[] totalFlow = new double[n];
+        final TreeSet<Integer> ready = new TreeSet<>(); // ascending atomic id — deterministic frontier
+        for (int v = 0; v < n; v++) if (remainingIn[v] == 0) ready.add(v);
+
+        while (!ready.isEmpty()) {
+            final int node = ready.pollFirst();
+            double sum = atomic.ownFlow(node);
+            for (int tributary : predecessors.get(node)) sum += totalFlow[tributary];
+            totalFlow[node] = sum;
+            for (int next : atomic.adjacency.get(node)) if (--remainingIn[next] == 0) ready.add(next);
+        }
+
+        final double[] flow = totalFlow.clone();
+
+        // Per drain (sorted): clamp the basin to the anchor ceiling, then lerp the last few mainstem
+        // nodes up to the anchor. No basin-wide rescale (headwaters keep their small natural flow).
+        for (int drain = 0; drain < n; drain++) {
+            if (atomic.role(drain) != Endpoint.Type.DRAIN) continue;
+            final double anchor = atomic.anchorFlow(drain);
+
+            // 1. clamp every basin node to the anchor ceiling
+            for (int node : basinOf(drain, predecessors)) flow[node] = Math.min(totalFlow[node], anchor);
+            // 2. the drain reads its anchor exactly
+            flow[drain] = anchor;
+
+            // 3. smooth the drain jump along the mainstem, if it exceeds the step threshold
+            int up = mainstemPredecessor(drain, predecessors, flow);
+            if (up == NONE || anchor - flow[up] <= HydrologyTuning.DRAIN_FLOW_SMOOTH_STEP) continue;
+
+            final List<Integer> chain = new ArrayList<>();
+            int node = up;
+            while (node != NONE
+                    && chain.size() < HydrologyTuning.DRAIN_FLOW_SMOOTH_MAX_NODES
+                    && anchor - flow[node] > HydrologyTuning.DRAIN_FLOW_SMOOTH_STEP) {
+                chain.add(node);
+                node = mainstemPredecessor(node, predecessors, flow);
+            }
+
+            // 4. ramp anchor (at the drain) down to the far-end node's natural flow across the chain,
+            //    only raising (max) so a tributary already carrying more is never lowered.
+            final int span = chain.size();
+            final double farFlow = flow[chain.get(span - 1)];
+            for (int k = 0; k < span; k++) { // k = 0 is the drain-adjacent node
+                final double t = (double) (k + 1) / (span + 1); // 0 -> drain (anchor), 1 -> far end (farFlow)
+                final double ramped = anchor + (farFlow - anchor) * t;
+                final int cn = chain.get(k);
+                flow[cn] = Math.max(flow[cn], ramped);
+            }
+        }
+
+        atomic.flow = flow;
+    }
+
+    /** All atomic nodes upstream of {@code drain} (reverse-reachable via predecessors), including it. */
+    private static List<Integer> basinOf(int drain, List<List<Integer>> predecessors) {
+        final List<Integer> basin = new ArrayList<>();
+        final ArrayDeque<Integer> stack = new ArrayDeque<>();
+        stack.push(drain);
+        while (!stack.isEmpty()) {
+            final int node = stack.pop();
+            basin.add(node);
+            for (int up : predecessors.get(node)) stack.push(up);
+        }
+        return basin;
+    }
+
+    /** The highest-flow predecessor of {@code node} (tie-broken by ascending atomic id), or {@link #NONE}. */
+    private static int mainstemPredecessor(int node, List<List<Integer>> predecessors, double[] flow) {
+        int best = NONE;
+        for (int up : predecessors.get(node)) { // predecessors already ascending by id
+            if (best == NONE || flow[up] > flow[best]) best = up;
+        }
+        return best;
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -487,7 +622,9 @@ public final class RiverNetwork {
     // ---------------------------------------------------------------------------------------------
 
     private List<Channel.ChannelPt> getPtsCloseTo(Channel.ChannelPt pt) {
-        return quadTree.getPointsInCircle(pt.toArray(), Math.sqrt(channels.get(pt.channelId()).width));
+        // Retained-path read (manageCutoffs): derived width of the CURRENT point.
+        return quadTree.getPointsInCircle(
+                pt.toArray(), Math.sqrt(channels.get(pt.channelId()).widthAt(pt.index())));
     }
 
     public void manageCutoffs(Channel ch, int step) {
@@ -530,9 +667,14 @@ public final class RiverNetwork {
         final boolean[] kept = new boolean[ch.numPts()];
         for (int idx : keptIndexes) if (idx >= 0 && idx < kept.length) kept[idx] = true;
         final ArrayList<double[]> removed = new ArrayList<>();
+        int firstRemovedIndex = -1;
         for (int i = 0; i < ch.numPts(); i++)
-            if (!kept[i]) removed.add(ch.spline.points().get(i).clone());
-        if (removed.size() >= 2) removedPaths.add(new RemovedPath(type, removed, ch.width, step));
+            if (!kept[i]) {
+                if (firstRemovedIndex == -1) firstRemovedIndex = i;
+                removed.add(ch.spline.points().get(i).clone());
+            }
+        // Retained-path read: derived width of the FIRST removed spline point (serves OXBOW_LAKE units).
+        if (removed.size() >= 2) removedPaths.add(new RemovedPath(type, removed, ch.widthAt(firstRemovedIndex), step));
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -552,7 +694,7 @@ public final class RiverNetwork {
         for (int i = pos; i <= lastIndex; i++)
             downstreamPoints.add(channel.spline.points().get(i));
         final int downstreamChannelId = nextChannelId++;
-        Channel downstreamChannel = new Channel(channel.width, downstreamPoints, downstreamChannelId);
+        Channel downstreamChannel = new Channel(channel.dischargeWidth(), downstreamPoints, downstreamChannelId);
         downstreamChannel.endNodeId = downstreamNodeId;
         channels.put(downstreamChannelId, downstreamChannel);
 
@@ -598,7 +740,8 @@ public final class RiverNetwork {
         List<double[]> downstreamPoints = downstreamChannel.spline.points();
         for (int i = 1; i < downstreamPoints.size(); i++) mergedPoints.add(downstreamPoints.get(i));
 
-        Channel mergedChannel = new Channel(Math.max(channel.width, downstreamChannel.width), mergedPoints, id);
+        Channel mergedChannel =
+                new Channel(Math.max(channel.dischargeWidth(), downstreamChannel.dischargeWidth()), mergedPoints, id);
         mergedChannel.startNodeId = upstreamNodeId;
         mergedChannel.endNodeId = downstreamNodeId;
         channels.put(id, mergedChannel);
@@ -651,7 +794,8 @@ public final class RiverNetwork {
         for (int channelAId : channelIds) {
             Channel channelA = channels.get(channelAId);
             final int pointCountA = channelA.numPts();
-            final double queryRadius = Math.max(channelA.width, 1.0);
+            final double widthA = channelA.dischargeWidth();
+            final double queryRadius = Math.max(widthA, 1.0);
             Map<Integer, List<double[]>> contactsByPartner = new HashMap<>();
             for (int posA = 1; posA < pointCountA - 1; posA++) {
                 final double[] pointA = channelA.spline.points().get(posA);
@@ -667,7 +811,7 @@ public final class RiverNetwork {
 
                     if (nearSharedNode(channelA, channelB, pointA)) continue;
                     final double distance = VectorOps.distance(pointA, nearbyPoint.toArray());
-                    if (!ChannelGeometry.channelsOverlap(distance, channelA.width, channelB.width)) continue;
+                    if (!ChannelGeometry.channelsOverlap(distance, widthA, channelB.dischargeWidth())) continue;
                     contactsByPartner
                             .computeIfAbsent(channelBId, partner -> new ArrayList<>())
                             .add(new double[] {posA, posB, distance});
@@ -689,15 +833,15 @@ public final class RiverNetwork {
                         (int) closest[0],
                         channelB.channelId,
                         (int) closest[1],
-                        channelA.width,
-                        channelB.width));
+                        widthA,
+                        channelB.dischargeWidth()));
             }
         }
         return crossings;
     }
 
     private boolean nearSharedNode(Channel channelA, Channel channelB, double[] contactPoint) {
-        final double radius = channelA.width + channelB.width;
+        final double radius = channelA.dischargeWidth() + channelB.dischargeWidth();
         final double radiusSq = radius * radius;
         for (int nodeA : new int[] {channelA.startNodeId, channelA.endNodeId})
             for (int nodeB : new int[] {channelB.startNodeId, channelB.endNodeId})
@@ -719,8 +863,8 @@ public final class RiverNetwork {
         if (idA == idB) return 0;
         if (reachesDownstream(idA, idB)) return -1; // idB is downstream of idA -> idB stronger
         if (reachesDownstream(idB, idA)) return 1; // idA is downstream of idB -> idA stronger
-        final double widthA = channels.get(idA).width;
-        final double widthB = channels.get(idB).width;
+        final double widthA = channels.get(idA).dischargeWidth();
+        final double widthB = channels.get(idB).dischargeWidth();
         if (widthA != widthB) return widthA > widthB ? 1 : -1;
         return idA < idB ? 1 : -1; // lower id wins
     }
@@ -875,7 +1019,7 @@ public final class RiverNetwork {
                 removedPaths.add(new RemovedPath(
                         HydrologicalFeature.ABANDONED_RIVER,
                         new ArrayList<>(channel.spline.points()),
-                        channel.width,
+                        channel.dischargeWidth(),
                         step));
             }
             channels.remove(channelId);
@@ -967,9 +1111,9 @@ public final class RiverNetwork {
         for (Channel ch : channels.values()) {
             if (!channelIdFilter.test(ch.channelId)) continue;
             if (!ch.isResampleable()) continue; // degenerate geometry (too few points or NaN): skip
-            // Spacing must be <= half the NARROWEST width along the start->end taper, so consecutive
-            // units' width/2 discs always overlap (gap-free membership test + girth rendering).
-            final double dx = Math.max(ch.width / 2.0, MIN_CONVERT_SPACING);
+            // Spacing must be <= half the NARROWEST (intake) derived width, so consecutive units'
+            // width/2 discs always overlap (gap-free membership test + girth rendering).
+            final double dx = Math.max(ch.intakeWidth() / 2.0, MIN_CONVERT_SPACING);
             try {
                 ch.reSample(dx);
             } catch (RuntimeException runaway) {
@@ -980,8 +1124,8 @@ public final class RiverNetwork {
                     units,
                     ch.spline,
                     ch.bedElevations,
-                    ch.startWidth,
-                    ch.endWidth,
+                    ch.flow, // per-point flow -> per-point derived width (natural taper)
+                    0.0,
                     HydrologicalFeature.RIVER,
                     time,
                     offsetX,
@@ -999,18 +1143,10 @@ public final class RiverNetwork {
                 // Pathological runaway geometry (spline exceeds MAX_SPLINE_LENGTH); add no units.
                 continue;
             }
-            // No bedElevations for oxbow/abandoned removed paths: fall back to decoded terrain.
+            // No bedElevations for oxbow/abandoned removed paths: fall back to decoded terrain. Removed
+            // paths carry only a scalar width (no per-point flow), so pass a null flow + that fallback.
             addFeatureUnits(
-                    units,
-                    resampled,
-                    null,
-                    rp.width(),
-                    rp.width(),
-                    rp.type(),
-                    rp.time(),
-                    offsetX,
-                    offsetZ,
-                    nextFeatureId);
+                    units, resampled, null, null, rp.width(), rp.type(), rp.time(), offsetX, offsetZ, nextFeatureId);
         }
         return units;
     }
@@ -1019,8 +1155,8 @@ public final class RiverNetwork {
             List<HydrologicalUnit> out,
             QuinticHermiteSpline spline,
             double[] bedElevations,
-            double startWidth,
-            double endWidth,
+            double[] flow,
+            double fallbackWidth,
             HydrologicalFeature type,
             int time,
             double offsetX,
@@ -1031,8 +1167,8 @@ public final class RiverNetwork {
         final int featureId = nextFeatureId[0]++;
         for (int i = 0; i < n; i++) {
             final double[] p = pts.get(i);
-            final double frac = (n == 1) ? 0.0 : (double) i / (n - 1);
-            final double w = startWidth + (endWidth - startWidth) * frac;
+            // Per-point derived width (natural taper) when flow is present; else the scalar fallback.
+            final double w = (flow != null) ? HydrologyTuning.widthFromFlow(flow[i]) : fallbackWidth;
             final double bed = (bedElevations != null) ? bedElevations[i] : 0;
             final double[] nrm = spline.normal(i);
             out.add(new HydrologicalUnit(

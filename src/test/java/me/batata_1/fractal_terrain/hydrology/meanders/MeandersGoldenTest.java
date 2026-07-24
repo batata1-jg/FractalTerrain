@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork.EdgeSpec;
 import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork.NodeSpec;
@@ -251,8 +252,16 @@ class MeandersGoldenTest {
         }
     }
 
-    /** Captured by running {@link #meandersGoldenSignatureMatchesCapturedFixture} once and logging it. */
-    private static final String GOLDEN_MEANDERS_SIGNATURE = "channels=2 nodes=4 points=1591 checksum=401115734.478209";
+    /**
+     * Captured by running {@link #meandersGoldenSignatureMatchesCapturedFixture} once and logging it.
+     * Re-baselined in Phase 2: {@code EdgeSpec} now carries flow (not width), so the fixture's edge value
+     * {@code 10} is read as flow → {@code widthFromFlow(10) ≈ 3.16} rather than width 10, changing the
+     * meander geometry (fewer points at the finer {@code sqrt(width)} resample). The companion
+     * {@code meandersInvariantsHoldAfterSimulation} passes (finite points, pinned source, bounded spacing,
+     * sinuosity growth), confirming the new output is sane. ({@code networkSignature} formats with
+     * {@code Locale.ROOT} so the decimal separator is a portable {@code '.'} regardless of gate locale.)
+     */
+    private static final String GOLDEN_MEANDERS_SIGNATURE = "channels=2 nodes=4 points=1503 checksum=384648725.362049";
 
     /**
      * Canonical, order-independent signature of a {@link Meanders} network's current state: channel and
@@ -271,8 +280,12 @@ class MeandersGoldenTest {
             }
         }
         return String.format(
+                Locale.ROOT,
                 "channels=%d nodes=%d points=%d checksum=%.6f",
-                channels.size(), sim.getNodes().size(), totalPoints, checksum);
+                channels.size(),
+                sim.getNodes().size(),
+                totalPoints,
+                checksum);
     }
 
     // -----------------------------------------------------------------------------------------

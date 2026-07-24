@@ -3,24 +3,32 @@ package me.batata_1.fractal_terrain.hydrology.meanders;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Objects;
+import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 
+/**
+ * A single river channel (edge) in the {@link RiverNetwork}. As of Phase 2 a channel stores a per-point
+ * <b>flow</b> array ({@link #flow}, aligned to {@link #spline}'s points and <b>never null</b>) rather than a
+ * width scalar; all width is <b>derived</b> from flow through {@link HydrologyTuning#widthFromFlow} —
+ * {@link #widthAt(int)} per point, {@link #intakeWidth()} at the upstream end (lowest flow), and
+ * {@link #dischargeWidth()} at the downstream end (highest flow). Flow is additive at confluences (the
+ * network's {@code accumulateAndCorrectFlow} populates it), so downstream widths grow naturally.
+ */
 public class Channel {
-    public final double width, depth;
+
     public final int channelId;
     public QuinticHermiteSpline spline;
 
     /**
-     * Per-point width profile: the width at spline index 0 ({@code startWidth}) and at the last index
-     * ({@code endWidth}); intermediate points lerp between them by their normalized index. Both default
-     * to {@link #width} so callers that only care about a single width (e.g. the {@link Meanders} sim)
-     * are unaffected. {@code LocalRiverProvider} sets these so widths taper start→end and align where
-     * channels meet (local confluences and the global river).
+     * Per-spline-point flow (aligned to {@link #spline} points, <b>never null</b>). Width is derived from
+     * it via {@link HydrologyTuning#widthFromFlow}. Maintained index-aligned to the spline through the two
+     * length-changing paths {@link #reSample} (linear {@link #flowAt} blend) and {@link #keepOnly} (verbatim
+     * slice); no other path mutates the point list.
      */
-    public double startWidth, endWidth;
+    public double[] flow;
 
     /**
      * Directed-edge endpoints in the {@link Meanders} river-network graph: spline index 0 sits on
@@ -40,32 +48,74 @@ public class Channel {
      */
     public double[] bedElevations;
 
-    public Channel(double width, ArrayList<double[]> pts, int channelId) {
-        this.width = width;
-        this.depth = ChannelGeometry.depthForWidth(width);
+    /**
+     * Flow-taking constructor (the canonical construction path). {@code flow} must align to {@code pts}
+     * (one entry per point); it is stored verbatim as {@link #flow}. Width is derived on demand.
+     */
+    public Channel(ArrayList<double[]> pts, double[] flow, int channelId) {
+        if (flow.length != pts.size()) {
+            throw new IllegalArgumentException("flow length " + flow.length + " != point count " + pts.size());
+        }
         this.spline = QuinticHermiteSpline.createCatmullRom(pts);
+        this.flow = flow.clone();
         this.channelId = channelId;
-        this.startWidth = width;
-        this.endWidth = width;
     }
 
-    /** Set the start→end width taper used to assign each {@link ChannelPt}'s per-point width. */
-    public void setWidthProfile(double startWidth, double endWidth) {
-        this.startWidth = startWidth;
-        this.endWidth = endWidth;
+    /**
+     * Temporary width-taking bridge constructor: synthesizes a constant {@link #flow} array via the inverse
+     * of {@link HydrologyTuning#widthFromFlow} so a caller that only has a width scalar can still build a
+     * channel. Used only by the collision-surface primitives {@code split}/{@code merge}, which are deleted
+     * in Phase 3 along with this constructor. New code must use the flow-taking constructor above.
+     */
+    public Channel(double width, ArrayList<double[]> pts, int channelId) {
+        this.spline = QuinticHermiteSpline.createCatmullRom(pts);
+        final double f = flowForWidth(width);
+        this.flow = new double[pts.size()];
+        Arrays.fill(this.flow, f);
+        this.channelId = channelId;
     }
 
-    /** Lerped width at spline index {@code i} (start→end by normalized index). */
-    private double widthAt(int i) {
-        final int size = spline.points().size();
-        final double frac = (size <= 1) ? 0.0 : (double) i / (size - 1);
-        return startWidth + (endWidth - startWidth) * frac;
+    /** Inverse of {@link HydrologyTuning#widthFromFlow}: {@code flow = (width / WIDTH_FLOW_SCALE)^2}. */
+    private static double flowForWidth(double width) {
+        final double s = width / HydrologyTuning.WIDTH_FLOW_SCALE;
+        return s * s;
+    }
+
+    /** Derived width at spline index {@code i} = {@code widthFromFlow(flow[i])}. */
+    public double widthAt(int i) {
+        return HydrologyTuning.widthFromFlow(flow[i]);
+    }
+
+    /** Derived width at the upstream (intake) end — the lowest-flow end, so the finest resample spacing. */
+    public double intakeWidth() {
+        return HydrologyTuning.widthFromFlow(flow[0]);
+    }
+
+    /** Derived width at the downstream (discharge) end — the largest-flow end. */
+    public double dischargeWidth() {
+        return HydrologyTuning.widthFromFlow(flow[flow.length - 1]);
+    }
+
+    /** Channel depth derived from the discharge width (the widest, downstream end). */
+    public double depth() {
+        return ChannelGeometry.depthForWidth(dischargeWidth());
+    }
+
+    /**
+     * Flow at arc-length parameter {@code t}: a linear blend of {@code flow[floor(t)]} and
+     * {@code flow[floor(t)+1]} at {@code u = t - floor(t)}, {@code floor(t)} clamped to the valid segment
+     * range — mirroring {@link #bedElev(double)} but <b>unconditional</b> ({@link #flow} is never null).
+     */
+    public double flowAt(double t) {
+        final int id = Math.clamp((int) Math.floor(t), 0, flow.length - 2);
+        final double u = t - id;
+        return flow[id] + (flow[id + 1] - flow[id]) * u;
     }
 
     public double[] computeLocalRates() {
         final double[] res = new double[spline.points().size()];
         for (int t = 0; t < spline.points().size(); t++) {
-            res[t] = width * spline.curvature(t);
+            res[t] = widthAt(t) * spline.curvature(t);
         }
         return res;
     }
@@ -99,15 +149,17 @@ public class Channel {
     }
 
     public void reSample(double samplingDist) throws IllegalStateException {
-        if (bedElevations == null) {
-            this.spline = spline.reSample(samplingDist);
-            return;
-        }
         final QuinticHermiteSpline.Resampled resampled = spline.reSampleWithTs(samplingDist);
-        final double[] newBedElevations = new double[resampled.ts().length];
-        for (int i = 0; i < newBedElevations.length; i++)
-            newBedElevations[i] = bedElev(resampled.ts()[i]);
+        final double[] ts = resampled.ts();
+        final double[] newFlow = new double[ts.length];
+        for (int i = 0; i < ts.length; i++) newFlow[i] = flowAt(ts[i]);
+        double[] newBedElevations = null;
+        if (bedElevations != null) {
+            newBedElevations = new double[ts.length];
+            for (int i = 0; i < ts.length; i++) newBedElevations[i] = bedElev(ts[i]);
+        }
         this.spline = resampled.spline();
+        this.flow = newFlow;
         this.bedElevations = newBedElevations;
     }
 
@@ -126,68 +178,23 @@ public class Channel {
     @Override
     public String toString() {
         return "Channel{id=" + channelId + ", width="
-                + width + ", depth="
-                + depth + ", pts="
+                + dischargeWidth() + ", depth="
+                + depth() + ", pts="
                 + (spline.points().size()) + ", sinuosity="
                 + String.format("%.3f", computeSinuosity()) + "}";
     }
 
     public void keepOnly(ArrayList<Integer> newPathIndexes) {
+        final double[] newFlow = new double[newPathIndexes.size()];
+        for (int i = 0; i < newPathIndexes.size(); i++) newFlow[i] = flow[newPathIndexes.get(i)];
         this.spline = spline.keepOnly(newPathIndexes);
-    }
-
-    /**
-     * Adds point from a channel to another channel. Keeps the tangents and curvatures of the other channel in the point.
-     * */
-    public void add(ChannelPt pt, Channel from) {
-        this.spline.points().add(pt.toArray());
-        this.spline.velocity().add(from.spline.velocity().get(pt.index()));
-        this.spline.acceleration().add(from.spline.acceleration().get(pt.index()));
-    }
-
-    /**
-     * Adds point from a channel to another channel. Keeps the tangents and curvatures of the other channel in the point.
-     * */
-    public void add(int id, Channel from) {
-        this.spline.points().add(from.spline.points().get(id));
-        this.spline.velocity().add(from.spline.velocity().get(id));
-        this.spline.acceleration().add(from.spline.acceleration().get(id));
-    }
-
-    public void addFront(int id, Channel from) {
-        this.spline.points().addFirst(from.spline.points().get(id));
-        this.spline.velocity().addFirst(from.spline.velocity().get(id));
-        this.spline.acceleration().addFirst(from.spline.acceleration().get(id));
-    }
-
-    /**
-     * removes indexes from this list in the spline.
-     * does not assume there is no repetition
-     * */
-    public void removeIndexes(ArrayList<Integer> indexes) {
-        indexes.sort(null);
-        final ArrayList<Integer> indexesToAdd = new ArrayList<>();
-        for (int i = 0; i < spline.getSize(); i++)
-            if (i == indexes.getFirst()) {
-                while (i == indexes.getFirst()) indexes.removeFirst();
-            } else {
-                indexesToAdd.add(i);
-            }
-        this.spline = new QuinticHermiteSpline(
-                new ArrayList<>(
-                        indexesToAdd.stream().map(id -> spline.points().get(id)).toList()),
-                new ArrayList<>(indexesToAdd.stream()
-                        .map(id -> spline.velocity().get(id))
-                        .toList()),
-                new ArrayList<>(indexesToAdd.stream()
-                        .map(id -> spline.acceleration().get(id))
-                        .toList()));
+        this.flow = newFlow;
     }
 
     /**
      * A point of a {@link Channel}, indexed in the {@link me.batata_1.fractal_terrain.math.ds.QuadTree}
      * used by the meander simulation. Carries its in-channel {@code index}, owning {@code channelId},
-     * and the per-point {@code width} (lerped along the channel's start→end taper). Identity is by
+     * and the per-point {@code width} (derived from the channel's per-point flow). Identity is by
      * {@code channelId} + {@code index} + coordinates (the {@code width} is excluded).
      */
     public record ChannelPt(double[] coords, int index, int channelId, double width) implements SpatialIndexPoint {

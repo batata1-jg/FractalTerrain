@@ -80,6 +80,18 @@ public final class HydrologyTuning {
 
     public static final float FLOW_PER_CELL_LOCAL = 0.001f;
 
+    /**
+     * Near-drain flow smoothing (see {@code RiverNetwork.accumulateAndCorrectFlow}). A drain reads its
+     * anchor flow exactly, which can be far larger than the natural accumulated flow of the mainstem just
+     * upstream; to keep width continuous into the joined river, the last few mainstem nodes before a drain
+     * are ramped up toward the anchor. {@code DRAIN_FLOW_SMOOTH_STEP} is the minimum drain-to-upstream flow
+     * jump that triggers the ramp (and the per-step ceiling below which the natural profile is deemed to
+     * have caught up); {@code DRAIN_FLOW_SMOOTH_MAX_NODES} caps how many mainstem nodes the ramp spans.
+     */
+    public static final double DRAIN_FLOW_SMOOTH_STEP = 10;
+
+    public static final int DRAIN_FLOW_SMOOTH_MAX_NODES = 20;
+
     // ──────────────────────────────────────────────────────────────────────────
     // Hydrology — river width & carve-profile tuning (all property-overridable).
     // ──────────────────────────────────────────────────────────────────────────

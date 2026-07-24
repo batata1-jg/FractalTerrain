@@ -28,6 +28,18 @@ public class Endpoint {
     public double[] coord;
 
     /**
+     * The node's carried flow input for the canonical&harr;atomic seam ({@code viewAtomic} /
+     * {@code accumulateAndCorrectFlow}). Meaningful only for boundary nodes:
+     * <ul>
+     *   <li>SOURCE — the headwater <em>seed</em> flow injected as this source's {@code ownFlow}.</li>
+     *   <li>DRAIN — the <em>anchor</em> flow (the accumulated flow of the river this drain joins): the
+     *       ceiling the per-basin correction clamps to and the target the near-drain lerp smooths up to.</li>
+     * </ul>
+     * Unused (and left at its default) for JUNCTION nodes, whose {@code ownFlow} is the per-cell constant.
+     */
+    public double sourceFlow = 0.0;
+
+    /**
      * Bed elevation assigned to this vertex (native-px scale), filled by the single bottom-up
      * junction-elevation pass ({@code ChannelElevationAssigner.assign}, invoked once from
      * {@code LocalRiverProvider.buildTile}) that runs over the whole unified network — global and local
