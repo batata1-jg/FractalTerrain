@@ -7,11 +7,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.IntPredicate;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
@@ -30,11 +29,14 @@ import org.slf4j.Logger;
  * are {@link Channel}s (keyed by {@code channelId}) and whose vertices are typed {@link Endpoint}s sitting
  * on channel endpoints (single-outflow invariant — see {@link Endpoint}).
  *
- * <p>This class is the container the {@link Meanders} simulation mutates: it holds the channels/nodes,
- * the working spatial index, and all the structural primitives — {@link #split}/{@link #merge}, leaf
- * pruning, self-intersection cutoffs ({@link #manageCutoffs}) and stream-capture collision resolution
- * ({@link #manageCollisions}). {@code Meanders} contributes only the migration model and step
- * orchestration.
+ * <p>All network mutation is collapsed onto a single validated seam: an explicit conversion between the
+ * <b>canonical (channel) view</b> (the {@code channels}/{@code nodes} maps) and an <b>atomic (node) view</b>
+ * ({@link AtomicView} — a {@code List<List<Integer>>} adjacency where every interior spline point is a
+ * first-class node). {@link #viewAtomic()} builds the atomic view; {@link #accumulateAndCorrectFlow}
+ * derives per-point flow over it; {@link #update} folds it back into {@code this} in place. Collision
+ * handling ({@link #manageCollisions}) is a from-scratch orient-and-prune over the atomic view (a
+ * deterministic two-mark DFS), and {@code Channel} stores <b>flow</b> (additive at confluences), with width
+ * derived via {@link HydrologyTuning#widthFromFlow}.
  *
  * <p>When {@code savePreviousStates} is enabled it additionally records, per step, the paths removed by
  * collisions (as {@link HydrologicalFeature#ABANDONED_RIVER}) and by cutoffs (as
@@ -49,8 +51,6 @@ import org.slf4j.Logger;
 public final class RiverNetwork {
 
     private static final double INF = 1e9;
-    /** contiguous index gap (on the same channel pair) below which contacts are one crossing. */
-    private static final int CLUSTER_GAP = 3;
     /** Floor on the resample spacing used when converting features to {@link HydrologicalUnit}s. */
     private static final double MIN_CONVERT_SPACING = 0.5;
 
@@ -60,7 +60,7 @@ public final class RiverNetwork {
     private final QuadTree<Channel.ChannelPt> quadTree =
             new QuadTree<>(new double[] {-INF, -INF}, new double[] {INF, INF});
 
-    // graph storage: stable channel/node ids (sparse after split/merge/prune)
+    // graph storage: stable channel/node ids (sparse after prune/rewire)
     private final Map<Integer, Channel> channels = new HashMap<>();
     private final Map<Integer, Endpoint> nodes = new HashMap<>();
     private int nextChannelId = 0;
@@ -72,19 +72,21 @@ public final class RiverNetwork {
     private final ArrayDeque<List<ArrayList<double[]>>> previousStates = new ArrayDeque<>();
     private final List<RemovedPath> removedPaths = new ArrayList<>();
 
-    /** A vertex of the supplied initial network. */
+    /**
+     * A vertex of the supplied initial network — an atomic node spec (position + role). Consumed only as
+     * inert input to {@link #buildFromSpecs}, which folds these plus the {@link EdgeSpec}s into an
+     * {@link AtomicView} and calls {@link #update}.
+     */
     public record NodeSpec(double x, double z, Endpoint.Type type) {}
 
     /**
-     * A directed edge of the supplied initial network; {@code pts} include the two endpoints. {@code flow}
-     * is the (per-cell) raw flow-accumulation value for the edge — width is derived from it downstream via
-     * {@link HydrologyTuning#widthFromFlow}. The channel built from this spec carries a constant per-point
-     * {@code flow[]} = this value (see {@link #mintChannel}); real per-point flow is assigned to the
-     * unified network later by {@code accumulateAndCorrectFlow}.
+     * A directed edge of the supplied initial network — an atomic edge spec; {@code pts} include the two
+     * endpoints. {@code flow} is the (per-cell) raw flow-accumulation value for the edge: a SOURCE start
+     * carries it as its seed {@code ownFlow}, a DRAIN end as its {@code anchorFlow}; interior/junction nodes
+     * carry the per-cell constant, and real per-point flow is derived by {@link #accumulateAndCorrectFlow}.
+     * Width is derived downstream via {@link HydrologyTuning#widthFromFlow}.
      */
     public record EdgeSpec(int startNodeIdx, int endNodeIdx, ArrayList<double[]> pts, double flow) {}
-
-    private record Crossing(int channelIdA, int posA, int channelIdB, int posB, double widthA, double widthB) {}
 
     /** A geometry removed from the active network, retained for {@link #collectUnits}. */
     private record RemovedPath(HydrologicalFeature type, ArrayList<double[]> pts, double width, int time) {}
@@ -103,127 +105,117 @@ public final class RiverNetwork {
         if (FractalTerrainConfig.DEBUG_RIVER_NET)
             Debug.river.seeNetwork(gridSize, nodeSpecs, edgeSpecs, "river_network", "_");
 
-        insertSpecs(nodeSpecs, edgeSpecs, resampleDist);
-    }
-
-    /**
-     * Mints Endpoints and Channels for a batch of {@link NodeSpec}/{@link EdgeSpec} entries into the
-     * live graph, resampling each new channel at {@code resampleDist} and wiring outgoing/incoming
-     * edges while enforcing the single-outflow invariant (a node may have at most one outgoing edge).
-     * {@link EdgeSpec#startNodeIdx()}/{@link EdgeSpec#endNodeIdx()} are indices into the supplied
-     * {@code nodeSpecs} list, not node ids — this method mints a fresh node id per spec (so it composes
-     * safely with a graph that already has nodes) and returns the mapping from each supplied node-spec
-     * index to its minted node id, so a caller (e.g. the local drainage tracer) can reference the
-     * freshly minted nodes afterwards. The constructor delegates its own node/edge construction to this
-     * method.
-     */
-    public Map<Integer, Integer> insertSpecs(List<NodeSpec> nodeSpecs, List<EdgeSpec> edgeSpecs, double resampleDist) {
-        final Map<Integer, Integer> specIndexToNodeId = new HashMap<>();
-        for (int i = 0; i < nodeSpecs.size(); i++) {
-            NodeSpec ns = nodeSpecs.get(i);
-            final int nodeId = nextNodeId++;
-            nodes.put(nodeId, new Endpoint(nodeId, ns.type(), new double[] {ns.x(), ns.z()}));
-            specIndexToNodeId.put(i, nodeId);
-        }
-
-        for (EdgeSpec es : edgeSpecs) {
-            final int startNodeId = specIndexToNodeId.get(es.startNodeIdx());
-            final int endNodeId = specIndexToNodeId.get(es.endNodeIdx());
-            mintChannel(startNodeId, endNodeId, es.pts(), constantFlow(es.pts().size(), es.flow()), resampleDist);
-        }
-        return specIndexToNodeId;
-    }
-
-    /** A per-point flow array of {@code n} entries all equal to {@code flow} (the constant-flow edge case). */
-    private static double[] constantFlow(int n, double flow) {
-        final double[] f = new double[n];
-        Arrays.fill(f, flow);
-        return f;
-    }
-
-    /**
-     * Mints a new SOURCE-typed node plus a single edge from it to an EXISTING node id already in the
-     * graph -- the local drainage tracer's "attach to a global channel" case, where {@code
-     * existingEndNodeId} is a JUNCTION minted by {@link #split} and only the upstream endpoint is new.
-     * Resamples the channel at {@code resampleDist} and applies the given start/end width taper (mirrors
-     * {@link #insertSpecs}'s wiring/single-outflow enforcement via the shared {@link #mintChannel}).
-     * Returns the minted node's id.
-     */
-    public int attachSourceToExistingNode(
-            NodeSpec sourceSpec, int existingEndNodeId, ArrayList<double[]> pts, double[] flow, double resampleDist) {
-        final int sourceNodeId = nextNodeId++;
-        nodes.put(
-                sourceNodeId,
-                new Endpoint(sourceNodeId, sourceSpec.type(), new double[] {sourceSpec.x(), sourceSpec.z()}));
-        mintChannel(sourceNodeId, existingEndNodeId, pts, flow, resampleDist);
-        return sourceNodeId;
-    }
-
-    /**
-     * Mints a new SOURCE and a new DRAIN node plus the single edge between them -- the local drainage
-     * tracer's "coast-draining" attach case, where both endpoints are new. Mirrors {@link
-     * #attachSourceToExistingNode}'s width-taper/resample handling for the case where no global channel
-     * is within reach; the general N-node/M-edge batch case remains {@link #insertSpecs}. Returns
-     * {@code {sourceNodeId, drainNodeId}}.
-     */
-    public int[] attachSourceToNewDrain(
-            NodeSpec sourceSpec, NodeSpec drainSpec, ArrayList<double[]> pts, double[] flow, double resampleDist) {
-        final int sourceNodeId = nextNodeId++;
-        nodes.put(
-                sourceNodeId,
-                new Endpoint(sourceNodeId, sourceSpec.type(), new double[] {sourceSpec.x(), sourceSpec.z()}));
-        final int drainNodeId = nextNodeId++;
-        nodes.put(
-                drainNodeId, new Endpoint(drainNodeId, drainSpec.type(), new double[] {drainSpec.x(), drainSpec.z()}));
-        mintChannel(sourceNodeId, drainNodeId, pts, flow, resampleDist);
-        return new int[] {sourceNodeId, drainNodeId};
-    }
-
-    /**
-     * Shared edge-minting core behind {@link #insertSpecs}, {@link #attachSourceToExistingNode} and
-     * {@link #attachSourceToNewDrain}: builds the {@link Channel} from the per-point {@code flow} array
-     * (aligned to {@code pts}), resamples at {@code resampleDist} ({@link Channel#reSample} blends the flow
-     * array along with the geometry; a no-op on {@link Channel#bedElevations}, which is always null at
-     * insertion time -- H2), wires the directed edge between the two given node ids, enforces the
-     * single-outflow invariant, and seeds/anchors the boundary nodes' {@link Endpoint#sourceFlow}. Returns
-     * the minted channel id.
-     */
-    private int mintChannel(int startNodeId, int endNodeId, List<double[]> pts, double[] flow, double resampleDist) {
-        final int id = nextChannelId++;
-        final Channel ch = new Channel(new ArrayList<>(pts), flow, id);
-        ch.reSample(resampleDist);
-        ch.startNodeId = startNodeId;
-        ch.endNodeId = endNodeId;
-        channels.put(id, ch);
-        final Endpoint start = nodes.get(startNodeId);
-        final Endpoint end = nodes.get(endNodeId);
-        if (start.outgoing != -1) {
-            throw new IllegalArgumentException("node " + start.id + " would have >1 outgoing edge");
-        }
-        start.outgoing = id;
-        end.incoming.add(id);
-        // Seed/anchor the boundary nodes so the canonical<->atomic seam (viewAtomic/accumulate) carries a
-        // meaningful ownFlow (SOURCE seed) / anchorFlow (DRAIN anchor). Uses the edge's endpoint flow — for
-        // the constant-flow global path this is the edge's flow value; deleted in Phase 3 with mintChannel.
-        if (start.type == Endpoint.Type.SOURCE) start.sourceFlow = flow[0];
-        if (end.type == Endpoint.Type.DRAIN) end.sourceFlow = flow[flow.length - 1];
-        return id;
+        buildFromSpecs(nodeSpecs, edgeSpecs, resampleDist);
     }
 
     // ---------------------------------------------------------------------------------------------
-    // The two views + the seam (Phase 1)
+    // Construction: everything enters through the atomic view (no split/mint primitives)
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Fold a batch of {@link NodeSpec}/{@link EdgeSpec} entries into {@code this} through the seam: build an
+     * {@link AtomicView} directly (interior edge points become fresh atomic nodes; the two endpoints collapse
+     * on their shared node-spec index so a confluence is one atomic node), seed each boundary node's flow
+     * input (SOURCE seed / DRAIN anchor), derive per-point flow with {@link #accumulateAndCorrectFlow}, then
+     * {@link #update} emits {@link Channel}s/{@link Endpoint}s into {@code this}. SOURCE/DRAIN canonical ids
+     * are pinned to their node-spec index (so a boundary-elevation map keyed on the spec index stays valid —
+     * the historic {@code specIndex == nodeId} contract); JUNCTION-equivalents get fresh ids.
+     */
+    private void buildFromSpecs(List<NodeSpec> nodeSpecs, List<EdgeSpec> edgeSpecs, double resampleDist) {
+        final AtomicView atomic = new AtomicView();
+
+        // Boundary flow inputs, derived from the edges touching each node spec.
+        final double[] sourceSeed = new double[nodeSpecs.size()];
+        final double[] drainAnchor = new double[nodeSpecs.size()];
+        for (EdgeSpec es : edgeSpecs) {
+            if (nodeSpecs.get(es.startNodeIdx()).type() == Endpoint.Type.SOURCE)
+                sourceSeed[es.startNodeIdx()] = es.flow();
+            if (nodeSpecs.get(es.endNodeIdx()).type() == Endpoint.Type.DRAIN)
+                drainAnchor[es.endNodeIdx()] = Math.max(drainAnchor[es.endNodeIdx()], es.flow());
+        }
+
+        // One atomic node per node spec (endpoints collapse here). SOURCE/DRAIN carry their spec index as
+        // the canonical id to preserve; interior/junction carry NONE.
+        final int[] specNodeAtomicId = new int[nodeSpecs.size()];
+        for (int i = 0; i < nodeSpecs.size(); i++) {
+            final NodeSpec ns = nodeSpecs.get(i);
+            final boolean boundary = ns.type() == Endpoint.Type.SOURCE || ns.type() == Endpoint.Type.DRAIN;
+            final double ownFlow = (ns.type() == Endpoint.Type.SOURCE) ? sourceSeed[i] : FLOW_PER_CELL;
+            final double anchor = (ns.type() == Endpoint.Type.DRAIN) ? drainAnchor[i] : 0.0;
+            specNodeAtomicId[i] =
+                    atomic.addNode(new double[] {ns.x(), ns.z()}, ns.type(), boundary ? i : NONE, ownFlow, anchor);
+        }
+
+        for (EdgeSpec es : edgeSpecs) {
+            final List<double[]> pts = resamplePts(es.pts(), es.flow(), resampleDist);
+            final int last = pts.size() - 1;
+            int prev = specNodeAtomicId[es.startNodeIdx()];
+            for (int i = 1; i < last; i++) {
+                final int interior = atomic.addNode(pts.get(i), null, NONE, FLOW_PER_CELL, 0.0);
+                atomic.adjacency.get(prev).add(interior);
+                prev = interior;
+            }
+            atomic.adjacency.get(prev).add(specNodeAtomicId[es.endNodeIdx()]);
+        }
+
+        accumulateAndCorrectFlow(atomic);
+        update(atomic);
+    }
+
+    /** Resample an edge's raw endpoint-inclusive polyline at {@code resampleDist} (endpoints preserved). */
+    private static List<double[]> resamplePts(List<double[]> pts, double flow, double resampleDist) {
+        final double[] tmpFlow = new double[pts.size()];
+        Arrays.fill(tmpFlow, flow);
+        final Channel tmp = new Channel(new ArrayList<>(pts), tmpFlow, 0);
+        if (tmp.isResampleable()) {
+            try {
+                tmp.reSample(resampleDist);
+            } catch (RuntimeException runaway) {
+                // pathological geometry: fall back to the raw points rather than fail construction
+            }
+        }
+        return tmp.spline.points();
+    }
+
+    /**
+     * Add a standalone traced-local channel (already resampled) as a fresh SOURCE -> ({@code endType})
+     * edge, without resolving any confluence — the atomic collision pass ({@link #manageCollisions}) is what
+     * attaches it (via an undirected crossing edge) or demotes it. {@code endType} is DRAIN for a coast
+     * outlet or JUNCTION for a dangling end awaiting a crossing attach. The dangling JUNCTION end has zero
+     * outgoing edges until the collision pass reorients it — a transient state {@link #update} would reject,
+     * so no {@link #update}/K1 check may run between this and {@link #manageCollisions}.
+     */
+    public void addLocalChannel(Channel channel, Endpoint.Type endType) {
+        final int startId = nextNodeId++;
+        final int endId = nextNodeId++;
+        final double[] first = channel.spline.points().getFirst();
+        final double[] last = channel.spline.points().getLast();
+        final Endpoint start = new Endpoint(startId, Endpoint.Type.SOURCE, first.clone());
+        final Endpoint end = new Endpoint(endId, endType, last.clone());
+        start.sourceFlow = channel.flow[0]; // SOURCE seed = traced headwater flow
+        if (endType == Endpoint.Type.DRAIN) end.sourceFlow = channel.flow[channel.flow.length - 1]; // coast anchor
+        nodes.put(startId, start);
+        nodes.put(endId, end);
+        final int id = nextChannelId++;
+        // rebuild the channel under a fresh id (Channel.channelId is final) preserving points + flow
+        final Channel wired = new Channel(new ArrayList<>(channel.spline.points()), channel.flow, id);
+        wired.startNodeId = startId;
+        wired.endNodeId = endId;
+        channels.put(id, wired);
+        start.outgoing = id;
+        end.incoming.add(id);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // The two views + the seam
     //
     // The canonical (channel) view is the field storage above (channels/nodes maps + id counters).
     // The atomic (node) view ({@link AtomicView}) is a List<List<Integer>> adjacency over per-node
     // data where every interior spline point is a first-class node. {@link #viewAtomic()} converts
     // canonical -> atomic; {@link #update} folds an atomic view back into `this` IN PLACE.
-    //
-    // NOTHING in production calls these yet (they land behavior-neutral in Phase 1). Phase 1 carries
-    // only position + topology + role/canonicalId; the flow arrays (ownFlow/anchorFlow/derived flow)
-    // referenced by the plan's pseudocode arrive in Phase 2 and are omitted here.
     // ---------------------------------------------------------------------------------------------
 
-    /** Sentinel for "no canonical id" (interior/JUNCTION-equivalent atomic nodes). */
+    /** Sentinel for "no canonical id" (interior/JUNCTION-equivalent atomic nodes) and "unset edge". */
     private static final int NONE = -1;
 
     /** The per-cell own-flow constant carried by interior/junction atomic nodes (see {@link #viewAtomic()}). */
@@ -231,11 +223,12 @@ public final class RiverNetwork {
 
     /**
      * Atomic (node) view of the network: parallel per-node data plus a directed adjacency where every
-     * interior spline point is a first-class node. Built once by {@link #viewAtomic()} (growing via
-     * {@link #addNode}), read by {@link #update}. Carries per-node position/role/canonicalId plus the
-     * flow inputs {@code ownFlow} (the per-cell constant / SOURCE seed) and {@code anchorFlow}
-     * (DRAIN-only ceiling+target); the DERIVED per-node {@code flow} is populated by
-     * {@link #accumulateAndCorrectFlow} before {@link #update} reads it.
+     * interior spline point is a first-class node. Built by {@link #viewAtomic()} / {@link #buildFromSpecs},
+     * read by {@link #update}. Carries per-node position/role/canonicalId plus the flow inputs
+     * {@code ownFlow} (per-cell constant / SOURCE seed) and {@code anchorFlow} (DRAIN-only ceiling+target);
+     * the DERIVED per-node {@code flow} is populated by {@link #accumulateAndCorrectFlow} before
+     * {@link #update} reads it. {@link #pointAtomicIds} (populated only by {@link #viewAtomic()}) maps each
+     * canonical channel's spline points to their atomic ids, so crossing detection can re-stamp contacts.
      */
     public static final class AtomicView {
         private final List<double[]> position = new ArrayList<>();
@@ -249,6 +242,8 @@ public final class RiverNetwork {
         private final List<Double> anchorFlow = new ArrayList<>();
         /** {@code adjacency.get(u)}: directed tree-successor edge(s) out of atomic node {@code u}. */
         final List<List<Integer>> adjacency = new ArrayList<>();
+        /** canonical channelId -> atomic id per spline point (only populated by {@link #viewAtomic()}). */
+        final Map<Integer, int[]> pointAtomicIds = new HashMap<>();
         /** DERIVED per-node flow; {@code null} until {@link #accumulateAndCorrectFlow} runs. */
         double[] flow;
 
@@ -296,13 +291,12 @@ public final class RiverNetwork {
     }
 
     /**
-     * Canonical -> atomic. Iterates channels in sorted-by-id order (mirrors {@link #detectCrossings}'s
-     * {@code Collections.sort(channelIds)}) so atomic-id assignment is reproducible and HashMap
-     * iteration order never leaks in. Each channel's interior points become fresh atomic nodes; the two
-     * endpoints collapse keyed on the canonical {@link Endpoint} node id (the first channel touching a
-     * node adds it, later channels reuse it), so channels sharing a graph node share one atomic node.
-     * SOURCE/DRAIN provenance (and their canonical id) is carried so {@link #update} can preserve their
-     * ids. Velocity/acceleration are not carried — {@code createCatmullRom} re-infers them on rebuild.
+     * Canonical -> atomic. Iterates channels in sorted-by-id order (so atomic-id assignment is reproducible
+     * and HashMap iteration order never leaks in). Each channel's interior points become fresh atomic nodes;
+     * the two endpoints collapse keyed on the canonical {@link Endpoint} node id (the first channel touching
+     * a node adds it, later channels reuse it), so channels sharing a graph node share one atomic node.
+     * SOURCE/DRAIN provenance (and their canonical id) is carried so {@link #update} can preserve their ids.
+     * Velocity/acceleration are not carried — {@code createCatmullRom} re-infers them on rebuild.
      */
     public AtomicView viewAtomic() {
         final AtomicView atomic = new AtomicView();
@@ -347,6 +341,7 @@ public final class RiverNetwork {
             for (int i = 0; i < last; i++) {
                 atomic.adjacency.get(atomicIdOfPoint[i]).add(atomicIdOfPoint[i + 1]); // directed i -> i+1
             }
+            atomic.pointAtomicIds.put(channelId, atomicIdOfPoint);
         }
         return atomic;
     }
@@ -450,7 +445,7 @@ public final class RiverNetwork {
      * Builds a {@link Channel} from {@code chain} and wires it directly into {@code this}, reusing the
      * kept {@link #insertChannel} QuadTree helper. The start/end canonical ids come from
      * {@code canonicalIdOf} (preserved SOURCE/DRAIN, or fresh JUNCTION-equivalent). Applies the inlined
-     * single-outflow (K1) guard {@code mintChannel} used. {@code bedElevations} are not preserved.
+     * single-outflow (K1) guard. {@code bedElevations} are not preserved.
      */
     private void emitChannel(AtomicView atomic, List<Integer> chain, int[] canonicalIdOf) {
         final ArrayList<double[]> points = new ArrayList<>(chain.size());
@@ -465,7 +460,7 @@ public final class RiverNetwork {
         final Endpoint start = ensureNode(atomic, startAtomic, canonicalIdOf[startAtomic], points.getFirst());
         final Endpoint end = ensureNode(atomic, endAtomic, canonicalIdOf[endAtomic], points.getLast());
 
-        // inlined K1 guard (mintChannel:203-205): the start endpoint must not already own an outgoing edge
+        // inlined K1 guard: the start endpoint must not already own an outgoing edge (single-outflow)
         if (start.outgoing != NONE) {
             throw new IllegalStateException("node " + start.id + " would have >1 outgoing edge");
         }
@@ -605,6 +600,263 @@ public final class RiverNetwork {
     }
 
     // ---------------------------------------------------------------------------------------------
+    // Collisions (stream capture) — a from-scratch orient-and-prune over the atomic view
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Rebuild the network's topology from scratch over the atomic view:
+     *
+     * <ol>
+     *   <li>Detect crossings between channels (bed-overlap on per-point {@link Channel#widthAt}); connect the
+     *       crossing atomic-node pairs with undirected edges.</li>
+     *   <li>Deterministic two-mark DFS from each source (sorted source id, pinned adjacency: directed
+     *       tree-successor first, then undirected crossing partners ascending by atomic id). Promotion — of
+     *       the not-yet-{@code streamMarked} stack suffix — happens only on reaching a DRAIN or an
+     *       already-{@code streamMarked} node; each node's single outgoing edge is set exactly once, at the
+     *       instant it becomes {@code streamMarked}. Acyclic + single-outflow by construction.</li>
+     *   <li>Build the oriented view from the promoted edges (kept = promoted edges only).</li>
+     *   <li>Prune unmarked nodes — each dangling unmarked sub-path becomes an {@link
+     *       HydrologicalFeature#ABANDONED_RIVER} (recorded only when {@code savePreviousStates}).</li>
+     *   <li>{@link #accumulateAndCorrectFlow} over the oriented view, then {@link #update} folds it back in
+     *       place.</li>
+     * </ol>
+     */
+    public void manageCollisions(int step) {
+        final AtomicView atomic = viewAtomic();
+        final int n = atomic.size();
+
+        // step 1: undirected crossing edges + the pinned per-node adjacency (tree successor + partners).
+        final int[] treeSuccessor = new int[n];
+        for (int u = 0; u < n; u++)
+            treeSuccessor[u] = atomic.adjacency.get(u).isEmpty()
+                    ? NONE
+                    : atomic.adjacency.get(u).get(0);
+        final List<List<Integer>> crossingPartners = new ArrayList<>(n);
+        for (int u = 0; u < n; u++) crossingPartners.add(new ArrayList<>());
+        for (int[] edge : detectCrossings(atomic)) {
+            crossingPartners.get(edge[0]).add(edge[1]);
+            crossingPartners.get(edge[1]).add(edge[0]);
+        }
+        for (List<Integer> partners : crossingPartners) {
+            Collections.sort(partners); // ascending atomic id — pinned adjacency order (Determinism)
+        }
+
+        // step 2: deterministic two-mark DFS.
+        final boolean[] visited = new boolean[n];
+        final boolean[] streamMarked = new boolean[n];
+        final int[] outgoing = new int[n];
+        Arrays.fill(outgoing, NONE);
+        for (int sourceId : sortedSourceIds(atomic)) {
+            if (!visited[sourceId]) {
+                dfsVisit(
+                        atomic,
+                        treeSuccessor,
+                        crossingPartners,
+                        sourceId,
+                        new ArrayDeque<>(),
+                        visited,
+                        streamMarked,
+                        outgoing);
+            }
+        }
+
+        // alive = streamMarked, plus any node referenced as a promoted successor (reached drains).
+        final boolean[] alive = streamMarked.clone();
+        for (int u = 0; u < n; u++) if (streamMarked[u] && outgoing[u] != NONE) alive[outgoing[u]] = true;
+
+        // step 4: record each unmarked dangling sub-path as an abandoned river (history only).
+        if (savePreviousStates) recordAbandoned(atomic, alive, step);
+
+        // step 3 + 5: build the oriented compact view, derive flow, fold back in place.
+        final AtomicView oriented = buildOriented(atomic, alive, outgoing);
+        accumulateAndCorrectFlow(oriented);
+        update(oriented);
+    }
+
+    /** SOURCE atomic ids in ascending order (the mandatory DFS start order — trunk selection depends on it). */
+    private static List<Integer> sortedSourceIds(AtomicView atomic) {
+        final List<Integer> sources = new ArrayList<>();
+        for (int id = 0; id < atomic.size(); id++) if (atomic.role(id) == Endpoint.Type.SOURCE) sources.add(id);
+        return sources; // ids are appended in ascending order already
+    }
+
+    /**
+     * Returns true iff {@code node}'s branch reached a drain / {@code streamMarked} terminus (promoted, or
+     * was already a terminus on entry). {@code stack} is the current path from the originating source.
+     */
+    private boolean dfsVisit(
+            AtomicView atomic,
+            int[] treeSuccessor,
+            List<List<Integer>> crossingPartners,
+            int node,
+            Deque<Integer> stack,
+            boolean[] visited,
+            boolean[] streamMarked,
+            int[] outgoing) {
+        if (streamMarked[node] || atomic.role(node) == Endpoint.Type.DRAIN) return true; // already a terminus
+        if (visited[node]) return false; // on-stack ancestor or exhausted branch — NOT promoted, NOT marked
+
+        visited[node] = true;
+        stack.push(node);
+
+        // pinned per-node adjacency order: directed tree-successor first (if present), then crossing
+        // partners ascending by atomic id.
+        final List<Integer> neighbors = new ArrayList<>();
+        if (treeSuccessor[node] != NONE) neighbors.add(treeSuccessor[node]);
+        neighbors.addAll(crossingPartners.get(node));
+
+        for (int next : neighbors) {
+            if (streamMarked[next] || atomic.role(next) == Endpoint.Type.DRAIN) {
+                // Promotion happens ONLY here: reaching a DRAIN or an already-streamMarked node. Every node
+                // on `stack` is not-yet-streamMarked (the entry guard never pushes a streamMarked node), so
+                // the whole stack is the promoted suffix.
+                promoteSuffix(stack, next, streamMarked, outgoing);
+                stack.pop();
+                return true;
+            }
+            if (!visited[next]
+                    && dfsVisit(
+                            atomic, treeSuccessor, crossingPartners, next, stack, visited, streamMarked, outgoing)) {
+                stack.pop(); // promotion already happened for this whole stack, deeper in the recursion
+                return true;
+            }
+            // else: `next` is visited-but-unmarked (dead branch / ancestor) — try the next neighbor
+        }
+
+        stack.pop();
+        return false; // exhausted — node stays merely visited, unpromoted; pruned in step 4
+    }
+
+    /**
+     * Wires each node on {@code stack} (top-of-stack first) to its single outgoing edge toward
+     * {@code terminus}, then streamMarks it. Each node's outgoing edge is set EXACTLY ONCE, at the instant it
+     * transitions unmarked -> streamMarked; an already-streamMarked node is never on the stack.
+     */
+    private static void promoteSuffix(Deque<Integer> stack, int terminus, boolean[] streamMarked, int[] outgoing) {
+        int next = terminus;
+        for (int node : stack) { // ArrayDeque iterates head (top of stack) first
+            outgoing[node] = next;
+            streamMarked[node] = true;
+            next = node;
+        }
+    }
+
+    /**
+     * Build the oriented, pruned atomic view: only {@code alive} nodes, re-indexed ascending, with each
+     * kept node's single promoted outgoing edge. Drains and pruned nodes get an empty adjacency. Roles /
+     * canonical ids / flow inputs are carried through, so {@link #update} preserves SOURCE/DRAIN ids and
+     * {@link #accumulateAndCorrectFlow} re-derives flow over the oriented topology.
+     */
+    private static AtomicView buildOriented(AtomicView atomic, boolean[] alive, int[] outgoing) {
+        final int n = atomic.size();
+        final AtomicView oriented = new AtomicView();
+        final int[] newId = new int[n];
+        Arrays.fill(newId, NONE);
+        for (int old = 0; old < n; old++) {
+            if (!alive[old]) continue;
+            newId[old] = oriented.addNode(
+                    atomic.pos(old),
+                    atomic.role(old),
+                    atomic.canonicalId(old),
+                    atomic.ownFlow(old),
+                    atomic.anchorFlow(old));
+        }
+        for (int old = 0; old < n; old++) {
+            if (!alive[old] || atomic.role(old) == Endpoint.Type.DRAIN) continue;
+            final int out = outgoing[old];
+            if (out != NONE && newId[out] != NONE)
+                oriented.adjacency.get(newId[old]).add(newId[out]);
+        }
+        return oriented;
+    }
+
+    /**
+     * Record each maximal unmarked (pruned) directed sub-path as an {@link HydrologicalFeature#ABANDONED_RIVER}
+     * removed feature. Walks the ORIGINAL directed adjacency; a run head is an unmarked node with no unmarked
+     * directed predecessor.
+     */
+    private void recordAbandoned(AtomicView atomic, boolean[] alive, int step) {
+        final int n = atomic.size();
+        final boolean[] hasUnmarkedPred = new boolean[n];
+        for (int u = 0; u < n; u++)
+            if (!alive[u]) for (int v : atomic.adjacency.get(u)) if (!alive[v]) hasUnmarkedPred[v] = true;
+
+        for (int head = 0; head < n; head++) {
+            if (alive[head] || hasUnmarkedPred[head]) continue;
+            final ArrayList<double[]> pts = new ArrayList<>();
+            double maxOwn = 0.0;
+            int cur = head;
+            while (cur != NONE && !alive[cur]) {
+                pts.add(atomic.pos(cur));
+                maxOwn = Math.max(maxOwn, atomic.ownFlow(cur));
+                cur = atomic.adjacency.get(cur).isEmpty()
+                        ? NONE
+                        : atomic.adjacency.get(cur).get(0);
+            }
+            if (pts.size() >= 2)
+                removedPaths.add(new RemovedPath(
+                        HydrologicalFeature.ABANDONED_RIVER, pts, HydrologyTuning.widthFromFlow(maxOwn), step));
+        }
+    }
+
+    /**
+     * Detect channel crossings: one undirected atomic-node-pair edge per overlapping channel pair (the
+     * closest overlapping point pair between them), bed-overlap tested via {@link ChannelGeometry#channelsOverlap}
+     * on per-point {@link Channel#widthAt}. Deterministic: channels iterated in sorted id order; the chosen
+     * pair per partner is the globally closest (independent of query order); shared confluence nodes (same
+     * atomic id) are skipped.
+     */
+    private List<int[]> detectCrossings(AtomicView atomic) {
+        quadTree.clear();
+        final List<Integer> channelIds = new ArrayList<>(channels.keySet());
+        Collections.sort(channelIds);
+        for (int channelId : channelIds) insertChannel(channels.get(channelId));
+
+        double maxHalf = 0.0;
+        for (int channelId : channelIds) {
+            final Channel c = channels.get(channelId);
+            for (int i = 0; i < c.numPts(); i++)
+                maxHalf = Math.max(maxHalf, ChannelGeometry.bedHalfWidth(c.widthAt(i)));
+        }
+
+        final List<int[]> edges = new ArrayList<>();
+        for (int channelAId : channelIds) {
+            final Channel channelA = channels.get(channelAId);
+            final int[] aAtomic = atomic.pointAtomicIds.get(channelAId);
+            final Map<Integer, double[]> bestByPartner = new HashMap<>(); // partnerId -> {atomA, atomB, dist}
+            for (int posA = 0; posA < channelA.numPts(); posA++) {
+                final double[] pointA = channelA.spline.points().get(posA);
+                final double halfA = ChannelGeometry.bedHalfWidth(channelA.widthAt(posA));
+                final List<Channel.ChannelPt> nearby = quadTree.getPointsInCircle(pointA, halfA + maxHalf);
+                nearby.sort(null);
+                for (Channel.ChannelPt np : nearby) {
+                    final int channelBId = np.channelId();
+                    if (channelBId <= channelAId) continue;
+                    final Channel channelB = channels.get(channelBId);
+                    final int posB = np.index();
+                    final double distance = VectorOps.distance(pointA, np.toArray());
+                    if (!ChannelGeometry.channelsOverlap(distance, channelA.widthAt(posA), channelB.widthAt(posB)))
+                        continue;
+                    final int atomA = aAtomic[posA];
+                    final int atomB = atomic.pointAtomicIds.get(channelBId)[posB];
+                    if (atomA == atomB) continue; // shared confluence node
+                    if (isTreeAdjacent(atomic, atomA, atomB)) continue; // already directly connected
+                    final double[] cur = bestByPartner.get(channelBId);
+                    if (cur == null || distance < cur[2])
+                        bestByPartner.put(channelBId, new double[] {atomA, atomB, distance});
+                }
+            }
+            for (double[] c : bestByPartner.values()) edges.add(new int[] {(int) c[0], (int) c[1]});
+        }
+        return edges;
+    }
+
+    /** Whether {@code a}/{@code b} are directly connected by a directed tree edge (either direction). */
+    private static boolean isTreeAdjacent(AtomicView atomic, int a, int b) {
+        return atomic.adjacency.get(a).contains(b) || atomic.adjacency.get(b).contains(a);
+    }
+
+    // ---------------------------------------------------------------------------------------------
     // Step hooks used by Meanders
     // ---------------------------------------------------------------------------------------------
 
@@ -675,378 +927,6 @@ public final class RiverNetwork {
             }
         // Retained-path read: derived width of the FIRST removed spline point (serves OXBOW_LAKE units).
         if (removed.size() >= 2) removedPaths.add(new RemovedPath(type, removed, ch.widthAt(firstRemovedIndex), step));
-    }
-
-    // ---------------------------------------------------------------------------------------------
-    // split / merge — single-step graph primitives
-    // ---------------------------------------------------------------------------------------------
-
-    public int split(int id, int pos, boolean redirect) {
-        Channel channel = channels.get(id);
-        if (channel == null) return -1;
-        final int lastIndex = channel.numPts() - 1;
-        if (pos <= 0 || pos >= lastIndex) return -1;
-
-        final int downstreamNodeId = channel.endNodeId;
-        final double[] splitCoord = channel.spline.points().get(pos).clone();
-
-        ArrayList<double[]> downstreamPoints = new ArrayList<>();
-        for (int i = pos; i <= lastIndex; i++)
-            downstreamPoints.add(channel.spline.points().get(i));
-        final int downstreamChannelId = nextChannelId++;
-        Channel downstreamChannel = new Channel(channel.dischargeWidth(), downstreamPoints, downstreamChannelId);
-        downstreamChannel.endNodeId = downstreamNodeId;
-        channels.put(downstreamChannelId, downstreamChannel);
-
-        ArrayList<Integer> upstreamIndexes = new ArrayList<>();
-        for (int i = 0; i <= pos; i++) upstreamIndexes.add(i);
-        channel.keepOnly(upstreamIndexes);
-
-        Endpoint downstreamEndpoint = nodes.get(downstreamNodeId);
-        downstreamEndpoint.incoming.remove(id);
-        downstreamEndpoint.incoming.add(downstreamChannelId);
-
-        if (!redirect) {
-            Endpoint junction = newNode(splitCoord);
-            channel.endNodeId = junction.id;
-            downstreamChannel.startNodeId = junction.id;
-            junction.incoming.add(id);
-            junction.outgoing = downstreamChannelId;
-        } else {
-            Endpoint upstreamJunction = newNode(splitCoord);
-            Endpoint downstreamJunction = newNode(splitCoord.clone());
-            channel.endNodeId = upstreamJunction.id;
-            upstreamJunction.incoming.add(id);
-            downstreamChannel.startNodeId = downstreamJunction.id;
-            downstreamJunction.outgoing = downstreamChannelId;
-        }
-        return downstreamChannelId;
-    }
-
-    public boolean merge(int id) {
-        Channel channel = channels.get(id);
-        if (channel == null) return false;
-        Endpoint junction = nodes.get(channel.endNodeId);
-        if (junction == null || junction.type != Endpoint.Type.JUNCTION) return false;
-        if (junction.outgoing == -1) return false;
-        if (!(junction.incoming.size() == 1 && junction.incoming.contains(id))) return false;
-
-        final int downstreamChannelId = junction.outgoing;
-        Channel downstreamChannel = channels.get(downstreamChannelId);
-        final int upstreamNodeId = channel.startNodeId;
-        final int downstreamNodeId = downstreamChannel.endNodeId;
-
-        ArrayList<double[]> mergedPoints = new ArrayList<>(channel.spline.points());
-        List<double[]> downstreamPoints = downstreamChannel.spline.points();
-        for (int i = 1; i < downstreamPoints.size(); i++) mergedPoints.add(downstreamPoints.get(i));
-
-        Channel mergedChannel =
-                new Channel(Math.max(channel.dischargeWidth(), downstreamChannel.dischargeWidth()), mergedPoints, id);
-        mergedChannel.startNodeId = upstreamNodeId;
-        mergedChannel.endNodeId = downstreamNodeId;
-        channels.put(id, mergedChannel);
-        channels.remove(downstreamChannelId);
-
-        Endpoint downstreamEndpoint = nodes.get(downstreamNodeId);
-        downstreamEndpoint.incoming.remove(downstreamChannelId);
-        downstreamEndpoint.incoming.add(id);
-
-        nodes.remove(junction.id);
-        return true;
-    }
-
-    private Endpoint newNode(double[] coord) {
-        final int nodeId = nextNodeId++;
-        Endpoint endpoint = new Endpoint(nodeId, Endpoint.Type.JUNCTION, coord);
-        nodes.put(nodeId, endpoint);
-        return endpoint;
-    }
-
-    // ---------------------------------------------------------------------------------------------
-    // Collisions (stream capture)
-    // ---------------------------------------------------------------------------------------------
-
-    public void manageCollisions(int step) {
-        List<Crossing> crossings = detectCrossings();
-        if (FractalTerrainConfig.DEBUG_MANAGE_COLLISIONS) {
-            LOG.info("crossing list: {}", Arrays.toString(crossings.toArray()));
-        }
-        segmentAndResolve(crossings);
-        pruneDanglingJunctionLeaves(step);
-        deleteOrphanDrains();
-        mergePassFromSources();
-    }
-
-    private void deleteOrphanDrains() {
-        List<Integer> orphanDrainIds = new ArrayList<>();
-        for (Endpoint endpoint : nodes.values())
-            if (endpoint.type == Endpoint.Type.DRAIN && endpoint.degree() == 0) orphanDrainIds.add(endpoint.id);
-        for (int drainId : orphanDrainIds) nodes.remove(drainId);
-    }
-
-    private List<Crossing> detectCrossings() {
-        quadTree.clear();
-        List<Integer> channelIds = new ArrayList<>(channels.keySet());
-        Collections.sort(channelIds);
-        for (int channelId : channelIds) insertChannel(channels.get(channelId));
-
-        List<Crossing> crossings = new ArrayList<>();
-        for (int channelAId : channelIds) {
-            Channel channelA = channels.get(channelAId);
-            final int pointCountA = channelA.numPts();
-            final double widthA = channelA.dischargeWidth();
-            final double queryRadius = Math.max(widthA, 1.0);
-            Map<Integer, List<double[]>> contactsByPartner = new HashMap<>();
-            for (int posA = 1; posA < pointCountA - 1; posA++) {
-                final double[] pointA = channelA.spline.points().get(posA);
-                List<Channel.ChannelPt> nearbyPoints = quadTree.getPointsInCircle(pointA, queryRadius);
-                nearbyPoints.sort(null);
-
-                for (Channel.ChannelPt nearbyPoint : nearbyPoints) {
-                    final int channelBId = nearbyPoint.channelId();
-                    if (channelBId <= channelAId) continue;
-                    Channel channelB = channels.get(channelBId);
-                    final int posB = nearbyPoint.index();
-                    if (posB <= 0 || posB >= channelB.numPts() - 1) continue;
-
-                    if (nearSharedNode(channelA, channelB, pointA)) continue;
-                    final double distance = VectorOps.distance(pointA, nearbyPoint.toArray());
-                    if (!ChannelGeometry.channelsOverlap(distance, widthA, channelB.dischargeWidth())) continue;
-                    contactsByPartner
-                            .computeIfAbsent(channelBId, partner -> new ArrayList<>())
-                            .add(new double[] {posA, posB, distance});
-                }
-            }
-            for (Map.Entry<Integer, List<double[]>> entry : contactsByPartner.entrySet()) {
-                Channel channelB = channels.get(entry.getKey());
-                List<double[]> contactList = entry.getValue();
-                contactList.sort(Comparator.comparingDouble(contact -> contact[0]));
-                int firstClusterEnd = 1;
-                while (firstClusterEnd < contactList.size()
-                        && contactList.get(firstClusterEnd)[0] - contactList.get(firstClusterEnd - 1)[0] <= CLUSTER_GAP)
-                    firstClusterEnd++;
-                double[] closest = contactList.getFirst();
-                for (int scan = 1; scan < firstClusterEnd; scan++)
-                    if (contactList.get(scan)[2] < closest[2]) closest = contactList.get(scan);
-                crossings.add(new Crossing(
-                        channelAId,
-                        (int) closest[0],
-                        channelB.channelId,
-                        (int) closest[1],
-                        widthA,
-                        channelB.dischargeWidth()));
-            }
-        }
-        return crossings;
-    }
-
-    private boolean nearSharedNode(Channel channelA, Channel channelB, double[] contactPoint) {
-        final double radius = channelA.dischargeWidth() + channelB.dischargeWidth();
-        final double radiusSq = radius * radius;
-        for (int nodeA : new int[] {channelA.startNodeId, channelA.endNodeId})
-            for (int nodeB : new int[] {channelB.startNodeId, channelB.endNodeId})
-                if (nodeA != -1 && nodeA == nodeB) {
-                    Endpoint shared = nodes.get(nodeA);
-                    if (shared != null && VectorOps.distanceSquared(contactPoint, shared.coord) <= radiusSq)
-                        return true;
-                }
-        return false;
-    }
-
-    /**
-     * Total order over channels used to pick the trunk of a contact cluster: the strongest channel
-     * wins. Precedence: an already-downstream channel beats its upstream, then wider beats narrower,
-     * then lower id wins (so the order is strict for distinct ids). Returns {@code >0} when
-     * {@code idA} is stronger, {@code <0} when {@code idB} is stronger, {@code 0} only when equal.
-     */
-    private int compareChannels(int idA, int idB) {
-        if (idA == idB) return 0;
-        if (reachesDownstream(idA, idB)) return -1; // idB is downstream of idA -> idB stronger
-        if (reachesDownstream(idB, idA)) return 1; // idA is downstream of idB -> idA stronger
-        final double widthA = channels.get(idA).dischargeWidth();
-        final double widthB = channels.get(idB).dischargeWidth();
-        if (widthA != widthB) return widthA > widthB ? 1 : -1;
-        return idA < idB ? 1 : -1; // lower id wins
-    }
-
-    private boolean reachesDownstream(int ancestorId, int descendantId) {
-        Channel ancestor = channels.get(ancestorId);
-        if (ancestor == null) return false;
-        int nodeId = ancestor.endNodeId;
-        for (int guard = 0; guard <= channels.size() && nodeId != -1; guard++) {
-            Endpoint endpoint = nodes.get(nodeId);
-            if (endpoint == null || endpoint.outgoing == -1) return false;
-            if (endpoint.outgoing == descendantId) return true;
-            Channel next = channels.get(endpoint.outgoing);
-            if (next == null) return false;
-            nodeId = next.endNodeId;
-        }
-        return false;
-    }
-
-    /** A planned split of a channel: which contact cluster it belongs to and whether it is the trunk. */
-    private record PlanEntry(long clusterRoot, boolean isTrunk) {}
-
-    /** A captured channel's upstream junction (created by a {@code redirect=true} split) and its cluster. */
-    private record Capture(int upstreamJunctionId, long clusterRoot) {}
-
-    /** Packs a {@code (channelId, position)} contact endpoint into a single union-find key. */
-    private static long endpointKey(int channelId, int position) {
-        return ((long) channelId << 32) | (position & 0xffffffffL);
-    }
-
-    private static long ufFind(Map<Long, Long> parent, long key) {
-        long root = key;
-        long step = parent.getOrDefault(root, root);
-        while (step != root) {
-            root = step;
-            step = parent.getOrDefault(root, root);
-        }
-        long cursor = key; // path compression
-        while (cursor != root) {
-            long next = parent.getOrDefault(cursor, cursor);
-            parent.put(cursor, root);
-            cursor = next;
-        }
-        return root;
-    }
-
-    private static void ufUnion(Map<Long, Long> parent, long a, long b) {
-        long rootA = ufFind(parent, a);
-        long rootB = ufFind(parent, b);
-        if (rootA != rootB) parent.put(rootA, rootB);
-    }
-
-    /**
-     * Stream-capture resolution. Channels that contact each other at one physical point form a
-     * <em>cluster</em> (union-find over {@code (channelId, position)} endpoints); the cluster's
-     * strongest channel under {@link #compareChannels} is the trunk and flows through, while every
-     * other member is captured into the trunk's junction. This single rule covers a lone crossing,
-     * the multi-tributary confluence, and the mixed win/lose case uniformly — all junctions are built
-     * by {@link #split}.
-     */
-    private void segmentAndResolve(List<Crossing> crossings) {
-        if (crossings.isEmpty()) return;
-
-        // 1. Cluster contacts that meet at the same physical point.
-        Map<Long, Long> parent = new HashMap<>();
-        for (Crossing crossing : crossings)
-            ufUnion(
-                    parent,
-                    endpointKey(crossing.channelIdA(), crossing.posA()),
-                    endpointKey(crossing.channelIdB(), crossing.posB()));
-
-        // all of the channels that cross into another channel
-        Map<Long, Map<Integer, Integer>> clusters = new HashMap<>(); // root -> (channelId -> position)
-        for (Crossing crossing : crossings) {
-            long root = ufFind(parent, endpointKey(crossing.channelIdA(), crossing.posA()));
-            Map<Integer, Integer> members = clusters.computeIfAbsent(root, k -> new HashMap<>());
-            members.putIfAbsent(crossing.channelIdA(), crossing.posA());
-            members.putIfAbsent(crossing.channelIdB(), crossing.posB());
-        }
-
-        // 2. Per cluster: the trunk is the strongest channel; everyone else is captured into it.
-        Map<Integer, TreeMap<Integer, PlanEntry>> splitPlan = new HashMap<>(); // channelId -> (position -> plan)
-        for (Map.Entry<Long, Map<Integer, Integer>> entry : clusters.entrySet()) {
-            final long root = entry.getKey();
-            final Map<Integer, Integer> members = entry.getValue();
-            int trunk = -1;
-            for (int channelId : members.keySet())
-                if (trunk == -1 || compareChannels(channelId, trunk) > 0) trunk = channelId;
-            if (FractalTerrainConfig.DEBUG_CROSSING_WINNER) LOG.info("cluster {} -> trunk {}", members.keySet(), trunk);
-            for (Map.Entry<Integer, Integer> member : members.entrySet())
-                splitPlan
-                        .computeIfAbsent(member.getKey(), k -> new TreeMap<>())
-                        .put(member.getValue(), new PlanEntry(root, member.getKey() == trunk));
-        }
-
-        // 3. Split each channel at its planned positions, DESCENDING so positions stay valid.
-        Map<Long, Integer> trunkJunction = new HashMap<>();
-        List<Capture> captures = new ArrayList<>();
-        for (Map.Entry<Integer, TreeMap<Integer, PlanEntry>> entry : splitPlan.entrySet()) {
-            final int channelId = entry.getKey();
-            for (Map.Entry<Integer, PlanEntry> planned :
-                    entry.getValue().descendingMap().entrySet()) {
-                final PlanEntry plan = planned.getValue();
-                if (split(channelId, planned.getKey(), !plan.isTrunk()) == -1) continue;
-                final int junctionId = channels.get(channelId).endNodeId;
-                if (plan.isTrunk()) trunkJunction.put(plan.clusterRoot(), junctionId);
-                else captures.add(new Capture(junctionId, plan.clusterRoot()));
-            }
-        }
-
-        // 4. Redirect every captured upstream segment into its cluster trunk's junction.
-        for (Capture capture : captures) {
-            final Integer trunkJunctionId = trunkJunction.get(capture.clusterRoot());
-            if (trunkJunctionId == null) continue; // trunk was not a through-junction (rare cross-cluster)
-            Endpoint capturedJunction = nodes.get(capture.upstreamJunctionId());
-            if (capturedJunction == null || capturedJunction.incoming.isEmpty()) continue;
-            final int tributaryId = capturedJunction.incoming.iterator().next();
-            Channel tributary = channels.get(tributaryId);
-            Endpoint trunkEndpoint = nodes.get(trunkJunctionId);
-            tributary.endNodeId = trunkJunctionId;
-            trunkEndpoint.incoming.add(tributaryId);
-            ArrayList<double[]> tributaryPoints = tributary.spline.points();
-            tributaryPoints.set(tributaryPoints.size() - 1, trunkEndpoint.coord.clone());
-            tributary.spline = QuinticHermiteSpline.createCatmullRom(tributaryPoints);
-            nodes.remove(capture.upstreamJunctionId());
-        }
-    }
-
-    private void pruneDanglingJunctionLeaves(int step) {
-        ArrayDeque<Integer> leafQueue = new ArrayDeque<>();
-        for (Endpoint endpoint : nodes.values())
-            if (endpoint.type == Endpoint.Type.JUNCTION && endpoint.degree() == 1) leafQueue.add(endpoint.id);
-        while (!leafQueue.isEmpty()) {
-            final int nodeId = leafQueue.poll();
-            Endpoint endpoint = nodes.get(nodeId);
-            if (endpoint == null || endpoint.type != Endpoint.Type.JUNCTION || endpoint.degree() != 1) continue;
-
-            final boolean incidentIsOutgoing = endpoint.outgoing != -1;
-            final int channelId = incidentIsOutgoing
-                    ? endpoint.outgoing
-                    : endpoint.incoming.iterator().next();
-            Channel channel = channels.get(channelId);
-            final int otherNodeId = incidentIsOutgoing ? channel.endNodeId : channel.startNodeId;
-            Endpoint otherEndpoint = nodes.get(otherNodeId);
-            if (otherEndpoint != null) {
-                if (otherEndpoint.outgoing == channelId) otherEndpoint.outgoing = -1;
-                otherEndpoint.incoming.remove(channelId);
-                if (otherEndpoint.type == Endpoint.Type.JUNCTION && otherEndpoint.degree() == 1)
-                    leafQueue.add(otherEndpoint.id);
-            }
-            if (savePreviousStates && channel.numPts() >= 2) {
-                removedPaths.add(new RemovedPath(
-                        HydrologicalFeature.ABANDONED_RIVER,
-                        new ArrayList<>(channel.spline.points()),
-                        channel.dischargeWidth(),
-                        step));
-            }
-            channels.remove(channelId);
-            nodes.remove(nodeId);
-        }
-    }
-
-    private void mergePassFromSources() {
-        boolean changed = true;
-        while (changed) {
-            changed = false;
-            for (Endpoint source : new ArrayList<>(nodes.values())) {
-                if (source.type != Endpoint.Type.SOURCE) continue;
-                int channelId = source.outgoing;
-                while (channelId != -1) {
-                    Channel channel = channels.get(channelId);
-                    if (channel == null) break;
-                    if (merge(channelId)) {
-                        changed = true;
-                        continue;
-                    }
-                    Endpoint downstreamEndpoint = nodes.get(channel.endNodeId);
-                    if (downstreamEndpoint == null) break;
-                    channelId = downstreamEndpoint.outgoing;
-                }
-            }
-        }
     }
 
     // ---------------------------------------------------------------------------------------------

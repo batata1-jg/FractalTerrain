@@ -2,9 +2,11 @@ package me.batata_1.fractal_terrain.hydrology.meanders;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -14,130 +16,90 @@ import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork.NodeSpec;
 import org.junit.jupiter.api.Test;
 
 /**
- * Headless JUnit conversion of {@code debug.tests.MeandersTest} (M-004): the graph-primitive
- * invariant checks (split/merge/collision capture/endpoint alignment) become plain assertions, and the
- * migration scenario ({@link #meandersInvariantsHoldAfterSimulation()}) additionally gets a golden
- * signature assertion so a silent numeric drift in the migration math fails the build even when the
- * broader invariants still hold. {@code Meanders}/{@code RiverNetwork} do no I/O and draw no randomness
- * (see {@link #meandersSimulationIsDeterministicAcrossRuns()}), so no canonicalization/tolerance was
- * needed to freeze the signature. {@code debug.tests.MeandersTest} is left untouched and keeps running
- * via the {@code meandersTest} Gradle task, including its PNG network dumps.
+ * Headless JUnit gate for {@code Meanders}/{@code RiverNetwork} rewritten to the Phase-3 seam: all network
+ * mutation now flows through {@code viewAtomic()}/{@code accumulateAndCorrectFlow}/{@code update}, and
+ * collision handling ({@link RiverNetwork#manageCollisions}) is the deterministic two-mark DFS. The old
+ * {@code split}/{@code merge} primitives and their tests are gone; the collision tests are written from
+ * scratch to the new semantics:
+ *
+ * <ul>
+ *   <li>two self-draining channels that merely cross are NOT merged (the DFS follows each stream to its
+ *       own drain before considering any crossing);</li>
+ *   <li>a dangling tributary (no drain of its own) that crosses a trunk IS captured into it via the
+ *       promoted crossing edge — a confluence JUNCTION forms and the tributary reaches the trunk's drain;</li>
+ *   <li>a dangling branch that reaches neither a drain nor a {@code streamMarked} node is pruned.</li>
+ * </ul>
+ *
+ * {@code Meanders}/{@code RiverNetwork} do no I/O and draw no randomness (see
+ * {@link #meandersSimulationIsDeterministicAcrossRuns()}), so the migration golden signature is frozen
+ * bit-exact.
  */
 class MeandersGoldenTest {
 
     private static final int GRID = 512;
 
     // -----------------------------------------------------------------------------------------
-    // 1. split
+    // 1. crossing without capture: two self-draining channels are not merged
     // -----------------------------------------------------------------------------------------
     @Test
-    void split() {
-        // invalid positions are no-ops
-        Meanders sim = straightInstance(10);
-        int count = sim.getChannelCount();
-        int last = sim.getChannel(0).numPts() - 1;
-        assertTrue(sim.split(0, 0, false) == -1, "split at 0 should no-op");
-        assertTrue(sim.split(0, last, false) == -1, "split at last should no-op");
-        assertTrue(sim.getChannelCount() == count, "channel count changed on no-op split");
-
-        // redirect == false -> one new channel + one shared degree-2 junction
-        int newId = sim.split(0, last / 2, false);
-        assertTrue(newId != -1, "valid split returned -1");
-        assertTrue(sim.getChannelCount() == count + 1, "split did not add a channel");
-        Channel c0 = sim.getChannel(0);
-        Channel cN = sim.getChannel(newId);
-        assertTrue(c0.endNodeId == cN.startNodeId, "redirect=false halves should share a junction");
-        Endpoint shared = sim.getNode(c0.endNodeId);
-        assertTrue(
-                shared.type == Endpoint.Type.JUNCTION && shared.degree() == 2,
-                "shared node should be a degree-2 junction");
-
-        // redirect == true -> two disconnected degree-1 junctions
-        Meanders sim2 = straightInstance(10);
-        int last2 = sim2.getChannel(0).numPts() - 1;
-        int newId2 = sim2.split(0, last2 / 2, true);
-        Channel a1 = sim2.getChannel(0);
-        Channel a2 = sim2.getChannel(newId2);
-        assertTrue(a1.endNodeId != a2.startNodeId, "redirect=true halves must NOT share a node");
-        Endpoint j1 = sim2.getNode(a1.endNodeId);
-        Endpoint j2 = sim2.getNode(a2.startNodeId);
-        assertTrue(j1.type == Endpoint.Type.JUNCTION && j1.degree() == 1, "redirect=true upstream junction wrong");
-        assertTrue(j2.type == Endpoint.Type.JUNCTION && j2.degree() == 1, "redirect=true downstream junction wrong");
-    }
-
-    // -----------------------------------------------------------------------------------------
-    // 2. merge
-    // -----------------------------------------------------------------------------------------
-    @Test
-    void merge() {
-        Meanders sim = straightInstance(10);
-        int last = sim.getChannel(0).numPts() - 1;
-        int newId = sim.split(0, last / 2, false);
-        int afterSplit = sim.getChannelCount();
-
-        assertTrue(sim.merge(0), "pass-through junction should merge");
-        assertTrue(sim.getChannelCount() == afterSplit - 1, "merge did not remove a channel");
-        assertTrue(sim.getChannel(newId) == null, "downstream channel should be gone after merge");
-        Channel merged = sim.getChannel(0);
-        assertTrue(sim.getNode(merged.endNodeId).type == Endpoint.Type.DRAIN, "merged channel should end at the drain");
-
-        // channel now ends at a drain (not a junction) -> merge is a no-op
-        assertFalse(sim.merge(0), "merge into a drain should be a no-op");
-    }
-
-    // -----------------------------------------------------------------------------------------
-    // 3. collision capture: narrow channel captured into wide one at a confluence
-    // -----------------------------------------------------------------------------------------
-    @Test
-    void collisionCapture() {
+    void independentCrossingsAreNotMerged() {
         Meanders sim = crossingInstance();
         sim.manageCollisions();
 
-        // a confluence junction (degree >= 3) was created
-        boolean confluence =
-                sim.getNodes().stream().anyMatch(nd -> nd.type == Endpoint.Type.JUNCTION && nd.degree() >= 3);
-        assertTrue(confluence, "no confluence junction created by capture");
+        // both channels reach their own drain, so the DFS never uses the crossing edge -> no confluence.
+        assertEquals(2, sim.getChannelCount(), "self-draining crossing channels should not be merged");
+        boolean junction = sim.getNodes().stream().anyMatch(n -> n.type == Endpoint.Type.JUNCTION);
+        assertFalse(junction, "a JUNCTION was minted for two self-draining crossing channels");
 
-        // all degree-1 nodes are sources or drains; no degree-2 junction remains (merge ran)
-        for (Endpoint nd : sim.getNodes()) {
-            if (nd.degree() == 1) assertTrue(nd.isSourceOrDrain(), "leaf node " + nd.id + " is a junction");
-            assertFalse(nd.type == Endpoint.Type.JUNCTION && nd.degree() == 2, "leftover degree-2 junction " + nd.id);
-            // single-outflow invariant
-            assertTrue(nd.outgoing == -1 || sim.getChannel(nd.outgoing) != null, "dangling outgoing on " + nd.id);
-        }
-
-        // the wide channel's source still drains to a drain
-        assertTrue(reachesDrain(sim, 0), "wide channel source no longer reaches a drain");
-        // the narrow channel's source still reaches a drain (captured into b)
-        assertTrue(reachesDrain(sim, 2), "captured narrow source no longer reaches a drain");
+        // spec ids 0/2 are the two sources (buildFromSpecs pins SOURCE/DRAIN ids to spec index; update()
+        // preserves them across the collision pass).
+        assertTrue(reachesDrain(sim, 0), "channel b source no longer reaches a drain");
+        assertTrue(reachesDrain(sim, 2), "channel a source no longer reaches a drain");
+        assertEndpointsMatchNodes(sim, "independent crossing");
+        assertSingleOutflow(sim, "independent crossing");
     }
 
     // -----------------------------------------------------------------------------------------
-    // 3b. same-contact-point capture: TWO narrow channels captured into one wide trunk at ONE point
+    // 2. capture: a dangling tributary crossing a trunk is promoted into it
     // -----------------------------------------------------------------------------------------
     @Test
-    void sameContactPointCapture() {
-        Meanders sim = sameContactPointInstance();
+    void danglingTributaryIsCapturedIntoTrunk() {
+        Meanders sim = trunkInstance();
+        addDanglingTributary(sim, tributaryPoints(256.0)); // ends on the trunk line -> crosses it
         sim.manageCollisions();
 
-        // Both narrow channels contact the trunk at the SAME point -> they cluster with the trunk and
-        // are captured into ONE junction collecting the trunk's upstream plus both tributaries
-        // (degree >= 4). The old TreeMap-by-position grouping silently dropped one of the two crossings.
-        boolean bigConfluence =
-                sim.getNodes().stream().anyMatch(nd -> nd.type == Endpoint.Type.JUNCTION && nd.degree() >= 4);
-        assertTrue(bigConfluence, "two same-point tributaries did not form a single >=degree-4 confluence");
+        boolean confluence = sim.getNodes().stream().anyMatch(n -> n.type == Endpoint.Type.JUNCTION);
+        assertTrue(confluence, "dangling tributary was not captured into the trunk (no JUNCTION minted)");
 
-        for (Endpoint nd : sim.getNodes()) {
-            if (nd.degree() == 1) assertTrue(nd.isSourceOrDrain(), "leaf node " + nd.id + " is a junction");
-            assertFalse(nd.type == Endpoint.Type.JUNCTION && nd.degree() == 2, "leftover degree-2 junction " + nd.id);
-            assertTrue(nd.outgoing == -1 || sim.getChannel(nd.outgoing) != null, "dangling outgoing on " + nd.id);
-        }
+        long sources = sim.getNodes().stream()
+                .filter(n -> n.type == Endpoint.Type.SOURCE)
+                .count();
+        assertEquals(2, sources, "expected the trunk source plus the captured tributary source");
+        assertTrue(everySourceReachesDrain(sim), "a source no longer reaches a drain after capture");
+        assertEndpointsMatchNodes(sim, "tributary capture");
+        assertSingleOutflow(sim, "tributary capture");
+    }
 
-        // every source still reaches a drain -> no crossing was dropped
+    // -----------------------------------------------------------------------------------------
+    // 3. prune: a dangling branch reaching no drain is dropped
+    // -----------------------------------------------------------------------------------------
+    @Test
+    void unreachableDanglingBranchIsPruned() {
+        Meanders sim = trunkInstance();
+        // A tributary nowhere near the trunk: its dangling end has no crossing partner, so its DFS branch
+        // reaches no drain. Its fresh SOURCE id is the next free node id after the trunk (0 SOURCE, 1 DRAIN).
+        addDanglingTributary(sim, farPoints());
+        final int tribSourceId = 2;
+        assertTrue(
+                sim.getNode(tribSourceId) != null && sim.getNode(tribSourceId).type == Endpoint.Type.SOURCE,
+                "fixture precondition: tributary source id 2 should exist before the collision pass");
+
+        sim.manageCollisions();
+
+        assertNull(sim.getNode(tribSourceId), "unreachable dangling tributary source was not pruned");
+        assertEquals(1, sim.getChannelCount(), "only the trunk channel should remain after pruning");
         assertTrue(reachesDrain(sim, 0), "trunk source no longer reaches a drain");
-        assertTrue(reachesDrain(sim, 2), "narrow A source (captured) no longer reaches a drain");
-        assertTrue(reachesDrain(sim, 4), "narrow B source (captured) no longer reaches a drain");
-        assertEndpointsMatchNodes(sim, "same-contact-point capture");
+        assertSingleOutflow(sim, "prune");
     }
 
     // -----------------------------------------------------------------------------------------
@@ -145,24 +107,11 @@ class MeandersGoldenTest {
     // -----------------------------------------------------------------------------------------
     @Test
     void nodeChannelEndpointsLineUp() {
-        assertEndpointsMatchNodes(straightInstance(10), "construction");
-
-        Meanders splitFalse = straightInstance(10);
-        splitFalse.split(0, splitFalse.getChannel(0).numPts() / 2, false);
-        assertEndpointsMatchNodes(splitFalse, "split redirect=false");
-
-        Meanders splitTrue = straightInstance(10);
-        splitTrue.split(0, splitTrue.getChannel(0).numPts() / 2, true);
-        assertEndpointsMatchNodes(splitTrue, "split redirect=true");
-
-        Meanders merged = straightInstance(10);
-        merged.split(0, merged.getChannel(0).numPts() / 2, false);
-        merged.merge(0);
-        assertEndpointsMatchNodes(merged, "merge");
+        assertEndpointsMatchNodes(trunkInstance(), "construction");
 
         Meanders captured = crossingInstance();
         captured.manageCollisions();
-        assertEndpointsMatchNodes(captured, "collision capture");
+        assertEndpointsMatchNodes(captured, "collision pass");
 
         Meanders simulated = crossingInstance();
         simulated.simulate(6);
@@ -173,10 +122,6 @@ class MeandersGoldenTest {
     // 5. meander-migration invariants + golden signature
     // -----------------------------------------------------------------------------------------
 
-    /**
-     * Ports {@code MeandersTest.testMeanders}'s invariant checks (finite points, pinned source, DX-
-     * relative spacing, sinuosity growth) onto the two-channel sinusoidal scenario.
-     */
     @Test
     void meandersInvariantsHoldAfterSimulation() {
         Meanders sim = newTwoChannelSinusoidalNetwork();
@@ -195,19 +140,15 @@ class MeandersGoldenTest {
             assertTrue(Double.isFinite(result.get(i)[0]) && Double.isFinite(result.get(i)[1]), "NaN/Inf at point " + i);
         }
 
-        // 2. Source endpoint stationarity. Sources never move. The drain endpoint is not asserted
-        // here: these two channels meander into each other and a capture restructures channel 0 (its
-        // downstream becomes a new edge, and a captured channel's drain can be deleted). The exact
-        // node/endpoint alignment is covered by nodeChannelEndpointsLineUp.
+        // 2. Source endpoint stationarity — sources never move.
         double eps = 1e-9;
         assertTrue(
                 Math.abs(result.get(0)[0] - x0) <= eps && Math.abs(result.get(0)[1] - z0) <= eps,
                 "Source endpoint moved");
 
         // 3. Point spacing in [0.5*DX, 2*DX] (DX-relative). reSample appends getMaxT() after its
-        // sampling loop, which can leave a single benign coincident point at the tail (a known baseline
-        // artifact), so near-zero spacings are tolerated; the meaningful guarantee is that no gap
-        // exceeds 2*DX.
+        // sampling loop, which can leave a single benign coincident point at the tail, so near-zero
+        // spacings are tolerated; the meaningful guarantee is that no gap exceeds 2*DX.
         double lo = 0.5 * HydrologyTuning.DX, hi = 2.0 * HydrologyTuning.DX;
         for (int i = 1; i < m; i++) {
             double dx = result.get(i)[0] - result.get(i - 1)[0];
@@ -221,12 +162,6 @@ class MeandersGoldenTest {
         assertTrue(sAfter > sBefore, String.format("Sinuosity did not grow: before=%.4f after=%.4f", sBefore, sAfter));
     }
 
-    /**
-     * Golden-signature gate: a canonical checksum over the whole network's channels/nodes after 100
-     * simulation steps (see {@link #networkSignature}). Catches numeric drift in the migration math
-     * that the invariant checks above would not (they only bound sinuosity growth and spacing, not the
-     * exact resulting geometry).
-     */
     @Test
     void meandersGoldenSignatureMatchesCapturedFixture() {
         Meanders sim = newTwoChannelSinusoidalNetwork();
@@ -234,12 +169,6 @@ class MeandersGoldenTest {
         assertEquals(GOLDEN_MEANDERS_SIGNATURE, networkSignature(sim));
     }
 
-    /**
-     * Determinism pre-check (M-004 step 3, run before the golden fixture above was frozen): rebuilds
-     * and re-simulates the same scenario from scratch 5 times and asserts an identical signature every
-     * time. {@code Meanders}/{@code RiverNetwork} draw no randomness and do no I/O, so this is expected
-     * to be — and was confirmed — bit-identical run to run; no canonicalization or tolerance was needed.
-     */
     @Test
     void meandersSimulationIsDeterministicAcrossRuns() {
         String first = null;
@@ -253,21 +182,14 @@ class MeandersGoldenTest {
     }
 
     /**
-     * Captured by running {@link #meandersGoldenSignatureMatchesCapturedFixture} once and logging it.
-     * Re-baselined in Phase 2: {@code EdgeSpec} now carries flow (not width), so the fixture's edge value
-     * {@code 10} is read as flow → {@code widthFromFlow(10) ≈ 3.16} rather than width 10, changing the
-     * meander geometry (fewer points at the finer {@code sqrt(width)} resample). The companion
-     * {@code meandersInvariantsHoldAfterSimulation} passes (finite points, pinned source, bounded spacing,
-     * sinuosity growth), confirming the new output is sane. ({@code networkSignature} formats with
-     * {@code Locale.ROOT} so the decimal separator is a portable {@code '.'} regardless of gate locale.)
+     * Re-baselined for Phase 3: the two-mark DFS collision pass replaces the old split/merge stream-capture
+     * (the two parallel channels now self-drain and are never merged), and every step re-derives flow and
+     * folds the network back through the seam. Captured by running
+     * {@link #meandersGoldenSignatureMatchesCapturedFixture} once. {@code networkSignature} formats with
+     * {@code Locale.ROOT} for a portable decimal separator.
      */
-    private static final String GOLDEN_MEANDERS_SIGNATURE = "channels=2 nodes=4 points=1503 checksum=384648725.362049";
+    private static final String GOLDEN_MEANDERS_SIGNATURE = "channels=2 nodes=4 points=1656 checksum=438656243.300640";
 
-    /**
-     * Canonical, order-independent signature of a {@link Meanders} network's current state: channel and
-     * node counts plus a checksum over every channel's spline points, so a shift in the migration math
-     * changes the signature even if the broader per-scenario invariants still hold.
-     */
     private static String networkSignature(Meanders sim) {
         List<Channel> channels = new ArrayList<>(sim.getChannels());
         channels.sort(Comparator.comparingInt(c -> c.channelId));
@@ -289,7 +211,7 @@ class MeandersGoldenTest {
     }
 
     // -----------------------------------------------------------------------------------------
-    // Scenario builders (ported verbatim from debug.tests.MeandersTest)
+    // Scenario builders
     // -----------------------------------------------------------------------------------------
 
     private static float[] zeroGrid() {
@@ -297,22 +219,45 @@ class MeandersGoldenTest {
     }
 
     /** One source -> one drain edge from a list of points. */
-    private static Meanders oneEdge(ArrayList<double[]> pts, double width) {
+    private static Meanders oneEdge(ArrayList<double[]> pts, double flow) {
         List<NodeSpec> nodeSpecs = List.of(
                 new NodeSpec(pts.getFirst()[0], pts.getFirst()[1], Endpoint.Type.SOURCE),
                 new NodeSpec(pts.getLast()[0], pts.getLast()[1], Endpoint.Type.DRAIN));
-        List<EdgeSpec> edgeSpecs = List.of(new EdgeSpec(0, 1, pts, width));
+        List<EdgeSpec> edgeSpecs = List.of(new EdgeSpec(0, 1, pts, flow));
         float[] g = zeroGrid();
         return new Meanders(GRID, g, g, nodeSpecs, edgeSpecs);
     }
 
-    private static Meanders straightInstance(double width) {
+    /** A single wide horizontal trunk SOURCE(0) -> DRAIN(1) along z = 256, x in [100, 400]. */
+    private static Meanders trunkInstance() {
         ArrayList<double[]> pts = new ArrayList<>();
-        for (int i = 0; i < 60; i++) pts.add(new double[] {10.0 + i * 5.0, 100.0});
-        return oneEdge(pts, width);
+        for (int i = 0; i <= 60; i++) pts.add(new double[] {100.0 + i * 5.0, 256.0});
+        return oneEdge(pts, 20.0);
     }
 
-    /** Wide channel b (horizontal) crossed by narrow channel a (vertical) at (250,256). */
+    /** A vertical polyline from (250, 100) up to (250, {@code endZ}), ending on the trunk line at z = 256. */
+    private static ArrayList<double[]> tributaryPoints(double endZ) {
+        ArrayList<double[]> pts = new ArrayList<>();
+        final int n = 39;
+        for (int i = 0; i <= n; i++) pts.add(new double[] {250.0, 100.0 + (endZ - 100.0) * i / n});
+        return pts;
+    }
+
+    /** A short polyline far from the trunk (never crosses it). */
+    private static ArrayList<double[]> farPoints() {
+        ArrayList<double[]> pts = new ArrayList<>();
+        for (int i = 0; i <= 20; i++) pts.add(new double[] {50.0, 40.0 + i * 2.0});
+        return pts;
+    }
+
+    /** Add a standalone tributary (fresh SOURCE, dangling JUNCTION end) to be attached/pruned by the pass. */
+    private static void addDanglingTributary(Meanders sim, ArrayList<double[]> pts) {
+        final double[] flow = new double[pts.size()];
+        Arrays.fill(flow, 3.0);
+        sim.getNetwork().addLocalChannel(new Channel(pts, flow, 0), Endpoint.Type.JUNCTION);
+    }
+
+    /** Wide channel b (horizontal) crossed by narrow channel a (vertical) at (250,256). Both self-drain. */
     private static Meanders crossingInstance() {
         ArrayList<double[]> bPts = new ArrayList<>();
         for (int i = 0; i <= 60; i++) bPts.add(new double[] {100.0 + i * 5.0, 256.0});
@@ -329,31 +274,6 @@ class MeandersGoldenTest {
         return new Meanders(GRID, g, g, nodeSpecs, edgeSpecs);
     }
 
-    /** Wide trunk + two narrow channels (one vertical, one diagonal) all meeting exactly at (250,256). */
-    private static Meanders sameContactPointInstance() {
-        ArrayList<double[]> trunk = new ArrayList<>();
-        for (int i = 0; i <= 60; i++) trunk.add(new double[] {100.0 + i * 5.0, 256.0}); // vertex 30 == (250,256)
-
-        ArrayList<double[]> narrowA = new ArrayList<>();
-        for (int i = 0; i <= 24; i++) narrowA.add(new double[] {250.0, 196.0 + i * 5.0}); // vertex 12 == (250,256)
-
-        ArrayList<double[]> narrowB = new ArrayList<>();
-        for (int i = 0; i <= 24; i++)
-            narrowB.add(new double[] {190.0 + i * 5.0, 196.0 + i * 5.0}); // vertex 12 == (250,256)
-
-        List<NodeSpec> nodeSpecs = List.of(
-                new NodeSpec(trunk.getFirst()[0], trunk.getFirst()[1], Endpoint.Type.SOURCE),
-                new NodeSpec(trunk.getLast()[0], trunk.getLast()[1], Endpoint.Type.DRAIN),
-                new NodeSpec(narrowA.getFirst()[0], narrowA.getFirst()[1], Endpoint.Type.SOURCE),
-                new NodeSpec(narrowA.getLast()[0], narrowA.getLast()[1], Endpoint.Type.DRAIN),
-                new NodeSpec(narrowB.getFirst()[0], narrowB.getFirst()[1], Endpoint.Type.SOURCE),
-                new NodeSpec(narrowB.getLast()[0], narrowB.getLast()[1], Endpoint.Type.DRAIN));
-        List<EdgeSpec> edgeSpecs = List.of(
-                new EdgeSpec(0, 1, trunk, 20.0), new EdgeSpec(2, 3, narrowA, 5.0), new EdgeSpec(4, 5, narrowB, 5.0));
-        float[] g = zeroGrid();
-        return new Meanders(GRID, g, g, nodeSpecs, edgeSpecs);
-    }
-
     /** Two parallel sinusoidal channels (100 pts each) that meander into each other over 100 steps. */
     private static Meanders newTwoChannelSinusoidalNetwork() {
         int n = 100;
@@ -361,7 +281,7 @@ class MeandersGoldenTest {
         for (int i = 0; i < n; i++) {
             pts.add(new double[] {10.0 + i * 5.0, 200.0 + 5.0 * Math.sin(2.0 * Math.PI * i / (n - 1))});
         }
-        double width = 10;
+        double flow = 10;
         ArrayList<double[]> pts1 = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
             pts1.add(new double[] {10.0 + i * 5.0, 300.0 + 5.0 * Math.sin(2.0 * Math.PI * i / (n - 1))});
@@ -371,7 +291,7 @@ class MeandersGoldenTest {
                 new NodeSpec(pts.getLast()[0], pts.getLast()[1], Endpoint.Type.DRAIN),
                 new NodeSpec(pts1.getFirst()[0], pts1.getFirst()[1], Endpoint.Type.SOURCE),
                 new NodeSpec(pts1.getLast()[0], pts1.getLast()[1], Endpoint.Type.DRAIN));
-        List<EdgeSpec> edgeSpecs = List.of(new EdgeSpec(0, 1, pts, width), new EdgeSpec(2, 3, pts1, width));
+        List<EdgeSpec> edgeSpecs = List.of(new EdgeSpec(0, 1, pts, flow), new EdgeSpec(2, 3, pts1, flow));
         float[] g = zeroGrid();
         return new Meanders(GRID, g, g, nodeSpecs, edgeSpecs);
     }
@@ -380,7 +300,6 @@ class MeandersGoldenTest {
     // Assertion helpers
     // -----------------------------------------------------------------------------------------
 
-    /** Every channel's first/last spline point must coincide with its start/end node coordinate. */
     private static void assertEndpointsMatchNodes(Meanders sim, String context) {
         double eps = 1e-9;
         for (Channel ch : sim.getChannels()) {
@@ -403,6 +322,26 @@ class MeandersGoldenTest {
         }
     }
 
+    /** Every node's outgoing edge, if any, references a live channel (single-outflow structural sanity). */
+    private static void assertSingleOutflow(Meanders sim, String context) {
+        for (Endpoint nd : sim.getNodes()) {
+            if (nd.type == Endpoint.Type.DRAIN) {
+                assertTrue(nd.outgoing == -1, context + ": DRAIN " + nd.id + " has an outgoing edge");
+            } else {
+                assertTrue(
+                        nd.outgoing != -1 && sim.getChannel(nd.outgoing) != null,
+                        context + ": non-drain node " + nd.id + " lacks a single live outgoing edge");
+            }
+        }
+    }
+
+    private static boolean everySourceReachesDrain(Meanders sim) {
+        for (Endpoint nd : sim.getNodes()) {
+            if (nd.type == Endpoint.Type.SOURCE && !reachesDrain(sim, nd.id)) return false;
+        }
+        return true;
+    }
+
     private static double pointDistance(double[] a, double[] b) {
         return Math.hypot(a[0] - b[0], a[1] - b[1]);
     }
@@ -411,7 +350,6 @@ class MeandersGoldenTest {
         return String.format("(%.3f,%.3f)", p[0], p[1]);
     }
 
-    /** Follow outgoing edges downstream from the given source node id; true if a drain is reached. */
     private static boolean reachesDrain(Meanders sim, int sourceNodeId) {
         Endpoint n = sim.getNode(sourceNodeId);
         int guard = 0;

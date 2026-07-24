@@ -99,7 +99,7 @@ final class LocalDrainageTracer {
             if (segmentCells.size() < 2 || leavesTile(segmentCells)) continue;
             final Channel channel = buildLocalChannel(segmentCells, flow, localChannelId++);
             if (channel == null) continue; // degenerate geometry: skip (buildLocalChannel already logs nothing)
-            attachSegment(network, globalIndex, channel, segmentCells.getLast(), elev);
+            attachSegment(network, channel, segmentCells.getLast(), elev);
         }
 
         if (stages != null) {
@@ -110,48 +110,16 @@ final class LocalDrainageTracer {
 
     /**
      * Attaches one traced local {@code channel} (still in the un-padded {@code GRID} frame) to
-     * {@code network} as a SOURCE -> (JUNCTION split | coast DRAIN) edge. {@code globalIndex} (built in
-     * the same {@code GRID} frame) locates the nearest global-channel point within {@link
-     * HydrologyTuning#LOCAL_ATTACH_RADIUS} of the segment's downstream end; when found, the nearest
-     * candidate's exact channel/index is split (DL-015: this continuous distance check is authoritative,
-     * so a candidate the split bounds-check rejects — e.g. it turns out to sit exactly on a channel
-     * endpoint, or a prior attach in this same pass already split past it — is a clean DROP, never a
-     * force-attach). Otherwise the segment attaches to a coast DRAIN when its downstream cell is below
-     * sea level, or is dropped (DL-013: no dangling, datum-less node).
+     * {@code network} as a standalone SOURCE -> ({@code coast DRAIN | dangling JUNCTION}) edge via
+     * {@link RiverNetwork#addLocalChannel}. The atomic collision pass ({@link RiverNetwork#manageCollisions},
+     * run afterwards by {@code LocalRiverProvider.buildTile}) is what actually attaches a dangling-JUNCTION
+     * end to a nearby global channel (via a bed-overlap crossing edge) or — if its DFS branch reaches no
+     * drain — demotes it to an {@code ABANDONED_RIVER} (C5 accepted shift: radius-based attach -> bed-overlap
+     * attach; nothing vanishes silently). A downstream cell below sea level ends the channel at a coast DRAIN.
      */
-    private static void attachSegment(
-            RiverNetwork network,
-            QuadTree<Channel.ChannelPt> globalIndex,
-            Channel channel,
-            int downstreamCell,
-            float[] elev) {
-        final ArrayList<double[]> pts = channel.spline.points();
-        final double[] downstreamPt = pts.getLast();
-        final Channel.ChannelPt nearestGlobal =
-                nearestWithin(globalIndex, downstreamPt[0], downstreamPt[1], HydrologyTuning.LOCAL_ATTACH_RADIUS);
-
-        final RiverNetwork.NodeSpec sourceSpec =
-                new RiverNetwork.NodeSpec(pts.getFirst()[0], pts.getFirst()[1], Endpoint.Type.SOURCE);
-
-        if (nearestGlobal != null) {
-            final Channel globalChannel = network.getChannel(nearestGlobal.channelId());
-            if (globalChannel == null) return; // stale candidate (already restructured this pass): drop.
-            final int downstreamChannelId = network.split(nearestGlobal.channelId(), nearestGlobal.index(), false);
-            if (downstreamChannelId == -1) return; // DL-015: split rejected the candidate; drop, don't force.
-            // Snap the attaching edge's last point onto the exact junction coordinate split() just minted,
-            // so the new edge's endpoint coincides with the node it terminates at (no confluence gap).
-            pts.set(
-                    pts.size() - 1,
-                    network.getNode(globalChannel.endNodeId).coord.clone());
-            network.attachSourceToExistingNode(
-                    sourceSpec, globalChannel.endNodeId, pts, channel.flow, HydrologyTuning.RESAMPLE_DIST);
-            return;
-        }
-
-        if (elev[downstreamCell] >= 0) return; // DL-013: no global channel in reach, no coast -> drop.
-        final RiverNetwork.NodeSpec drainSpec =
-                new RiverNetwork.NodeSpec(pts.getLast()[0], pts.getLast()[1], Endpoint.Type.DRAIN);
-        network.attachSourceToNewDrain(sourceSpec, drainSpec, pts, channel.flow, HydrologyTuning.RESAMPLE_DIST);
+    private static void attachSegment(RiverNetwork network, Channel channel, int downstreamCell, float[] elev) {
+        final Endpoint.Type endType = (elev[downstreamCell] < 0) ? Endpoint.Type.DRAIN : Endpoint.Type.JUNCTION;
+        network.addLocalChannel(channel, endType);
     }
 
     /**
@@ -179,23 +147,6 @@ final class LocalDrainageTracer {
     private static boolean nearGlobal(QuadTree<Channel.ChannelPt> index, int x, int z) {
         return !index.getPointsInCircle(new double[] {x, z}, HydrologyTuning.LOCAL_ATTACH_RADIUS)
                 .isEmpty();
-    }
-
-    /** The nearest global-channel point within {@code radius} of {@code (x, z)}, or {@code null}. */
-    private static @Nullable Channel.ChannelPt nearestWithin(
-            QuadTree<Channel.ChannelPt> index, double x, double z, double radius) {
-        Channel.ChannelPt nearest = null;
-        double nearestDistSq = Double.MAX_VALUE;
-        for (Channel.ChannelPt candidate : index.getPointsInCircle(new double[] {x, z}, radius)) {
-            final double dx = candidate.coords()[0] - x;
-            final double dz = candidate.coords()[1] - z;
-            final double distSq = dx * dx + dz * dz;
-            if (distSq < nearestDistSq) {
-                nearestDistSq = distSq;
-                nearest = candidate;
-            }
-        }
-        return nearest;
     }
 
     private static List<Integer> walkSegment(int start, int[] downstream, int[] inDegree) {

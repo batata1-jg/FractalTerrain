@@ -61,26 +61,6 @@ public class Channel {
         this.channelId = channelId;
     }
 
-    /**
-     * Temporary width-taking bridge constructor: synthesizes a constant {@link #flow} array via the inverse
-     * of {@link HydrologyTuning#widthFromFlow} so a caller that only has a width scalar can still build a
-     * channel. Used only by the collision-surface primitives {@code split}/{@code merge}, which are deleted
-     * in Phase 3 along with this constructor. New code must use the flow-taking constructor above.
-     */
-    public Channel(double width, ArrayList<double[]> pts, int channelId) {
-        this.spline = QuinticHermiteSpline.createCatmullRom(pts);
-        final double f = flowForWidth(width);
-        this.flow = new double[pts.size()];
-        Arrays.fill(this.flow, f);
-        this.channelId = channelId;
-    }
-
-    /** Inverse of {@link HydrologyTuning#widthFromFlow}: {@code flow = (width / WIDTH_FLOW_SCALE)^2}. */
-    private static double flowForWidth(double width) {
-        final double s = width / HydrologyTuning.WIDTH_FLOW_SCALE;
-        return s * s;
-    }
-
     /** Derived width at spline index {@code i} = {@code widthFromFlow(flow[i])}. */
     public double widthAt(int i) {
         return HydrologyTuning.widthFromFlow(flow[i]);

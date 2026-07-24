@@ -258,14 +258,6 @@ public final class Meanders {
     // Graph delegation (forwards to the RiverNetwork; convenience for tests/debug)
     // ---------------------------------------------------------------------------------------------
 
-    public int split(int id, int pos, boolean redirect) {
-        return network.split(id, pos, redirect);
-    }
-
-    public boolean merge(int id) {
-        return network.merge(id);
-    }
-
     public void manageCollisions() {
         network.manageCollisions(currentStep);
     }

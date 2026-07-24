@@ -8,10 +8,8 @@ import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.sample
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
@@ -229,41 +227,22 @@ public class LocalRiverProvider {
         Arrays.fill(uniformWeight, 1f);
         final int[] drainagePadded = PipelinePreprocessing.computeDrainageDirection(filled, uniformWeight, PADDED);
 
-        // 3. local rivers: trace + attach into the SAME graph. A before/after channel-id snapshot tells
-        //    apart the channels the trace minted (local SOURCE-rooted edges, plus any global channel
-        //    split() grew a downstream half for) from genuinely-local ones: a minted channel is "local"
-        //    iff its start node is a freshly-minted SOURCE (a split()-grown global downstream half always
-        //    starts at a JUNCTION instead), so this needs no extra bookkeeping out of the void-returning
-        //    tracer.
-        final Set<Integer> channelIdsBeforeLocalTrace = new HashSet<>();
-        for (Channel ch : network.getChannels()) channelIdsBeforeLocalTrace.add(ch.channelId);
+        // 3. local rivers: trace + attach into the SAME graph as standalone SOURCE-rooted edges (dangling
+        //    JUNCTION end, or coast DRAIN), then run the atomic collision pass which reorients + attaches
+        //    each dangling local edge to a nearby global channel via a bed-overlap crossing (or demotes it
+        //    to an ABANDONED_RIVER when its DFS branch reaches no drain). update() re-assigns every channel
+        //    id but preserves SOURCE/DRAIN node ids, so the boundary map below keys on node type, not the
+        //    old (now churn-broken) before/after channel-id snapshot.
         LocalDrainageTracer.traceLocalNetwork(drainagePadded, carvedElevation, network, stages);
-        final Set<Integer> localChannelIds = new HashSet<>();
-        for (Channel ch : network.getChannels()) {
-            if (channelIdsBeforeLocalTrace.contains(ch.channelId)) continue;
-            final Endpoint start = network.getNode(ch.startNodeId);
-            if (start != null && start.type == Endpoint.Type.SOURCE) localChannelIds.add(ch.channelId);
-        }
+        network.manageCollisions(0);
 
-        // 4. augment the boundary map with the local ridge SOURCEs (decoded terrain at the seed, floored
-        //    at the downstream terminal reference -- the coast datum, or the datum at the global junction
-        //    it split) and coast DRAINs (bilinear terrain datum) the trace minted, so the single assign
-        //    below has a seed for every local path too (H4 -- otherwise these nodes float at 0.0).
-        for (int channelId : localChannelIds) {
-            final Channel ch = network.getChannel(channelId);
-            if (ch == null) continue;
-            final Endpoint start = network.getNode(ch.startNodeId);
-            final Endpoint end = network.getNode(ch.endNodeId);
-            if (end == null) continue;
-            final double downstreamRef = Math.max(0, sampleBilinear(carvedElevation, end.coord[0], end.coord[1]));
-            if (start != null) {
-                boundaryElev.putIfAbsent(
-                        start.id,
-                        Math.max(sampleBilinear(carvedElevation, start.coord[0], start.coord[1]), downstreamRef));
-            }
-            if (end.type == Endpoint.Type.DRAIN) {
-                boundaryElev.putIfAbsent(end.id, downstreamRef);
-            }
+        // 4. augment the boundary map with every SOURCE/DRAIN node not already seeded — the local ridge
+        //    SOURCEs and coast DRAINs the trace minted (decoded terrain at the node, floored at 0), so the
+        //    single assign below has a seed for every path too (H4 -- otherwise these nodes float at 0.0).
+        for (Endpoint node : network.getNodes()) {
+            if (node.type != Endpoint.Type.SOURCE && node.type != Endpoint.Type.DRAIN) continue;
+            boundaryElev.putIfAbsent(
+                    node.id, Math.max(0, sampleBilinear(carvedElevation, node.coord[0], node.coord[1])));
         }
 
         // 5. ONE bed-elevation assignment over the whole unified graph.
@@ -281,14 +260,11 @@ public class LocalRiverProvider {
         final FloatTensor carvedTile = cropToTile(carvedElevation);
 
         if (stages != null) {
-            final List<Channel> globalOnly = new ArrayList<>();
-            final List<Channel> localOnly = new ArrayList<>();
-            for (Channel ch : network.getChannels()) {
-                if (localChannelIds.contains(ch.channelId)) localOnly.add(ch);
-                else globalOnly.add(ch);
-            }
-            stages.channels = globalOnly;
-            stages.localChannels = localOnly;
+            // The local/global channel-id split no longer survives the collision pass (update() re-assigns
+            // every channel id — accepted debug-only regression). All channels are reported together;
+            // the local-only PNG is intentionally empty.
+            stages.channels = network.getChannels();
+            stages.localChannels = new ArrayList<>();
             stages.carvedElevation = carvedTile.copyRange(0, carvedTile.getSize());
             stages.network = network;
             stages.unitTree = unitIndex;
