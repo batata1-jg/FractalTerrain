@@ -8,7 +8,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork.AtomicView;
+
 import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork.EdgeSpec;
 import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork.NodeSpec;
 import org.junit.jupiter.api.Test;
