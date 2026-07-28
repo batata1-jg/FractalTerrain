@@ -8,9 +8,9 @@ import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.debug.Debug;
+import me.batata_1.fractal_terrain.hydrology.Drainage;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
-import me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing;
 import me.batata_1.fractal_terrain.hydrology.meanders.*;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.ml.models.ModelAssetManager;
@@ -118,7 +118,7 @@ public class LocalRiverTest {
         }
     }
 
-    /** Cardinal direction labels for arrow bits 4..7 (see {@code PipelinePreprocessing.NEIGHBOR_OFFSET_*}). */
+    /** Cardinal direction labels for arrow bits 4..7 (see {@code Drainage.NEIGHBOR_OFFSET_*}). */
     private static final String[] DIRECTION_NAME = {"", "", "", "", "-Z", "+Z", "-X", "+X"};
 
     /**
@@ -166,8 +166,8 @@ public class LocalRiverTest {
         final int outMask = GlobalRiverProvider.outgoingMask(arrow);
         for (int d = 4; d <= 7; d++) {
             if ((outMask & (1 << d)) != 0) {
-                final int dcx = ccx + PipelinePreprocessing.NEIGHBOR_OFFSET_X[d];
-                final int dcz = ccz + PipelinePreprocessing.NEIGHBOR_OFFSET_Z[d];
+                final int dcx = ccx + Drainage.NEIGHBOR_OFFSET_X[d];
+                final int dcz = ccz + Drainage.NEIGHBOR_OFFSET_Z[d];
                 return "-> points to (" + dcx + "," + dcz + ") dir=" + DIRECTION_NAME[d];
             }
         }

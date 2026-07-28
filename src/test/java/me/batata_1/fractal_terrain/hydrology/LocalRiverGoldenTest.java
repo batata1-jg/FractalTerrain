@@ -72,7 +72,7 @@ class LocalRiverGoldenTest {
     private static int[] drainageOf(float[] filled) {
         final float[] uniformWeight = new float[GRID * GRID];
         Arrays.fill(uniformWeight, 1f);
-        return PipelinePreprocessing.computeDrainageDirection(filled, uniformWeight, GRID);
+        return Drainage.computeDrainageDirection(filled, uniformWeight, GRID);
     }
 
     /**
@@ -99,7 +99,7 @@ class LocalRiverGoldenTest {
         final LocalRiverProvider provider = new LocalRiverProvider(null);
         // buildTile computes drainage on the sink-FILLED elevation and passes that same filled field to the
         // trace, so flow reaches outlets rather than stalling in interior depressions; mirror that here.
-        final float[] filled = PipelinePreprocessing.fillSinks(syntheticElevation(seed), GRID, 0);
+        final float[] filled = Drainage.fillSinks(syntheticElevation(seed), GRID, 0);
         final int[] drainage = drainageOf(filled);
         final RiverNetwork network = syntheticGlobalNetwork();
         provider.traceLocalNetworkForTest(drainage, filled, network);

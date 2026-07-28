@@ -6,7 +6,7 @@ import me.batata_1.fractal_terrain.math.Range;
  * Continentalness regions, ocean → inland (higher = further inland). Boundaries are the
  * wiki's "Continentalness (Continents)" table.
  */
-public enum Continentalness {
+public enum Continentalness implements Band {
     MUSHROOM_FIELDS(-1.2f, -1.05f),
     DEEP_OCEAN(-1.05f, -0.455f),
     OCEAN(-0.455f, -0.19f),
@@ -21,6 +21,11 @@ public enum Continentalness {
         this.range = new Range(min, max);
     }
 
+    @Override
+    public Range range() {
+        return range;
+    }
+
     public float mid() {
         return range.mid();
     }
@@ -29,10 +34,6 @@ public enum Continentalness {
      * The region a continentalness value falls in (clamped to the extremes).
      */
     public static Continentalness of(float continentalness) {
-        Continentalness region = MUSHROOM_FIELDS;
-        for (Continentalness candidate : values()) {
-            if (continentalness >= candidate.range.min()) region = candidate;
-        }
-        return region;
+        return Band.containing(values(), continentalness);
     }
 }

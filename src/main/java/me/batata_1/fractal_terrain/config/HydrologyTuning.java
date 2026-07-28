@@ -63,7 +63,7 @@ public final class HydrologyTuning {
     public static final double MARGIN_INFLUENCE_FACTOR = 5.0;
 
     // ──────────────────────────────────────────────────────────────────────────
-    // Flow accumulation (see PipelinePreprocessing.computeFlow)
+    // Flow accumulation (see Drainage.computeFlow)
     // ──────────────────────────────────────────────────────────────────────────
 
     /**

@@ -16,7 +16,6 @@ import java.util.function.Predicate;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
-import me.batata_1.fractal_terrain.hydrology.meanders.AtomicView;
 import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
 import me.batata_1.fractal_terrain.hydrology.meanders.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork;
@@ -111,14 +110,14 @@ public class LocalRiverProvider {
      * network in the golden test; the real per-tile graph in production), with no pipeline dependency. In
      * production the drainage and elevation originate from the ONNX-decoded terrain (via {@link
      * me.batata_1.fractal_terrain.relief.DecoderChannels#decode}); a golden test instead feeds a synthetic
-     * seeded elevation field and its {@code PipelinePreprocessing}-computed drainage, plus a synthetic
+     * seeded elevation field and its {@code Drainage}-computed drainage, plus a synthetic
      * central trunk channel for {@code network}. Delegates to the exact production {@link
      * LocalDrainageTracer#traceLocalNetwork} path, which mutates {@code network} in place and returns
      * nothing — the caller inspects {@code network} afterwards.
      */
     @TestOnly
     public void traceLocalNetworkForTest(int[] drainage, float[] elev, RiverNetwork network) {
-        LocalDrainageTracer.traceLocalNetwork(drainage, elev, network,null,null);
+        LocalDrainageTracer.traceLocalNetwork(drainage, elev, network, null, null);
     }
 
     private GlobalRiverProvider globalRiverProvider() {
@@ -221,10 +220,10 @@ public class LocalRiverProvider {
         //    longer needs a pre-carved valley to route toward the global network -- LOCAL_ATTACH_RADIUS
         //    proximity (not terrain shape) is what joins locals to the graph -- so drainage can be
         //    computed once, up front, and fed straight into the trace.
-        final float[] filled = PipelinePreprocessing.fillSinks(carvedElevation, PADDED, HydrologyTuning.FILL_PADDING);
+        final float[] filled = Drainage.fillSinks(carvedElevation, PADDED, HydrologyTuning.FILL_PADDING);
         final float[] uniformWeight = new float[PADDED * PADDED];
         Arrays.fill(uniformWeight, 1f);
-        final int[] drainagePadded = PipelinePreprocessing.computeDrainageDirection(filled, uniformWeight, PADDED);
+        final int[] drainagePadded = Drainage.computeDrainageDirection(filled, uniformWeight, PADDED);
 
         // 3. local rivers: trace + attach into the SAME graph as standalone SOURCE-rooted edges (dangling
         //    JUNCTION end, or coast DRAIN), then run the atomic collision pass which reorients + attaches
@@ -232,7 +231,7 @@ public class LocalRiverProvider {
         //    to an ABANDONED_RIVER when its DFS branch reaches no drain). update() re-assigns every channel
         //    id but preserves SOURCE/DRAIN node ids, so the boundary map below keys on node type, not the
         //    old (now churn-broken) before/after channel-id snapshot.
-        LocalDrainageTracer.traceLocalNetwork(drainagePadded, carvedElevation, network, boundaryElev ,stages);
+        LocalDrainageTracer.traceLocalNetwork(drainagePadded, carvedElevation, network, boundaryElev, stages);
 
         // 4. augment the boundary map with every SOURCE/DRAIN node not already seeded — the local ridge
         //    SOURCEs and coast DRAINs the trace minted (decoded terrain at the node, floored at 0), so the

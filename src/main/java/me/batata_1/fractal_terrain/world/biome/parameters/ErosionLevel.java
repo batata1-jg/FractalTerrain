@@ -5,7 +5,7 @@ import me.batata_1.fractal_terrain.math.Range;
 /**
  * Erosion levels 0–6 (hilly → flat). Level 5 is vanilla's shattered-terrain band.
  */
-public enum ErosionLevel {
+public enum ErosionLevel implements Band {
     LEVEL_0(-1.0f, -0.78f),
     LEVEL_1(-0.78f, -0.375f),
     LEVEL_2(-0.375f, -0.2225f),
@@ -20,11 +20,12 @@ public enum ErosionLevel {
         this.range = new Range(min, max);
     }
 
+    @Override
+    public Range range() {
+        return range;
+    }
+
     public static ErosionLevel of(float erosion) {
-        ErosionLevel level = LEVEL_0;
-        for (ErosionLevel candidate : values()) {
-            if (erosion >= candidate.range.min()) level = candidate;
-        }
-        return level;
+        return Band.containing(values(), erosion);
     }
 }

@@ -83,8 +83,8 @@ final class GlobalNetworkBuilder {
                 final double marginInfl = FractalTerrainConfig.riverInfluence(
                         Math.max(grp.getWidth(ccx, ccz), FractalTerrainConfig.MIN_WIDTH));
                 if (outDir != -1) {
-                    dcx = ccx + PipelinePreprocessing.NEIGHBOR_OFFSET_X[outDir];
-                    dcz = ccz + PipelinePreprocessing.NEIGHBOR_OFFSET_Z[outDir];
+                    dcx = ccx + Drainage.NEIGHBOR_OFFSET_X[outDir];
+                    dcz = ccz + Drainage.NEIGHBOR_OFFSET_Z[outDir];
                     drain = findDrain(ccx, ccz, outDir, tileX, tileZ, elev, grp.getElevation(ccx, ccz), marginInfl);
                 } else {
                     // no downstream arrow: the cell terminates at its lowest-elevation interior point.
@@ -121,7 +121,6 @@ final class GlobalNetworkBuilder {
                 if (type == Endpoint.Type.DRAIN) {
                     boundaryElevByNodeIdx.put(idx, 0.0);
                 }
-
             }
         }
 
@@ -155,8 +154,8 @@ final class GlobalNetworkBuilder {
 
                 // places the edges that connects sources/junctions in the boarders to the center of the cell
                 for (int d = 4; d <= 7; d++) {
-                    final int ox = PipelinePreprocessing.NEIGHBOR_OFFSET_X[d];
-                    final int oz = PipelinePreprocessing.NEIGHBOR_OFFSET_Z[d];
+                    final int ox = Drainage.NEIGHBOR_OFFSET_X[d];
+                    final int oz = Drainage.NEIGHBOR_OFFSET_Z[d];
                     final CellInfo n = cells.get(cellKey(ccx + ox, ccz + oz));
                     if (n == null || n.drain() == null) continue;
                     if (n.dcx() != ccx || n.dcz() != ccz) continue;

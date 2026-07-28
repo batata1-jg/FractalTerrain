@@ -1,11 +1,10 @@
 package me.batata_1.fractal_terrain.hydrology.meanders;
 
+import java.util.*;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
-
-import java.util.*;
 
 /**
  * Atomic (node) view of the network: parallel per-node data plus a directed adjacency where every
@@ -152,7 +151,7 @@ public final class AtomicView {
         for (int drain = 0; drain < n; drain++) {
             if (role.get(drain) != Endpoint.Type.DRAIN) continue;
             final double anchor = anchorFlow.get(drain);
-            if(anchor == -1) continue; // does not require the drain to have a maximum flow;
+            if (anchor == -1) continue; // does not require the drain to have a maximum flow;
             // 1. clamp every basin node to the anchor ceiling
             for (int node : basinOf(drain, predecessors)) flow[node] = Math.min(totalFlow[node], anchor);
             // 2. the drain reads its anchor exactly
@@ -209,7 +208,7 @@ public final class AtomicView {
     }
 
     // the edges itself can cross
-    public record nodeUnit(double[] coord , double radius , int id) implements SpatialIndexCircle  {
+    public record nodeUnit(double[] coord, double radius, int id) implements SpatialIndexCircle {
 
         @Override
         public double[] getCenter() {
@@ -287,16 +286,15 @@ public final class AtomicView {
             nearby.clear();
             index.queryContaining(pa, nearby);
             index.queryContaining(pb, nearby);
-            for (nodeUnit nu : nearby)
-                for (int sj : incident.get(nu.id())) if (sj > si) candidates.add(sj);
+            for (nodeUnit nu : nearby) for (int sj : incident.get(nu.id())) if (sj > si) candidates.add(sj);
 
             for (int sj : candidates) {
                 final int c = segments.get(sj)[0], d = segments.get(sj)[1];
                 if (a == c || a == d || b == c || b == d) continue; // share an endpoint -> touch, not cross
                 final double[] hit = segmentCrossing(pa, pb, pos(c), pos(d));
                 if (hit == null) continue;
-                final int xId =
-                        addNode(new double[] {hit[2], hit[3]}, null, NO_CANONICAL_ID, HydrologyTuning.FLOW_PER_CELL_LOCAL, -1);
+                final int xId = addNode(
+                        new double[] {hit[2], hit[3]}, null, NO_CANONICAL_ID, HydrologyTuning.FLOW_PER_CELL_LOCAL, -1);
                 splits.get(si).add(new double[] {hit[0], xId});
                 splits.get(sj).add(new double[] {hit[1], xId});
             }
@@ -311,7 +309,8 @@ public final class AtomicView {
 
             final int[] chain = new int[segSplits.size() + 2]; // lo, crossing nodes..., hi
             chain[0] = a;
-            for (int k = 0; k < segSplits.size(); k++) chain[k + 1] = (int) segSplits.get(k)[1];
+            for (int k = 0; k < segSplits.size(); k++)
+                chain[k + 1] = (int) segSplits.get(k)[1];
             chain[chain.length - 1] = b;
 
             if (hasDirectedEdge(a, b)) { // lo -> hi: ascending t

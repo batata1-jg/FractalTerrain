@@ -234,7 +234,7 @@ public final class RiverNetwork {
                 // ownFlow: SOURCE carries its captured seed (ep.sourceFlow); DRAIN/JUNCTION carry the
                 // per-cell constant. anchorFlow: DRAIN carries its anchor (ep.sourceFlow), else unused.
                 final double ownFlow = (ep.type == Endpoint.Type.SOURCE) ? ch.flow[0] : FLOW_PER_CELL;
-                final double anchorFlow = (ep.type == Endpoint.Type.DRAIN) ? ch.flow[ch.flow.length-1] : -1;
+                final double anchorFlow = (ep.type == Endpoint.Type.DRAIN) ? ch.flow[ch.flow.length - 1] : -1;
                 final int atomicId =
                         atomic.addNode(pts.get(i), ep.type, boundary ? endpointNodeId : NONE, ownFlow, anchorFlow);
                 endpointToAtomicId.put(endpointNodeId, atomicId);
@@ -261,7 +261,8 @@ public final class RiverNetwork {
             final int outdeg = atomic.adjacency.get(id).size();
             final Endpoint.Type role = atomic.role(id);
             if (role == Endpoint.Type.DRAIN) {
-                if (outdeg != 0) throw new IllegalStateException("DRAIN node " + id + " must have no outgoing crossingEdge");
+                if (outdeg != 0)
+                    throw new IllegalStateException("DRAIN node " + id + " must have no outgoing crossingEdge");
             } else {
                 // SOURCE / JUNCTION / interior all require exactly one outgoing crossingEdge
                 if (outdeg != 1)
@@ -352,7 +353,7 @@ public final class RiverNetwork {
      * {@code canonicalIdOf} (preserved SOURCE/DRAIN, or fresh JUNCTION-equivalent). Applies the inlined
      * single-outflow (K1) guard. {@code bedElevations} are not preserved.
      */
-    private void emitChannel(AtomicView atomic, double[] accumulatedFlow , List<Integer> chain, int[] canonicalIdOf) {
+    private void emitChannel(AtomicView atomic, double[] accumulatedFlow, List<Integer> chain, int[] canonicalIdOf) {
         final ArrayList<double[]> points = new ArrayList<>(chain.size());
         final double[] flow = new double[chain.size()];
         for (int i = 0; i < chain.size(); i++) {
@@ -401,7 +402,6 @@ public final class RiverNetwork {
         return ep;
     }
 
-
     // ---------------------------------------------------------------------------------------------
     // Collisions (stream capture) — a from-scratch orient-and-prune over the atomic view
     // ---------------------------------------------------------------------------------------------
@@ -427,11 +427,11 @@ public final class RiverNetwork {
     public void manageCollisions(int step, AtomicView atomic) {
 
         // step 1: undirected crossing edges + the pinned per-node adjacency (tree successor + partners).
-        if(DEBUG_STEPS) {
-            Debug.river.seeNetwork(atomic,514,"step_" + step, "baseAtomicView");
+        if (DEBUG_STEPS) {
+            Debug.river.seeNetwork(atomic, 514, "step_" + step, "baseAtomicView");
         }
         List<int[]> crossings = detectCrossings(atomic);
-        if(DEBUG_CROSSING_WINNER) LOG.info("crossings at step {} : {}", step, crossings);
+        if (DEBUG_CROSSING_WINNER) LOG.info("crossings at step {} : {}", step, crossings);
         for (int[] crossingEdge : crossings) {
             atomic.addDirectedEdge(crossingEdge[0], crossingEdge[1]);
             atomic.addDirectedEdge(crossingEdge[1], crossingEdge[0]);
@@ -451,16 +451,8 @@ public final class RiverNetwork {
         Arrays.fill(outgoing, NONE);
         final ArrayDeque<Integer> dfsStack = new ArrayDeque<>();
         for (int sourceId : sortedSourceIds(atomic)) {
-            if(visited[sourceId]==-1||foundDrain[visited[sourceId]]) dfsVisit(
-                atomic,
-                sourceId,
-                sourceId,
-                dfsStack,
-                visited,
-                foundDrain,
-                streamMarked,
-                outgoing
-            );
+            if (visited[sourceId] == -1 || foundDrain[visited[sourceId]])
+                dfsVisit(atomic, sourceId, sourceId, dfsStack, visited, foundDrain, streamMarked, outgoing);
             dfsStack.clear();
         }
 
@@ -473,8 +465,8 @@ public final class RiverNetwork {
 
         // step 3 + 5: build the oriented compact view, derive flow, fold back in place.
         final AtomicView oriented = buildOriented(atomic, alive, outgoing);
-        if(DEBUG_STEPS) {
-           Debug.river.seeNetwork(oriented,514,"step_" + step, "orientedAtomicView");
+        if (DEBUG_STEPS) {
+            Debug.river.seeNetwork(oriented, 514, "step_" + step, "orientedAtomicView");
         }
         update(oriented);
     }
@@ -500,8 +492,8 @@ public final class RiverNetwork {
             boolean[] streamMarked,
             int[] outgoing) {
         if (streamMarked[node] || atomic.role(node) == Endpoint.Type.DRAIN) return true; // already a terminus
-        if (visited[node]==sourceId) return false; // on-stack ancestor or exhausted branch — NOT promoted, NOT marked
-        if (visited[node]!=-1&&!foundDrain[visited[node]]) return false;
+        if (visited[node] == sourceId) return false; // on-stack ancestor or exhausted branch — NOT promoted, NOT marked
+        if (visited[node] != -1 && !foundDrain[visited[node]]) return false;
 
         visited[node] = sourceId;
         stack.push(node);
@@ -520,9 +512,8 @@ public final class RiverNetwork {
                 stack.pop();
                 return true;
             }
-            if (visited[next]!=sourceId
-                    && dfsVisit(
-                            atomic, next,sourceId, stack, visited, foundDrain, streamMarked, outgoing)) {
+            if (visited[next] != sourceId
+                    && dfsVisit(atomic, next, sourceId, stack, visited, foundDrain, streamMarked, outgoing)) {
                 stack.pop(); // promotion already happened for this whole stack, deeper in the recursion
                 return true;
             }
@@ -571,8 +562,7 @@ public final class RiverNetwork {
         for (int old = 0; old < n; old++) {
             if (!alive[old] || atomic.role(old) == Endpoint.Type.DRAIN) continue;
             final int out = outgoing[old];
-            if (out != NONE && newId[out] != NONE)
-                oriented.addDirectedEdge(newId[old], newId[out]);
+            if (out != NONE && newId[out] != NONE) oriented.addDirectedEdge(newId[old], newId[out]);
         }
         return oriented;
     }

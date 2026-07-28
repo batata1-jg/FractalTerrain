@@ -14,7 +14,7 @@ is factored into the builder/tracer helpers. See repo-root `ARCHITECTURE.md` "Hy
 | `GlobalNetworkBuilder.java`     | Traces/relaxes the global network inside a tile; returns it plus its boundary-elevation map | Global-network trace math, coarse↔native tile mapping              |
 | `LocalDrainageTracer.java`      | Traces the local network off the drainage field and attaches it in place onto the same graph | Local drainage tracing, attach/drop rules, `traceLocalNetworkForTest` |
 | `ChannelElevationAssigner.java` | Three-phase bed-elevation propagation; `buildTile` runs it twice per tile                   | Channel bed elevations, downstream propagation, topology failures   |
-| `PipelinePreprocessing.java`    | Sink-fill, drainage direction, flow accumulation (shared low-level helpers)                 | Drainage/flow preprocessing math                                    |
+| `Drainage.java`                 | Sink-fill, D8/D4 drainage direction, flow accumulation, `FlowGraph` routing topology        | Drainage/flow math; the shared upstream→downstream walk             |
 | `HydrologyTileGeometry.java`    | Shared tile-frame geometry (`GRID=512`, `PAD=1`, `PADDED=514`, `COARSE_PX=256`)             | Tile origins, padding, frame conversions used by all three helpers  |
 | `HydrologicalUnit.java`         | Record for one hydrological-unit entry in the spatial index; serializable, influence-circle  | Reading/extending the units index, unit persistence format          |
 | `ChannelGeometry.java`          | Lower-level channel-geometry helper (bed half-width)                                        | Channel width/shape geometry                                        |

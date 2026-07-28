@@ -90,8 +90,7 @@ public enum RosgenProfile {
      */
     public double riverInfluence(double width) {
         return Math.min(
-                FractalTerrainConfig.MAX_INFLUENCE_RADIUS,
-                width * FractalTerrainConfig.INFLUENCE_BLEND_MULTIPLIER);
+                FractalTerrainConfig.MAX_INFLUENCE_RADIUS, width * FractalTerrainConfig.INFLUENCE_BLEND_MULTIPLIER);
     }
 
     /**

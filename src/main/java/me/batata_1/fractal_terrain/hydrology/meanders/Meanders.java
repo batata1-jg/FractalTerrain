@@ -196,8 +196,7 @@ public final class Meanders {
             double[] displacement = VectorOps.project(gradient, ch.spline.normal(i));
             final double magnitude = VectorOps.magnitude(displacement);
 
-            if (magnitude > MAX_MIGRATION)
-                displacement = VectorOps.scale(displacement, MAX_MIGRATION / magnitude);
+            if (magnitude > MAX_MIGRATION) displacement = VectorOps.scale(displacement, MAX_MIGRATION / magnitude);
             displacement = VectorOps.scale(displacement, borderDamping(point[0], point[1], ch.dischargeWidth()));
             migratedPoints.add(VectorOps.add(point, displacement));
         }

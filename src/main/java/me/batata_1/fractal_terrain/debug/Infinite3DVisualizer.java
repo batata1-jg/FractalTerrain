@@ -186,23 +186,23 @@ public class Infinite3DVisualizer {
                 FractalTerrainInstance.getLocalRiverProvider().queryInfluence(pt);
         // LOG.info("]");
         BlockState deepest = DEFAULT;
-                for (final HydrologicalUnit unit : units) {
-                    final double du = pt[0] - unit.coord()[0];
-                    final double dv = pt[1] - unit.coord()[1];
-                    final double radialDist = Math.hypot(du, dv);
-                    if (radialDist >= unit.getRadius()) continue; // outside this unit's influence circle
+        for (final HydrologicalUnit unit : units) {
+            final double du = pt[0] - unit.coord()[0];
+            final double dv = pt[1] - unit.coord()[1];
+            final double radialDist = Math.hypot(du, dv);
+            if (radialDist >= unit.getRadius()) continue; // outside this unit's influence circle
 
-                    if (radialDist <= ChannelGeometry.bedHalfWidth(unit.width())) return BED_ZONE; // deepest possible
+            if (radialDist <= ChannelGeometry.bedHalfWidth(unit.width())) return BED_ZONE; // deepest possible
 
-                    if (deepest == BED_ZONE) continue;
-                    final RosgenProfile profile =
-                            RosgenProfile.of(unit.rosgenType() == null ? HydrologicalUnit.RosgenType.A : unit.rosgenType());
-                    if (radialDist <= profile.floodPlainLength(unit.width())) {
-                        deepest = FLOODPLAIN_ZONE;
-                    } else if (deepest == DEFAULT) {
-                        deepest = BLENDING_ZONE;
-                    }
-                }
+            if (deepest == BED_ZONE) continue;
+            final RosgenProfile profile =
+                    RosgenProfile.of(unit.rosgenType() == null ? HydrologicalUnit.RosgenType.A : unit.rosgenType());
+            if (radialDist <= profile.floodPlainLength(unit.width())) {
+                deepest = FLOODPLAIN_ZONE;
+            } else if (deepest == DEFAULT) {
+                deepest = BLENDING_ZONE;
+            }
+        }
         return deepest;
     }
 

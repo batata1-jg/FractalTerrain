@@ -5,7 +5,7 @@ import me.batata_1.fractal_terrain.math.Range;
 /**
  * Temperature levels 0–4 (cold → hot), from the wiki "Temperature" table.
  */
-public enum TemperatureLevel {
+public enum TemperatureLevel implements Band {
     LEVEL_0(-1.0f, -0.45f),
     LEVEL_1(-0.45f, -0.15f),
     LEVEL_2(-0.15f, 0.2f),
@@ -18,11 +18,12 @@ public enum TemperatureLevel {
         this.range = new Range(min, max);
     }
 
+    @Override
+    public Range range() {
+        return range;
+    }
+
     public static TemperatureLevel of(float temperature) {
-        TemperatureLevel level = LEVEL_0;
-        for (TemperatureLevel candidate : values()) {
-            if (temperature >= candidate.range.min()) level = candidate;
-        }
-        return level;
+        return Band.containing(values(), temperature);
     }
 }

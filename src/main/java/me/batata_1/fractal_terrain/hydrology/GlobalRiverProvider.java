@@ -5,9 +5,9 @@ import static me.batata_1.fractal_terrain.FractalTerrainConfig.X;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.Z;
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
-import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.NEIGHBOR_OFFSET_X;
-import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.NEIGHBOR_OFFSET_Z;
-import static me.batata_1.fractal_terrain.hydrology.PipelinePreprocessing.OPPOSITE_DIRECTION;
+import static me.batata_1.fractal_terrain.hydrology.Drainage.NEIGHBOR_OFFSET_X;
+import static me.batata_1.fractal_terrain.hydrology.Drainage.NEIGHBOR_OFFSET_Z;
+import static me.batata_1.fractal_terrain.hydrology.Drainage.OPPOSITE_DIRECTION;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -40,9 +40,9 @@ import org.slf4j.Logger;
  *       width from flow without a lossy {@code widthFromFlow} inversion. See {@link #getFlow}.
  * </ul>
  *
- * <p>Arrow bitfield (channel 0), using the neighbour ordering of {@link PipelinePreprocessing}. Routing
+ * <p>Arrow bitfield (channel 0), using the neighbour ordering of {@link Drainage}. Routing
  * is <b>D4</b> (cardinal neighbours only): drainage uses
- * {@link PipelinePreprocessing#computeDrainageDirectionCardinal}, so only the cardinal direction bits
+ * {@link Drainage#computeDrainageDirectionCardinal}, so only the cardinal direction bits
  * (4..7) are ever set and every river cell has a single edge-aligned exit. Only the <b>downstream</b>
  * (outgoing) direction is stored — upstream/tributary arrows are derived on demand by scanning a pixel's
  * neighbours (see {@link #ingoingMask(int, int)}), which stays consistent across tile borders and
@@ -225,7 +225,7 @@ public class GlobalRiverProvider {
         //    then a depression fill so every interior cell drains to a border outlet (no interior
         //    sinks). Only this descent copy is affected — the real elevation is left untouched. The
         //    ramp leaves ocean border pixels low, so flow exits the tile through the ocean.
-        final float[] rampedElevation = PipelinePreprocessing.fillSinks(applyBorderRamp(elevation), PADDED_SIDE, 0);
+        final float[] rampedElevation = Drainage.fillSinks(applyBorderRamp(elevation), PADDED_SIDE, 0);
 
         // 4. ridge mask (thinned upper region) + coast mask (border of the lower region).
         //        final boolean[][] ridgeMask = Skeletonizer.thin(upperMask);
@@ -237,7 +237,7 @@ public class GlobalRiverProvider {
         final float[] uniformWeight = new float[PADDED_SIDE * PADDED_SIDE];
         Arrays.fill(uniformWeight, 1f);
         final int[] drainageDirection =
-                PipelinePreprocessing.computeDrainageDirectionCardinal(rampedElevation, uniformWeight, PADDED_SIDE);
+                Drainage.computeDrainageDirectionCardinal(rampedElevation, uniformWeight, PADDED_SIDE);
         final int[] arrows = new int[PADDED_SIDE * PADDED_SIDE];
         for (int i = 0; i < PADDED_SIDE; i++) {
             for (int j = 0; j < PADDED_SIDE; j++) {
@@ -255,7 +255,7 @@ public class GlobalRiverProvider {
         // 6. width: flow-accumulation proxy mapped through globalRiverWidth, only on river pixels.
         //    NOTE: flow accumulation comes from the raw steepest-descent field, so cells on a
         //    sink-reroute segment get width from natural flow rather than the rerouted drainage.
-        final float[] flowAccumulation = PipelinePreprocessing.computeFlow(
+        final float[] flowAccumulation = Drainage.computeFlow(
                 drainageDirection,
                 PADDED_SIDE,
                 HydrologyTuning.FLOW_INITIAL_GLOBAL,
@@ -329,7 +329,7 @@ public class GlobalRiverProvider {
         for (int step = 0; step < MAX_WALK_STEPS; step++) {
             if (step == MAX_WALK_STEPS - 1) LOG.warn("max steps reached in walking from source");
             arrows[pi * PADDED_SIDE + pj] |= RIVER_BIT;
-            final int direction = PipelinePreprocessing.neighbor(drainageDirection[pi * PADDED_SIDE + pj]);
+            final int direction = Drainage.directionOf(drainageDirection[pi * PADDED_SIDE + pj]);
             if (direction == -1) break; // reached a border outlet — river ends here.
             final int nextPi = pi + NEIGHBOR_OFFSET_X[direction];
             final int nextPj = pj + NEIGHBOR_OFFSET_Z[direction];
@@ -413,7 +413,7 @@ public class GlobalRiverProvider {
             final int outgoing = outgoingMask(arrows[cell]);
             for (int d = 0; d < 8; d++) {
                 if ((outgoing & (1 << d)) == 0) continue;
-                final int down = PipelinePreprocessing.neighborIndex(cell, d, PADDED_SIDE);
+                final int down = Drainage.neighborIndex(cell, d, PADDED_SIDE);
                 if (down != -1) inDegree[down]++;
             }
         }
@@ -425,7 +425,7 @@ public class GlobalRiverProvider {
             final int outgoing = outgoingMask(arrows[cell]);
             for (int d = 0; d < 8; d++) {
                 if ((outgoing & (1 << d)) == 0) continue;
-                final int down = PipelinePreprocessing.neighborIndex(cell, d, PADDED_SIDE);
+                final int down = Drainage.neighborIndex(cell, d, PADDED_SIDE);
                 if (down == -1) continue;
                 if (riverElev[cell] < riverElev[down]) riverElev[down] = riverElev[cell];
                 if (--inDegree[down] == 0) queue.add(down);

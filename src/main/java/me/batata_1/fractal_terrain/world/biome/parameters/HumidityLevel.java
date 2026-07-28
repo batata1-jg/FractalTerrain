@@ -5,7 +5,7 @@ import me.batata_1.fractal_terrain.math.Range;
 /**
  * Humidity (vegetation) levels 0–4 (dry → lush), from the wiki "Humidity (Vegetation)" table.
  */
-public enum HumidityLevel {
+public enum HumidityLevel implements Band {
     LEVEL_0(-1.0f, -0.35f),
     LEVEL_1(-0.35f, -0.1f),
     LEVEL_2(-0.1f, 0.1f),
@@ -18,11 +18,12 @@ public enum HumidityLevel {
         this.range = new Range(min, max);
     }
 
+    @Override
+    public Range range() {
+        return range;
+    }
+
     public static HumidityLevel of(float humidity) {
-        HumidityLevel level = LEVEL_0;
-        for (HumidityLevel candidate : values()) {
-            if (humidity >= candidate.range.min()) level = candidate;
-        }
-        return level;
+        return Band.containing(values(), humidity);
     }
 }

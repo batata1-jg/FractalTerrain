@@ -6,7 +6,7 @@ import me.batata_1.fractal_terrain.math.Range;
  * Peaks-and-valleys bands derived from weirdness via {@code PV = 1 − |3·|weirdness| − 2|}
  * (wiki "Weirdness (Ridges)"). Valleys are where vanilla carves rivers.
  */
-public enum PeaksValleys {
+public enum PeaksValleys implements Band {
     VALLEYS(-1.0f, -0.85f),
     LOW(-0.85f, -0.2f),
     MID(-0.2f, 0.2f),
@@ -26,12 +26,13 @@ public enum PeaksValleys {
         return 1f - Math.abs(3f * Math.abs(weirdness) - 2f);
     }
 
+    @Override
+    public Range range() {
+        return range;
+    }
+
+    /** The band the weirdness value's folded {@link #pv} lands in (clamped to the extremes). */
     public static PeaksValleys of(float weirdness) {
-        float pv = pv(weirdness);
-        PeaksValleys band = VALLEYS;
-        for (PeaksValleys candidate : values()) {
-            if (pv >= candidate.range.min()) band = candidate;
-        }
-        return band;
+        return Band.containing(values(), pv(weirdness));
     }
 }

@@ -68,15 +68,16 @@ Every ONNX-facing tensor uses the fixed axis order `CH=0/X=1/Z=2` and the channe
 model-specific constants (means/stds, latent compression, native resolution) from
 `world_pipeline_config.json` so a model swap needs no recompile.
 
-**Hydrology split** (`hydrology/`, M-010; unified onto one graph by the 2026-07 river-network
-unification, `plan-hydrology.md`): `LocalRiverProvider.java` is a thin orchestrator over a dual-store
+**Hydrology split** (`hydrology/`): `LocalRiverProvider.java` is a thin orchestrator over a dual-store
 cache (an `ImmutableRTree<HydrologicalUnit>` spatial index + a carved-elevation `FloatTensor`, filled by
 one `buildTile` call). `buildTile` builds ONE per-tile `RiverNetwork` graph: `GlobalNetworkBuilder.java`
 traces/relaxes the global (Meanders) subgraph and returns it together with the boundary-elevation map it
-accumulated (it no longer calls `assign` itself); `LocalDrainageTracer.java` then traces the
-drainage-derived local network and attaches every surviving segment directly onto that SAME graph in
-place (`SOURCE` root → `JUNCTION`-`split()` or coast-`DRAIN` terminus), returning nothing, instead of
-handing back a detached channel list; `ChannelElevationAssigner.java` then runs ONE `assign` pass over
+accumulated; `LocalDrainageTracer.java` then traces the drainage-derived local network and attaches
+every surviving segment directly onto that SAME graph in place, returning nothing. It works through the
+atomic seam: `RiverNetwork.viewAtomic()` yields an `AtomicView` in which every interior spline point is a
+first-class node, the tracer appends `SOURCE`/interior/`DRAIN` nodes and directed edges to it, and
+`RiverNetwork.manageCollisions(step, view)` orients, captures and prunes that view before folding it back
+into the canonical graph. `ChannelElevationAssigner.java` then runs ONE `assign` pass over
 the now-unified graph, and `RiverNetwork.collectUnits` runs ONE pass emitting every hydrological unit —
 global and local, one shared feature-id counter — by resampling geometry and reading each channel's
 assigned `Channel.bedElevations` (oxbows/abandoned paths fall back to a decoded-terrain sampler, since
@@ -84,9 +85,9 @@ they carry no `bedElevations`). There is no per-pixel global boolean mask anywhe
 proximity to a global-channel point (`HydrologyTuning.LOCAL_ATTACH_RADIUS`) replaces both the old mask's
 walk-termination exclusion and its reach-seed adjacency, read from a point index built fresh over the
 graph's channels each call. `HydrologyTileGeometry.java` centralizes the shared tile-frame geometry
-(`GRID=512`, `PAD=1`, `PADDED=514`, `COARSE_PX=256`) all three depend on. `PipelinePreprocessing.java`
-(sink-fill, drainage direction, flow accumulation) and `ChannelGeometry.java` are lower-level shared
-helpers. The `hydrology/profile/` subpackage (`HydrologyProfileCarver`, `HydrologyProfilePainter`,
+(`GRID=512`, `PAD=1`, `PADDED=514`, `COARSE_PX=256`) all three depend on. `Drainage.java` (sink-fill,
+D8/D4 drainage direction, flow accumulation, and the `Drainage.FlowGraph` routing topology both the flow
+accumulator and the local trace walk) and `ChannelGeometry.java` are lower-level shared helpers. The `hydrology/profile/` subpackage (`HydrologyProfileCarver`, `HydrologyProfilePainter`,
 `HydrologyProfile`, `RosgenProfile`) turns the hydrological-unit index into carve/paint operations
 consumed by `world/gen/`. `GlobalRiverProvider.java` is independent of `LocalRiverProvider` and caches
 its own 64×64-coarse-px tiles directly (coarse-px addressed, not the 512-native-px tile grid — see
@@ -123,10 +124,11 @@ body above.
    elevation — so the drainage field computed next sees valleys.
 3. `fillSinks` + `computeDrainageDirection` over that carved elevation.
 4. Trace the local network and attach every surviving segment directly onto that SAME graph
-   (`LocalDrainageTracer.traceLocalNetwork`, in place, no return value) as `SOURCE`/`JUNCTION`-split/coast-
-   `DRAIN` edges, with proximity to a global-channel point (`HydrologyTuning.LOCAL_ATTACH_RADIUS`) gating
-   attachment, walk termination and the reach seed alike. A before/after channel-id snapshot identifies
-   the minted local channels.
+   (`LocalDrainageTracer.traceLocalNetwork`, in place, no return value). The tracer walks the drainage
+   field in upstream-to-downstream order over a `Drainage.FlowGraph`, appends `SOURCE`/interior/`DRAIN`
+   nodes to the graph's `AtomicView`, wires each new node to any nearby global-channel node
+   (`HydrologyTuning.LOCAL_ATTACH_RADIUS`), and closes with `RiverNetwork.manageCollisions`, which
+   orients the view, captures crossings and prunes every branch that reaches no drain.
 5. Augment the boundary map with those local `SOURCE`/`DRAIN` nodes → a second
    `ChannelElevationAssigner.assign` over the now-unified graph.
 6. `RiverNetwork.collectUnits` emitting every unit (global and local, one shared feature-id counter,
@@ -358,24 +360,37 @@ files — flipping them back means editing source.
 **Deterministic layers have a golden gate.** `src/test/java/me/batata_1/fractal_terrain/` (JUnit 5,
 `gradle test`, configured `useJUnitPlatform()` in `build.gradle`) holds:
 
-| Test | Covers |
-| ---- | ------ |
 | Test | Covers | Status |
 | ---- | ------ | ------ |
-| `hydrology/GlobalRiverGoldenTest.java` | `GlobalRiverProvider`'s per-tile pipeline via `computeTileForTest` | 1 of 2 failing — tile checksum drifted from the captured golden |
+| `hydrology/GlobalRiverGoldenTest.java` | `GlobalRiverProvider`'s per-tile pipeline via `computeTileForTest` | 1 of 2 failing — tile checksum does not match the captured golden |
 | `hydrology/LocalRiverGoldenTest.java` | `LocalRiverProvider`'s local-network trace via `traceLocalNetworkForTest` | **4 of 4 failing — `ArrayIndexOutOfBoundsException: Index 262144 out of bounds for length 262144`** |
-| `hydrology/meanders/MeandersGoldenTest.java` | `Meanders` relaxation | 8 passing |
-| `hydrology/SpatialIndexCorrectnessGoldenTest.java` | The spatial-index correctness portion of the former `SpatialIndexBenchmark` | 1 of 2 failing — hit-set-size checksum drifted |
+| `hydrology/meanders/MeandersGoldenTest.java` | `Meanders`/`RiverNetwork` collision semantics + a migration golden | 2 of 5 failing, 1 skipped |
+| `hydrology/meanders/RiverNetworkSeamGoldenTest.java` | The canonical↔atomic seam round trip (`viewAtomic`/`accumulateAndCorrectFlow`/`update`) | 4 passing |
+| `hydrology/SpatialIndexCorrectnessGoldenTest.java` | R-tree query correctness against brute force over a synthetic unit set | 1 of 2 failing — hit-set-size checksum mismatch |
 | `ml/pipeline/PipelineSessionReloadRaceTest.java` | MUST-1 — the reload-race regression (see above) | 1 passing |
 
 Each headless golden test drives the exact production code path over a synthetic seeded fixture (no
 ONNX dependency), so a divergence in the deterministic hydrology math fails `gradle test` immediately.
 
-**The suite is red on `feature/hydrology` (6 of 17).** The two checksum drifts are the expected
-consequence of reworking the hydrology math without re-capturing goldens. The four
-`LocalRiverGoldenTest` errors are different in kind: `262144` is exactly `512²`, so the local-network
-trace is indexing one past the end of a `GRID×GRID` buffer — a genuine out-of-bounds in the traced path,
-not a stale expectation. Re-establish this baseline before attributing a red suite to your own change.
+**The suite is red on `feature/hydrology`: 20 tests, 8 failing, 1 skipped.** Re-establish this baseline
+before attributing a red suite to your own change. The failures are three distinct kinds:
+
+- **Four `LocalRiverGoldenTest` errors** — `262144` is exactly `512²`, so the local-network trace indexes
+  one past the end of a `GRID×GRID` buffer. A genuine out-of-bounds in the traced path, not a stale
+  expectation.
+- **Two checksum mismatches** (`GlobalRiverGoldenTest`, `SpatialIndexCorrectnessGoldenTest`) — the
+  captured goldens do not describe what the code now computes. Whether the code or the golden is wrong
+  is unresolved; do not re-capture without deciding that first.
+- **Two `MeandersGoldenTest` failures** (`independentCrossingsAreNotMerged`,
+  `meandersGoldenSignatureMatchesCapturedFixture`) — the collision pass and the migration signature
+  disagree with what the fixtures assert.
+
+`MeandersGoldenTest.danglingTributaryIsCapturedIntoTrunk` is `@Disabled`, and the reason is a capability
+gap rather than a flaky expectation: capture is driven by `detectCrossings`, which builds its quadtree
+from `RiverNetwork.channels`, so only a **canonical** `Channel` can be found crossing a trunk. A dangling
+tributary cannot be expressed as one — `update()`'s chain walk calls `onlyOutgoing()` on every non-drain
+node, and a dangling end has no outgoing edge — and one added through the atomic view has no `Channel` at
+all. Restoring the test needs a supported way to attach a dangling canonical channel.
 
 **The diffusion half has no automated behavior gate — and no manual one either.** Despite its name and
 its `pipelineTest` Gradle task, `debug/tests/PipelineTest.java` does **not** exercise `WorldPipeline`:

@@ -79,7 +79,7 @@ final class ChannelElevationAssigner {
             if (startPoint == null) throw new IllegalArgumentException("startPoint is null");
             final double endPointElev = drainElevByNodeId.getOrDefault(ch.endNodeId, Double.NaN);
             if (Double.isNaN(endPointElev)) throw new IllegalArgumentException("endPointElev is NaN");
-            final double startElev = Math.max(startPoint.elevation,endPointElev);
+            final double startElev = Math.max(startPoint.elevation, endPointElev);
             if (Double.isNaN(startElev)) throw new IllegalArgumentException("startElev is NaN");
             double lastPointElev = startElev;
             for (double[] p : ch.spline.points()) {
