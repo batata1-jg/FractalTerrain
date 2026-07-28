@@ -107,6 +107,11 @@ public final class Meanders {
             ch.reSample(HydrologyTuning.DX);
             ch.spline = QuinticHermiteSpline.createCatmullRom(ch.spline.points());
             migrate.accept(ch);
+        }
+
+        network.resolveEndpoints();
+
+        for (Channel ch : network.getChannels()) {
             ch.reSample(Math.sqrt(ch.intakeWidth())); // intake: finest spacing, gap-free discs
             network.manageCutoffs(ch, i);
         }
@@ -188,15 +193,18 @@ public final class Meanders {
         ArrayList<double[]> migratedPoints = new ArrayList<>(pointCount);
         for (int i = 0; i < pointCount; i++) {
             final double[] point = ch.spline.points().get(i);
-            if (i == 0 || i == pointCount - 1) {
-                migratedPoints.add(point); // pin node endpoints
-                continue;
-            }
+//            if (i == 0 || i == pointCount - 1) {
+//                migratedPoints.add(point); // pin node endpoints
+//                continue;
+//            }
             final double[] gradient = sampleGradient(point[0], point[1]);
-            double[] displacement = VectorOps.project(gradient, ch.spline.normal(i));
-            final double magnitude = VectorOps.magnitude(displacement);
+            double[] displacementNormal = VectorOps.project(gradient, ch.spline.normal(i));
 
+            double[] displacement = VectorOps.add(VectorOps.scale(displacementNormal,-1),VectorOps.scale(gradient, -1));
+          //  double[] displacement = VectorOps.scale(gradient, -1);
+            final double magnitude = VectorOps.magnitude(displacement);
             if (magnitude > MAX_MIGRATION) displacement = VectorOps.scale(displacement, MAX_MIGRATION / magnitude);
+
             displacement = VectorOps.scale(displacement, borderDamping(point[0], point[1], ch.dischargeWidth()));
             migratedPoints.add(VectorOps.add(point, displacement));
         }

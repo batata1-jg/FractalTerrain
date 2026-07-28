@@ -54,7 +54,7 @@ public final class HydrologyTuning {
      *  that need to reason about its point spacing (debug visualizers, tests). */
     public static final double DX = 1.5;
     /** max per-step displacement for the valley-seeking migration. */
-    public static final double MAX_MIGRATION = 2 * HydrologyTuning.DX;
+    public static final double MAX_MIGRATION = HydrologyTuning.DX;
     /**
      * Width of the border margin band {@code Meanders} keeps clear of the grid edge, as a multiple of
      * channel width. An independent margin factor (deliberately wider than {@link #riverInfluence}) so a

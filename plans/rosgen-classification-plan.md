@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Assign a Rosgen Level-I stream type (`Aa+ A B C D DA E F G`) to every `HydrologicalUnit` emitted by the hydrology pipeline, measured from the raw decoded elevation field, so `RosgenProfile` can drive per-type carve geometry.
+**Goal:** Assign a Rosgen Level-I stream type (`Aa+ A B C D DA E F G`) to every `HydrologicalUnit` that represents a *river reach*, measured from the raw decoded elevation field, so `RosgenProfile` can drive per-type carve geometry. Units that are not reaches — the `SOURCE` and `DRAIN` points terminating each channel, and removed features (oxbow lakes, abandoned rivers) — are stamped with their real `HydrologicalFeature` kind and a `null` type, because Rosgen classifies reaches and there is nothing to measure a spring or a river mouth over.
 
 **Architecture:** Classification is a *diagnosis* step that runs inside `Meanders.collectUnits`, which is the only object holding both the river graph and the raster it needs. It measures two genuine observables of the terrain — along-channel bed slope and entrenchment ratio — plus channel width, then runs an ordered decision key to pick a type. Everything else Rosgen names (W/D, sinuosity, floodplain extent, bed form) is *prescribed* by `RosgenProfile` from that type, never measured. No state is cached on `Channel`; each unit carries its own type so the carve can later blend between adjacent types.
 
@@ -25,15 +25,19 @@
 
 1. **Classification must happen inside `collectUnits`, before any carve.** The Rosgen type feeds `RosgenProfile.riverInfluence` → `HydrologicalUnit.getRadius()` → the R-tree that `carveRiverShells` builds. Units must already be typed when the carve consumes them. `collectUnits` is the only point where that holds for all three call sites.
 
-2. **The classifier reads a *raw* elevation snapshot, never `carvedElevation`.** `HydrologyProfileCarver.carveRiverShells` writes into the buffer it reads and compounds across calls. `LocalRiverProvider.buildTile` calls `collectUnits` three times: at `:217` the buffer is still raw, but at `:249` and `:252` it has been carved twice. Classifying against the carved buffer measures `FLOODPLAIN_BASE` and `FLOODPLAIN_WIDTH_FACTOR` — the carve's own tuning constants — instead of the terrain. `GlobalNetworkBuilder` already clones `base[2]`/`base[3]` at `:202-203`, before the first `assign` and first carve; cloning `base[0]` in the same place is the snapshot, in the place that already does this.
+2. **The classifier reads a *raw* elevation snapshot, never `carvedElevation`.** `HydrologyProfileCarver.carveRiverShells` writes into the buffer it reads and compounds across calls. `LocalRiverProvider.buildTile` calls `collectUnits` three times: at `:217` the buffer is still raw, but at `:249` and `:252` it has been carved twice. Classifying against the carved buffer measures `FLOODPLAIN_BASE` and `FLOODPLAIN_WIDTH_FACTOR` — the carve's own tuning constants — instead of the terrain. `GlobalNetworkBuilder` already clones `base[2]`/`base[3]` at `:202-203`, before the first `assign` and first carve, so the same function is the right home for the snapshot — but the clone goes *above* the empty-network early return at `:194-198`, not beside the gradient clones, because that branch constructs its own `Meanders` and returns before `:202` ever runs. Task 7 Step 3 has the exact placement.
 
 3. **W/D is derived from width, not from flow accumulation.** `FLOW_PER_CELL_GLOBAL = 2.0` and `FLOW_PER_CELL_LOCAL = 0.001` differ by 2000×, and after the collision pass you cannot tell which network a channel came from. `widthFromFlow` is the unifying quantity and is what actually drives the carve.
 
 4. **One ER transect per *reach*, not per unit.** `collectUnits` resamples at `dx = max(intakeWidth/2, 0.5)`, and headwater channels floor at 0.5 px — a detailed tile emits ~60,000 units. Transecting every unit costs ~24M cache-missing samples per tile (~0.8 s). One transect per reach (~20 channel widths of arc) is ~1,500 transects, ~0.6M samples, ~6 ms. Rosgen types a reach, not a point, so this is the method rather than an approximation.
 
+   Those are per-pass figures. `LocalRiverProvider.buildTile` calls `collectUnits` three times, each constructing a fresh `ReachRosgenClassifier` and running a full `prepare`, so the realised cost is ~18 ms/tile against ~2.4 s for the per-unit alternative. Reusing one classification across the two post-`update` calls (`:249`, `:252`) is a possible follow-on; it is not done here because the network changes between `:217` and `:249`, and proving the last two see an identical graph is more work than the 6 ms it saves.
+
 5. **The ER walk is bounded by `2.05 × bankfullWidth` per side, not `MAX_INFLUENCE_RADIUS`.** The key resolves ER only at 1.4 / 2.2 / 4.0, so ~2× width per side suffices (ER = floodProneWidth / bankfullWidth, so ER > 4 needs 2W per side). `MAX_INFLUENCE_RADIUS` is a carve constant; borrowing it makes the walk 4× longer for no benefit and, because `Interpolation.sampleBilinear:38-41` *clamps* its indices rather than failing, an overrunning walk silently returns the tile-edge pixel repeated and reports `ER = ∞` — turning a 128 px band inside every tile border into spurious `C`/`E`/`DA`.
 
 6. **No fields on `Channel`.** A per-point type array would need maintaining through `reSample` and `keepOnly`, and `keepOnly` (`Channel.java:167-172`) already slices `spline` and `flow` while leaving `bedElevations` behind — the array silently survives at its pre-slice length, misaligned to the spline. Nothing documents this: the `bedElevations` javadoc (`Channel.java:41-48`) claims only that `reSample` keeps it aligned and says nothing about `keepOnly`, so it is an unmaintained field rather than a javadoc that lies (the `keepOnly` mention at `Channel.java:28` belongs to `flow`, which *is* sliced). Keeping types out of `Channel` avoids adding a second array with the same exposure.
+
+7. **A unit that is not a reach gets no type, and says so.** `HydrologicalFeature` has always had `SOURCE` and `DRAIN`; nothing has ever emitted them, so every live unit is `RIVER` (`RiverNetwork.java:806`) and the placeholder stamps `RosgenType.A` on all of them. Both halves are worth fixing together: the graph already knows which channel ends sit on `Endpoint.Type.SOURCE`/`DRAIN` nodes, and `rosgenType` is already nullable end to end (`HydrologicalUnit.java:177,195`, coalesced to `A` at all four read sites). Stamping `null` rather than `A` is behaviour-neutral in the carve but makes "never classified" distinguishable from "measured as `A`" — which matters precisely during P1, when the whole question is what fraction of the world each type actually claims. Deciding the kind belongs to `collectUnits`, not to `ChannelTyper`: the typer sees geometry and a raster, the network sees topology.
 
 ## File Structure
 
@@ -47,7 +51,7 @@
 | `hydrology/rosgen/ReachRosgenClassifier.java` (create) | Reach segmentation + downstream-first graph walk; implements `ChannelTyper`                                        |
 | `hydrology/rosgen/CLAUDE.md` (create)                  | Package index                                                                                                      |
 | `hydrology/meanders/ChannelTyper.java` (create)        | Interface `RiverNetwork` calls. Lives in `meanders` so the package dependency stays one-way (`rosgen → meanders`). |
-| `hydrology/meanders/RiverNetwork.java` (modify)        | `collectUnits` gains a `ChannelTyper`; `addFeatureUnits` stamps the type                                           |
+| `hydrology/meanders/RiverNetwork.java` (modify)        | `collectUnits` gains a `ChannelTyper`; `addFeatureUnits` stamps the type and the per-point feature kind            |
 | `hydrology/meanders/Meanders.java` (modify)            | Gains `elev` field + `collectUnits` delegate                                                                       |
 | `hydrology/GlobalNetworkBuilder.java` (modify)         | Clones `base[0]` and passes it to `Meanders`                                                                       |
 | `hydrology/LocalRiverProvider.java` (modify)           | Three `collectUnits` call sites route through `Meanders`                                                           |
@@ -224,7 +228,11 @@ Append to `HydrologyTuning.java`, before the closing brace, after `maxNativeWidt
     /** Slope at or above which a reach is {@code A} (steep, cascading step-pool). Needs recalibration. */
     public static final double S_A = 0.04;
 
-    /** Slope below which an anastomosing ({@code DA}) reach is plausible — essentially flat. */
+    /**
+     * Slope below which an anastomosing ({@code DA}) reach is plausible — essentially flat. Not a
+     * published Rosgen figure: it is a gate this plan introduces so {@code DA} cannot claim a reach with
+     * any real fall. First-cut, untuned value pending visual calibration via {@code localRiverTest}.
+     */
     public static final double S_DA = 0.005;
 
     /** Entrenchment ratio below which a reach is entrenched ({@code F}/{@code G}). Rosgen: 1.0–1.4. */
@@ -236,7 +244,12 @@ Append to `HydrologyTuning.java`, before the closing brace, after `maxNativeWidt
     /** Entrenchment ratio above which the flood-prone area is wide enough for {@code DA}. */
     public static final double ER_ANASTOMOSE = 4.0;
 
-    /** Width-to-depth ratio separating narrow-deep ({@code E G}) from wide-shallow ({@code C F}). */
+    /**
+     * Width-to-depth ratio separating narrow-deep ({@code E G}) from wide-shallow ({@code C F}). Rosgen
+     * publishes this boundary at {@code 12}, but the W/D it is compared against is prescribed by
+     * {@link me.batata_1.fractal_terrain.hydrology.ChannelGeometry#widthDepthRatio} rather than measured,
+     * so the pair only means what {@code W_REF} makes it mean. Calibrate {@code W_REF}, not this.
+     */
     public static final double WD_NARROW = 12.0;
 
     /** Rosgen's published ER tolerance — the dead band that suppresses type flicker at a threshold. */
@@ -268,7 +281,11 @@ Append to `HydrologyTuning.java`, before the closing brace, after `maxNativeWidt
     /** Exponent of the braiding threshold in width. Derived: {@code -0.44 / 0.50}. */
     public static final double BRAID_WIDTH_EXPONENT = -0.88;
 
-    /** Minimum native-px width for a {@code D} (braided) reach — braiding needs a large channel. */
+    /**
+     * Minimum native-px width for a {@code D} (braided) reach — braiding needs a large channel. Half the
+     * width cap, chosen so {@code D} stays rare rather than from any published figure. First-cut,
+     * untuned value pending visual calibration via {@code localRiverTest}.
+     */
     public static final double BRAID_MIN_WIDTH = 8.0;
 
     /** Reach length as a multiple of bankfull width — Rosgen's own reach definition (20–30 widths). */
@@ -611,13 +628,20 @@ public final class RosgenKey {
 
     /**
      * Rosgen's published tolerances (ER &plusmn;0.2, W/D &plusmn;2.0) applied as a dead band: when a
-     * reach's metrics sit within tolerance of any threshold the key tests, keep {@code previous} — the
-     * type of the neighbouring reach — instead of committing to {@code raw}.
+     * reach's entrenchment ratio or width-to-depth ratio sits within tolerance of one of the thresholds
+     * the key compares it against, keep {@code previous} — the type of the neighbouring reach — instead of
+     * committing to {@code raw}.
      *
      * <p>The tolerances exist because the field metrics are noisy; a raster implementation is noisier
      * still. Without the dead band, types flicker along a single river, and because
      * {@link me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile} controls {@code floodPlainLength}
      * and {@code riverInfluence}, a flicker becomes a visibly scalloped floodplain edge.
+     *
+     * <p><b>Scope: ER and W/D only.</b> The slope bands ({@code S_AA}, {@code S_A}, {@code S_DA}) and the
+     * braiding threshold are deliberately outside the dead band. Slope is a real property of the
+     * landform rather than a noisy transect measurement, and a reach genuinely crossing into the steep
+     * bands should change type there; suppressing that would smear {@code Aa+}/{@code A} headwaters into
+     * the reaches below them. Type variation driven by slope is intended behaviour, not flicker.
      *
      * @param previous the neighbouring reach's committed type, or {@code null} at a network leaf
      */
@@ -969,7 +993,14 @@ public interface ChannelTyper {
 
     /**
      * Types for {@code channel}, index-aligned to its <b>current</b> spline points (post-resample), one
-     * entry per point. Must never return {@code null} or a shorter array.
+     * entry per point. Must never return {@code null} or a shorter array; an individual entry may be
+     * {@code null}, meaning no reach covered that point, which {@link RiverNetwork#collectUnits} emits
+     * as an untyped unit.
+     *
+     * <p>An implementation types every point, including the two endpoints. Deciding that a point is a
+     * source or a drain rather than a reach — and therefore carries no Rosgen type — belongs to
+     * {@link RiverNetwork#collectUnits}, which owns the graph topology; a typer sees only geometry and
+     * the raster.
      */
     RosgenType[] typesFor(Channel channel);
 }
@@ -1017,6 +1048,8 @@ class ReachRosgenClassifierTest {
 
     @Test
     void everySplinePointReceivesAType() {
+        // With no gap-filler in classifyChannel, a null entry means segment() left an index uncovered.
+        // This is the coverage test for reach segmentation, not a formality.
         final RiverNetwork net = straightNetwork();
         for (Channel ch : net.getChannels()) ch.bedElevations = descendingBed(ch.numPts());
 
@@ -1070,9 +1103,9 @@ class ReachRosgenClassifierTest {
     }
 
     @Test
-    void repeatedPrepareOnTheSameNetworkIsDeterministic() {
-        // collectUnits runs three times per tile; all three must agree or the units written to disk
-        // would carry types the carve did not use.
+    void repeatedPrepareOnAnUnchangedNetworkIsDeterministic() {
+        // prepare() must be idempotent on its own: it clears and rebuilds typesByChannelId, and the walk
+        // order must not depend on HashMap iteration order.
         final RiverNetwork net = straightNetwork();
         for (Channel ch : net.getChannels()) ch.bedElevations = descendingBed(ch.numPts());
 
@@ -1083,6 +1116,38 @@ class ReachRosgenClassifierTest {
         final RosgenType[] second = classifier.typesFor(net.getChannels().getFirst());
         assertEquals(first.length, second.length);
         for (int i = 0; i < first.length; i++) assertEquals(first[i], second[i], "point " + i);
+    }
+
+    @Test
+    void reclassifyingAfterAResampleIsDeterministic() {
+        // The production sequence, which the idempotency test above does not reach: collectUnits runs
+        // three times per tile and reSamples every channel before each classification pass.
+        // QuinticHermiteSpline.reSampleWithTs refits a fresh Catmull-Rom through the resampled points
+        // each time, so resampling an already-resampled spline is not obviously a fixed point. If it
+        // drifts a reach's metrics across a threshold, the shell carved into the terrain
+        // (LocalRiverProvider:249) and the type persisted to the index (:252) commit different types for
+        // the same physical reach.
+        final RiverNetwork net = straightNetwork();
+        for (Channel ch : net.getChannels()) ch.bedElevations = descendingBed(ch.numPts());
+
+        final ReachRosgenClassifier classifier = new ReachRosgenClassifier(flat(), SIDE);
+        resampleAll(net);
+        classifier.prepare(net);
+        final RosgenType[] first = classifier.typesFor(net.getChannels().getFirst());
+
+        resampleAll(net);
+        classifier.prepare(net);
+        final RosgenType[] second = classifier.typesFor(net.getChannels().getFirst());
+
+        assertEquals(first.length, second.length, "a second resample must not change the point count");
+        for (int i = 0; i < first.length; i++) assertEquals(first[i], second[i], "point " + i);
+    }
+
+    /** Resamples at the spacing {@code collectUnits} uses, so the test walks the production path. */
+    private static void resampleAll(RiverNetwork net) {
+        for (Channel ch : net.getChannels()) {
+            if (ch.isResampleable()) ch.reSample(Math.max(ch.intakeWidth() / 2.0, 0.5));
+        }
     }
 
     private static double[] descendingBed(int n) {
@@ -1112,6 +1177,7 @@ package me.batata_1.fractal_terrain.hydrology.rosgen;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -1192,8 +1258,15 @@ public final class ReachRosgenClassifier implements ChannelTyper {
                 if (ch != null && seen.putIfAbsent(incomingId, Boolean.TRUE) == null) frontier.add(ch);
             }
         }
-        // Any channel not reachable from a drain (a dangling branch) still needs a type.
-        for (Channel ch : network.getChannels()) {
+        // Any channel not reachable from a drain (a dangling branch) still needs a type. Sorted by id:
+        // getChannels() is a view over a HashMap, and unlike the drain-rooted expansion below — where a
+        // channel is always polled after the channel it flows into, whatever order its siblings arrive in
+        // — a dangling branch can be classified before its own downstream neighbour, so this order
+        // reaches the output through seedFor. RiverNetwork.viewAtomic and detectCrossings sort for the
+        // same reason.
+        final List<Channel> unreached = new ArrayList<>(network.getChannels());
+        unreached.sort(Comparator.comparingInt(ch -> ch.channelId));
+        for (Channel ch : unreached) {
             if (seen.putIfAbsent(ch.channelId, Boolean.TRUE) == null) frontier.add(ch);
         }
         while (!frontier.isEmpty()) {
@@ -1239,7 +1312,9 @@ public final class ReachRosgenClassifier implements ChannelTyper {
             for (int i = reach[0]; i <= reach[1]; i++) types[i] = committed;
             previous = committed;
         }
-        for (int i = 0; i < n; i++) if (types[i] == null) types[i] = RosgenType.A;
+        // Any point no reach covered stays null. segment() is meant to cover every index, so a null here
+        // is a segmentation gap; leaving it null keeps it visible (white in the type PNG, and never
+        // counted as an A during calibration) rather than fabricating a type the terrain never produced.
         return types;
     }
 
@@ -1293,12 +1368,31 @@ public final class ReachRosgenClassifier implements ChannelTyper {
             slope = 0.0;
         }
 
+        // spline.normal never returns null: VectorOps.normalize returns a zero vector, not null, when the
+        // tangent degenerates (duplicate consecutive spline points), and perpendicular preserves that. A
+        // zero normal makes the transect resample the same pixel at every step, so it must be caught
+        // here rather than walked.
+        // TODO: 1.0 is a placeholder. ER = 1 means fully entrenched, which sends a degenerate reach to
+        // F/G — visible types, deliberately, so the case shows up in the type PNG instead of hiding in
+        // the C/E majority. Once the type mix is calibrated (P1), decide whether a degenerate reach
+        // should instead inherit its downstream neighbour's type or be dropped from classification.
         final double[] normal = ch.spline.normal(mid);
-        final double entrenchment = (normal == null)
-                ? Double.POSITIVE_INFINITY
+        final double entrenchment = isDegenerate(normal)
+                ? DEGENERATE_ENTRENCHMENT
                 : sampler.entrenchmentRatio(pts.get(mid), normal, bedElev, width);
 
         return new ReachMetrics(slope, entrenchment, ChannelGeometry.widthDepthRatio(width), width, bedElev);
+    }
+
+    /** Entrenchment reported for a reach whose centreline tangent degenerates. See the TODO in {@link #measure}. */
+    private static final double DEGENERATE_ENTRENCHMENT = 1.0;
+
+    /** Squared length below which a normal counts as degenerate rather than a unit vector. */
+    private static final double DEGENERATE_NORMAL_EPS_SQ = 1e-12;
+
+    /** Whether the centreline tangent degenerated, leaving a zero-length normal instead of a unit one. */
+    private static boolean isDegenerate(double[] normal) {
+        return normal[0] * normal[0] + normal[1] * normal[1] < DEGENERATE_NORMAL_EPS_SQ;
     }
 }
 ```
@@ -1311,7 +1405,10 @@ Run:
 "C:\Users\jgdev\.gradle\wrapper\dists\gradle-9.2.1-bin\2t0n5ozlw9xmuyvbp7dnzaxug\gradle-9.2.1\bin\gradle.bat" test --tests "me.batata_1.fractal_terrain.hydrology.rosgen.ReachRosgenClassifierTest"
 ```
 
-Expected: 4 tests, all PASS.
+Expected: 5 tests, all PASS.
+
+If `reclassifyingAfterAResampleIsDeterministic` fails, do **not** widen it — a second resample changing
+the types is the real defect it exists to catch, and it means the carve and the persisted index disagree.
 
 The null guards in `orderDownstreamFirst` and `seedFor` are load-bearing: `RiverNetwork.getChannel(int)` and `getNode(int)` are plain `Map.get` calls (`RiverNetwork.java:880`, `:888`) and return `null` for an id that was pruned. `Endpoint.incoming` is a `Set<Integer>`, so the enhanced-for unboxes.
 
@@ -1327,9 +1424,31 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 6: Stamp the type in `RiverNetwork.collectUnits`
+### Task 6: Stamp the type — and the feature kind — in `RiverNetwork.collectUnits`
 
 Replaces the `// TODO: change this to the correct type` at `RiverNetwork.java:853-854`.
+
+**A Rosgen type only applies to a river reach.** Every live unit today is stamped
+`HydrologicalFeature.RIVER` (`RiverNetwork.java:806`) even though the enum has carried `SOURCE`, `DRAIN`
+and `WATERFALL` since it was written and nothing has ever emitted them — a grep over `src/main` and
+`src/test` finds `RIVER`, `ABANDONED_RIVER` and `OXBOW_LAKE` only. The graph already knows the
+difference: `Endpoint.Type` is `{SOURCE, DRAIN, JUNCTION}`, so a channel's first point sits on a source
+whenever `getNode(startNodeId).type == SOURCE`, and its last on a drain whenever
+`getNode(endNodeId).type == DRAIN`. This task stamps those two points with their real kind and gives
+them **no** Rosgen type: a spring and a river mouth are network endpoints, not reaches, and there is no
+20-width window to measure either of them over.
+
+For the same reason the `A` fallback goes away. `rosgenType` is already nullable end to end — it
+serialises as `-1` and reads back as `null` (`HydrologicalUnit.java:177,195`), and all four consumers
+(`HydrologicalUnit.getRadius:102`, `HydrologyProfile:42`, `HydrologyProfileCarver:174`,
+`Infinite3DVisualizer:211`) already coalesce `null` to `A`. So stamping `null` changes no carve
+behaviour, but it stops the index asserting that an oxbow lake, a spring, or an unclassified reach *is*
+a steep entrenched headwater — which would otherwise be indistinguishable from a genuine `A` in the
+type PNG and in any later calibration count.
+
+Grouping is unaffected: a channel stays **one** feature with one `nextFeatureId`, because
+`HydrologicalUnit.id()` is what the carve/paint query groups by, not `type()`. Only the debug
+visualizer reads `type()` at all (`HydrologyUnitVisualizer.java:110,111,152`).
 
 **Files:**
 
@@ -1338,7 +1457,7 @@ Replaces the `// TODO: change this to the correct type` at `RiverNetwork.java:85
 **Interfaces:**
 
 - Consumes: `ChannelTyper` (Task 5).
-- Produces: `collectUnits(int, double, double, int[], ChannelTyper)` and `collectUnits(int, double, double, int[], IntPredicate, ChannelTyper)`. The existing 4- and 5-argument overloads remain and delegate with a `null` typer, so `GlobalRiverGoldenTest` and any other current caller keep compiling.
+- Produces: `collectUnits(int, double, double, int[], ChannelTyper)` and `collectUnits(int, double, double, int[], IntPredicate, ChannelTyper)`. The 4-argument overload keeps its signature and delegates with a `null` typer, so `GlobalRiverGoldenTest` and any other current caller keep compiling. The existing 5-argument overload — `(int, double, double, int[], IntPredicate)`, filtered and untyped — is *replaced*, not kept: the new 5-argument form shares its arity but takes a `ChannelTyper` and applies no filter. That is safe only because nothing outside `RiverNetwork` calls the filtered form; its sole caller is the 4-argument method's own delegation, which this task rewrites. Confirm with a grep over `src/main` and `src/test` before starting.
 
 - [ ] **Step 1: Restructure `collectUnits` into resample → prepare → emit**
 
@@ -1384,6 +1503,7 @@ In `RiverNetwork.java`, replace the body of the filtered `collectUnits` overload
                     ch.flow, // per-point flow -> per-point derived width (natural taper)
                     0.0,
                     HydrologicalFeature.RIVER,
+                    featureKinds(ch),
                     typer == null ? null : typer.typesFor(ch),
                     time,
                     offsetX,
@@ -1405,7 +1525,18 @@ In `RiverNetwork.java`, replace the body of the filtered `collectUnits` overload
                 continue;
             }
             addFeatureUnits(
-                    units, resampled, null, null, rp.width(), rp.type(), null, rp.time(), offsetX, offsetZ, nextFeatureId);
+                    units,
+                    resampled,
+                    null,
+                    null,
+                    rp.width(),
+                    rp.type(),
+                    null,
+                    null,
+                    rp.time(),
+                    offsetX,
+                    offsetZ,
+                    nextFeatureId);
         }
         return units;
     }
@@ -1426,9 +1557,10 @@ In `RiverNetwork.java`, replace the body of the filtered `collectUnits` overload
     }
 ```
 
-- [ ] **Step 3: Stamp the type in `addFeatureUnits`**
+- [ ] **Step 3: Stamp the kind and the type in `addFeatureUnits`**
 
-Add a `@Nullable RosgenType[] types` parameter after `fallbackWidth`'s neighbours and replace the hardcoded type:
+Add `@Nullable HydrologicalFeature[] kinds` and `@Nullable RosgenType[] types` parameters after
+`type`, and replace the hardcoded Rosgen type:
 
 ```java
     private static void addFeatureUnits(
@@ -1438,6 +1570,7 @@ Add a `@Nullable RosgenType[] types` parameter after `fallbackWidth`'s neighbour
             double[] flow,
             double fallbackWidth,
             HydrologicalFeature type,
+            @Nullable HydrologicalFeature[] kinds,
             @Nullable RosgenType[] types,
             int time,
             double offsetX,
@@ -1452,11 +1585,18 @@ Add a `@Nullable RosgenType[] types` parameter after `fallbackWidth`'s neighbour
             final double w = (flow != null) ? HydrologyTuning.widthFromFlow(flow[i]) : fallbackWidth;
             final double bed = (bedElevations != null) ? bedElevations[i] : 0;
             final double[] nrm = spline.normal(i);
-            // A null or short types array means the caller collected untyped; A is the historical default
-            // and the fallback every RosgenProfile consumer already applies for a null type.
-            final RosgenType rosgen = (types != null && i < types.length) ? types[i] : RosgenType.A;
+            // A null or short kinds array means every point shares the feature's single kind, which is
+            // the case for removed paths.
+            final HydrologicalFeature kind = (kinds != null && i < kinds.length) ? kinds[i] : type;
+            // Rosgen classifies stream reaches, so only RIVER points carry a type. A source and a drain
+            // are network endpoints with no reach to measure; a removed path has no bed profile; and a
+            // null typer means the caller collected untyped. All three stamp null, which every
+            // RosgenProfile consumer already coalesces to A -- unlike stamping A here, which would make
+            // "not classified" indistinguishable from "measured as a steep entrenched headwater".
+            final RosgenType rosgen =
+                    (kind == HydrologicalFeature.RIVER && types != null && i < types.length) ? types[i] : null;
             out.add(new HydrologicalUnit(
-                    type,
+                    kind,
                     rosgen,
                     new double[] {p[0] - offsetX, p[1] - offsetZ},
                     new double[] {nrm[0], nrm[1]},
@@ -1468,13 +1608,55 @@ Add a `@Nullable RosgenType[] types` parameter after `fallbackWidth`'s neighbour
     }
 ```
 
-Add the imports `me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType` and `org.jetbrains.annotations.Nullable` if not already present, and update the two removed-path `addFeatureUnits` call sites to pass `null` for `types`.
+Add the imports `me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType`, `java.util.Arrays`
+and `org.jetbrains.annotations.Nullable` if not already present.
 
-- [ ] **Step 4: Update the `collectUnits` javadoc**
+- [ ] **Step 4: Add the `featureKinds` helper**
 
-Replace the paragraph describing the unfiltered/filtered split with one that also documents the typer: state that classification runs once per call between resampling and emission, that a `null` typer yields `RosgenType.A` for every unit, and that removed features are never typed because they carry no bed elevations.
+Beside `addFeatureUnits`:
 
-- [ ] **Step 5: Verify the suite has not regressed**
+```java
+    /**
+     * Per-point feature kind for one live channel: {@link HydrologicalFeature#RIVER} throughout, except
+     * that the first point becomes {@link HydrologicalFeature#SOURCE} when the channel starts at a
+     * {@link Endpoint.Type#SOURCE} node and the last becomes {@link HydrologicalFeature#DRAIN} when it
+     * ends at a {@link Endpoint.Type#DRAIN} node. Interior confluences stay {@code RIVER}: a
+     * {@code JUNCTION} is a point on a river, not a distinct feature.
+     *
+     * <p>The channel is still emitted as a single feature under one id — {@link HydrologicalUnit#id()}
+     * is what the carve/paint query groups by, and a source or drain is one point of the river it
+     * belongs to, not a feature of its own.
+     *
+     * <p>Both node lookups tolerate {@code null}: {@code nodes} is a plain map and an id can have been
+     * pruned, in which case the point keeps the {@code RIVER} default.
+     */
+    private HydrologicalFeature[] featureKinds(Channel ch) {
+        final int n = ch.spline.points().size();
+        final HydrologicalFeature[] kinds = new HydrologicalFeature[n];
+        Arrays.fill(kinds, HydrologicalFeature.RIVER);
+        if (n == 0) return kinds;
+        final Endpoint start = nodes.get(ch.startNodeId);
+        if (start != null && start.type == Endpoint.Type.SOURCE) kinds[0] = HydrologicalFeature.SOURCE;
+        final Endpoint end = nodes.get(ch.endNodeId);
+        if (end != null && end.type == Endpoint.Type.DRAIN) kinds[n - 1] = HydrologicalFeature.DRAIN;
+        return kinds;
+    }
+```
+
+`WATERFALL` stays unemitted — nothing in the pipeline detects one, and inventing a threshold for it is
+not this plan's job.
+
+- [ ] **Step 5: Update the `collectUnits` javadoc**
+
+Replace the paragraph describing the unfiltered/filtered split with one that also documents the typer
+and the kinds: state that classification runs once per call between resampling and emission; that a
+`null` typer leaves every unit's `rosgenType` `null`, which consumers coalesce to `A`; that a channel's
+endpoint points are emitted as `SOURCE`/`DRAIN` rather than `RIVER` and carry no Rosgen type; and that
+removed features are never typed because they carry no bed elevations. The class javadoc's line about
+"a graph channel's RIVER units" (`:775`) needs the same correction — a graph channel now emits `SOURCE`
+and `DRAIN` units too, and the filter applies to all of them alike.
+
+- [ ] **Step 6: Verify the suite has not regressed**
 
 Run:
 
@@ -1484,12 +1666,18 @@ Run:
 
 Expected: compiles; failure count is still 8 (the documented baseline). If any *new* test fails, or the count rises above 8, stop and fix before committing.
 
-- [ ] **Step 6: Format and commit**
+`SpatialIndexCorrectnessGoldenTest` builds its own units directly (`:53`) rather than through
+`collectUnits`, so it is unaffected by the kind/type change. Any golden that captured a checksum over
+`collectUnits` output *will* shift, because `rosgenType` is part of `HydrologicalUnit.serialize` and
+`equals` — check whether the moved checksum is one of the 8 already-red cases before assuming it is new
+breakage.
+
+- [ ] **Step 7: Format and commit**
 
 ```bash
 "C:\Users\jgdev\.gradle\wrapper\dists\gradle-9.2.1-bin\2t0n5ozlw9xmuyvbp7dnzaxug\gradle-9.2.1\bin\gradle.bat" spotlessApply
 git add src/main/java/me/batata_1/fractal_terrain/hydrology/meanders/RiverNetwork.java
-git commit -m "feat(hydrology): stamp Rosgen type on units in collectUnits
+git commit -m "feat(hydrology): stamp Rosgen type and endpoint kind on units in collectUnits
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
@@ -1737,10 +1925,18 @@ In `HydrologyUnitVisualizer.java`, add the palette and a public entry point:
         new Color(0xA9A9A9), // G   entrenched gully
     };
 
-    /** Colour for a unit's Rosgen type; a null type renders as the {@code A} fallback every consumer applies. */
+    /** Rendered for a unit with no Rosgen type: a source, a drain, an oxbow, or an unclassified reach. */
+    private static final Color UNCLASSIFIED = new Color(0xFFFFFF);
+
+    /**
+     * Colour for a unit's Rosgen type. A {@code null} type renders white rather than as {@code A}:
+     * downstream code coalesces {@code null} to {@code A}, but this dump exists to show what was
+     * actually measured, and white against the palette makes an unexpected run of unclassified reaches
+     * obvious instead of hiding it inside the {@code A} count.
+     */
     private static Color rosgenColor(HydrologicalUnit unit) {
-        final RosgenType type = unit.rosgenType() == null ? RosgenType.A : unit.rosgenType();
-        return ROSGEN_PALETTE[type.ordinal()];
+        final RosgenType type = unit.rosgenType();
+        return type == null ? UNCLASSIFIED : ROSGEN_PALETTE[type.ordinal()];
     }
 
     /**
@@ -1765,7 +1961,20 @@ replacing both `colorFor(unit)` calls with `palette.apply(unit)`, and make `see(
 ```
 
 Add imports `java.util.function.Function` and `me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType`.
-If `colorFor` is `static`, use `HydrologyUnitVisualizer::colorFor` instead of `this::colorFor`.
+`colorFor` is `static` (`HydrologyUnitVisualizer.java:150`), so use `HydrologyUnitVisualizer::colorFor`.
+
+Also give the two new feature kinds their own hues in `colorFor`'s switch (`:152-157`), which currently
+lists `RIVER`/`ABANDONED_RIVER`/`OXBOW_LAKE` and sends everything else to the `default -> 0.60f` river
+blue — leaving a source and a drain indistinguishable from the channel they terminate:
+
+```java
+                    case SOURCE -> 0.33f; // green
+                    case DRAIN -> 0.00f; // red
+```
+
+`logStats` (`:110-111`) needs no change: it counts by `unit.type()`, so `SOURCE`/`DRAIN` appear as their
+own rows automatically — one source per headwater channel and one drain per outlet is the expected count,
+and a wildly different number means `featureKinds` is reading the wrong node.
 
 Then call it from `LocalRiverTest.dumpUnitTree` (`LocalRiverTest.java:110-114`), beside the existing dump:
 
@@ -1810,6 +2019,7 @@ elevation, then assigns the type that `RosgenProfile` uses to prescribe carve ge
 - `hydrology/CLAUDE.md`: add a `rosgen/` row to the Subdirectories table.
 - `hydrology/profile/CLAUDE.md`: the `HydrologyProfile.java` row says "**Currently a no-op** — body commented out". It is not: the early `return elevAtPixel;` at `HydrologyProfile.java:38` is commented out, so the body runs. Correct the row. Also correct the `RosgenProfile.java` row's "Only type `A` overrides anything" if it no longer holds after P2.
 - `HydrologyProfileCarver.java` class javadoc claims both carve passes run "over GLOBAL units only (local channels are never shell-carved)", but `LocalRiverProvider` collects unfiltered, so pass 2 carves local shells too. Fix the javadoc to match the code.
+- `HydrologicalUnit.java` class javadoc opens "a river (with its Rosgen channel type), an abandoned river, or an oxbow lake" — after Task 6 it is also a source or a drain. Update that sentence, and rewrite the `RosgenType` paragraph (`:37-40`): `null` no longer means "unset", it means *this unit is not a river reach* (a source, a drain, or a removed feature). Keep the note that consumers coalesce `null` to `A`, and keep the "observable only as A vs. not-A" caveat until P2 lands real per-type profile overrides.
 
 - [ ] **Step 6: Format and commit**
 
