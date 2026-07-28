@@ -46,7 +46,7 @@ public enum RosgenProfile {
 
         @Override
         protected double bedDelta(double signedPerpDist, double width) {
-            return 500 * Math.sqrt(1 - signedPerpDist * signedPerpDist) / 2;
+            return width * Math.sqrt(1 - signedPerpDist * signedPerpDist) / 2;
         }
 
         @Override

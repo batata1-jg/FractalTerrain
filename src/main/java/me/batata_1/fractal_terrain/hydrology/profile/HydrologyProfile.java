@@ -40,14 +40,14 @@ public final class HydrologyProfile {
         if (normal == null) return elevAtPixel;
         final RosgenProfile profile =
                 RosgenProfile.of(unit.rosgenType() == null ? HydrologicalUnit.RosgenType.A : unit.rosgenType());
+
         final double[] normTangent = VectorOps.perpendicular(normal);
         final double[] unitCoord = unit.coord();
         final double width = unit.width();
         final double floodPlainLength = profile.floodPlainLength(width);
+        final double radiusSq = floodPlainLength * floodPlainLength;
+        if (VectorOps.distanceSquared(pt,unitCoord) >= radiusSq) return elevAtPixel;
         if(Math.abs(normal[0])<1e-6||Math.abs(normal[1])<1e-6) {
-
-           // final double t = Math.clamp(, 0, 1);
-
             return elevAtPixel;
         }
 
@@ -59,10 +59,6 @@ public final class HydrologyProfile {
 
         final double uninterpolatedDelta = profile.riverAreaDelta(SignedPerpDist, alongDist, width);
 
-        // Outside the floodplain disc the unit contributes nothing; the >= also keeps the eccentricity
-        // denominator strictly positive (it vanishes exactly at the poles |y| = l of the disc).
-        final double radiusSq = floodPlainLength * floodPlainLength;
-        if (SignedPerpDist * SignedPerpDist + alongDist * alongDist >= radiusSq) return elevAtPixel;
         if (radiusSq - SignedPerpDist * SignedPerpDist < 1e-6) return elevAtPixel;
         final double eccentricity = 1 - (alongDist * alongDist) / (radiusSq - SignedPerpDist * SignedPerpDist);
         final double t = Math.clamp(eccentricity / HydrologyTuning.MAX_ECCENTRICITY, 0, 1);

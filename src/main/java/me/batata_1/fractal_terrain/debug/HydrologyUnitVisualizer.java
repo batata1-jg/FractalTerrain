@@ -153,6 +153,7 @@ public class HydrologyUnitVisualizer {
                     case RIVER -> 0.60f; // blue
                     case ABANDONED_RIVER -> 0.08f; // orange
                     case OXBOW_LAKE -> 0.85f; // magenta
+                    default -> 0.60f;
                 };
         final double idHash = (unit.id() * 0.6180339887498949) % 1.0;
         final float brightness = (float) (0.55 + 0.45 * idHash);

@@ -64,7 +64,10 @@ public record HydrologicalUnit(
     public enum HydrologicalFeature {
         RIVER,
         ABANDONED_RIVER,
-        OXBOW_LAKE
+        OXBOW_LAKE,
+        SOURCE,
+        DRAIN,
+        WATERFALL
     }
 
     /** Rosgen stream classification (A–D); selects the unit's {@link RosgenProfile}. */

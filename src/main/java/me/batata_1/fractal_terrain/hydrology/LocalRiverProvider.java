@@ -100,7 +100,7 @@ public class LocalRiverProvider {
      *  {@code gridSizeForTest()²}. */
     @TestOnly
     public static int gridSizeForTest() {
-        return GRID;
+        return PADDED;
     }
 
     /**
