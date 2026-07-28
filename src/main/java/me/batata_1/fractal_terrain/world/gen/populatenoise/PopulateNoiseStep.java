@@ -59,11 +59,14 @@ public class PopulateNoiseStep {
                 final float baseElev = interpolatedElevs[pos];
                 mutablePt[0] = (startX + dx) / scale;
                 mutablePt[1] = (startZ + dz) / scale;
+                if(dx + startX == -404 && dz + startZ == -906) {
+                    LOG.info("hallo");
+                }
                                 final float refinedElev = chunkUnits.units().length == 0
                                         ? baseElev
                                         : carver.carvePrefetched(chunkUnits, mutablePt, baseElev);
                 riverDifference[pos] = refinedElev - baseElev; // trench vs. shell, not vs. original terrain
-                interpolatedElevs[pos] = Math.max(bottom, 0) + seaLevel - 1;
+                interpolatedElevs[pos] = Math.max(bottom, refinedElev) + seaLevel - 1;
             }
         }
     }

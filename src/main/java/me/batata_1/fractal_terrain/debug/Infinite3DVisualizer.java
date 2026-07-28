@@ -11,6 +11,8 @@ import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import me.batata_1.fractal_terrain.relief.DecoderChannels;
+import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.TestOnly;
@@ -40,9 +42,19 @@ public class Infinite3DVisualizer {
                 .getDecodedElev(xz)),
         COARSE(1.0f, 1.0f, 256.0f, xz -> FractalTerrainInstance.getInfinite3DVisualizer()
                 .getCoarse(xz)),
+        POP_NOISE_RELIEF(1f,1f,1f,xz->0f) {
+            @Override
+            public int sample(int x, int z) {
+                final FractalTerrainHeightmap heightmaps =
+                        FractalTerrainInstance.getHeightmapCache().getOrCompute(new ChunkPos(x>>4, z>>4));
+                final float[] reliefBaseHeight = heightmaps.get(FractalTerrainHeightmap.Types.ELEVATION);
+                return (int) reliefBaseHeight[(x&15)*16 + (z&15)];
+            }
+        },
 
         DIST_SHORE(10.0f, 1.0f, 5.0f, xz ->
                 (float) FractalTerrainInstance.getBiomeProvider().getDistShore(xz));
+
         final float scale;
         final float elevationBias;
         final Interpolation interp;

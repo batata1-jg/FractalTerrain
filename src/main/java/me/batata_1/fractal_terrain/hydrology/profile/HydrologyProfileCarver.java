@@ -20,9 +20,8 @@ import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
  *   <li><b>Per-pixel refinement</b> ({@link #carve}, {@link #carveAtPixel}, {@link #carvePrefetched}) —
  *       queries the per-tile river network ({@link LocalRiverProvider#queryInfluence}) and takes the
  *       minimum (deepest) {@link HydrologyProfile#computeForUnit} elevation over every influencing unit.
- *       <b>Currently inert</b>: {@code computeForUnit} is a no-op returning its input, so this stage
- *       returns the shell elevation unchanged. {@code PopulateNoiseStep} additionally has its
- *       {@link #carvePrefetched} call commented out, so nothing invokes it during chunk fill at all.</li>
+ *       Each unit contributes its cross-section delta faded over an elliptical footprint, so the stage
+ *       cuts the bed trench below the shell; it is driven per chunk from {@code PopulateNoiseStep}.</li>
  * </ul>
  *
  * All geometry is in the relief-pixel frame; only {@link #carve} converts from world/block coordinates
@@ -45,8 +44,7 @@ public final class HydrologyProfileCarver {
      * Refined elevation at world/block coordinates {@code (worldBlockX, worldBlockZ)} whose already-carved
      * shell elevation is {@code shellElevAtPixel}. World coords are converted into the relief-pixel frame
      * (divide by {@link FractalTerrainConfig#GLOBAL_SCALE_CORRECTION}) that the unit query uses. Returns
-     * {@code shellElevAtPixel} unchanged when no feature influences the point — which today is every
-     * point, since the underlying {@link HydrologyProfile#computeForUnit} is a no-op.
+     * {@code shellElevAtPixel} unchanged when no feature influences the point.
      */
     public float carve(double worldBlockX, double worldBlockZ, double shellElevAtPixel) {
         final double pixelX = worldBlockX / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION;
@@ -86,22 +84,40 @@ public final class HydrologyProfileCarver {
         return new PrefetchedUnits(localRiver.queryInfluence(pt, extraRadius));
     }
 
-    public float carvePrefetched(PrefetchedUnits prefetched, double[] pt, double shellElevAtPixel) {
+    public float carvePrefetched(PrefetchedUnits prefetched, double[] pt, double elevAtPixel) {
+        return carvePrefetchedNearest(prefetched, pt, elevAtPixel);
+//        final HydrologicalUnit[] units = prefetched.units();
+//        double avgSum = 0;
+//        double avgCount = 0;
+//        for (final HydrologicalUnit unit : units) {
+//            final double influenceRadius = unit.getRadius(); // = riverInfluence(unit.width()), the circle's own radius
+//            final double[] unitCoord = unit.coord();
+//            final double dist = Math.hypot(pt[0] - unitCoord[0], pt[1] - unitCoord[1]);
+//            if (dist >= influenceRadius) continue; // outside this unit's reach
+//            final double unitElev = (1 - dist / influenceRadius) * HydrologyProfile.computeForUnit(pt, unit, elevAtPixel);
+//            avgSum += unitElev;
+//            avgCount++;
+//        }
+//
+//        if (avgCount==0) return (float) elevAtPixel;
+//        return (float) (avgSum / avgCount);
+    }
+
+    public float carvePrefetchedNearest(PrefetchedUnits prefetched, double[] pt, double elevAtPixel) {
         final HydrologicalUnit[] units = prefetched.units();
-        double target = shellElevAtPixel;
-        boolean anyInfluence = false;
-        for (final HydrologicalUnit unit : units) {
-            final double influenceRadius = unit.getRadius(); // = riverInfluence(unit.width()), the circle's own radius
+        HydrologicalUnit nearest = null;
+        double nearestDist = Double.POSITIVE_INFINITY;
+        for (HydrologicalUnit unit : units) {
             final double[] unitCoord = unit.coord();
             final double dist = Math.hypot(pt[0] - unitCoord[0], pt[1] - unitCoord[1]);
-            if (dist >= influenceRadius) continue; // outside this unit's reach
-            anyInfluence = true;
-            final double unitElev = HydrologyProfile.computeForUnit(pt, unit, shellElevAtPixel);
-            target = Math.min(target, unitElev);
+            if (dist >= unit.getRadius()) continue; // outside this unit's influence
+            if (dist < nearestDist) {
+                nearestDist = dist;
+                nearest = unit;
+            }
         }
-
-        if (!anyInfluence) return (float) shellElevAtPixel;
-        return (float) target;
+        if (nearest == null) return (float) elevAtPixel;
+        return (float) HydrologyProfile.computeForUnit(pt, nearest, elevAtPixel);
     }
 
     // -------------------------------------------------------------------------

@@ -2,6 +2,8 @@ package me.batata_1.fractal_terrain.hydrology.profile;
 
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The cross-channel elevation profile of a hydrological feature, keyed by Rosgen stream type.
@@ -15,8 +17,8 @@ import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
  *       elevation: full pull inside {@link #floodPlainLength}, linearly released to no change at
  *       {@link #riverInfluence}.
  *   <li>{@link #riverAreaDelta} — the per-pixel bed TRENCH below the shell, within the bed half-width.
- *       <b>Not reached today</b>: its only caller is the commented-out body of
- *       {@link HydrologyProfile#computeForUnit}, so this method is currently dead code.
+ *       Applied by {@link HydrologyProfile#computeForUnit}, which fades it in over an elliptical
+ *       footprint around the contributing unit rather than applying it raw.
  * </ul>
  *
  * <p>The profile is also the authority for the two horizontal extents of the cross-section —
@@ -44,7 +46,7 @@ public enum RosgenProfile {
 
         @Override
         protected double bedDelta(double signedPerpDist, double width) {
-            return width * Math.sqrt(1 - signedPerpDist * signedPerpDist) / 2;
+            return 500 * Math.sqrt(1 - signedPerpDist * signedPerpDist) / 2;
         }
 
         @Override
@@ -53,24 +55,20 @@ public enum RosgenProfile {
             return 0;
         }
 
-        @Override
-        protected double unAffectedDistCalculator(double width) {
-            return 1.12 * width;
-        }
     },
+    Aa,
     B,
     C,
-    D;
+    D,
+    DA,
+    E,
+    F,
+    G;
 
-    public double unAffectedDist(double width) {
-        return Math.clamp(unAffectedDistCalculator(width), width / 2, floodPlainLength(width));
-    }
-
-    protected double unAffectedDistCalculator(double width) {
-        return width;
-    }
 
     // ---- Horizontal extents (type-dependent; shared placeholder law, override per constant) ----
+    private static final Logger LOG = LoggerFactory.getLogger(RosgenProfile.class);
+
     /**
      * Floodplain half-extent (native px) for a river of the given width under this Rosgen type. Placeholder
      * law shared by all types: {@code FLOODPLAIN_BASE + FLOODPLAIN_WIDTH_FACTOR · width}. Override in a
@@ -116,13 +114,17 @@ public enum RosgenProfile {
     /**
      * Bed-residual depth at a point {@code signedPerpDist} across / {@code alongDist} along the channel:
      * {@link #bedDelta} within the bed half-width, {@link #floodPlainDelta} out to
-     * {@link #floodPlainLength}, {@code 0} beyond. Dead code today — see the class javadoc.
+     * {@link #floodPlainLength}, {@code 0} beyond. The raw (un-faded) delta — see the class javadoc.
      */
     public double riverAreaDelta(double signedPerpDist, double alongDist, double width) {
         final double floodPlainLen = floodPlainLength(width);
         if (Math.hypot(signedPerpDist, alongDist) > floodPlainLen) return 0;
         final double marginLen = width / 2;
-        if (Math.abs(signedPerpDist) <= marginLen) return bedDelta(signedPerpDist / marginLen, width);
+        if (Math.abs(signedPerpDist) <= marginLen) {
+           // LOG.info("hallooo");
+            return -10;
+          //  return bedDelta(signedPerpDist / marginLen, width);
+        }
         return floodPlainDelta(
                 signedPerpDist > 0
                         ? ((signedPerpDist - marginLen) / (floodPlainLen - marginLen))
@@ -139,16 +141,21 @@ public enum RosgenProfile {
 
     // should be between the range -1 and 1
     protected double bedDelta(double signedPerpDist, double width) {
-        return -1;
+        return -10;
     }
 
     /** The profile for a unit's Rosgen type. */
     public static RosgenProfile of(RosgenType type) {
         return switch (type) {
             case A -> A;
+            case Aa -> Aa;
             case B -> B;
             case C -> C;
             case D -> D;
+            case DA -> DA;
+            case E -> E;
+            case F -> F;
+            case G -> G;
         };
     }
 }

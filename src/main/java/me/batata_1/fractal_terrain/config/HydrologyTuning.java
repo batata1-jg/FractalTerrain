@@ -124,6 +124,17 @@ public final class HydrologyTuning {
     public static final double FLOODPLAIN_WIDTH_FACTOR = 1.0f;
 
     /**
+     * Eccentricity at (or above) which the per-unit bed delta applies at full strength — the knob shaping
+     * the elliptical footprint over which
+     * {@link me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile#computeForUnit} fades a unit's
+     * cross-section delta in. Dimensionless, in {@code (0, 1]}: {@code 1} confines full strength to the
+     * unit's own cross-section line (everything else is faded), while smaller values widen the
+     * full-strength ellipse along the channel — at the limit the delta would apply unfaded over the whole
+     * floodplain disc. First-cut, untuned value pending visual calibration via {@code localRiverTest}.
+     */
+    public static final double MAX_ECCENTRICITY = 0.5;
+
+    /**
      * Dimensionless multiplier on {@link #floodPlainLength} used to derive a river's outer influence
      * radius (see {@code RosgenProfile#riverInfluence}): {@code riverInfluence = floodPlainLength ·
      * INFLUENCE_BLEND_MULTIPLIER}, clamped to {@link #MAX_INFLUENCE_RADIUS}. Not itself a native-px

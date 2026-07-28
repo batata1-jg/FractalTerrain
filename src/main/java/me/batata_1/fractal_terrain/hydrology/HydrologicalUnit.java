@@ -70,9 +70,14 @@ public record HydrologicalUnit(
     /** Rosgen stream classification (A–D); selects the unit's {@link RosgenProfile}. */
     public enum RosgenType {
         A,
+        Aa,
         B,
         C,
-        D
+        D,
+        DA,
+        E,
+        F,
+        G
     }
 
     @Override
