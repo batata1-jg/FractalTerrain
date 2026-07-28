@@ -70,8 +70,13 @@ class RosgenKeyTest {
 
     @Test
     void daIsTestedBeforeDSoBraidingNeverStealsAnAnastomosingReach() {
-        // Same reach, both gates open: DA must win.
-        final ReachMetrics both = new ReachMetrics(0.001, 6.0, 20.0, 12.0, 2.0);
+        // Both gates must be genuinely open: slope above braidThreshold(12.0) (~0.0022457) so the D
+        // guard passes, but still below S_DA (0.005) so the DA guard also passes. Twice the threshold
+        // (~0.00449) satisfies both while staying well under S_A (0.04), so the steep branches don't
+        // fire first. With both branches viable, only their order in classify decides DA over D.
+        final double width = 12.0;
+        final double slope = RosgenKey.braidThreshold(width) * 2.0;
+        final ReachMetrics both = new ReachMetrics(slope, 6.0, 20.0, width, 2.0);
         assertEquals(RosgenType.DA, RosgenKey.classify(both));
     }
 
