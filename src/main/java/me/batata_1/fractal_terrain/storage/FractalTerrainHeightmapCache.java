@@ -6,6 +6,8 @@ import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.ChunkStatus;
 
+import static me.batata_1.fractal_terrain.FractalTerrainInstance.getPopulateNoiseStep;
+
 /**
  * Per-chunk cache of {@link FractalTerrainHeightmap}s. Each chunk's full set of heightmaps is computed
  * once on first request and evicted automatically when that chunk reaches {@link ChunkStatus#FULL}
@@ -44,7 +46,7 @@ public final class FractalTerrainHeightmapCache {
         // Now that every other heightmap (gradients, residual, biome parameters) is available, recompute
         // ELEVATION from the full set — biome-aware shaping, ocean-height correction, bottomY clamp — and
         // overwrite it in place. (The record shares the same backing array, so the new values are visible.)
-        // getPopulateNoiseStep().updateToFinalElev(pos, heightmap);
+        getPopulateNoiseStep().updateToFinalElev(pos, heightmap);
         return heightmap;
     }
 

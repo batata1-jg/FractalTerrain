@@ -43,22 +43,13 @@ public class ReliefProvider {
 
     private final NonIntersectingInfiniteTensor final_tiles;
 
-    /** Test-only override for the local river source; {@code null} → use the singleton. */
-    @TestOnly
-    private @Nullable LocalRiverProvider localRiverOverride;
-
     public ReliefProvider(String path) {
         final_tiles = new NonIntersectingInfiniteTensor(
                 path, "final_relief_tiles", new int[] {RELIEF_CHANNELS, INNER, INNER}, this::buildReliefTile);
     }
 
-    @TestOnly
-    public void setLocalRiverProvider(LocalRiverProvider provider) {
-        this.localRiverOverride = provider;
-    }
-
     private LocalRiverProvider localRiverProvider() {
-        return (localRiverOverride != null) ? localRiverOverride : FractalTerrainInstance.getLocalRiverProvider();
+        return FractalTerrainInstance.getLocalRiverProvider();
     }
 
     public NonIntersectingInfiniteTensor getInfiniteTensor() {
@@ -95,7 +86,6 @@ public class ReliefProvider {
                 final int paddedIndex = (DOG_PAD + ix) * DOG_PADDED + (DOG_PAD + iz);
                 final int innerIndex = ix * INNER + iz;
                 entries[innerIndex] = carved.data[innerIndex]; // ch0
-                //  entries[innerIndex] = base[0][paddedIndex];
                 entries[1 * pixels + innerIndex] = base[1][paddedIndex]; // blurredElev
                 entries[2 * pixels + innerIndex] = base[2][paddedIndex]; // gradX
                 entries[3 * pixels + innerIndex] = base[3][paddedIndex]; // gradY
@@ -149,34 +139,6 @@ public class ReliefProvider {
 
     public Float getRes(final int[] xz) {
         return get_entry(xz, 6);
-    }
-
-    public double getContinentalElev(final int[] xz) {
-        return 0;
-    }
-
-    public double getRawTemp(final int[] xz) {
-        return 0;
-    }
-
-    public Float getRawTempSTD(final int[] xz) {
-        return (float) 0;
-    }
-
-    public double getRawPrecip(final int[] xz) {
-        return 0;
-    }
-
-    public Float getRawPrecipSTD(final int[] xz) {
-        return (float) 0;
-    }
-
-    public int getRawGrad(final int[] xz) {
-        return 0;
-    }
-
-    public double getBlurredGrad(final int[] xz) {
-        return 0;
     }
 
     // -------------------------------------------------------------------------

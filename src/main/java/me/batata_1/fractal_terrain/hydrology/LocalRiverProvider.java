@@ -117,7 +117,7 @@ public class LocalRiverProvider {
      */
     @TestOnly
     public void traceLocalNetworkForTest(int[] drainage, float[] elev, RiverNetwork network) {
-        LocalDrainageTracer.traceLocalNetwork(drainage, elev, network, null, null);
+        LocalDrainageTracer.traceLocalNetwork(drainage, elev, new float[elev.length], network, null);
     }
 
     private GlobalRiverProvider globalRiverProvider() {
@@ -231,7 +231,7 @@ public class LocalRiverProvider {
         //    to an ABANDONED_RIVER when its DFS branch reaches no drain). update() re-assigns every channel
         //    id but preserves SOURCE/DRAIN node ids, so the boundary map below keys on node type, not the
         //    old (now churn-broken) before/after channel-id snapshot.
-        LocalDrainageTracer.traceLocalNetwork(drainagePadded, carvedElevation, network, boundaryElev, stages);
+        LocalDrainageTracer.traceLocalNetwork(drainagePadded, carvedElevation, base[4], network, stages);
 
         // 4. augment the boundary map with every SOURCE/DRAIN node not already seeded — the local ridge
         //    SOURCEs and coast DRAINs the trace minted (decoded terrain at the node, floored at 0), so the

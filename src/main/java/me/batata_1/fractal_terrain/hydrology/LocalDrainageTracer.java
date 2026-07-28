@@ -1,7 +1,6 @@
 package me.batata_1.fractal_terrain.hydrology;
 
-import static me.batata_1.fractal_terrain.config.HydrologyTuning.FLOW_THRESHOLD;
-import static me.batata_1.fractal_terrain.config.HydrologyTuning.widthFromFlow;
+import static me.batata_1.fractal_terrain.config.HydrologyTuning.*;
 import static me.batata_1.fractal_terrain.hydrology.Drainage.*;
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.*;
 import static me.batata_1.fractal_terrain.hydrology.meanders.Meanders.DEBUG_STEPS;
@@ -59,8 +58,8 @@ final class LocalDrainageTracer {
     static void traceLocalNetwork(
             int[] drainage,
             float[] elev,
+            float[] gradMag,
             RiverNetwork network,
-            @Nullable Map<Integer, Double> boundaryElev,
             @Nullable LocalRiverProvider.Stages stages) {
         final int cellCount = PADDED * PADDED;
         final AtomicView net = network.viewAtomic();
@@ -90,7 +89,7 @@ final class LocalDrainageTracer {
             final int next = downstream[current];
             if (next == -1) continue;
             boolean isDrain = elev[next] < 0;
-            if (flow[current] >= FLOW_THRESHOLD) {
+            if ((flow[next] >= FLOW_THRESHOLD && gradMag[next] >= GRAD_THRESHOLD ) || nodeIndex[current] != -1) {
                 if (stages != null) riverMask[current] = true;
                 // create the source if there isnt a source
                 if (nodeIndex[current] == -1)
