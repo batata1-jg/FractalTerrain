@@ -42,13 +42,13 @@ public class Infinite3DVisualizer {
                 .getDecodedElev(xz)),
         COARSE(1.0f, 1.0f, 256.0f, xz -> FractalTerrainInstance.getInfinite3DVisualizer()
                 .getCoarse(xz)),
-        POP_NOISE_RELIEF(1f,1f,1f,xz->0f) {
+        POP_NOISE_RELIEF(1f, 1f, 1f, xz -> 0f) {
             @Override
             public int sample(int x, int z) {
                 final FractalTerrainHeightmap heightmaps =
-                        FractalTerrainInstance.getHeightmapCache().getOrCompute(new ChunkPos(x>>4, z>>4));
+                        FractalTerrainInstance.getHeightmapCache().getOrCompute(new ChunkPos(x >> 4, z >> 4));
                 final float[] reliefBaseHeight = heightmaps.get(FractalTerrainHeightmap.Types.ELEVATION);
-                return (int) reliefBaseHeight[(x&15)*16 + (z&15)];
+                return (int) reliefBaseHeight[(x & 15) * 16 + (z & 15)];
             }
         },
 

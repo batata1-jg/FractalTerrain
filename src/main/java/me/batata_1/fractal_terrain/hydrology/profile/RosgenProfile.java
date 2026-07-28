@@ -54,7 +54,6 @@ public enum RosgenProfile {
             if (width > 1) if (-0.75 < signedPerpDist && signedPerpDist < -0.25) return 1;
             return 0;
         }
-
     },
     Aa,
     B,
@@ -64,7 +63,6 @@ public enum RosgenProfile {
     E,
     F,
     G;
-
 
     // ---- Horizontal extents (type-dependent; shared placeholder law, override per constant) ----
     private static final Logger LOG = LoggerFactory.getLogger(RosgenProfile.class);
@@ -121,9 +119,9 @@ public enum RosgenProfile {
         if (Math.hypot(signedPerpDist, alongDist) > floodPlainLen) return 0;
         final double marginLen = width / 2;
         if (Math.abs(signedPerpDist) <= marginLen) {
-           // LOG.info("hallooo");
+            // LOG.info("hallooo");
             return -10;
-          //  return bedDelta(signedPerpDist / marginLen, width);
+            //  return bedDelta(signedPerpDist / marginLen, width);
         }
         return floodPlainDelta(
                 signedPerpDist > 0

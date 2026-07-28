@@ -85,7 +85,8 @@ public class Drainage {
         /** Derive the routing topology of {@code drainageDirection} over a {@code gridSize} square. */
         public static FlowGraph of(final int[] drainageDirection, final int gridSize) {
             final int cellCount = gridSize * gridSize;
-            if(drainageDirection.length != cellCount) throw new IllegalArgumentException("drainageDirection arrays must have the same length");
+            if (drainageDirection.length != cellCount)
+                throw new IllegalArgumentException("drainageDirection arrays must have the same length");
             final int[] downstream = new int[cellCount];
             final int[] inDegree = new int[cellCount];
             for (int cellIndex = 0; cellIndex < cellCount; cellIndex++) {

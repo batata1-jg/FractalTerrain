@@ -1,12 +1,12 @@
 package me.batata_1.fractal_terrain.storage;
 
+import static me.batata_1.fractal_terrain.FractalTerrainInstance.getPopulateNoiseStep;
+
 import java.util.concurrent.ConcurrentHashMap;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
 import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.ChunkStatus;
-
-import static me.batata_1.fractal_terrain.FractalTerrainInstance.getPopulateNoiseStep;
 
 /**
  * Per-chunk cache of {@link FractalTerrainHeightmap}s. Each chunk's full set of heightmaps is computed

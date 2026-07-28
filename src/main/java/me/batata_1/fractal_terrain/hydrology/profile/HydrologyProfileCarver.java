@@ -86,21 +86,23 @@ public final class HydrologyProfileCarver {
 
     public float carvePrefetched(PrefetchedUnits prefetched, double[] pt, double elevAtPixel) {
         return carvePrefetchedNearest(prefetched, pt, elevAtPixel);
-//        final HydrologicalUnit[] units = prefetched.units();
-//        double avgSum = 0;
-//        double avgCount = 0;
-//        for (final HydrologicalUnit unit : units) {
-//            final double influenceRadius = unit.getRadius(); // = riverInfluence(unit.width()), the circle's own radius
-//            final double[] unitCoord = unit.coord();
-//            final double dist = Math.hypot(pt[0] - unitCoord[0], pt[1] - unitCoord[1]);
-//            if (dist >= influenceRadius) continue; // outside this unit's reach
-//            final double unitElev = (1 - dist / influenceRadius) * HydrologyProfile.computeForUnit(pt, unit, elevAtPixel);
-//            avgSum += unitElev;
-//            avgCount++;
-//        }
-//
-//        if (avgCount==0) return (float) elevAtPixel;
-//        return (float) (avgSum / avgCount);
+        //        final HydrologicalUnit[] units = prefetched.units();
+        //        double avgSum = 0;
+        //        double avgCount = 0;
+        //        for (final HydrologicalUnit unit : units) {
+        //            final double influenceRadius = unit.getRadius(); // = riverInfluence(unit.width()), the circle's
+        // own radius
+        //            final double[] unitCoord = unit.coord();
+        //            final double dist = Math.hypot(pt[0] - unitCoord[0], pt[1] - unitCoord[1]);
+        //            if (dist >= influenceRadius) continue; // outside this unit's reach
+        //            final double unitElev = (1 - dist / influenceRadius) * HydrologyProfile.computeForUnit(pt, unit,
+        // elevAtPixel);
+        //            avgSum += unitElev;
+        //            avgCount++;
+        //        }
+        //
+        //        if (avgCount==0) return (float) elevAtPixel;
+        //        return (float) (avgSum / avgCount);
     }
 
     public float carvePrefetchedNearest(PrefetchedUnits prefetched, double[] pt, double elevAtPixel) {

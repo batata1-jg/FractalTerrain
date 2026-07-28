@@ -74,43 +74,43 @@ public final class RiverNetwork {
     private final ArrayDeque<List<ArrayList<double[]>>> previousStates = new ArrayDeque<>();
     private final List<RemovedPath> removedPaths = new ArrayList<>();
 
-
-    // for each endpoint, if it is source/drain, update the channels to match it. If it is junction, take the average of the channels end positions.
+    // for each endpoint, if it is source/drain, update the channels to match it. If it is junction, take the average of
+    // the channels end positions.
     public void resolveEndpoints() {
-        for(Endpoint endpoint : nodes.values()) {
-            if(endpoint.type == Endpoint.Type.DRAIN) {
+        for (Endpoint endpoint : nodes.values()) {
+            if (endpoint.type == Endpoint.Type.DRAIN) {
                 final double[] realCoord = endpoint.coord;
-                for( int id : endpoint.incoming) {
+                for (int id : endpoint.incoming) {
                     final Channel ch = channels.get(id);
-                    ch.spline.points().set(ch.spline.getSize()-1,realCoord);
+                    ch.spline.points().set(ch.spline.getSize() - 1, realCoord);
                 }
                 continue;
             }
-            if(endpoint.type == Endpoint.Type.SOURCE) {
+            if (endpoint.type == Endpoint.Type.SOURCE) {
                 final double[] realCoord = endpoint.coord;
                 final Channel ch = channels.get(endpoint.outgoing);
-                ch.spline.points().set(0,realCoord);
+                ch.spline.points().set(0, realCoord);
                 continue;
             }
 
             int avgCount = 1;
             double[] avgSum = new double[2];
 
-            for( int id : endpoint.incoming) {
+            for (int id : endpoint.incoming) {
                 final Channel ch = channels.get(id);
-                avgSum = VectorOps.add(avgSum,ch.spline.points().getLast());
+                avgSum = VectorOps.add(avgSum, ch.spline.points().getLast());
                 avgCount++;
             }
-            avgSum = VectorOps.add(avgSum,channels.get(endpoint.outgoing).spline.points().getFirst());
+            avgSum = VectorOps.add(
+                    avgSum, channels.get(endpoint.outgoing).spline.points().getFirst());
 
-            avgSum = VectorOps.div(avgSum,avgCount);
+            avgSum = VectorOps.div(avgSum, avgCount);
 
-            for( int id : endpoint.incoming) {
+            for (int id : endpoint.incoming) {
                 final Channel ch = channels.get(id);
-                ch.spline.points().set(ch.spline.getSize()-1,avgSum);
+                ch.spline.points().set(ch.spline.getSize() - 1, avgSum);
             }
-            channels.get(endpoint.outgoing).spline.points().set(0,avgSum);
-
+            channels.get(endpoint.outgoing).spline.points().set(0, avgSum);
         }
     }
 

@@ -35,7 +35,7 @@ public final class HydrologyProfile {
      * why the {@code dx <= width/2} unit spacing noted on {@link RosgenProfile} matters here too.
      */
     public static double computeForUnit(double[] pt, HydrologicalUnit unit, double elevAtPixel) {
-      //  return elevAtPixel;
+        //  return elevAtPixel;
         final double[] normal = unit.normal();
         if (normal == null) return elevAtPixel;
         final RosgenProfile profile =
@@ -46,8 +46,8 @@ public final class HydrologyProfile {
         final double width = unit.width();
         final double floodPlainLength = profile.floodPlainLength(width);
         final double radiusSq = floodPlainLength * floodPlainLength;
-        if (VectorOps.distanceSquared(pt,unitCoord) >= radiusSq) return elevAtPixel;
-        if(Math.abs(normal[0])<1e-6||Math.abs(normal[1])<1e-6) {
+        if (VectorOps.distanceSquared(pt, unitCoord) >= radiusSq) return elevAtPixel;
+        if (Math.abs(normal[0]) < 1e-6 || Math.abs(normal[1]) < 1e-6) {
             return elevAtPixel;
         }
 

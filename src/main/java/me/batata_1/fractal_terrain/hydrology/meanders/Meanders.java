@@ -193,15 +193,16 @@ public final class Meanders {
         ArrayList<double[]> migratedPoints = new ArrayList<>(pointCount);
         for (int i = 0; i < pointCount; i++) {
             final double[] point = ch.spline.points().get(i);
-//            if (i == 0 || i == pointCount - 1) {
-//                migratedPoints.add(point); // pin node endpoints
-//                continue;
-//            }
+            //            if (i == 0 || i == pointCount - 1) {
+            //                migratedPoints.add(point); // pin node endpoints
+            //                continue;
+            //            }
             final double[] gradient = sampleGradient(point[0], point[1]);
             double[] displacementNormal = VectorOps.project(gradient, ch.spline.normal(i));
 
-            double[] displacement = VectorOps.add(VectorOps.scale(displacementNormal,-1),VectorOps.scale(gradient, -1));
-          //  double[] displacement = VectorOps.scale(gradient, -1);
+            double[] displacement =
+                    VectorOps.add(VectorOps.scale(displacementNormal, -1), VectorOps.scale(gradient, -1));
+            //  double[] displacement = VectorOps.scale(gradient, -1);
             final double magnitude = VectorOps.magnitude(displacement);
             if (magnitude > MAX_MIGRATION) displacement = VectorOps.scale(displacement, MAX_MIGRATION / magnitude);
 

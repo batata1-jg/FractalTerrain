@@ -89,7 +89,7 @@ final class LocalDrainageTracer {
             final int next = downstream[current];
             if (next == -1) continue;
             boolean isDrain = elev[next] < 0;
-            if ((flow[next] >= FLOW_THRESHOLD && gradMag[next] >= GRAD_THRESHOLD ) || nodeIndex[current] != -1) {
+            if ((flow[next] >= FLOW_THRESHOLD && gradMag[next] >= GRAD_THRESHOLD) || nodeIndex[current] != -1) {
                 if (stages != null) riverMask[current] = true;
                 // create the source if there isnt a source
                 if (nodeIndex[current] == -1)

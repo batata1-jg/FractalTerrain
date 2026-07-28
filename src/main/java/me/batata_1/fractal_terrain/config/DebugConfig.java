@@ -52,7 +52,8 @@ public final class DebugConfig {
      *   <li>{@code DIST_SHORE} — distance-to-shore field from the biome provider.</li>
      * </ul>
      */
-    public static final Infinite3DVisualizer.DebugModes VIZ_H_CONTROL_MODE = Infinite3DVisualizer.DebugModes.POP_NOISE_RELIEF;
+    public static final Infinite3DVisualizer.DebugModes VIZ_H_CONTROL_MODE =
+            Infinite3DVisualizer.DebugModes.POP_NOISE_RELIEF;
 
     /**
      * Drives the block painted at each visualizer position ({@link Infinite3DVisualizer#debugPaintController}).

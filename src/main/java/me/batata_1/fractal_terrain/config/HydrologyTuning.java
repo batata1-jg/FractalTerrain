@@ -73,7 +73,7 @@ public final class HydrologyTuning {
      */
     public static final float FLOW_THRESHOLD = 0.5f;
 
-    //only generate sources for local rivers above this to prevent weird behavior in plains.
+    // only generate sources for local rivers above this to prevent weird behavior in plains.
     public static final float GRAD_THRESHOLD = 1f;
 
     public static final float FLOW_INITIAL_GLOBAL = 0.4f;
