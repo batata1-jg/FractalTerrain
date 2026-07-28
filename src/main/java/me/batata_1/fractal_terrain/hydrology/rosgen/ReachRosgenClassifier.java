@@ -70,6 +70,12 @@ public final class ReachRosgenClassifier implements ChannelTyper {
      * already the ordering contract. Reversing would invert it and break {@link #seedFor}, which reads the
      * downstream neighbour's committed types out of {@code typesByChannelId} and therefore requires that
      * neighbour to have been classified first.
+     *
+     * <p>The drain-rooted BFS is run to exhaustion via {@link #drainFrontier} before any dangling channel
+     * is considered. Only once the frontier is empty does the method look for channels the BFS never
+     * reached (a component with no drain); each such channel is injected and the frontier drained again
+     * before the next dangling channel is considered, so every dangling component is itself walked
+     * downstream-first rather than being dumped into the order in id order verbatim.
      */
     private static List<Channel> orderDownstreamFirst(RiverNetwork network) {
         final List<Channel> order = new ArrayList<>();
@@ -83,17 +89,33 @@ public final class ReachRosgenClassifier implements ChannelTyper {
                 if (ch != null && seen.putIfAbsent(incomingId, Boolean.TRUE) == null) frontier.add(ch);
             }
         }
+        drainFrontier(network, frontier, seen, order);
+
         // Any channel not reachable from a drain (a dangling branch) still needs a type. Sorted by id:
-        // getChannels() is a view over a HashMap, and unlike the drain-rooted expansion below — where a
+        // getChannels() is a view over a HashMap, and unlike the drain-rooted expansion above — where a
         // channel is always polled after the channel it flows into, whatever order its siblings arrive in
         // — a dangling branch can be classified before its own downstream neighbour, so this order
         // reaches the output through seedFor. RiverNetwork.viewAtomic and detectCrossings sort for the
         // same reason.
-        final List<Channel> unreached = new ArrayList<>(network.getChannels());
-        unreached.sort(Comparator.comparingInt(ch -> ch.channelId));
-        for (Channel ch : unreached) {
-            if (seen.putIfAbsent(ch.channelId, Boolean.TRUE) == null) frontier.add(ch);
+        final List<Channel> remaining = new ArrayList<>(network.getChannels());
+        remaining.sort(Comparator.comparingInt(ch -> ch.channelId));
+        for (Channel ch : remaining) {
+            if (seen.putIfAbsent(ch.channelId, Boolean.TRUE) != null) continue;
+            frontier.add(ch);
+            drainFrontier(network, frontier, seen, order);
         }
+        return order;
+    }
+
+    /**
+     * Polls {@code frontier} to exhaustion: each polled channel is appended to {@code order}, then every
+     * channel feeding its start node that has not yet been seen is enqueued. A channel therefore always
+     * lands in {@code order} after the channel it flows into. Called once for the drain-rooted seed and
+     * once more per dangling channel injected by {@link #orderDownstreamFirst}, so the ordering contract
+     * holds for every connected component, not only the ones reachable from a drain.
+     */
+    private static void drainFrontier(
+            RiverNetwork network, ArrayDeque<Channel> frontier, Map<Integer, Boolean> seen, List<Channel> order) {
         while (!frontier.isEmpty()) {
             final Channel ch = frontier.poll();
             order.add(ch);
@@ -104,7 +126,6 @@ public final class ReachRosgenClassifier implements ChannelTyper {
                 if (upstream != null && seen.putIfAbsent(incomingId, Boolean.TRUE) == null) frontier.add(upstream);
             }
         }
-        return order;
     }
 
     /**
