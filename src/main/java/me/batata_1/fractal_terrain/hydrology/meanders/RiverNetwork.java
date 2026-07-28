@@ -451,7 +451,7 @@ public final class RiverNetwork {
         Arrays.fill(outgoing, NONE);
         final ArrayDeque<Integer> dfsStack = new ArrayDeque<>();
         for (int sourceId : sortedSourceIds(atomic)) {
-            dfsVisit(
+            if(visited[sourceId]==-1||foundDrain[visited[sourceId]]) dfsVisit(
                 atomic,
                 sourceId,
                 sourceId,
