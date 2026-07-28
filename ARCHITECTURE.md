@@ -253,11 +253,12 @@ property-sourced fields for exactly this reason; `DISABLE_3D_VISUALIZER` is read
 
 **Logging.** `debug/Debug.java`'s `Debug.getLogger(Class<?> clazz)` is the *intended* logging entry
 point: `LoggerFactory.getLogger("fractal_terrain/" + clazz.getName())` (`Debug.java:35-37`). It is not
-the actual convention — the split is currently even, 18 files using `Debug.getLogger` against 18 calling
-`LoggerFactory.getLogger` directly (`ModConfig`, `ChannelElevationAssigner`, `LocalRiverProvider`,
-`ImmutableRTree`, `PipelineModels`, most `debug/tests/` harnesses, …). M-002 migrated files
-opportunistically rather than exhaustively. Always check a class's own logger initializer rather than
-assuming the facade; new code should prefer `Debug.getLogger`.
+the actual convention — the split is roughly even, 18 files using `Debug.getLogger` against 19 calling
+`LoggerFactory.getLogger` directly (`ModConfig`, `ChannelElevationAssigner`, `LocalDrainageTracer`,
+`LocalRiverProvider`, `ImmutableRTree`, `PipelineModels`, most `debug/tests/` harnesses, …; `Debug.java`
+itself is excluded from that count, since the facade is implemented on top of `LoggerFactory`). M-002
+migrated files opportunistically rather than exhaustively. Always check a class's own logger initializer
+rather than assuming the facade; new code should prefer `Debug.getLogger`.
 
 ## The three MUST-fixes
 

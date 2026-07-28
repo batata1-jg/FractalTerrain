@@ -102,6 +102,12 @@ processResources {
     }
 }
 
+// Per-directory agent docs live alongside the resources they describe; they are not mod assets.
+// Covers main/client/test (splitEnvironmentSourceSets gives us processClientResources too).
+tasks.withType(ProcessResources).configureEach {
+    exclude '**/CLAUDE.md'
+}
+
 def targetJavaVersion = 21
 tasks.withType(JavaCompile).configureEach {
 
