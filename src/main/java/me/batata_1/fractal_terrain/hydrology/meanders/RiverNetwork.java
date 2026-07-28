@@ -21,9 +21,11 @@ import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.HydrologicalFeature;
+import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 /**
@@ -48,7 +50,9 @@ import org.slf4j.Logger;
  * <p>{@link #collectUnits} packages the current network (plus recorded removed features) into a list of
  * {@link HydrologicalUnit}s, resampling every feature at {@code dx = max(width/2, MIN_CONVERT_SPACING)}
  * so wider features carry proportionally fewer points; the caller freezes the list into its spatial
- * index of choice.
+ * index of choice. A graph channel emits {@link HydrologicalFeature#RIVER} units except at an endpoint
+ * that sits on a source or drain node, which emits {@link HydrologicalFeature#SOURCE} /
+ * {@link HydrologicalFeature#DRAIN}; the channel-id filter applies to all of a channel's units alike.
  */
 public final class RiverNetwork {
 
@@ -788,43 +792,73 @@ public final class RiverNetwork {
     // ---------------------------------------------------------------------------------------------
 
     /**
-     * Collect the network's {@link HydrologicalUnit}s (active channels of type
-     * {@link HydrologicalFeature#RIVER} plus recorded removed features — oxbow lakes / abandoned
-     * rivers) in one pass over the unified graph — global and local channels alike, since local
-     * segments are first-class graph members — as a mutable list the caller freezes into a single
-     * spatial index. Each feature is first resampled at {@code dx = max(width/2, MIN_CONVERT_SPACING)};
-     * emitted coordinates are the network coordinate minus {@code (offsetX, offsetZ)} (e.g. to drop a
-     * halo pad). Per-point bed elevation is read directly from the already-assigned
-     * {@link Channel#bedElevations} — this pass never invents or re-derives it from decoded terrain;
-     * removed paths (oxbows/abandoned rivers) carry no {@code bedElevations}, so their elevation falls
-     * back to sampling decoded terrain at each point.
+     * {@link #collectUnits(int, double, double, int[], IntPredicate, ChannelTyper)} over every channel,
+     * untyped: every emitted unit's {@link HydrologicalUnit#rosgenType() rosgenType} is {@code null},
+     * which every consumer coalesces to {@link RosgenType#A}.
+     */
+    public List<HydrologicalUnit> collectUnits(int time, double offsetX, double offsetZ, int[] nextFeatureId) {
+        return collectUnits(time, offsetX, offsetZ, nextFeatureId, channelId -> true, null);
+    }
+
+    /** {@link #collectUnits(int, double, double, int[], IntPredicate, ChannelTyper)} over every channel. */
+    public List<HydrologicalUnit> collectUnits(
+            int time, double offsetX, double offsetZ, int[] nextFeatureId, @Nullable ChannelTyper typer) {
+        return collectUnits(time, offsetX, offsetZ, nextFeatureId, channelId -> true, typer);
+    }
+
+    /**
+     * Collect the network's {@link HydrologicalUnit}s (active channels plus recorded removed features —
+     * oxbow lakes / abandoned rivers) in one pass over the unified graph — global and local channels
+     * alike, since local segments are first-class graph members — as a mutable list the caller freezes
+     * into a single spatial index. Each feature is first resampled at
+     * {@code dx = max(width/2, MIN_CONVERT_SPACING)}; emitted coordinates are the network coordinate
+     * minus {@code (offsetX, offsetZ)} (e.g. to drop a halo pad). Per-point bed elevation is read
+     * directly from the already-assigned {@link Channel#bedElevations} — this pass never invents or
+     * re-derives it from decoded terrain; removed paths (oxbows/abandoned rivers) carry no
+     * {@code bedElevations}, so their elevation falls back to sampling decoded terrain at each point.
+     *
+     * <p>A graph channel's units are emitted only when {@code channelIdFilter} accepts its
+     * {@link Channel#channelId}; recorded removed features (oxbow/abandoned) are always emitted
+     * regardless (the local drainage tracer never produces removed paths, so this only ever filters live
+     * graph channels). <b>No caller passes a real filter today.</b> The only invocations are the
+     * overloads above delegating with {@code channelId -> true}. This exists to let a caller carve or
+     * index one subgraph (e.g. global-only channels) out of the unified network, but
+     * {@code LocalRiverProvider} currently collects unfiltered for every purpose.
      *
      * <p>Channels whose geometry is degenerate ({@code !isResampleable()}) or that overrun the spline
      * length cap during resampling are skipped silently, contributing no units.
+     *
+     * <p>A channel's points are {@link HydrologicalFeature#RIVER} except at an endpoint sitting on a
+     * source or drain node, which is emitted as {@link HydrologicalFeature#SOURCE} /
+     * {@link HydrologicalFeature#DRAIN} (see {@link #featureKinds}); the channel is still one feature
+     * under one id.
+     *
+     * <p>Classification runs once per call, between resampling and emission: every accepted channel is
+     * resampled first, then {@link ChannelTyper#prepare} is called once over the whole network, then
+     * {@link ChannelTyper#typesFor} per channel — a type depends on neighbouring channels, so all of
+     * them must hold their final geometry before any is classified. A {@code null} typer leaves every
+     * unit's {@link HydrologicalUnit#rosgenType() rosgenType} {@code null}, which consumers coalesce to
+     * {@link RosgenType#A}. Source and drain points are never typed: they are network endpoints, not
+     * reaches. Removed features are never typed either — they carry no bed elevations, so there is no
+     * reach profile to classify.
      *
      * <p>{@code nextFeatureId} is a single-element mutable counter threaded by the caller so every unit
      * this one pass emits — global and local alike — shares one tile-unique
      * {@link HydrologicalUnit#id() id} space — every point of one feature gets the same id, and the
      * counter advances once per feature.
      */
-    public List<HydrologicalUnit> collectUnits(int time, double offsetX, double offsetZ, int[] nextFeatureId) {
-        return collectUnits(time, offsetX, offsetZ, nextFeatureId, channelId -> true);
-    }
-
-    /**
-     * As {@link #collectUnits(int, double, double, int[])}, but a graph channel's RIVER units are only
-     * emitted when {@code channelIdFilter} accepts its {@link Channel#channelId}; recorded removed
-     * features (oxbow/abandoned) are always emitted regardless (the local drainage tracer never produces
-     * removed paths, so this only ever filters live graph channels).
-     *
-     * <p><b>No caller passes a real filter today.</b> The only invocation is the unfiltered overload
-     * above delegating with {@code channelId -> true}. This exists to let a caller carve or index one
-     * subgraph (e.g. global-only channels) out of the unified network, but {@code LocalRiverProvider}
-     * currently collects unfiltered for every purpose.
-     */
     public List<HydrologicalUnit> collectUnits(
-            int time, double offsetX, double offsetZ, int[] nextFeatureId, IntPredicate channelIdFilter) {
+            int time,
+            double offsetX,
+            double offsetZ,
+            int[] nextFeatureId,
+            IntPredicate channelIdFilter,
+            @Nullable ChannelTyper typer) {
         final List<HydrologicalUnit> units = new ArrayList<>();
+
+        // Phase 1: resample every emitting channel. Types depend on neighbouring channels, so every
+        // channel must hold its final geometry before any of them is classified.
+        final List<Channel> emitting = new ArrayList<>();
         for (Channel ch : channels.values()) {
             if (!channelIdFilter.test(ch.channelId)) continue;
             if (!ch.isResampleable()) continue; // degenerate geometry (too few points or NaN): skip
@@ -837,6 +871,14 @@ public final class RiverNetwork {
                 // Pathological runaway geometry (spline exceeds MAX_SPLINE_LENGTH); add no units.
                 continue;
             }
+            emitting.add(ch);
+        }
+
+        // Phase 2: one classification pass over the whole graph.
+        if (typer != null) typer.prepare(this);
+
+        // Phase 3: emit.
+        for (Channel ch : emitting) {
             addFeatureUnits(
                     units,
                     ch.spline,
@@ -844,11 +886,14 @@ public final class RiverNetwork {
                     ch.flow, // per-point flow -> per-point derived width (natural taper)
                     0.0,
                     HydrologicalFeature.RIVER,
+                    featureKinds(ch),
+                    typer == null ? null : typer.typesFor(ch),
                     time,
                     offsetX,
                     offsetZ,
                     nextFeatureId);
         }
+
         for (RemovedPath rp : removedPaths) {
             final QuinticHermiteSpline spline = QuinticHermiteSpline.createCatmullRom(rp.pts());
             if (!spline.isResampleable()) continue; // degenerate geometry (too few points or NaN): skip
@@ -862,10 +907,49 @@ public final class RiverNetwork {
             }
             // No bedElevations for oxbow/abandoned removed paths: fall back to decoded terrain. Removed
             // paths carry only a scalar width (no per-point flow), so pass a null flow + that fallback.
+            // They are emitted unchanged and untyped: with no bed elevations there is no reach profile
+            // to classify, so both the kinds and the types array are null.
             addFeatureUnits(
-                    units, resampled, null, null, rp.width(), rp.type(), rp.time(), offsetX, offsetZ, nextFeatureId);
+                    units,
+                    resampled,
+                    null,
+                    null,
+                    rp.width(),
+                    rp.type(),
+                    null,
+                    null,
+                    rp.time(),
+                    offsetX,
+                    offsetZ,
+                    nextFeatureId);
         }
         return units;
+    }
+
+    /**
+     * Per-point feature kind for one live channel: {@link HydrologicalFeature#RIVER} throughout, except
+     * that the first point becomes {@link HydrologicalFeature#SOURCE} when the channel starts at a
+     * {@link Endpoint.Type#SOURCE} node and the last becomes {@link HydrologicalFeature#DRAIN} when it
+     * ends at a {@link Endpoint.Type#DRAIN} node. Interior confluences stay {@code RIVER}: a
+     * {@code JUNCTION} is a point on a river, not a distinct feature.
+     *
+     * <p>The channel is still emitted as a single feature under one id — {@link HydrologicalUnit#id()}
+     * is what the carve/paint query groups by, and a source or drain is one point of the river it
+     * belongs to, not a feature of its own.
+     *
+     * <p>Both node lookups tolerate {@code null}: {@code nodes} is a plain map and an id can have been
+     * pruned, in which case the point keeps the {@code RIVER} default.
+     */
+    private HydrologicalFeature[] featureKinds(Channel ch) {
+        final int n = ch.spline.points().size();
+        final HydrologicalFeature[] kinds = new HydrologicalFeature[n];
+        Arrays.fill(kinds, HydrologicalFeature.RIVER);
+        if (n == 0) return kinds;
+        final Endpoint start = nodes.get(ch.startNodeId);
+        if (start != null && start.type == Endpoint.Type.SOURCE) kinds[0] = HydrologicalFeature.SOURCE;
+        final Endpoint end = nodes.get(ch.endNodeId);
+        if (end != null && end.type == Endpoint.Type.DRAIN) kinds[n - 1] = HydrologicalFeature.DRAIN;
+        return kinds;
     }
 
     private static void addFeatureUnits(
@@ -875,6 +959,8 @@ public final class RiverNetwork {
             double[] flow,
             double fallbackWidth,
             HydrologicalFeature type,
+            @Nullable HydrologicalFeature[] kinds,
+            @Nullable RosgenType[] types,
             int time,
             double offsetX,
             double offsetZ,
@@ -888,10 +974,19 @@ public final class RiverNetwork {
             final double w = (flow != null) ? HydrologyTuning.widthFromFlow(flow[i]) : fallbackWidth;
             final double bed = (bedElevations != null) ? bedElevations[i] : 0;
             final double[] nrm = spline.normal(i);
+            // A null or short kinds array means every point shares the feature's single kind, which is
+            // the case for removed paths.
+            final HydrologicalFeature kind = (kinds != null && i < kinds.length) ? kinds[i] : type;
+            // Rosgen classifies stream reaches, so only RIVER points carry a type. A source and a drain
+            // are network endpoints with no reach to measure; a removed path has no bed profile; and a
+            // null typer means the caller collected untyped. All three stamp null, which every
+            // RosgenProfile consumer already coalesces to A -- unlike stamping A here, which would make
+            // "not classified" indistinguishable from "measured as a steep entrenched headwater".
+            final RosgenType rosgen =
+                    (kind == HydrologicalFeature.RIVER && types != null && i < types.length) ? types[i] : null;
             out.add(new HydrologicalUnit(
-                    type,
-                    // TODO: change this to the correct type
-                    HydrologicalUnit.RosgenType.A,
+                    kind,
+                    rosgen,
                     new double[] {p[0] - offsetX, p[1] - offsetZ},
                     new double[] {nrm[0], nrm[1]},
                     w,
