@@ -72,10 +72,20 @@ public final class ReachRosgenClassifier implements ChannelTyper {
      * neighbour to have been classified first.
      *
      * <p>The drain-rooted BFS is run to exhaustion via {@link #drainFrontier} before any dangling channel
-     * is considered. Only once the frontier is empty does the method look for channels the BFS never
-     * reached (a component with no drain); each such channel is injected and the frontier drained again
-     * before the next dangling channel is considered, so every dangling component is itself walked
-     * downstream-first rather than being dumped into the order in id order verbatim.
+     * is considered, and each injected dangling channel is itself expanded via {@link #drainFrontier}
+     * before the next one is considered, so the walk is deterministic rather than dumping the remainder
+     * into the order in raw id order.
+     *
+     * <p><b>This does not make every dangling component fully downstream-first.</b> The component root
+     * injected is whichever unseen channel has the lowest id, not necessarily the component's outlet; since
+     * channel ids run low-to-high upstream-to-downstream, a pruned-tail component such as
+     * {@code X(5)->Y(6)->Z(7)} (no drain reachable from any of them) is emitted {@code X, Y, Z} —
+     * upstream-first, the wrong direction for that component. {@link #seedFor} then returns {@code null}
+     * for {@code X} and {@code Y}, which {@link RosgenKey#applyDeadBand} handles by committing the raw
+     * type rather than crashing, so the dead band simply resets at those boundaries instead of carrying
+     * through them. Chasing the true outlet would mean following {@code getNode(endNodeId).outgoing} to
+     * the component root with a cycle guard (a dangling component's single-outflow chain has no drain to
+     * stop at); not worth it for a case that only arises in pruned components.
      */
     private static List<Channel> orderDownstreamFirst(RiverNetwork network) {
         final List<Channel> order = new ArrayList<>();
@@ -110,9 +120,12 @@ public final class ReachRosgenClassifier implements ChannelTyper {
     /**
      * Polls {@code frontier} to exhaustion: each polled channel is appended to {@code order}, then every
      * channel feeding its start node that has not yet been seen is enqueued. A channel therefore always
-     * lands in {@code order} after the channel it flows into. Called once for the drain-rooted seed and
-     * once more per dangling channel injected by {@link #orderDownstreamFirst}, so the ordering contract
-     * holds for every connected component, not only the ones reachable from a drain.
+     * lands in {@code order} after every channel already in {@code frontier} when it was polled, and
+     * before anything feeding it. Called once for the drain-rooted seed and once more per dangling channel
+     * injected by {@link #orderDownstreamFirst}; within a run rooted at an actual outlet (any drain-seeded
+     * channel, or a dangling channel that happens to be its component's outlet) this puts every channel
+     * after the channel it flows into. See {@link #orderDownstreamFirst} for the case where the injected
+     * root is not the component's outlet.
      */
     private static void drainFrontier(
             RiverNetwork network, ArrayDeque<Channel> frontier, Map<Integer, Boolean> seen, List<Channel> order) {
