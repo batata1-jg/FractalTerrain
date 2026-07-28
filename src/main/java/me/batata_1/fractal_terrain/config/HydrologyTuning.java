@@ -295,4 +295,13 @@ public final class HydrologyTuning {
 
     /** Floor (native px) on the entrenchment transect step. */
     public static final double ER_STEP_MIN = 0.5;
+
+    /**
+     * Minimum entrenchment-transect samples per side. {@link #ER_STEP_MIN} keeps the step count low at
+     * normal widths, but a reach at the {@link #MIN_WIDTH} clamp floor has a walk shorter than one step,
+     * which would sample nothing and report every such reach as unconfined. Flooring the sample count
+     * makes the step shrink with the walk instead. First-cut, untuned value pending visual calibration
+     * via {@code localRiverTest}.
+     */
+    public static final double ER_MIN_STEPS_PER_SIDE = 8.0;
 }

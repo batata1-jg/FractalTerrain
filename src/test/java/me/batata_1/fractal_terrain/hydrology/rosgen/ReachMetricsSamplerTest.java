@@ -72,6 +72,25 @@ class ReachMetricsSamplerTest {
     }
 
     @Test
+    void narrowestChannelStillSamplesTheTerrain() {
+        // At the MIN_WIDTH clamp floor, maxWalk (ER_WALK_WIDTHS * width) is shorter than one
+        // ER_STEP_MIN-floored step, so the old step formula made the walk loop run zero iterations and
+        // report every such reach as unconfined (+inf), regardless of terrain. The fixed step shrinks
+        // to guarantee at least ER_MIN_STEPS_PER_SIDE samples per side, so a real gorge at this width
+        // must still classify as entrenched.
+        final ReachMetricsSampler sampler = new ReachMetricsSampler(vValley(50.0), SIDE);
+        final double er = sampler.entrenchmentRatio(
+                new double[] {64.0, 64.0},
+                new double[] {1.0, 0.0},
+                0.0,
+                me.batata_1.fractal_terrain.config.HydrologyTuning.MIN_WIDTH);
+        assertTrue(Double.isFinite(er), "a narrow-width transect must sample the terrain, got ER = " + er);
+        assertTrue(
+                er < me.batata_1.fractal_terrain.config.HydrologyTuning.ER_ENTRENCHED,
+                "a gorge at MIN_WIDTH must classify as entrenched, got ER = " + er);
+    }
+
+    @Test
     void transectNeverReadsOutsideTheBuffer() {
         // A channel sitting on the very edge of the buffer must not overrun. sampleBilinear clamps,
         // so this asserts the walk terminates and returns a usable number rather than looping.

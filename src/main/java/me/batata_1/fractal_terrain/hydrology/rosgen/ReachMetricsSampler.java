@@ -59,7 +59,10 @@ public final class ReachMetricsSampler {
      * flood-prone width. When <em>both</em> sides reach the walk bound without exceeding the stage the
      * result is {@code +inf} — the correct semantic for a broad flat valley (the slightly-entrenched
      * branch), not a failure. The bound is {@code ER_WALK_WIDTHS · width} per side, which resolves every
-     * threshold the key tests.
+     * threshold the key tests. The step scales with width but is capped so each side always takes at
+     * least {@code ER_MIN_STEPS_PER_SIDE} samples — otherwise a walk narrower than one step (a reach at
+     * the {@link HydrologyTuning#MIN_WIDTH} clamp floor) samples nothing and reports {@code +inf}
+     * unconditionally.
      *
      * @param point   reach centre in the network frame
      * @param normal  unit normal to the centreline at {@code point}
@@ -71,7 +74,9 @@ public final class ReachMetricsSampler {
         final double dMax = HydrologyTuning.DEPTH_MAX_FACTOR * ChannelGeometry.depthForWidth(safeWidth);
         final double floodProneStage = bedElev + 2.0 * dMax;
         final double maxWalk = HydrologyTuning.ER_WALK_WIDTHS * safeWidth;
-        final double step = Math.max(HydrologyTuning.ER_STEP_MIN, safeWidth * HydrologyTuning.ER_STEP_WIDTH_FRACTION);
+        final double step = Math.min(
+                Math.max(HydrologyTuning.ER_STEP_MIN, safeWidth * HydrologyTuning.ER_STEP_WIDTH_FRACTION),
+                maxWalk / HydrologyTuning.ER_MIN_STEPS_PER_SIDE);
 
         final double positive = halfWidth(point, normal, +1.0, floodProneStage, maxWalk, step);
         final double negative = halfWidth(point, normal, -1.0, floodProneStage, maxWalk, step);
