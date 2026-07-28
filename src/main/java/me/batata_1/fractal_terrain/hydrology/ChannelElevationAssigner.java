@@ -77,11 +77,11 @@ final class ChannelElevationAssigner {
             if (ch == null) continue;
             final Endpoint startPoint = network.getNode(ch.startNodeId);
             if (startPoint == null) throw new IllegalArgumentException("startPoint is null");
-            final double startElev = startPoint.elevation;
-            if (Double.isNaN(startElev)) throw new IllegalArgumentException("startElev is NaN");
-            double lastPointElev = startElev;
             final double endPointElev = drainElevByNodeId.getOrDefault(ch.endNodeId, Double.NaN);
             if (Double.isNaN(endPointElev)) throw new IllegalArgumentException("endPointElev is NaN");
+            final double startElev = Math.max(startPoint.elevation,endPointElev);
+            if (Double.isNaN(startElev)) throw new IllegalArgumentException("startElev is NaN");
+            double lastPointElev = startElev;
             for (double[] p : ch.spline.points()) {
                 //                LOG.info("[{},{}]", endPointElev,lastPointElev);
                 lastPointElev = Math.clamp(sampleBilinear(decodedElev, p[0], p[1]), endPointElev, lastPointElev);

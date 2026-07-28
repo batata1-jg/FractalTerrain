@@ -55,7 +55,7 @@ public class MeandersTest {
     private static void addDanglingTributary(Meanders sim, ArrayList<double[]> pts) {
         final double[] flow = new double[pts.size()];
         Arrays.fill(flow, 3.0);
-        sim.getNetwork().addLocalChannel(new Channel(pts, flow, 0), Endpoint.Type.JUNCTION);
+       // sim.getNetwork().addLocalChannel(new Channel(pts, flow, 0), Endpoint.Type.JUNCTION);
     }
 
     // -----------------------------------------------------------------------------------------

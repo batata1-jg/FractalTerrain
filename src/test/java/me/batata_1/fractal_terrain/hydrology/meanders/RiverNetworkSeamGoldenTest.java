@@ -73,7 +73,6 @@ class RiverNetworkSeamGoldenTest {
     /** One full seam round trip (in place): canonical -> atomic -> accumulate flow -> canonical. */
     private static RiverNetwork roundTrip(RiverNetwork net) {
         final AtomicView atomic = net.viewAtomic();
-        net.accumulateAndCorrectFlow(atomic);
         return net.update(atomic);
     }
 

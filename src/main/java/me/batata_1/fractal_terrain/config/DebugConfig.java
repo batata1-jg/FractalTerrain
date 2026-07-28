@@ -24,7 +24,7 @@ public final class DebugConfig {
     public static final boolean TEST_INSTANCE = ModConfig.readBoolean("debug.test_instance", false);
     public static final boolean DEBUG_RIVER_NET = ModConfig.readBoolean("debug.river_net", false);
     public static final boolean DEBUG_MANAGE_COLLISIONS = ModConfig.readBoolean("debug.manage_collisions", false);
-    public static final boolean DEBUG_CROSSING_WINNER = ModConfig.readBoolean("debug.crossing_winner", false);
+    public static final boolean DEBUG_CROSSING_WINNER = false;
 
     /** Logs every distance-to-shore grid cell (coarse-px coordinate + value) as a biome tile is built. */
     public static final boolean DEBUG_DSHORE = ModConfig.readBoolean("debug.dshore", false);

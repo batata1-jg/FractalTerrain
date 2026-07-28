@@ -143,6 +143,30 @@ public class RiverNetworkVisualizer {
         writeImage(rgb, size, folder, name);
     }
 
+    /**
+     * Same white-channel / colored-node render as {@link #seeNetwork(Meanders, String, String)} but over an
+     * {@link AtomicView}, where every interior spline point is a first-class node. Draws each directed
+     * adjacency edge {@code u -> v} as a white segment between {@code pos(u)} and {@code pos(v)}, then marks
+     * every node carrying a role (SOURCE/DRAIN/JUNCTION) by type; interior points (null role) get no marker.
+     * {@code gridSize} sizes the canvas (an {@link AtomicView} carries no grid extent of its own).
+     */
+    public void seeNetwork(AtomicView atomic, int gridSize, String folder, String name) {
+        final int size = gridSize * NETWORK_SCALE;
+        final int[] rgb = new int[size * size]; // black background
+
+        final int n = atomic.size();
+        for (int u = 0; u < n; u++) {
+            final double[] from = atomic.pos(u);
+            for (int v : atomic.adjacency.get(u)) drawLine(rgb, size, from, atomic.pos(v), COLOR_CHANNEL);
+        }
+        for (int u = 0; u < n; u++) {
+            final Endpoint.Type type = atomic.role(u);
+            if (type != null) drawDot(rgb, size, atomic.pos(u), nodeColor(type), 2);
+        }
+
+        writeImage(rgb, size, folder, name);
+    }
+
     private static int nodeColor(Endpoint.Type type) {
         return switch (type) {
             case SOURCE -> COLOR_SOURCE;

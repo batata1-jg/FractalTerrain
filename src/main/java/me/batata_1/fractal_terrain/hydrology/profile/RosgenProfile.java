@@ -39,7 +39,7 @@ public enum RosgenProfile {
     A {
         @Override
         public double floodPlainLength(double width) {
-            return 1 + 1.2 * width;
+            return width;
         }
 
         @Override
@@ -77,7 +77,7 @@ public enum RosgenProfile {
      * constant's body to make a type's floodplain wider/narrower.
      */
     public double floodPlainLength(double width) {
-        return FractalTerrainConfig.FLOODPLAIN_BASE + FractalTerrainConfig.FLOODPLAIN_WIDTH_FACTOR * width;
+        return width;
     }
 
     /**
@@ -91,7 +91,7 @@ public enum RosgenProfile {
     public double riverInfluence(double width) {
         return Math.min(
                 FractalTerrainConfig.MAX_INFLUENCE_RADIUS,
-                floodPlainLength(width) * FractalTerrainConfig.INFLUENCE_BLEND_MULTIPLIER);
+                width * FractalTerrainConfig.INFLUENCE_BLEND_MULTIPLIER);
     }
 
     /**

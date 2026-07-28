@@ -1,6 +1,8 @@
 package me.batata_1.fractal_terrain.hydrology.meanders;
 
+import static me.batata_1.fractal_terrain.config.DebugConfig.DEBUG_CROSSING_WINNER;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
+import static me.batata_1.fractal_terrain.hydrology.meanders.Meanders.DEBUG_STEPS;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -80,8 +82,8 @@ public final class RiverNetwork {
     public record NodeSpec(double x, double z, Endpoint.Type type) {}
 
     /**
-     * A directed edge of the supplied initial network — an atomic edge spec; {@code pts} include the two
-     * endpoints. {@code flow} is the (per-cell) raw flow-accumulation value for the edge: a SOURCE start
+     * A directed crossingEdge of the supplied initial network — an atomic crossingEdge spec; {@code pts} include the two
+     * endpoints. {@code flow} is the (per-cell) raw flow-accumulation value for the crossingEdge: a SOURCE start
      * carries it as its seed {@code ownFlow}, a DRAIN end as its {@code anchorFlow}; interior/junction nodes
      * carry the per-cell constant, and real per-point flow is derived by {@link #accumulateAndCorrectFlow}.
      * Width is derived downstream via {@link HydrologyTuning#widthFromFlow}.
@@ -114,7 +116,7 @@ public final class RiverNetwork {
 
     /**
      * Fold a batch of {@link NodeSpec}/{@link EdgeSpec} entries into {@code this} through the seam: build an
-     * {@link AtomicView} directly (interior edge points become fresh atomic nodes; the two endpoints collapse
+     * {@link AtomicView} directly (interior crossingEdge points become fresh atomic nodes; the two endpoints collapse
      * on their shared node-spec index so a confluence is one atomic node), seed each boundary node's flow
      * input (SOURCE seed / DRAIN anchor), derive per-point flow with {@link #accumulateAndCorrectFlow}, then
      * {@link #update} emits {@link Channel}s/{@link Endpoint}s into {@code this}. SOURCE/DRAIN canonical ids
@@ -141,7 +143,7 @@ public final class RiverNetwork {
             final NodeSpec ns = nodeSpecs.get(i);
             final boolean boundary = ns.type() == Endpoint.Type.SOURCE || ns.type() == Endpoint.Type.DRAIN;
             final double ownFlow = (ns.type() == Endpoint.Type.SOURCE) ? sourceSeed[i] : FLOW_PER_CELL;
-            final double anchor = (ns.type() == Endpoint.Type.DRAIN) ? drainAnchor[i] : 0.0;
+            final double anchor = (ns.type() == Endpoint.Type.DRAIN) ? drainAnchor[i] : -1;
             specNodeAtomicId[i] =
                     atomic.addNode(new double[] {ns.x(), ns.z()}, ns.type(), boundary ? i : NONE, ownFlow, anchor);
         }
@@ -151,18 +153,17 @@ public final class RiverNetwork {
             final int last = pts.size() - 1;
             int prev = specNodeAtomicId[es.startNodeIdx()];
             for (int i = 1; i < last; i++) {
-                final int interior = atomic.addNode(pts.get(i), null, NONE, FLOW_PER_CELL, 0.0);
-                atomic.adjacency.get(prev).add(interior);
+                final int interior = atomic.addNode(pts.get(i), null, NONE, FLOW_PER_CELL, -1);
+                atomic.addDirectedEdge(prev, interior);
                 prev = interior;
             }
-            atomic.adjacency.get(prev).add(specNodeAtomicId[es.endNodeIdx()]);
+            atomic.addDirectedEdge(prev, specNodeAtomicId[es.endNodeIdx()]);
         }
 
-        accumulateAndCorrectFlow(atomic);
         update(atomic);
     }
 
-    /** Resample an edge's raw endpoint-inclusive polyline at {@code resampleDist} (endpoints preserved). */
+    /** Resample an crossingEdge's raw endpoint-inclusive polyline at {@code resampleDist} (endpoints preserved). */
     private static List<double[]> resamplePts(List<double[]> pts, double flow, double resampleDist) {
         final double[] tmpFlow = new double[pts.size()];
         Arrays.fill(tmpFlow, flow);
@@ -177,35 +178,6 @@ public final class RiverNetwork {
         return tmp.spline.points();
     }
 
-    /**
-     * Add a standalone traced-local channel (already resampled) as a fresh SOURCE -> ({@code endType})
-     * edge, without resolving any confluence — the atomic collision pass ({@link #manageCollisions}) is what
-     * attaches it (via an undirected crossing edge) or demotes it. {@code endType} is DRAIN for a coast
-     * outlet or JUNCTION for a dangling end awaiting a crossing attach. The dangling JUNCTION end has zero
-     * outgoing edges until the collision pass reorients it — a transient state {@link #update} would reject,
-     * so no {@link #update}/K1 check may run between this and {@link #manageCollisions}.
-     */
-    public void addLocalChannel(Channel channel, Endpoint.Type endType) {
-        final int startId = nextNodeId++;
-        final int endId = nextNodeId++;
-        final double[] first = channel.spline.points().getFirst();
-        final double[] last = channel.spline.points().getLast();
-        final Endpoint start = new Endpoint(startId, Endpoint.Type.SOURCE, first.clone());
-        final Endpoint end = new Endpoint(endId, endType, last.clone());
-        start.sourceFlow = channel.flow[0]; // SOURCE seed = traced headwater flow
-        if (endType == Endpoint.Type.DRAIN) end.sourceFlow = channel.flow[channel.flow.length - 1]; // coast anchor
-        nodes.put(startId, start);
-        nodes.put(endId, end);
-        final int id = nextChannelId++;
-        // rebuild the channel under a fresh id (Channel.channelId is final) preserving points + flow
-        final Channel wired = new Channel(new ArrayList<>(channel.spline.points()), channel.flow, id);
-        wired.startNodeId = startId;
-        wired.endNodeId = endId;
-        channels.put(id, wired);
-        start.outgoing = id;
-        end.incoming.add(id);
-    }
-
     // ---------------------------------------------------------------------------------------------
     // The two views + the seam
     //
@@ -215,7 +187,7 @@ public final class RiverNetwork {
     // canonical -> atomic; {@link #update} folds an atomic view back into `this` IN PLACE.
     // ---------------------------------------------------------------------------------------------
 
-    /** Sentinel for "no canonical id" (interior/JUNCTION-equivalent atomic nodes) and "unset edge". */
+    /** Sentinel for "no canonical id" (interior/JUNCTION-equivalent atomic nodes) and "unset crossingEdge". */
     private static final int NONE = -1;
 
     /** The per-cell own-flow constant carried by interior/junction atomic nodes (see {@link #viewAtomic()}). */
@@ -247,7 +219,7 @@ public final class RiverNetwork {
                     // interior point: always a fresh atomic node, keyed on nothing but its position in
                     // this channel (no epsilon collapse). Carries the per-cell ownFlow constant; the
                     // derived flow is populated later by accumulateAndCorrectFlow, not carried here.
-                    atomicIdOfPoint[i] = atomic.addNode(pts.get(i), null, NONE, FLOW_PER_CELL, 0.0);
+                    atomicIdOfPoint[i] = atomic.addNode(pts.get(i), null, NONE, FLOW_PER_CELL, -1);
                     continue;
                 }
                 // endpoint point: collapse keyed on the canonical Endpoint node id.
@@ -261,8 +233,8 @@ public final class RiverNetwork {
                 final boolean boundary = ep.type == Endpoint.Type.SOURCE || ep.type == Endpoint.Type.DRAIN;
                 // ownFlow: SOURCE carries its captured seed (ep.sourceFlow); DRAIN/JUNCTION carry the
                 // per-cell constant. anchorFlow: DRAIN carries its anchor (ep.sourceFlow), else unused.
-                final double ownFlow = (ep.type == Endpoint.Type.SOURCE) ? ep.sourceFlow : FLOW_PER_CELL;
-                final double anchorFlow = (ep.type == Endpoint.Type.DRAIN) ? ep.sourceFlow : 0.0;
+                final double ownFlow = (ep.type == Endpoint.Type.SOURCE) ? ch.flow[0] : FLOW_PER_CELL;
+                final double anchorFlow = (ep.type == Endpoint.Type.DRAIN) ? ch.flow[ch.flow.length-1] : -1;
                 final int atomicId =
                         atomic.addNode(pts.get(i), ep.type, boundary ? endpointNodeId : NONE, ownFlow, anchorFlow);
                 endpointToAtomicId.put(endpointNodeId, atomicId);
@@ -270,7 +242,7 @@ public final class RiverNetwork {
             }
 
             for (int i = 0; i < last; i++) {
-                atomic.adjacency.get(atomicIdOfPoint[i]).add(atomicIdOfPoint[i + 1]); // directed i -> i+1
+                atomic.addDirectedEdge(atomicIdOfPoint[i], atomicIdOfPoint[i + 1]); // directed i -> i+1
             }
             atomic.pointAtomicIds.put(channelId, atomicIdOfPoint);
         }
@@ -289,12 +261,12 @@ public final class RiverNetwork {
             final int outdeg = atomic.adjacency.get(id).size();
             final Endpoint.Type role = atomic.role(id);
             if (role == Endpoint.Type.DRAIN) {
-                if (outdeg != 0) throw new IllegalStateException("DRAIN node " + id + " must have no outgoing edge");
+                if (outdeg != 0) throw new IllegalStateException("DRAIN node " + id + " must have no outgoing crossingEdge");
             } else {
-                // SOURCE / JUNCTION / interior all require exactly one outgoing edge
+                // SOURCE / JUNCTION / interior all require exactly one outgoing crossingEdge
                 if (outdeg != 1)
                     throw new IllegalStateException((role == null ? "interior" : role.toString()) + " node " + id
-                            + " must have exactly one outgoing edge, had " + outdeg);
+                            + " must have exactly one outgoing crossingEdge, had " + outdeg);
             }
         }
     }
@@ -310,6 +282,8 @@ public final class RiverNetwork {
      * preserved. Does NOT allocate a new {@code RiverNetwork} — returns {@code this} for chaining.
      */
     public RiverNetwork update(AtomicView atomic) {
+
+        final double[] flow = atomic.accumulateAndCorrectFlow();
         assertSingleOutflow(atomic); // K1 — before any mutation
 
         final int n = atomic.size();
@@ -359,41 +333,41 @@ public final class RiverNetwork {
             chain.add(start);
             while (!structural.contains(cur)) {
                 chain.add(cur);
-                cur = onlyOutgoing(atomic, cur); // interior node: single outgoing edge (K1)
+                cur = onlyOutgoing(atomic, cur); // interior node: single outgoing crossingEdge (K1)
             }
             chain.add(cur); // cur: the next structural node (confluence or drain)
-            emitChannel(atomic, chain, canonicalIdOf);
+            emitChannel(atomic, flow, chain, canonicalIdOf);
         }
         return this;
     }
 
     /** The single directed tree-successor of {@code id} (K1 guarantees exactly one for non-drain nodes). */
     private static int onlyOutgoing(AtomicView atomic, int id) {
-        return atomic.adjacency.get(id).get(0);
+        return atomic.adjacency.get(id).getFirst();
     }
 
     /**
      * Builds a {@link Channel} from {@code chain} and wires it directly into {@code this}, reusing the
-     * kept {@link #insertChannel} QuadTree helper. The start/end canonical ids come from
+     * kept {@link #insertChannelInQuadTree} QuadTree helper. The start/end canonical ids come from
      * {@code canonicalIdOf} (preserved SOURCE/DRAIN, or fresh JUNCTION-equivalent). Applies the inlined
      * single-outflow (K1) guard. {@code bedElevations} are not preserved.
      */
-    private void emitChannel(AtomicView atomic, List<Integer> chain, int[] canonicalIdOf) {
+    private void emitChannel(AtomicView atomic, double[] accumulatedFlow , List<Integer> chain, int[] canonicalIdOf) {
         final ArrayList<double[]> points = new ArrayList<>(chain.size());
         final double[] flow = new double[chain.size()];
         for (int i = 0; i < chain.size(); i++) {
             points.add(atomic.pos(chain.get(i)));
-            flow[i] = atomic.flow(chain.get(i)); // DERIVED flow (populated by accumulateAndCorrectFlow)
+            flow[i] = accumulatedFlow[chain.get(i)]; // DERIVED flow (populated by accumulateAndCorrectFlow)
         }
 
-        final int startAtomic = chain.get(0);
-        final int endAtomic = chain.get(chain.size() - 1);
+        final int startAtomic = chain.getFirst();
+        final int endAtomic = chain.getLast();
         final Endpoint start = ensureNode(atomic, startAtomic, canonicalIdOf[startAtomic], points.getFirst());
         final Endpoint end = ensureNode(atomic, endAtomic, canonicalIdOf[endAtomic], points.getLast());
 
-        // inlined K1 guard: the start endpoint must not already own an outgoing edge (single-outflow)
+        // inlined K1 guard: the start endpoint must not already own an outgoing crossingEdge (single-outflow)
         if (start.outgoing != NONE) {
-            throw new IllegalStateException("node " + start.id + " would have >1 outgoing edge");
+            throw new IllegalStateException("node " + start.id + " would have >1 outgoing crossingEdge");
         }
 
         final int id = nextChannelId++;
@@ -403,7 +377,7 @@ public final class RiverNetwork {
         channels.put(id, ch);
         start.outgoing = id;
         end.incoming.add(id);
-        insertChannel(ch); // kept QuadTree helper (also used by manageCutoffs)
+        insertChannelInQuadTree(ch); // kept QuadTree helper (also used by manageCutoffs)
         // bedElevations intentionally NOT preserved — the seam is bed-elevation-agnostic
     }
 
@@ -427,108 +401,6 @@ public final class RiverNetwork {
         return ep;
     }
 
-    // ---------------------------------------------------------------------------------------------
-    // Flow accumulation + drain correction (populates the atomic view's DERIVED per-node flow)
-    // ---------------------------------------------------------------------------------------------
-
-    /**
-     * Populate {@code atomic.flow[]} (the DERIVED per-node flow that drives width) from the carried inputs
-     * {@code ownFlow[]} (per-cell constant / SOURCE seed) and {@code anchorFlow[]} (DRAIN-only). Reverse-
-     * topological accumulation over the ATOMIC adjacency (never {@link Endpoint#incoming}, a HashSet), so
-     * the confluence sum order is pinned by ascending atomic id and the {@code doubleToLongBits} goldens
-     * stay bit-stable. Then per drain (sorted): clamp every basin node to the anchor ceiling, set the drain
-     * to its anchor exactly, and lerp the last &le; {@link HydrologyTuning#DRAIN_FLOW_SMOOTH_MAX_NODES}
-     * mainstem nodes up to the anchor when the jump exceeds {@link HydrologyTuning#DRAIN_FLOW_SMOOTH_STEP}
-     * — NO basin-wide rescale. Call this before {@link #update} reads the derived flow.
-     */
-    public void accumulateAndCorrectFlow(AtomicView atomic) {
-        final int n = atomic.size();
-
-        // predecessors u of each edge u -> node, each list sorted ascending by atomic id so every
-        // confluence sum order is pinned (Determinism).
-        final List<List<Integer>> predecessors = new ArrayList<>(n);
-        for (int v = 0; v < n; v++) predecessors.add(new ArrayList<>());
-        for (int u = 0; u < n; u++)
-            for (int v : atomic.adjacency.get(u)) predecessors.get(v).add(u);
-        for (List<Integer> preds : predecessors) Collections.sort(preds);
-
-        final int[] remainingIn = new int[n];
-        for (int v = 0; v < n; v++) remainingIn[v] = predecessors.get(v).size();
-
-        final double[] totalFlow = new double[n];
-        final TreeSet<Integer> ready = new TreeSet<>(); // ascending atomic id — deterministic frontier
-        for (int v = 0; v < n; v++) if (remainingIn[v] == 0) ready.add(v);
-
-        while (!ready.isEmpty()) {
-            final int node = ready.pollFirst();
-            double sum = atomic.ownFlow(node);
-            for (int tributary : predecessors.get(node)) sum += totalFlow[tributary];
-            totalFlow[node] = sum;
-            for (int next : atomic.adjacency.get(node)) if (--remainingIn[next] == 0) ready.add(next);
-        }
-
-        final double[] flow = totalFlow.clone();
-
-        // Per drain (sorted): clamp the basin to the anchor ceiling, then lerp the last few mainstem
-        // nodes up to the anchor. No basin-wide rescale (headwaters keep their small natural flow).
-        for (int drain = 0; drain < n; drain++) {
-            if (atomic.role(drain) != Endpoint.Type.DRAIN) continue;
-            final double anchor = atomic.anchorFlow(drain);
-
-            // 1. clamp every basin node to the anchor ceiling
-            for (int node : basinOf(drain, predecessors)) flow[node] = Math.min(totalFlow[node], anchor);
-            // 2. the drain reads its anchor exactly
-            flow[drain] = anchor;
-
-            // 3. smooth the drain jump along the mainstem, if it exceeds the step threshold
-            int up = mainstemPredecessor(drain, predecessors, flow);
-            if (up == NONE || anchor - flow[up] <= HydrologyTuning.DRAIN_FLOW_SMOOTH_STEP) continue;
-
-            final List<Integer> chain = new ArrayList<>();
-            int node = up;
-            while (node != NONE
-                    && chain.size() < HydrologyTuning.DRAIN_FLOW_SMOOTH_MAX_NODES
-                    && anchor - flow[node] > HydrologyTuning.DRAIN_FLOW_SMOOTH_STEP) {
-                chain.add(node);
-                node = mainstemPredecessor(node, predecessors, flow);
-            }
-
-            // 4. ramp anchor (at the drain) down to the far-end node's natural flow across the chain,
-            //    only raising (max) so a tributary already carrying more is never lowered.
-            final int span = chain.size();
-            final double farFlow = flow[chain.get(span - 1)];
-            for (int k = 0; k < span; k++) { // k = 0 is the drain-adjacent node
-                final double t = (double) (k + 1) / (span + 1); // 0 -> drain (anchor), 1 -> far end (farFlow)
-                final double ramped = anchor + (farFlow - anchor) * t;
-                final int cn = chain.get(k);
-                flow[cn] = Math.max(flow[cn], ramped);
-            }
-        }
-
-        atomic.flow = flow;
-    }
-
-    /** All atomic nodes upstream of {@code drain} (reverse-reachable via predecessors), including it. */
-    private static List<Integer> basinOf(int drain, List<List<Integer>> predecessors) {
-        final List<Integer> basin = new ArrayList<>();
-        final ArrayDeque<Integer> stack = new ArrayDeque<>();
-        stack.push(drain);
-        while (!stack.isEmpty()) {
-            final int node = stack.pop();
-            basin.add(node);
-            for (int up : predecessors.get(node)) stack.push(up);
-        }
-        return basin;
-    }
-
-    /** The highest-flow predecessor of {@code node} (tie-broken by ascending atomic id), or {@link #NONE}. */
-    private static int mainstemPredecessor(int node, List<List<Integer>> predecessors, double[] flow) {
-        int best = NONE;
-        for (int up : predecessors.get(node)) { // predecessors already ascending by id
-            if (best == NONE || flow[up] > flow[best]) best = up;
-        }
-        return best;
-    }
 
     // ---------------------------------------------------------------------------------------------
     // Collisions (stream capture) — a from-scratch orient-and-prune over the atomic view
@@ -543,7 +415,7 @@ public final class RiverNetwork {
      *   <li>Deterministic two-mark DFS from each source (sorted source id, pinned adjacency: directed
      *       tree-successor first, then undirected crossing partners ascending by atomic id). Promotion — of
      *       the not-yet-{@code streamMarked} stack suffix — happens only on reaching a DRAIN or an
-     *       already-{@code streamMarked} node; each node's single outgoing edge is set exactly once, at the
+     *       already-{@code streamMarked} node; each node's single outgoing crossingEdge is set exactly once, at the
      *       instant it becomes {@code streamMarked}. Acyclic + single-outflow by construction.</li>
      *   <li>Build the oriented view from the promoted edges (kept = promoted edges only).</li>
      *   <li>Prune unmarked nodes — each dangling unmarked sub-path becomes an {@link
@@ -552,43 +424,44 @@ public final class RiverNetwork {
      *       place.</li>
      * </ol>
      */
-    public void manageCollisions(int step) {
-        final AtomicView atomic = viewAtomic();
-        final int n = atomic.size();
+    public void manageCollisions(int step, AtomicView atomic) {
 
         // step 1: undirected crossing edges + the pinned per-node adjacency (tree successor + partners).
-        final int[] treeSuccessor = new int[n];
-        for (int u = 0; u < n; u++)
-            treeSuccessor[u] = atomic.adjacency.get(u).isEmpty()
-                    ? NONE
-                    : atomic.adjacency.get(u).get(0);
-        final List<List<Integer>> crossingPartners = new ArrayList<>(n);
-        for (int u = 0; u < n; u++) crossingPartners.add(new ArrayList<>());
-        for (int[] edge : detectCrossings(atomic)) {
-            crossingPartners.get(edge[0]).add(edge[1]);
-            crossingPartners.get(edge[1]).add(edge[0]);
+        if(DEBUG_STEPS) {
+            Debug.river.seeNetwork(atomic,514,"step_" + step, "baseAtomicView");
         }
-        for (List<Integer> partners : crossingPartners) {
-            Collections.sort(partners); // ascending atomic id — pinned adjacency order (Determinism)
+        List<int[]> crossings = detectCrossings(atomic);
+        if(DEBUG_CROSSING_WINNER) LOG.info("crossings at step {} : {}", step, crossings);
+        for (int[] crossingEdge : crossings) {
+            atomic.addDirectedEdge(crossingEdge[0], crossingEdge[1]);
+            atomic.addDirectedEdge(crossingEdge[1], crossingEdge[0]);
         }
 
+        atomic.resolveCrossingEdges();
+        final int n = atomic.size();
+
         // step 2: deterministic two-mark DFS.
-        final boolean[] visited = new boolean[n];
+        final int[] visited = new int[n];
+        Arrays.fill(visited, -1);
+        final boolean[] foundDrain = new boolean[n];
+        Arrays.fill(foundDrain, false);
         final boolean[] streamMarked = new boolean[n];
+        Arrays.fill(streamMarked, false);
         final int[] outgoing = new int[n];
         Arrays.fill(outgoing, NONE);
+        final ArrayDeque<Integer> dfsStack = new ArrayDeque<>();
         for (int sourceId : sortedSourceIds(atomic)) {
-            if (!visited[sourceId]) {
-                dfsVisit(
-                        atomic,
-                        treeSuccessor,
-                        crossingPartners,
-                        sourceId,
-                        new ArrayDeque<>(),
-                        visited,
-                        streamMarked,
-                        outgoing);
-            }
+            dfsVisit(
+                atomic,
+                sourceId,
+                sourceId,
+                dfsStack,
+                visited,
+                foundDrain,
+                streamMarked,
+                outgoing
+            );
+            dfsStack.clear();
         }
 
         // alive = streamMarked, plus any node referenced as a promoted successor (reached drains).
@@ -600,7 +473,9 @@ public final class RiverNetwork {
 
         // step 3 + 5: build the oriented compact view, derive flow, fold back in place.
         final AtomicView oriented = buildOriented(atomic, alive, outgoing);
-        accumulateAndCorrectFlow(oriented);
+        if(DEBUG_STEPS) {
+           Debug.river.seeNetwork(oriented,514,"step_" + step, "orientedAtomicView");
+        }
         update(oriented);
     }
 
@@ -617,24 +492,23 @@ public final class RiverNetwork {
      */
     private boolean dfsVisit(
             AtomicView atomic,
-            int[] treeSuccessor,
-            List<List<Integer>> crossingPartners,
             int node,
+            int sourceId,
             Deque<Integer> stack,
-            boolean[] visited,
+            int[] visited,
+            boolean[] foundDrain,
             boolean[] streamMarked,
             int[] outgoing) {
         if (streamMarked[node] || atomic.role(node) == Endpoint.Type.DRAIN) return true; // already a terminus
-        if (visited[node]) return false; // on-stack ancestor or exhausted branch — NOT promoted, NOT marked
+        if (visited[node]==sourceId) return false; // on-stack ancestor or exhausted branch — NOT promoted, NOT marked
+        if (visited[node]!=-1&&!foundDrain[visited[node]]) return false;
 
-        visited[node] = true;
+        visited[node] = sourceId;
         stack.push(node);
 
         // pinned per-node adjacency order: directed tree-successor first (if present), then crossing
         // partners ascending by atomic id.
-        final List<Integer> neighbors = new ArrayList<>();
-        if (treeSuccessor[node] != NONE) neighbors.add(treeSuccessor[node]);
-        neighbors.addAll(crossingPartners.get(node));
+        final List<Integer> neighbors = atomic.adjacency.get(node);
 
         for (int next : neighbors) {
             if (streamMarked[next] || atomic.role(next) == Endpoint.Type.DRAIN) {
@@ -642,12 +516,13 @@ public final class RiverNetwork {
                 // on `stack` is not-yet-streamMarked (the entry guard never pushes a streamMarked node), so
                 // the whole stack is the promoted suffix.
                 promoteSuffix(stack, next, streamMarked, outgoing);
+                foundDrain[sourceId] = true;
                 stack.pop();
                 return true;
             }
-            if (!visited[next]
+            if (visited[next]!=sourceId
                     && dfsVisit(
-                            atomic, treeSuccessor, crossingPartners, next, stack, visited, streamMarked, outgoing)) {
+                            atomic, next,sourceId, stack, visited, foundDrain, streamMarked, outgoing)) {
                 stack.pop(); // promotion already happened for this whole stack, deeper in the recursion
                 return true;
             }
@@ -659,12 +534,13 @@ public final class RiverNetwork {
     }
 
     /**
-     * Wires each node on {@code stack} (top-of-stack first) to its single outgoing edge toward
-     * {@code terminus}, then streamMarks it. Each node's outgoing edge is set EXACTLY ONCE, at the instant it
+     * Wires each node on {@code stack} (top-of-stack first) to its single outgoing crossingEdge toward
+     * {@code terminus}, then streamMarks it. Each node's outgoing crossingEdge is set EXACTLY ONCE, at the instant it
      * transitions unmarked -> streamMarked; an already-streamMarked node is never on the stack.
      */
     private static void promoteSuffix(Deque<Integer> stack, int terminus, boolean[] streamMarked, int[] outgoing) {
         int next = terminus;
+        streamMarked[next] = true; // ensures terminus is streamMarked
         for (int node : stack) { // ArrayDeque iterates head (top of stack) first
             outgoing[node] = next;
             streamMarked[node] = true;
@@ -674,7 +550,7 @@ public final class RiverNetwork {
 
     /**
      * Build the oriented, pruned atomic view: only {@code alive} nodes, re-indexed ascending, with each
-     * kept node's single promoted outgoing edge. Drains and pruned nodes get an empty adjacency. Roles /
+     * kept node's single promoted outgoing crossingEdge. Drains and pruned nodes get an empty adjacency. Roles /
      * canonical ids / flow inputs are carried through, so {@link #update} preserves SOURCE/DRAIN ids and
      * {@link #accumulateAndCorrectFlow} re-derives flow over the oriented topology.
      */
@@ -696,7 +572,7 @@ public final class RiverNetwork {
             if (!alive[old] || atomic.role(old) == Endpoint.Type.DRAIN) continue;
             final int out = outgoing[old];
             if (out != NONE && newId[out] != NONE)
-                oriented.adjacency.get(newId[old]).add(newId[out]);
+                oriented.addDirectedEdge(newId[old], newId[out]);
         }
         return oriented;
     }
@@ -731,7 +607,7 @@ public final class RiverNetwork {
     }
 
     /**
-     * Detect channel crossings: one undirected atomic-node-pair edge per overlapping channel pair (the
+     * Detect channel crossings: one undirected atomic-node-pair crossingEdge per overlapping channel pair (the
      * closest overlapping point pair between them), bed-overlap tested via {@link ChannelGeometry#channelsOverlap}
      * on per-point {@link Channel#widthAt}. Deterministic: channels iterated in sorted id order; the chosen
      * pair per partner is the globally closest (independent of query order); shared confluence nodes (same
@@ -741,7 +617,7 @@ public final class RiverNetwork {
         quadTree.clear();
         final List<Integer> channelIds = new ArrayList<>(channels.keySet());
         Collections.sort(channelIds);
-        for (int channelId : channelIds) insertChannel(channels.get(channelId));
+        for (int channelId : channelIds) insertChannelInQuadTree(channels.get(channelId));
 
         double maxHalf = 0.0;
         for (int channelId : channelIds) {
@@ -782,7 +658,7 @@ public final class RiverNetwork {
         return edges;
     }
 
-    /** Whether {@code a}/{@code b} are directly connected by a directed tree edge (either direction). */
+    /** Whether {@code a}/{@code b} are directly connected by a directed tree crossingEdge (either direction). */
     private static boolean isTreeAdjacent(AtomicView atomic, int a, int b) {
         return atomic.adjacency.get(a).contains(b) || atomic.adjacency.get(b).contains(a);
     }
@@ -815,7 +691,7 @@ public final class RiverNetwork {
             throw new RuntimeException("cannot cut becuse spline is NaN");
         }
         quadTree.clear();
-        insertChannel(ch);
+        insertChannelInQuadTree(ch);
         ArrayList<Integer> newPathIndexes = new ArrayList<>();
 
         for (int id = 0; id < ch.numPts() - 1; id++) {
@@ -833,7 +709,7 @@ public final class RiverNetwork {
         ch.keepOnly(newPathIndexes);
     }
 
-    private void insertChannel(Channel ch) {
+    private void insertChannelInQuadTree(Channel ch) {
         Channel.ChannelPt[] pts = ch.getChannelAsPts();
         for (Channel.ChannelPt pt : pts) {
             quadTree.insertPoint(pt);

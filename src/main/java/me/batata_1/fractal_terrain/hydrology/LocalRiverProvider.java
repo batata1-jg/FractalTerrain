@@ -16,6 +16,7 @@ import java.util.function.Predicate;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
+import me.batata_1.fractal_terrain.hydrology.meanders.AtomicView;
 import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
 import me.batata_1.fractal_terrain.hydrology.meanders.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork;
@@ -117,7 +118,7 @@ public class LocalRiverProvider {
      */
     @TestOnly
     public void traceLocalNetworkForTest(int[] drainage, float[] elev, RiverNetwork network) {
-        LocalDrainageTracer.traceLocalNetwork(drainage, elev, network, null);
+        LocalDrainageTracer.traceLocalNetwork(drainage, elev, network,null,null);
     }
 
     private GlobalRiverProvider globalRiverProvider() {
@@ -213,10 +214,8 @@ public class LocalRiverProvider {
         final float[] carvedElevation = base[0];
         ChannelElevationAssigner.assign(network, boundaryElev, carvedElevation);
         LOG.info("passed first assignemnt");
-
-        final List<HydrologicalUnit> globalUnitsFirstCarvePass = network.collectUnits(0, 0, 0, new int[] {0});
         HydrologyProfileCarver.carveRiverShells(
-                carvedElevation, globalUnitsFirstCarvePass.toArray(new HydrologicalUnit[0]), PADDED);
+                carvedElevation, network.collectUnits(0, 0, 0, new int[] {0}).toArray(new HydrologicalUnit[0]), PADDED);
 
         // 2. sink-fill + drainage on the RAW decoded elevation (not yet carved): the local trace no
         //    longer needs a pre-carved valley to route toward the global network -- LOCAL_ATTACH_RADIUS
@@ -233,8 +232,7 @@ public class LocalRiverProvider {
         //    to an ABANDONED_RIVER when its DFS branch reaches no drain). update() re-assigns every channel
         //    id but preserves SOURCE/DRAIN node ids, so the boundary map below keys on node type, not the
         //    old (now churn-broken) before/after channel-id snapshot.
-        LocalDrainageTracer.traceLocalNetwork(drainagePadded, carvedElevation, network, stages);
-        network.manageCollisions(0);
+        LocalDrainageTracer.traceLocalNetwork(drainagePadded, carvedElevation, network, boundaryElev ,stages);
 
         // 4. augment the boundary map with every SOURCE/DRAIN node not already seeded — the local ridge
         //    SOURCEs and coast DRAINs the trace minted (decoded terrain at the node, floored at 0), so the
@@ -247,16 +245,14 @@ public class LocalRiverProvider {
 
         // 5. ONE bed-elevation assignment over the whole unified graph.
         ChannelElevationAssigner.assign(network, boundaryElev, carvedElevation);
-        LOG.info("passed second assignemnt");
+        LOG.info("passed second assignment");
+        HydrologyProfileCarver.carveRiverShells(
+                carvedElevation, network.collectUnits(0, 0, 0, new int[] {0}).toArray(new HydrologicalUnit[0]), PADDED);
 
         final int[] nextFeatureId = {0};
         final List<HydrologicalUnit> unitPoints = network.collectUnits(0, PAD, PAD, nextFeatureId);
         final ImmutableRTree<HydrologicalUnit> unitIndex = new ImmutableRTree<>(unitPoints, HydrologicalUnit.PROTOTYPE);
 
-        final List<HydrologicalUnit> globalUnitsForCarve = network.collectUnits(0, 0, 0, new int[] {0});
-
-        HydrologyProfileCarver.carveRiverShells(
-                carvedElevation, globalUnitsForCarve.toArray(new HydrologicalUnit[0]), PADDED);
         final FloatTensor carvedTile = cropToTile(carvedElevation);
 
         if (stages != null) {

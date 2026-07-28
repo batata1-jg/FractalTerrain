@@ -239,17 +239,17 @@ public class PipelinePreprocessing {
         }
 
         // Border transition blend (in place into filled).
-        if (padding > 0) {
-            for (int x = 0; x < gridSize; x++) {
-                for (int z = 0; z < gridSize; z++) {
-                    final int distToBorder = Math.min(Math.min(x, z), Math.min(gridSize - 1 - x, gridSize - 1 - z));
-                    if (distToBorder >= padding) continue;
-                    final int idx = x * gridSize + z;
-                    final float t = distToBorder / (float) padding;
-                    filled[idx] = elevation[idx] + t * (filled[idx] - elevation[idx]);
-                }
-            }
-        }
+//        if (padding > 0) {
+//            for (int x = 0; x < gridSize; x++) {
+//                for (int z = 0; z < gridSize; z++) {
+//                    final int distToBorder = Math.min(Math.min(x, z), Math.min(gridSize - 1 - x, gridSize - 1 - z));
+//                    if (distToBorder >= padding) continue;
+//                    final int idx = x * gridSize + z;
+//                    final float t = distToBorder / (float) padding;
+//                    filled[idx] = elevation[idx] + t * (filled[idx] - elevation[idx]);
+//                }
+//            }
+//        }
         return filled;
     }
 

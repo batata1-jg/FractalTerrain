@@ -177,8 +177,6 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
                     state = DEFAUT;
                     if (surfaceH - y < 5) {
                         state = FractalTerrainInstance.getInfinite3DVisualizer().debugPaintController(xx, y, zz);
-                    } else {
-                        state = DEFAUT;
                     }
 
                     chunk.setBlockState(mutable, state, false);

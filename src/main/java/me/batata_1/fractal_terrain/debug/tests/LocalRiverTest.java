@@ -38,16 +38,16 @@ public class LocalRiverTest {
     private static final int PAD = 1;
 
     /** Tiles (tx, tz) to render. */
-    private static final int[][] TILES = {{-3, -3}
+    private static final int[][] TILES = {{-1, -2}
         // {0, -1},
         //    {-1,-1}
         //   {-1,-1},{0,-1},{0,-2}
-        //            {1, -4}, {0, -3}, {0, -4}
+        //            {-1, -1}, {-1, -2}, {-2, -1} , {-2,-2}
     };
 
     public static void main(String[] args) {
         LOG.info("LocalRiverTest start; output dir = {}", DEBUG_PATH);
-        Meanders.DEBUG_STEPS = true;
+        Meanders.DEBUG_STEPS = false;
         ModelAssetManager.ensureAssetsReady();
         FractalTerrainInstance.initPipeline();
         pipeline.updateInstance(420, DEBUG_PATH);

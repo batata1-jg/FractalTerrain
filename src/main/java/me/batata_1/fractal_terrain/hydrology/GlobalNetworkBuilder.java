@@ -79,7 +79,7 @@ final class GlobalNetworkBuilder {
                         break;
                     }
                 int dcx = ccx, dcz = ccz;
-                double[] drain = null;
+                double[] drain;
                 final double marginInfl = FractalTerrainConfig.riverInfluence(
                         Math.max(grp.getWidth(ccx, ccz), FractalTerrainConfig.MIN_WIDTH));
                 if (outDir != -1) {
@@ -118,8 +118,10 @@ final class GlobalNetworkBuilder {
                         : PAD + b * COARSE_PX + COARSE_HALF;
                 final int idx = addNode(nodeSpecs, cx, cz, type);
                 centerIdx.put(cellKey(ccx, ccz), idx);
-                if (type == Endpoint.Type.DRAIN)
-                    boundaryElevByNodeIdx.put(idx, Math.max(0, (double) grp.getElevation(ccx, ccz)));
+                if (type == Endpoint.Type.DRAIN) {
+                    boundaryElevByNodeIdx.put(idx, 0.0);
+                }
+
             }
         }
 

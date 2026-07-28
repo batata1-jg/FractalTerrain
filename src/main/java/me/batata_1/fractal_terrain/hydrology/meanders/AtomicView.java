@@ -1,9 +1,11 @@
 package me.batata_1.fractal_terrain.hydrology.meanders;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import me.batata_1.fractal_terrain.config.HydrologyTuning;
+import me.batata_1.fractal_terrain.math.VectorOps;
+import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
+import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
+
+import java.util.*;
 
 /**
  * Atomic (node) view of the network: parallel per-node data plus a directed adjacency where every
@@ -19,7 +21,7 @@ public final class AtomicView {
     /**
      * SOURCE / DRAIN / JUNCTION, or {@code null} for an interior spline point.
      */
-    private final List<Endpoint.Type> role = new ArrayList<>();
+    public final List<Endpoint.Type> role = new ArrayList<>();
     /**
      * Valid only where {@link #role} is SOURCE or DRAIN — the canonical {@link Endpoint} id to preserve.
      */
@@ -31,58 +33,48 @@ public final class AtomicView {
     /**
      * CARRIED input, meaningful only where {@link #role} is DRAIN: the clamp ceiling + near-drain target.
      */
-    private final List<Double> anchorFlow = new ArrayList<>();
+    public final List<Double> anchorFlow = new ArrayList<>();
     /**
      * {@code adjacency.get(u)}: directed tree-successor edge(s) out of atomic node {@code u}.
+     * Mutate only via {@link #addDirectedEdge(int, int)} so duplicate edges are never inserted.
      */
-    final List<List<Integer>> adjacency = new ArrayList<>();
+    public final List<List<Integer>> adjacency = new ArrayList<>();
     /**
      * canonical channelId -> atomic id per spline point (only populated by {@link #viewAtomic()}).
      */
     final Map<Integer, int[]> pointAtomicIds = new HashMap<>();
-    /**
-     * DERIVED per-node flow; {@code null} until {@link #accumulateAndCorrectFlow} runs.
-     */
-    double[] flow;
 
-    int size() {
+    public int size() {
         return position.size();
     }
 
-    Endpoint.Type role(int id) {
+    public Endpoint.Type role(int id) {
         return role.get(id);
     }
 
-    int canonicalId(int id) {
+    public int canonicalId(int id) {
         return canonicalId.get(id);
     }
 
-    double ownFlow(int id) {
+    public double ownFlow(int id) {
         return ownFlow.get(id);
     }
 
-    double anchorFlow(int id) {
+    public double anchorFlow(int id) {
         return anchorFlow.get(id);
-    }
-
-    /**
-     * The DERIVED per-node flow at {@code id}, falling back to {@code ownFlow} when not yet accumulated.
-     */
-    double flow(int id) {
-        return (flow != null) ? flow[id] : ownFlow.get(id);
     }
 
     /**
      * A fresh copy of the position of atomic node {@code id}.
      */
-    double[] pos(int id) {
+    public double[] pos(int id) {
         return position.get(id).clone();
     }
 
     /**
      * Append a new atomic node (position cloned) and return its atomic id.
      */
-    int addNode(double[] pos, Endpoint.Type role, int canonicalId, double ownFlow, double anchorFlow) {
+    public int addNode(double[] pos, Endpoint.Type role, int canonicalId, double ownFlow, double anchorFlow) {
         final int id = position.size();
         position.add(pos.clone());
         this.role.add(role);
@@ -91,5 +83,264 @@ public final class AtomicView {
         this.anchorFlow.add(anchorFlow);
         adjacency.add(new ArrayList<>());
         return id;
+    }
+
+    /**
+     * Add the directed edge {@code a -> b} to the adjacency. If that edge is already present (linear
+     * search over {@code a}'s successors), this does nothing — the adjacency never holds a duplicate edge.
+     */
+    public void addDirectedEdge(int a, int b) {
+        final List<Integer> out = adjacency.get(a);
+        for (int existing : out) if (existing == b) return;
+        out.add(b);
+    }
+
+    /** Whether the directed edge {@code a -> b} is currently present in the adjacency. */
+    public boolean hasDirectedEdge(int a, int b) {
+        return adjacency.get(a).contains(b);
+    }
+
+    /** Remove the directed edge {@code a -> b} from the adjacency if present (no-op otherwise). */
+    private void removeDirectedEdge(int a, int b) {
+        adjacency.get(a).remove((Integer) b);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Flow accumulation + drain correction (populates the atomic view's DERIVED per-node flow)
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Populate {@code atomic.flow[]} (the DERIVED per-node flow that drives width) from the carried inputs
+     * {@code ownFlow[]} (per-cell constant / SOURCE seed) and {@code anchorFlow[]} (DRAIN-only). Reverse-
+     * topological accumulation over the ATOMIC adjacency (never {@link Endpoint#incoming}, a HashSet), so
+     * the confluence sum order is pinned by ascending atomic id and the {@code doubleToLongBits} goldens
+     * stay bit-stable. Then per drain (sorted): clamp every basin node to the anchor ceiling, set the drain
+     * to its anchor exactly, and lerp the last &le; {@link HydrologyTuning#DRAIN_FLOW_SMOOTH_MAX_NODES}
+     * mainstem nodes up to the anchor when the jump exceeds {@link HydrologyTuning#DRAIN_FLOW_SMOOTH_STEP}
+     * — NO basin-wide rescale. Call this before {@link #update} reads the derived flow.
+     */
+    public double[] accumulateAndCorrectFlow() {
+        final int n = this.size();
+
+        // predecessors u of each edge u -> node, each list sorted ascending by atomic id so every
+        // confluence sum order is pinned (Determinism).
+        final List<List<Integer>> predecessors = new ArrayList<>(n);
+        for (int v = 0; v < n; v++) predecessors.add(new ArrayList<>());
+        for (int u = 0; u < n; u++)
+            for (int v : adjacency.get(u)) predecessors.get(v).add(u);
+        for (List<Integer> preds : predecessors) Collections.sort(preds);
+
+        final int[] remainingIn = new int[n];
+        for (int v = 0; v < n; v++) remainingIn[v] = predecessors.get(v).size();
+
+        final double[] totalFlow = new double[n];
+        final TreeSet<Integer> ready = new TreeSet<>(); // ascending atomic id — deterministic frontier
+        for (int v = 0; v < n; v++) if (remainingIn[v] == 0) ready.add(v);
+
+        while (!ready.isEmpty()) {
+            final int node = ready.pollFirst();
+            double sum = ownFlow.get(node);
+            for (int tributary : predecessors.get(node)) sum += totalFlow[tributary];
+            totalFlow[node] = sum;
+            for (int next : adjacency.get(node)) if (--remainingIn[next] == 0) ready.add(next);
+        }
+
+        final double[] flow = totalFlow.clone();
+
+        // Per drain (sorted): clamp the basin to the anchor ceiling, then lerp the last few mainstem
+        // nodes up to the anchor. No basin-wide rescale (headwaters keep their small natural flow).
+        for (int drain = 0; drain < n; drain++) {
+            if (role.get(drain) != Endpoint.Type.DRAIN) continue;
+            final double anchor = anchorFlow.get(drain);
+            if(anchor == -1) continue; // does not require the drain to have a maximum flow;
+            // 1. clamp every basin node to the anchor ceiling
+            for (int node : basinOf(drain, predecessors)) flow[node] = Math.min(totalFlow[node], anchor);
+            // 2. the drain reads its anchor exactly
+            flow[drain] = anchor;
+
+            // 3. smooth the drain jump along the mainstem, if it exceeds the step threshold
+            int up = mainstemPredecessor(drain, predecessors, flow);
+            if (up == -1 || anchor - flow[up] <= HydrologyTuning.DRAIN_FLOW_SMOOTH_STEP) continue;
+
+            final List<Integer> chain = new ArrayList<>();
+            int node = up;
+            while (node != -1
+                    && chain.size() < HydrologyTuning.DRAIN_FLOW_SMOOTH_MAX_NODES
+                    && anchor - flow[node] > HydrologyTuning.DRAIN_FLOW_SMOOTH_STEP) {
+                chain.add(node);
+                node = mainstemPredecessor(node, predecessors, flow);
+            }
+
+            // 4. ramp anchor (at the drain) down to the far-end node's natural flow across the chain,
+            //    only raising (max) so a tributary already carrying more is never lowered.
+            final int span = chain.size();
+            final double farFlow = flow[chain.get(span - 1)];
+            for (int k = 0; k < span; k++) { // k = 0 is the drain-adjacent node
+                final double t = (double) (k + 1) / (span + 1); // 0 -> drain (anchor), 1 -> far end (farFlow)
+                final double ramped = anchor + (farFlow - anchor) * t;
+                final int cn = chain.get(k);
+                flow[cn] = Math.max(flow[cn], ramped);
+            }
+        }
+
+        return flow;
+    }
+
+    /** All atomic nodes upstream of {@code drain} (reverse-reachable via predecessors), including it. */
+    private static List<Integer> basinOf(int drain, List<List<Integer>> predecessors) {
+        final List<Integer> basin = new ArrayList<>();
+        final ArrayDeque<Integer> stack = new ArrayDeque<>();
+        stack.push(drain);
+        while (!stack.isEmpty()) {
+            final int node = stack.pop();
+            basin.add(node);
+            for (int up : predecessors.get(node)) stack.push(up);
+        }
+        return basin;
+    }
+
+    /** The highest-flow predecessor of {@code node} (tie-broken by ascending atomic id), or {@link #NONE}. */
+    private static int mainstemPredecessor(int node, List<List<Integer>> predecessors, double[] flow) {
+        int best = -1;
+        for (int up : predecessors.get(node)) { // predecessors already ascending by id
+            if (best == -1 || flow[up] > flow[best]) best = up;
+        }
+        return best;
+    }
+
+    // the edges itself can cross
+    public record nodeUnit(double[] coord , double radius , int id) implements SpatialIndexCircle  {
+
+        @Override
+        public double[] getCenter() {
+            return coord;
+        }
+
+        @Override
+        public double getRadius() {
+            return radius;
+        }
+    }
+
+    /** canonicalId value for interior / crossing atomic nodes (mirrors {@code RiverNetwork.NONE}). */
+    private static final int NO_CANONICAL_ID = -1;
+
+    /** Geometric tolerance for the segment-crossing test (parallel guard + strict-interior margin). */
+    private static final double CROSS_EPS = 1e-9;
+
+    /**
+     * Planarize the adjacency: wherever two edges cross geometrically (their position segments properly
+     * intersect), delete the crossing edges and re-route each one through a fresh interior node placed at
+     * the intersection, preserving flow direction. A crossing between {@code a -> b} and {@code c -> d} at
+     * point {@code x} becomes {@code a -> x -> b} and {@code c -> x -> d} — {@code x} is the single shared
+     * "middle" node inheriting the crossing coordinates.
+     *
+     * <p>Each edge is treated as an undirected position segment (a bidirectional pair collapses to one
+     * segment, and both directions are rewritten). Candidate pairs are pruned with an {@link ImmutableRTree}
+     * over the node positions: because meander edges are short (point spacing ~{@link HydrologyTuning#DX},
+     * migration &le; {@link HydrologyTuning#MAX_MIGRATION}), two edges can only cross when their endpoints
+     * sit within {@code MAX_MIGRATION * 5} of each other, so only segments incident to a node within that
+     * radius of an endpoint are tested. Two straight segments meet in at most one point, so resolving every
+     * original pair once fully planarizes the set in a single pass; the new sub-segments meet only at the
+     * shared crossing nodes and introduce no further crossings. Deterministic: segments and candidates are
+     * visited in ascending order, so crossing-node ids are assigned reproducibly.
+     */
+    public void resolveCrossingEdges() {
+        final int originalSize = size();
+        if (originalSize < 2) return;
+
+        // 1. Undirected position segments (dedup both directions of the same geometric edge), sorted for a
+        //    deterministic crossing-node id assignment.
+        final List<int[]> segments = new ArrayList<>(); // {lo, hi}, lo < hi
+        final Set<Long> seen = new HashSet<>();
+        for (int u = 0; u < originalSize; u++)
+            for (int v : adjacency.get(u)) {
+                if (u == v) continue;
+                final int lo = Math.min(u, v), hi = Math.max(u, v);
+                if (seen.add(((long) lo << 32) | (hi & 0xffffffffL))) segments.add(new int[] {lo, hi});
+            }
+        segments.sort(Comparator.<int[]>comparingInt(s -> s[0]).thenComparingInt(s -> s[1]));
+
+        // node -> indices of segments incident to it (candidate lookup keyed on a shared / near node).
+        final List<List<Integer>> incident = new ArrayList<>(originalSize);
+        for (int i = 0; i < originalSize; i++) incident.add(new ArrayList<>());
+        for (int si = 0; si < segments.size(); si++) {
+            incident.get(segments.get(si)[0]).add(si);
+            incident.get(segments.get(si)[1]).add(si);
+        }
+
+        // 2. Node R-tree; each node's proximity circle bounds how far a crossing partner's endpoint can sit.
+        final double radius = HydrologyTuning.MAX_MIGRATION * 5;
+        final List<nodeUnit> units = new ArrayList<>(originalSize);
+        for (int i = 0; i < originalSize; i++) units.add(new nodeUnit(pos(i), radius, i));
+        final ImmutableRTree<nodeUnit> index = new ImmutableRTree<>(units, null);
+
+        // 3. Detect crossings; record the (t, crossingNodeId) split points per segment (t = param along lo->hi).
+        final List<List<double[]>> splits = new ArrayList<>(segments.size());
+        for (int i = 0; i < segments.size(); i++) splits.add(new ArrayList<>());
+        final List<nodeUnit> nearby = new ArrayList<>();
+        for (int si = 0; si < segments.size(); si++) {
+            final int a = segments.get(si)[0], b = segments.get(si)[1];
+            final double[] pa = pos(a), pb = pos(b);
+
+            final Set<Integer> candidates = new TreeSet<>(); // ascending -> deterministic
+            nearby.clear();
+            index.queryContaining(pa, nearby);
+            index.queryContaining(pb, nearby);
+            for (nodeUnit nu : nearby)
+                for (int sj : incident.get(nu.id())) if (sj > si) candidates.add(sj);
+
+            for (int sj : candidates) {
+                final int c = segments.get(sj)[0], d = segments.get(sj)[1];
+                if (a == c || a == d || b == c || b == d) continue; // share an endpoint -> touch, not cross
+                final double[] hit = segmentCrossing(pa, pb, pos(c), pos(d));
+                if (hit == null) continue;
+                final int xId =
+                        addNode(new double[] {hit[2], hit[3]}, null, NO_CANONICAL_ID, HydrologyTuning.FLOW_PER_CELL_LOCAL, -1);
+                splits.get(si).add(new double[] {hit[0], xId});
+                splits.get(sj).add(new double[] {hit[1], xId});
+            }
+        }
+
+        // 4. Re-route each crossed segment's directed edge(s) through its crossing nodes (ordered by param).
+        for (int si = 0; si < segments.size(); si++) {
+            final List<double[]> segSplits = splits.get(si);
+            if (segSplits.isEmpty()) continue;
+            segSplits.sort(Comparator.comparingDouble(s -> s[0])); // ascending t: lo -> hi
+            final int a = segments.get(si)[0], b = segments.get(si)[1];
+
+            final int[] chain = new int[segSplits.size() + 2]; // lo, crossing nodes..., hi
+            chain[0] = a;
+            for (int k = 0; k < segSplits.size(); k++) chain[k + 1] = (int) segSplits.get(k)[1];
+            chain[chain.length - 1] = b;
+
+            if (hasDirectedEdge(a, b)) { // lo -> hi: ascending t
+                removeDirectedEdge(a, b);
+                for (int k = 0; k + 1 < chain.length; k++) addDirectedEdge(chain[k], chain[k + 1]);
+            }
+            if (hasDirectedEdge(b, a)) { // hi -> lo: descending t
+                removeDirectedEdge(b, a);
+                for (int k = chain.length - 1; k - 1 >= 0; k--) addDirectedEdge(chain[k], chain[k - 1]);
+            }
+        }
+    }
+
+    /**
+     * Proper intersection of the open segments {@code p1->p2} and {@code p3->p4}. Returns
+     * {@code {t, s, x, z}} — the parameters along each segment plus the crossing point — when they cross
+     * strictly in their interiors, or {@code null} when they are parallel/collinear or only meet at (or
+     * beyond) an endpoint.
+     */
+    private static double[] segmentCrossing(double[] p1, double[] p2, double[] p3, double[] p4) {
+        final double[] d1 = VectorOps.sub(p2, p1);
+        final double[] d2 = VectorOps.sub(p4, p3);
+        final double denom = VectorOps.cross2D(d1, d2);
+        if (Math.abs(denom) < CROSS_EPS) return null; // parallel or collinear
+        final double[] r = VectorOps.sub(p3, p1);
+        final double t = VectorOps.cross2D(r, d2) / denom; // param along p1->p2
+        final double s = VectorOps.cross2D(r, d1) / denom; // param along p3->p4
+        if (t <= CROSS_EPS || t >= 1 - CROSS_EPS || s <= CROSS_EPS || s >= 1 - CROSS_EPS) return null;
+        final double[] x = VectorOps.add(p1, VectorOps.scale(d1, t));
+        return new double[] {t, s, x[0], x[1]};
     }
 }

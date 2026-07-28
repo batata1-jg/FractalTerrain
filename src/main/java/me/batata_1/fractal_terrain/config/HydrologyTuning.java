@@ -53,7 +53,8 @@ public final class HydrologyTuning {
     /** Meander-simulation resample/migration step (native px), shared by {@code Meanders} and callers
      *  that need to reason about its point spacing (debug visualizers, tests). */
     public static final double DX = 1.5;
-
+    /** max per-step displacement for the valley-seeking migration. */
+    public static final double MAX_MIGRATION = 2 * HydrologyTuning.DX;
     /**
      * Width of the border margin band {@code Meanders} keeps clear of the grid edge, as a multiple of
      * channel width. An independent margin factor (deliberately wider than {@link #riverInfluence}) so a
@@ -70,9 +71,9 @@ public final class HydrologyTuning {
      * global-proximity exclusion to build the river mask. Local to this tracer rather than a
      * {@link HydrologyTuning} constant, so tuning it affects only the local network.
      */
-    public static final float FLOW_THRESHOLD = 0.25f;
+    public static final float FLOW_THRESHOLD = 0.5f;
 
-    public static final float FLOW_INITIAL_GLOBAL = 0.2f;
+    public static final float FLOW_INITIAL_GLOBAL = 0.4f;
 
     public static final float FLOW_INITIAL_LOCAL = 0.002f;
 
@@ -100,7 +101,7 @@ public final class HydrologyTuning {
     public static final double MIN_WIDTH = 0.2f;
 
     /** Scale on {@code sqrt(flow)} shared by the global and local networks (see {@link #widthFromFlow}). */
-    public static final double WIDTH_FLOW_SCALE = 1f;
+    public static final double WIDTH_FLOW_SCALE = 0.4f;
 
     public static final double MAX_WIDTH = 16f;
 

@@ -1,5 +1,6 @@
 package me.batata_1.fractal_terrain.hydrology.meanders;
 
+import static me.batata_1.fractal_terrain.config.HydrologyTuning.MAX_MIGRATION;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import java.util.ArrayList;
@@ -33,8 +34,6 @@ public final class Meanders {
     private static final double K = 0.0164; // aumentar esse faz curvar pra traz
     private static final double FRICTION = 0.011; // diminue a
     private static final double DT = 1;
-    /** max per-step displacement for the valley-seeking migration. */
-    private static final double MAX_GRAD_MIGRATION = 2 * HydrologyTuning.DX;
 
     /** When true, step()/manageCollisions() dump per-stage network PNGs into step_&lt;n&gt;/ folders. */
     public static boolean DEBUG_STEPS = false;
@@ -113,7 +112,7 @@ public final class Meanders {
         }
         dumpNetwork("01_migrated");
 
-        network.manageCollisions(i);
+        network.manageCollisions(i, network.viewAtomic());
         dumpNetwork("04_managed");
         for (Channel ch : network.getChannels()) {
             ch.reSample(HydrologyTuning.DX);
@@ -197,8 +196,8 @@ public final class Meanders {
             double[] displacement = VectorOps.project(gradient, ch.spline.normal(i));
             final double magnitude = VectorOps.magnitude(displacement);
 
-            if (magnitude > MAX_GRAD_MIGRATION)
-                displacement = VectorOps.scale(displacement, MAX_GRAD_MIGRATION / magnitude);
+            if (magnitude > MAX_MIGRATION)
+                displacement = VectorOps.scale(displacement, MAX_MIGRATION / magnitude);
             displacement = VectorOps.scale(displacement, borderDamping(point[0], point[1], ch.dischargeWidth()));
             migratedPoints.add(VectorOps.add(point, displacement));
         }
@@ -258,8 +257,9 @@ public final class Meanders {
     // Graph delegation (forwards to the RiverNetwork; convenience for tests/debug)
     // ---------------------------------------------------------------------------------------------
 
+    @TestOnly
     public void manageCollisions() {
-        network.manageCollisions(currentStep);
+        network.manageCollisions(currentStep, network.viewAtomic());
     }
 
     public List<Channel> getChannels() {
