@@ -185,4 +185,114 @@ public final class HydrologyTuning {
     public static double maxNativeWidth() {
         return MAX_WIDTH;
     }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Rosgen Level-I classification (see plans/rosgen-classification-plan.md)
+    //
+    // Slope bands: Rosgen's published values are real-world channel slopes. A
+    // Minecraft-scale world is vertically exaggerated relative to its horizontal run
+    // (a 150-block rise over 300 blocks is slope 0.5, five times S_AA), so copying the
+    // literature directly classifies most of the world as Aa+. These are the literature
+    // values as a starting point ONLY; recalibrate from the slope histogram dumped by
+    // localRiverTest before judging any other threshold. The key tests slope first, so
+    // slope miscalibration dominates every other error.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /** Slope at or above which a reach is {@code Aa+} (very steep, step/waterfall). Needs recalibration. */
+    public static final double S_AA = 0.10;
+
+    /** Slope at or above which a reach is {@code A} (steep, cascading step-pool). Needs recalibration. */
+    public static final double S_A = 0.04;
+
+    /**
+     * Slope below which an anastomosing ({@code DA}) reach is plausible — essentially flat. Not a
+     * published Rosgen figure: it is a gate this plan introduces so {@code DA} cannot claim a reach with
+     * any real fall. First-cut, untuned value pending visual calibration via {@code localRiverTest}.
+     */
+    public static final double S_DA = 0.005;
+
+    /** Entrenchment ratio below which a reach is entrenched ({@code F}/{@code G}). Rosgen: 1.0–1.4. */
+    public static final double ER_ENTRENCHED = 1.4;
+
+    /** Entrenchment ratio below which a reach is moderately entrenched ({@code B}). Rosgen: 1.41–2.2. */
+    public static final double ER_SLIGHT = 2.2;
+
+    /** Entrenchment ratio above which the flood-prone area is wide enough for {@code DA}. */
+    public static final double ER_ANASTOMOSE = 4.0;
+
+    /**
+     * Width-to-depth ratio separating narrow-deep ({@code E G}) from wide-shallow ({@code C F}). Rosgen
+     * publishes this boundary at {@code 12}, but the W/D it is compared against is prescribed by
+     * {@link me.batata_1.fractal_terrain.hydrology.ChannelGeometry#widthDepthRatio} rather than measured,
+     * so the pair only means what {@code W_REF} makes it mean. Calibrate {@code W_REF}, not this.
+     */
+    public static final double WD_NARROW = 12.0;
+
+    /** Rosgen's published ER tolerance — the dead band that suppresses type flicker at a threshold. */
+    public static final double ER_TOLERANCE = 0.2;
+
+    /** Rosgen's published W/D tolerance — the dead band that suppresses type flicker at a threshold. */
+    public static final double WD_TOLERANCE = 2.0;
+
+    /**
+     * Maximum bankfull depth as a multiple of mean bankfull depth, setting the flood-prone stage
+     * ({@code bed + 2·dMax}). A rule of thumb rather than a sourced figure — calibrate visually.
+     */
+    public static final double DEPTH_MAX_FACTOR = 1.5;
+
+    /**
+     * Bed elevation (native px above sea level, which is {@code 0}) below which a reach counts as near
+     * base level for the {@code DA} gate — deltas and tidal flats. First-cut, untuned.
+     */
+    public static final double DELTA_ELEV = 4.0;
+
+    /**
+     * Coefficient of the braiding threshold {@code S_braid = K_BRAID · width^-0.88}. Leopold &amp; Wolman
+     * (1957) give {@code S = k·Q^-0.44}; with {@code W ∝ √flow ∝ √DA} this becomes a law in width.
+     * Braiding is a style choice here, not a measurement — there is no sediment-transport model — so this
+     * gates where braiding would be *plausible*. First-cut, untuned.
+     */
+    public static final double K_BRAID = 0.02;
+
+    /** Exponent of the braiding threshold in width. Derived: {@code -0.44 / 0.50}. */
+    public static final double BRAID_WIDTH_EXPONENT = -0.88;
+
+    /**
+     * Minimum native-px width for a {@code D} (braided) reach — braiding needs a large channel. Half the
+     * width cap, chosen so {@code D} stays rare rather than from any published figure. First-cut,
+     * untuned value pending visual calibration via {@code localRiverTest}.
+     */
+    public static final double BRAID_MIN_WIDTH = 8.0;
+
+    /** Reach length as a multiple of bankfull width — Rosgen's own reach definition (20–30 widths). */
+    public static final double REACH_WIDTHS = 20.0;
+
+    /**
+     * Hard cap (native px) on a reach window. {@code REACH_WIDTHS · MAX_WIDTH} is 320 px, over half a
+     * 512 px tile, which would make a trunk river's reach span most of the tile. Shorter windows are
+     * noisier, not wrong; the dead band absorbs the noise.
+     */
+    public static final double REACH_MAX_PX = 64.0;
+
+    /**
+     * Entrenchment transect half-walk as a multiple of bankfull width. The key resolves ER only at 1.4,
+     * 2.2 and 4.0, and {@code ER = floodProneWidth / bankfullWidth}, so {@code 2.05·width} per side
+     * resolves ER up to 4.1 — everything the key needs. <b>Deliberately not
+     * {@link #MAX_INFLUENCE_RADIUS}</b>: that is a carve constant, and a 128 px walk on a 514 px padded
+     * buffer overruns the tile for any channel within 128 px of a border. {@code sampleBilinear} clamps
+     * rather than failing, so an overrun silently returns the edge pixel repeated and reports
+     * {@code ER = ∞}.
+     */
+    public static final double ER_WALK_WIDTHS = 2.05;
+
+    /**
+     * Entrenchment transect step (native px) as a fraction of bankfull width, floored at
+     * {@link #ER_STEP_MIN}. Scaling with width keeps the step count roughly constant (~16 per side)
+     * across the width range; ER is a ratio compared at four coarse thresholds, so sub-pixel precision
+     * buys nothing.
+     */
+    public static final double ER_STEP_WIDTH_FRACTION = 0.125;
+
+    /** Floor (native px) on the entrenchment transect step. */
+    public static final double ER_STEP_MIN = 0.5;
 }
