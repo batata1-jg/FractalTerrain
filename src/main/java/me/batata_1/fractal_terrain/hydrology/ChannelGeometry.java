@@ -43,14 +43,17 @@ public final class ChannelGeometry {
     /**
      * Exponent of the width-to-depth law. Hydraulic geometry gives {@code W/D ∝ DA^0.139}
      * (Bieger et al. 2015, nationwide); this project's width law is {@code W = 0.4·√flow}, i.e.
-     * {@code W ∝ DA^0.50}, so {@code W/D ∝ W^(0.139/0.50)}.
+     * {@code W ∝ DA^0.50}, so {@code W/D ∝ W^(0.139/0.50)}. Applying a nationwide drainage-area exponent
+     * to this project's synthetic width law is itself an unvalidated cross-domain analogy — first-cut,
+     * untuned value pending visual calibration via {@code localRiverTest}.
      */
     private static final double WD_EXPONENT = 0.278;
 
     /**
      * Dimensionless width-to-depth ratio for a channel of the given native-px width:
-     * {@code 12 · (width / W_REF)^0.278}, monotone increasing, calibrated so {@code W_REF} maps to
-     * {@code 12}. Used by the Rosgen classifier to pick narrow-deep types over wide-shallow ones.
+     * {@code 12 · (width / W_REF)^0.278}, monotone non-decreasing on {@code [0, ∞)} and strictly
+     * increasing above {@link #MIN_RATIO_WIDTH}, calibrated so {@code W_REF} maps to {@code 12}. Used by
+     * the Rosgen classifier to pick narrow-deep types over wide-shallow ones.
      *
      * <p><b>Deliberately not derived from {@link #depthForWidth}.</b> That law is floored at {@code 1.0}
      * across the whole representable width range ({@code [0.2, 16]} px; the expression only exceeds 1
@@ -63,7 +66,12 @@ public final class ChannelGeometry {
         return WD_AT_REF * Math.pow(Math.max(width, MIN_RATIO_WIDTH) / W_REF, WD_EXPONENT);
     }
 
-    /** Floor guarding {@link #widthDepthRatio} against {@code pow(0, …)} at degenerate widths. */
+    /**
+     * Floor guarding {@link #widthDepthRatio} against non-positive results: keeps the ratio strictly
+     * positive at {@code width == 0} (a bare {@code pow} would return exactly {@code 0}) and avoids
+     * {@code NaN} for negative width, since {@code Math.pow} with a negative base and fractional exponent
+     * is {@code NaN} and nothing upstream guarantees a non-negative argument to this public method.
+     */
     private static final double MIN_RATIO_WIDTH = 0.05;
 
     /**
