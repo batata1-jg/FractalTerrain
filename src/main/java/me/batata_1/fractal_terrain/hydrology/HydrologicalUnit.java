@@ -12,8 +12,9 @@ import me.batata_1.fractal_terrain.storage.Persistable;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * A single sample of a hydrological feature — a river (with its Rosgen channel type), an abandoned
- * river, or an oxbow lake. It is the queryable, persistable unit stored in
+ * A single sample of a hydrological feature — a river reach (with its Rosgen channel type), the
+ * {@code SOURCE} or {@code DRAIN} point terminating a channel, an abandoned river, or an oxbow lake. It
+ * is the queryable, persistable unit stored in
  * {@link me.batata_1.fractal_terrain.hydrology.LocalRiverProvider}'s tiled {@code ImmutableRTree},
  * where it lives as an <b>influence circle</b> ({@link SpatialIndexCircle}): center = its tile-local
  * {@code coord}, radius = its own {@link FractalTerrainConfig#riverInfluence riverInfluence(width)} —
@@ -35,9 +36,11 @@ import org.jetbrains.annotations.NotNull;
  * components by reference, {@link #equals} / {@link #hashCode} are overridden to compare contents.
  *
  * <p>{@link RosgenType} selects the {@link RosgenProfile} used by {@link #getRadius()} and by the
- * tile-level shell carve. A {@code null} rosgenType is treated as {@link RosgenType#A} at every such
- * site. Because only {@code A} overrides any profile method today, the choice is currently observable
- * only as "A vs. not-A".
+ * tile-level shell carve. A {@code null} rosgenType means <em>this unit is not a river reach</em> — a
+ * {@code SOURCE}, a {@code DRAIN}, or a removed feature — because Rosgen classifies reaches and there is
+ * nothing to measure a spring or a river mouth over. Consumers coalesce {@code null} to
+ * {@link RosgenType#A} at every such site, so a typeless unit still carves. Because only {@code A}
+ * overrides any profile method today, the choice is currently observable only as "A vs. not-A".
  */
 public record HydrologicalUnit(
         HydrologicalFeature type,

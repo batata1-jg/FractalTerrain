@@ -10,9 +10,11 @@ import java.io.UncheckedIOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import javax.imageio.ImageIO;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.HydrologicalFeature;
+import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndex;
 
 /**
@@ -22,7 +24,7 @@ import me.batata_1.fractal_terrain.math.ds.SpatialIndex;
  * dependency, so it works from the standalone harnesses.
  *
  * <p><b>Reading the image:</b> each {@link HydrologicalFeature} type has its own base hue (RIVER =
- * blue, ABANDONED_RIVER = orange, OXBOW_LAKE = magenta); different feature {@code id}s of the same
+ * blue, ABANDONED_RIVER = orange, OXBOW_LAKE = magenta, SOURCE = green, DRAIN = red); different feature {@code id}s of the same
  * type get different brightness shades (golden-ratio hash, so consecutive ids are clearly distinct).
  * Every unit first paints its <em>width girth</em> — a translucent filled disc of radius
  * {@code width/2} (in tile px, scaled by {@code upscale}) — then its centre point in the full-strength
@@ -52,6 +54,61 @@ public class HydrologyUnitVisualizer {
      * dropped, so girths of near-border units still show their in-tile part.
      */
     public void see(List<HydrologicalUnit> units, String name, int gridSize, int upscale) {
+        render(units, name, gridSize, upscale, HydrologyUnitVisualizer::colorFor);
+    }
+
+    /**
+     * Fixed palette for {@link #seeByRosgenType}, indexed by {@link RosgenType#ordinal()}. Held constant
+     * across runs so two dumps of the same tile are directly comparable; the enum order is frozen by
+     * unit serialization, so the mapping cannot drift.
+     */
+    private static final Color[] ROSGEN_PALETTE = {
+        new Color(0xE6194B), // A   steep entrenched
+        new Color(0x800000), // Aa  very steep
+        new Color(0xF58231), // B   moderately entrenched
+        new Color(0x3CB44B), // C   meandering, broad floodplain
+        new Color(0xFFE119), // D   braided
+        new Color(0x42D4F4), // DA  anastomosing
+        new Color(0x4363D8), // E   narrow, deep, highly sinuous
+        new Color(0x911EB4), // F   entrenched meandering
+        new Color(0xA9A9A9), // G   entrenched gully
+    };
+
+    /** Rendered for a unit with no Rosgen type: a source, a drain, an oxbow, or an unclassified reach. */
+    private static final Color UNCLASSIFIED = new Color(0xFFFFFF);
+
+    /**
+     * Colour for a unit's Rosgen type. A {@code null} type renders white rather than as {@code A}:
+     * downstream code coalesces {@code null} to {@code A}, but this dump exists to show what was
+     * actually measured, and white against the palette makes an unexpected run of unclassified reaches
+     * obvious instead of hiding it inside the {@code A} count.
+     */
+    private static Color rosgenColor(HydrologicalUnit unit) {
+        final RosgenType type = unit.rosgenType();
+        return type == null ? UNCLASSIFIED : ROSGEN_PALETTE[type.ordinal()];
+    }
+
+    /**
+     * As {@link #see(List, String, int, int)}, but each unit is coloured by its Rosgen type rather than
+     * its feature kind. The visual regression check for classification: a river should show long runs of
+     * one colour, changing at valley transitions. Colour changing every few pixels means the reach
+     * segmentation or the dead band is not working.
+     */
+    public void seeByRosgenType(List<HydrologicalUnit> units, String name, int gridSize, int upscale) {
+        render(units, name, gridSize, upscale, HydrologyUnitVisualizer::rosgenColor);
+    }
+
+    /**
+     * Render {@code units} with {@code palette} deciding each unit's colour. Both passes — the
+     * translucent girth disc and the solid centre point — read the same colour, so a unit's disc and its
+     * point never disagree.
+     */
+    private void render(
+            List<HydrologicalUnit> units,
+            String name,
+            int gridSize,
+            int upscale,
+            Function<HydrologicalUnit, Color> palette) {
         if (gridSize <= 0 || upscale <= 0)
             throw new IllegalArgumentException("gridSize and upscale must be > 0, got " + gridSize + ", " + upscale);
         final int side = gridSize * upscale;
@@ -59,7 +116,7 @@ public class HydrologyUnitVisualizer {
 
         // Pass 1 — width girths: translucent filled disc of radius width/2 (tile px) per unit.
         for (final HydrologicalUnit unit : units) {
-            final int rgb = colorFor(unit).getRGB();
+            final int rgb = palette.apply(unit).getRGB();
             final double centerX = unit.coord()[0] * upscale;
             final double centerZ = unit.coord()[1] * upscale;
             final double radius = unit.width() * 0.5 * upscale;
@@ -69,7 +126,7 @@ public class HydrologyUnitVisualizer {
         // Pass 2 — unit points: solid squares in the full-strength color, on top of the girths.
         final int pointHalf = Math.max(1, upscale / 2) / 2; // point square side = max(1, upscale/2)
         for (final HydrologicalUnit unit : units) {
-            final int rgb = colorFor(unit).getRGB();
+            final int rgb = palette.apply(unit).getRGB();
             final int px = (int) Math.round(unit.coord()[0] * upscale);
             final int pz = (int) Math.round(unit.coord()[1] * upscale);
             for (int x = px - pointHalf; x <= px + pointHalf; x++) {
@@ -153,6 +210,8 @@ public class HydrologyUnitVisualizer {
                     case RIVER -> 0.60f; // blue
                     case ABANDONED_RIVER -> 0.08f; // orange
                     case OXBOW_LAKE -> 0.85f; // magenta
+                    case SOURCE -> 0.33f; // green
+                    case DRAIN -> 0.00f; // red
                     default -> 0.60f;
                 };
         final double idHash = (unit.id() * 0.6180339887498949) % 1.0;

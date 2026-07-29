@@ -4,6 +4,7 @@ import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
@@ -12,7 +13,9 @@ import me.batata_1.fractal_terrain.hydrology.Drainage;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.meanders.*;
+import me.batata_1.fractal_terrain.hydrology.rosgen.ReachMetricsSampler;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
+import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.ml.models.ModelAssetManager;
 import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
@@ -92,7 +95,38 @@ public class LocalRiverTest {
                 stages.channels.size(),
                 stages.localChannels.size());
         checkMonotonicElevations(stages.network, tx, tz);
+        dumpSlopeHistogram(stages.network);
         dumpUnitTree(stages, tx, tz, prefix);
+    }
+
+    /**
+     * Prints the along-channel reach-slope distribution. Rosgen's published slope bands (0.02 / 0.04 /
+     * 0.10) are real-world channel slopes; this world's relief is vertically exaggerated relative to its
+     * horizontal run, so copying them classifies most of the world as Aa+. Place S_A and S_AA at
+     * percentiles of this distribution instead -- matching the shape matters more than the numbers.
+     *
+     * <p>One slope per channel, measured end to end, not one per {@code ReachRosgenClassifier} reach.
+     * Channels whose {@code bedElevations} are absent or mis-sized against the spline are skipped:
+     * {@code Channel.keepOnly} slices the spline without slicing {@code bedElevations}, so a stale array
+     * would index out of bounds.
+     */
+    private static void dumpSlopeHistogram(RiverNetwork network) {
+        if (network == null) return;
+        final List<Double> slopes = new ArrayList<>();
+        for (Channel ch : network.getChannels()) {
+            if (ch.bedElevations == null || ch.numPts() < 2) continue;
+            if (ch.bedElevations.length != ch.numPts()) continue;
+            final List<double[]> pts = ch.spline.points();
+            double arc = 0.0;
+            for (int i = 1; i < pts.size(); i++) arc += VectorOps.distance(pts.get(i - 1), pts.get(i));
+            slopes.add(ReachMetricsSampler.slope(ch.bedElevations, arc, 0, ch.numPts() - 1));
+        }
+        if (slopes.isEmpty()) return;
+        Collections.sort(slopes);
+        for (double p : new double[] {0.50, 0.75, 0.90, 0.95, 0.99}) {
+            final int idx = Math.min(slopes.size() - 1, (int) (p * slopes.size()));
+            System.out.printf("slope p%02d = %.6f%n", (int) (p * 100), slopes.get(idx));
+        }
     }
 
     /**
@@ -110,6 +144,7 @@ public class LocalRiverTest {
         try {
             final List<me.batata_1.fractal_terrain.hydrology.HydrologicalUnit> units = stages.unitTree.getAllEntries();
             Debug.units.see(units, prefix + "06_units", GRID, 4);
+            Debug.units.seeByRosgenType(units, prefix + "07_rosgen", GRID, 4);
             Debug.units.logStats(units, "tile (" + tx + "," + tz + ")");
         } catch (RuntimeException e) {
             LOG.warn("tile ({},{}): unit-tree dump failed ({})", tx, tz, e.toString(), e);

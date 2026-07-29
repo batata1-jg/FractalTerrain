@@ -16,7 +16,9 @@ import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
  *       run over a whole padded relief tile by {@code LocalRiverProvider.buildTile}. For each pixel it
  *       selects the single <em>nearest</em> influencing unit and lerps the elevation toward that unit's
  *       reference elevation ({@link RosgenProfile#riverInfluenceElevation}). {@code buildTile} calls it
- *       twice, both times over GLOBAL units only (local channels are never shell-carved).</li>
+ *       twice, both times over an <em>unfiltered</em> unit collection. The first call is global-only by
+ *       timing alone — the local network does not exist yet — while the second, running after the local
+ *       trace, carves local shells too.</li>
  *   <li><b>Per-pixel refinement</b> ({@link #carve}, {@link #carveAtPixel}, {@link #carvePrefetched}) —
  *       queries the per-tile river network ({@link LocalRiverProvider#queryInfluence}) and takes the
  *       minimum (deepest) {@link HydrologyProfile#computeForUnit} elevation over every influencing unit.

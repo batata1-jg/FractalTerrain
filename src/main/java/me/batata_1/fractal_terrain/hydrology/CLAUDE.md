@@ -25,3 +25,4 @@ is factored into the builder/tracer helpers. See repo-root `ARCHITECTURE.md` "Hy
 | ----------- | -------------------------------------------------------- | ---------------------------------------------- |
 | `meanders/` | Meander relaxation network (`Meanders`, `RiverNetwork`)  | Meander geometry, per-tile network relaxation  |
 | `profile/`  | Turns the hydrological-unit index into carve/paint ops   | Per-pixel carve/paint consumed by `world/gen/` |
+| `rosgen/`   | Rosgen Level-I classification of each reach from the raw elevation | Stream types, reach slope/entrenchment measurement, the decision key |
