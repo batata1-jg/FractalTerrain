@@ -191,9 +191,15 @@ final class GlobalNetworkBuilder {
             }
         }
 
+        // Raw elevation snapshot for Rosgen classification. base[0] is the buffer carveRiverShells
+        // mutates in place, so the snapshot is taken here -- before the first assign and first carve --
+        // or entrenchment reads the carve's own floodplain instead of the terrain. It sits above the
+        // empty-network return so both Meanders construction sites receive it.
+        final float[] rawElev = base[0].clone();
+
         if (edgeSpecs.isEmpty()) {
-            final Meanders empty =
-                    new Meanders(PADDED, new float[PADDED * PADDED], new float[PADDED * PADDED], nodeSpecs, edgeSpecs);
+            final Meanders empty = new Meanders(
+                    PADDED, new float[PADDED * PADDED], new float[PADDED * PADDED], rawElev, nodeSpecs, edgeSpecs);
             clearBuildState(cells, nodeSpecs, edgeSpecs, centerIdx, edgeNodeIdx);
             return new Result(empty, boundaryElevByNodeIdx);
         }
@@ -208,7 +214,7 @@ final class GlobalNetworkBuilder {
         final double primaryElev = (primaryCell != null) ? grp.getElevation(primaryCell.ccx(), primaryCell.ccz()) : 0.0;
         final int relaxSteps = MIN_RELAX_STEPS + (int) Math.round(Math.max(0.0, primaryElev) * RELAX_STEPS_PER_ELEV);
 
-        final Meanders sim = new Meanders(PADDED, gradX, gradZ, nodeSpecs, edgeSpecs);
+        final Meanders sim = new Meanders(PADDED, gradX, gradZ, rawElev, nodeSpecs, edgeSpecs);
         sim.relaxLowerGrad(Math.min(relaxSteps, MAX_RELAX_STEPS));
         clearBuildState(cells, nodeSpecs, edgeSpecs, centerIdx, edgeNodeIdx);
         return new Result(sim, boundaryElevByNodeIdx);

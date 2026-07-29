@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.function.Consumer;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
+import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
+import me.batata_1.fractal_terrain.hydrology.rosgen.ReachRosgenClassifier;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 import org.jetbrains.annotations.TestOnly;
@@ -43,6 +45,19 @@ public final class Meanders {
     private final int gridSize;
     private final float[] gradX;
     private final float[] gradZ;
+
+    /**
+     * Raw decoded elevation ({@code gridSize²}, row-major {@code x * gridSize + z} — the same layout and
+     * frame as {@link #gradX}/{@link #gradZ}), used to classify Rosgen types in {@link #collectUnits}.
+     * {@code null} when the simulation was constructed without one, in which case {@code collectUnits}
+     * refuses to run rather than classifying against zeros.
+     *
+     * <p>Must be a snapshot taken <b>before</b> any carve: {@code HydrologyProfileCarver.carveRiverShells}
+     * writes in place and compounds across calls, so a carved buffer would report the carve's own
+     * floodplain constants as though they were terrain.
+     */
+    private final float[] elev;
+
     private final RiverNetwork network;
 
     private int currentStep = 0; // the step number being processed, for debug image folders
@@ -54,7 +69,21 @@ public final class Meanders {
             float[] gradZ,
             List<RiverNetwork.NodeSpec> nodeSpecs,
             List<RiverNetwork.EdgeSpec> edgeSpecs) {
-        this(gridSize, gradX, gradZ, nodeSpecs, edgeSpecs, false, 0);
+        this(gridSize, gradX, gradZ, null, nodeSpecs, edgeSpecs, false, 0);
+    }
+
+    /**
+     * The production construction path: the 5-argument form plus the raw elevation raster
+     * {@link #collectUnits} classifies against. Builds a network that keeps no history.
+     */
+    public Meanders(
+            int gridSize,
+            float[] gradX,
+            float[] gradZ,
+            float[] elev,
+            List<RiverNetwork.NodeSpec> nodeSpecs,
+            List<RiverNetwork.EdgeSpec> edgeSpecs) {
+        this(gridSize, gradX, gradZ, elev, nodeSpecs, edgeSpecs, false, 0);
     }
 
     public Meanders(
@@ -65,9 +94,25 @@ public final class Meanders {
             List<RiverNetwork.EdgeSpec> edgeSpecs,
             boolean savePreviousStates,
             int maxSavedStates) {
+        this(gridSize, gradX, gradZ, null, nodeSpecs, edgeSpecs, savePreviousStates, maxSavedStates);
+    }
+
+    public Meanders(
+            int gridSize,
+            float[] gradX,
+            float[] gradZ,
+            float[] elev,
+            List<RiverNetwork.NodeSpec> nodeSpecs,
+            List<RiverNetwork.EdgeSpec> edgeSpecs,
+            boolean savePreviousStates,
+            int maxSavedStates) {
+        if (elev != null && elev.length != gridSize * gridSize) {
+            throw new IllegalArgumentException("elev length " + elev.length + " != gridSize² " + (gridSize * gridSize));
+        }
         this.gridSize = gridSize;
         this.gradX = gradX;
         this.gradZ = gradZ;
+        this.elev = elev;
         this.maxMigrationMagnetude = INF;
         this.network = new RiverNetwork(
                 gridSize, nodeSpecs, edgeSpecs, savePreviousStates, maxSavedStates, HydrologyTuning.DX);
@@ -292,5 +337,21 @@ public final class Meanders {
 
     public Endpoint getNode(int id) {
         return network.getNode(id);
+    }
+
+    /**
+     * The network's {@link HydrologicalUnit}s with a Rosgen type on every one.
+     *
+     * <p>Classification lives here rather than in {@link RiverNetwork} because this is the only object
+     * holding both the graph and the raster the classifier needs, and it must happen inside unit
+     * collection: the type selects the unit's {@code RosgenProfile}, which sets
+     * {@code riverInfluence} — the unit's own R-tree membership radius — so the type has to exist before
+     * {@code carveRiverShells} builds its index over these units.
+     */
+    public List<HydrologicalUnit> collectUnits(int time, double offsetX, double offsetZ, int[] nextFeatureId) {
+        if (elev == null) {
+            throw new IllegalStateException("collectUnits needs the raw elevation raster; construct Meanders with it");
+        }
+        return network.collectUnits(time, offsetX, offsetZ, nextFeatureId, new ReachRosgenClassifier(elev, gridSize));
     }
 }

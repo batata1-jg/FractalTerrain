@@ -18,6 +18,7 @@ import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
 import me.batata_1.fractal_terrain.hydrology.meanders.Endpoint;
+import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
 import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
@@ -189,6 +190,11 @@ public class LocalRiverProvider {
      *       {@code assign} a second time over the now-unified graph.</li>
      *   <li>Collect every unit (global + local, one shared feature-id counter) into the R-tree, run the
      *       shell carve a second time, and crop the padded buffer to {@code GRID × GRID}.</li>
+     *   <li>Every {@code collectUnits} call goes through {@link Meanders}, so each classifies the units it
+     *       emits with a Rosgen type. All three agree because they classify against the same pre-carve
+     *       elevation snapshot {@link GlobalNetworkBuilder} took, not the buffer the carve mutates. The
+     *       type has to exist by then: it selects the unit's carve profile, which sets the unit's
+     *       influence radius, which is the extent {@code carveRiverShells} indexes it under.</li>
      * </ol>
      *
      * <p>Both carve passes collect units <em>unfiltered</em>. That makes the first pass global-only by
@@ -207,14 +213,15 @@ public class LocalRiverProvider {
         // 1. global rivers: trace + relax, returning the network plus the boundary-elevation map
         //    GlobalNetworkBuilder accumulated for it (source/drain node datum).
         final GlobalNetworkBuilder.Result globalResult = GlobalNetworkBuilder.build(tileX, tileZ, base, grp);
-        final RiverNetwork network = globalResult.network().getNetwork();
+        final Meanders sim = globalResult.network();
+        final RiverNetwork network = sim.getNetwork();
         final Map<Integer, Double> boundaryElev = new HashMap<>(globalResult.boundaryElevByNodeIdx());
 
         final float[] carvedElevation = base[0];
         ChannelElevationAssigner.assign(network, boundaryElev, carvedElevation);
         LOG.info("passed first assignemnt");
         HydrologyProfileCarver.carveRiverShells(
-                carvedElevation, network.collectUnits(0, 0, 0, new int[] {0}).toArray(new HydrologicalUnit[0]), PADDED);
+                carvedElevation, sim.collectUnits(0, 0, 0, new int[] {0}).toArray(new HydrologicalUnit[0]), PADDED);
 
         // 2. sink-fill + drainage on the RAW decoded elevation (not yet carved): the local trace no
         //    longer needs a pre-carved valley to route toward the global network -- LOCAL_ATTACH_RADIUS
@@ -246,10 +253,10 @@ public class LocalRiverProvider {
         ChannelElevationAssigner.assign(network, boundaryElev, carvedElevation);
         LOG.info("passed second assignment");
         HydrologyProfileCarver.carveRiverShells(
-                carvedElevation, network.collectUnits(0, 0, 0, new int[] {0}).toArray(new HydrologicalUnit[0]), PADDED);
+                carvedElevation, sim.collectUnits(0, 0, 0, new int[] {0}).toArray(new HydrologicalUnit[0]), PADDED);
 
         final int[] nextFeatureId = {0};
-        final List<HydrologicalUnit> unitPoints = network.collectUnits(0, PAD, PAD, nextFeatureId);
+        final List<HydrologicalUnit> unitPoints = sim.collectUnits(0, PAD, PAD, nextFeatureId);
         final ImmutableRTree<HydrologicalUnit> unitIndex = new ImmutableRTree<>(unitPoints, HydrologicalUnit.PROTOTYPE);
 
         final FloatTensor carvedTile = cropToTile(carvedElevation);
