@@ -634,7 +634,7 @@ public final class RosgenKey {
      *
      * <p>The tolerances exist because the field metrics are noisy; a raster implementation is noisier
      * still. Without the dead band, types flicker along a single river, and because
-     * {@link me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile} controls {@code floodPlainLength}
+     * {@link me.batata_1.fractal_terrain.hydrology.rosgen.RosgenProfile} controls {@code floodPlainLength}
      * and {@code riverInfluence}, a flicker becomes a visibly scalloped floodplain edge.
      *
      * <p><b>Scope: ER and W/D only.</b> The slope bands ({@code S_AA}, {@code S_A}, {@code S_DA}) and the

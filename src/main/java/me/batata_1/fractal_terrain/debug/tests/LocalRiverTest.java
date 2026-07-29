@@ -17,6 +17,7 @@ import me.batata_1.fractal_terrain.hydrology.rosgen.ReachMetricsSampler;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.ml.models.ModelAssetManager;
+import org.apache.commons.lang3.NotImplementedException;
 import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,7 +51,7 @@ public class LocalRiverTest {
 
     public static void main(String[] args) {
         LOG.info("LocalRiverTest start; output dir = {}", DEBUG_PATH);
-        Meanders.DEBUG_STEPS = true;
+        Meanders.DEBUG_STEPS = false;
         ModelAssetManager.ensureAssetsReady();
         FractalTerrainInstance.initPipeline();
         pipeline.updateInstance(420, DEBUG_PATH);
@@ -95,7 +96,8 @@ public class LocalRiverTest {
                 stages.channels.size(),
                 stages.localChannels.size());
         checkMonotonicElevations(stages.network, tx, tz);
-        dumpSlopeHistogram(stages.network);
+        ReachMetricsSampler sampler = new ReachMetricsSampler(stages.rawElevation, GRID);
+        dumpSlopeHistogram(stages.network,sampler);
         dumpUnitTree(stages, tx, tz, prefix);
     }
 
@@ -110,7 +112,8 @@ public class LocalRiverTest {
      * {@code Channel.keepOnly} slices the spline without slicing {@code bedElevations}, so a stale array
      * would index out of bounds.
      */
-    private static void dumpSlopeHistogram(RiverNetwork network) {
+    private static void dumpSlopeHistogram(RiverNetwork network,ReachMetricsSampler sampler) {
+       // throw new NotImplementedException();
         if (network == null) return;
         final List<Double> slopes = new ArrayList<>();
         for (Channel ch : network.getChannels()) {
@@ -119,7 +122,7 @@ public class LocalRiverTest {
             final List<double[]> pts = ch.spline.points();
             double arc = 0.0;
             for (int i = 1; i < pts.size(); i++) arc += VectorOps.distance(pts.get(i - 1), pts.get(i));
-            slopes.add(ReachMetricsSampler.slope(ch.bedElevations, arc, 0, ch.numPts() - 1));
+            slopes.add(sampler.slope(pts, arc, 0, ch.numPts() - 1));
         }
         if (slopes.isEmpty()) return;
         Collections.sort(slopes);

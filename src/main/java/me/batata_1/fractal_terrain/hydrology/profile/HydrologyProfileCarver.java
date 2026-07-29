@@ -6,7 +6,9 @@ import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
+import me.batata_1.fractal_terrain.hydrology.rosgen.RosgenProfile;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
+import org.apache.commons.lang3.NotImplementedException;
 
 /**
  * The elevation side of the hydrology profile. Two carve stages live here:
@@ -42,17 +44,6 @@ public final class HydrologyProfileCarver {
     // Per-pixel refinement (nearest influencing unit)
     // -------------------------------------------------------------------------
 
-    /**
-     * Refined elevation at world/block coordinates {@code (worldBlockX, worldBlockZ)} whose already-carved
-     * shell elevation is {@code shellElevAtPixel}. World coords are converted into the relief-pixel frame
-     * (divide by {@link FractalTerrainConfig#GLOBAL_SCALE_CORRECTION}) that the unit query uses. Returns
-     * {@code shellElevAtPixel} unchanged when no feature influences the point.
-     */
-    public float carve(double worldBlockX, double worldBlockZ, double shellElevAtPixel) {
-        final double pixelX = worldBlockX / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION;
-        final double pixelZ = worldBlockZ / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION;
-        return carveAtPixel(new double[] {pixelX, pixelZ}, shellElevAtPixel);
-    }
 
     /**
      * A chunk's influencing units, gathered once (see {@link #queryUnits}) so the per-block merge never
@@ -87,42 +78,72 @@ public final class HydrologyProfileCarver {
     }
 
     public float carvePrefetched(PrefetchedUnits prefetched, double[] pt, double elevAtPixel) {
-        return carvePrefetchedNearest(prefetched, pt, elevAtPixel);
-        //        final HydrologicalUnit[] units = prefetched.units();
-        //        double avgSum = 0;
-        //        double avgCount = 0;
-        //        for (final HydrologicalUnit unit : units) {
-        //            final double influenceRadius = unit.getRadius(); // = riverInfluence(unit.width()), the circle's
-        // own radius
-        //            final double[] unitCoord = unit.coord();
-        //            final double dist = Math.hypot(pt[0] - unitCoord[0], pt[1] - unitCoord[1]);
-        //            if (dist >= influenceRadius) continue; // outside this unit's reach
-        //            final double unitElev = (1 - dist / influenceRadius) * HydrologyProfile.computeForUnit(pt, unit,
-        // elevAtPixel);
-        //            avgSum += unitElev;
-        //            avgCount++;
-        //        }
-        //
-        //        if (avgCount==0) return (float) elevAtPixel;
-        //        return (float) (avgSum / avgCount);
-    }
-
-    public float carvePrefetchedNearest(PrefetchedUnits prefetched, double[] pt, double elevAtPixel) {
+       // return carvePrefetchedNearest(prefetched, pt, elevAtPixel);
         final HydrologicalUnit[] units = prefetched.units();
-        HydrologicalUnit nearest = null;
-        double nearestDist = Double.POSITIVE_INFINITY;
-        for (HydrologicalUnit unit : units) {
+        double avgSumInfluence = 0;
+        double avgWeightInfluence = 0;
+        boolean intersectsFloodplain = false;
+        double avgSumFloodPlain = 0;
+        double avgWeightFloodPlain = 0;
+        boolean intersectsBed = false;
+        double avgSumBed = 0;
+        double avgWeightBed = 0;
+        for (final HydrologicalUnit unit : units) {
+            final double influenceRadius = unit.getRadius();
             final double[] unitCoord = unit.coord();
             final double dist = Math.hypot(pt[0] - unitCoord[0], pt[1] - unitCoord[1]);
-            if (dist >= unit.getRadius()) continue; // outside this unit's influence
-            if (dist < nearestDist) {
-                nearestDist = dist;
-                nearest = unit;
-            }
+            if (dist >= influenceRadius) continue; // outside this unit's reach
+            final double width = unit.width();
+            final RosgenProfile profile =
+                    RosgenProfile.of(unit.rosgenType() == null ? HydrologicalUnit.RosgenType.A : unit.rosgenType());
+            final double floodPlainLength = profile.floodPlainLength(width);
+            final double unitElev = HydrologyProfile.computeForUnit(pt,floodPlainLength,width, unit, elevAtPixel);
+            avgSumInfluence += unitElev * (1 - dist / influenceRadius);
+            avgWeightInfluence += (1 - dist / influenceRadius);
+            if(dist>=floodPlainLength) continue;
+            intersectsFloodplain = true;
+            avgSumFloodPlain += unitElev * (1 - dist / floodPlainLength);
+            avgWeightFloodPlain += (1 - dist / floodPlainLength);
+            if(dist>=width/2) continue;
+            intersectsBed = true;
+            avgSumBed += unitElev * (1 - (2 * dist) / width);
+            avgWeightBed += (1 - (2 * dist) / width);
         }
-        if (nearest == null) return (float) elevAtPixel;
-        return (float) HydrologyProfile.computeForUnit(pt, nearest, elevAtPixel);
+
+        double avgSum=avgSumInfluence;
+        double avgWeight=avgWeightInfluence;
+
+        if(intersectsFloodplain) {
+            avgSum=avgSumFloodPlain;
+            avgWeight=avgWeightFloodPlain;
+        }
+
+        if(intersectsBed) {
+            avgSum=avgSumBed;
+            avgWeight=avgWeightBed;
+        }
+
+        if (avgWeight<1e-6) return (float) elevAtPixel;
+        return (float) (avgSum / avgWeight);
     }
+
+//    public float carvePrefetchedNearest(PrefetchedUnits prefetched, double[] pt, double elevAtPixel) {
+//        throw new NotImplementedException();
+//        final HydrologicalUnit[] units = prefetched.units();
+//        HydrologicalUnit nearest = null;
+//        double nearestDist = Double.POSITIVE_INFINITY;
+//        for (HydrologicalUnit unit : units) {
+//            final double[] unitCoord = unit.coord();
+//            final double dist = Math.hypot(pt[0] - unitCoord[0], pt[1] - unitCoord[1]);
+//            if (dist >= unit.getRadius()) continue; // outside this unit's influence
+//            if (dist < nearestDist) {
+//                nearestDist = dist;
+//                nearest = unit;
+//            }
+//        }
+//        if (nearest == null) return (float) elevAtPixel;
+//        return (float) HydrologyProfile.computeForUnit(pt, nearest, elevAtPixel);
+//    }
 
     // -------------------------------------------------------------------------
     // Tile-level shell pre-carve (moved from LocalRiverProvider)

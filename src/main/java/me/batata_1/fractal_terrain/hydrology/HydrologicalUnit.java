@@ -5,7 +5,7 @@ import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.Objects;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
-import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
+import me.batata_1.fractal_terrain.hydrology.rosgen.RosgenProfile;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
 import me.batata_1.fractal_terrain.storage.Persistable;

@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
+import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.meanders.*;
 
 /**
@@ -80,8 +81,7 @@ final class GlobalNetworkBuilder {
                     }
                 int dcx = ccx, dcz = ccz;
                 double[] drain;
-                final double marginInfl = FractalTerrainConfig.riverInfluence(
-                        Math.max(grp.getWidth(ccx, ccz), FractalTerrainConfig.MIN_WIDTH));
+                final double marginInfl = HydrologyTuning.maxInfluence(Math.max(grp.getWidth(ccx, ccz), FractalTerrainConfig.MIN_WIDTH));
                 if (outDir != -1) {
                     dcx = ccx + Drainage.NEIGHBOR_OFFSET_X[outDir];
                     dcz = ccz + Drainage.NEIGHBOR_OFFSET_Z[outDir];
@@ -197,16 +197,11 @@ final class GlobalNetworkBuilder {
         // empty-network return so both Meanders construction sites receive it.
         final float[] rawElev = base[0].clone();
 
-        if (edgeSpecs.isEmpty()) {
-            final Meanders empty = new Meanders(
-                    PADDED, new float[PADDED * PADDED], new float[PADDED * PADDED], rawElev, nodeSpecs, edgeSpecs);
-            clearBuildState(cells, nodeSpecs, edgeSpecs, centerIdx, edgeNodeIdx);
-            return new Result(empty, boundaryElevByNodeIdx);
-        }
-
-        // Border confinement is now handled by the Meanders migration (per-channel, width-scaled).
         final float[] gradX = base[2].clone();
         final float[] gradZ = base[3].clone();
+        final Meanders sim = new Meanders(PADDED, gradX, gradZ, rawElev, nodeSpecs, edgeSpecs);
+        if (edgeSpecs.isEmpty()) return new Result(sim, boundaryElevByNodeIdx);
+
 
         // Relaxation steps vary with the elevation of the tile's primary owned cell (2*tileCoords):
         // higher terrain gets more steps, capped at MAX_RELAX_STEPS.
@@ -214,7 +209,6 @@ final class GlobalNetworkBuilder {
         final double primaryElev = (primaryCell != null) ? grp.getElevation(primaryCell.ccx(), primaryCell.ccz()) : 0.0;
         final int relaxSteps = MIN_RELAX_STEPS + (int) Math.round(Math.max(0.0, primaryElev) * RELAX_STEPS_PER_ELEV);
 
-        final Meanders sim = new Meanders(PADDED, gradX, gradZ, rawElev, nodeSpecs, edgeSpecs);
         sim.relaxLowerGrad(Math.min(relaxSteps, MAX_RELAX_STEPS));
         clearBuildState(cells, nodeSpecs, edgeSpecs, centerIdx, edgeNodeIdx);
         return new Result(sim, boundaryElevByNodeIdx);
@@ -260,10 +254,10 @@ final class GlobalNetworkBuilder {
             GlobalRiverProvider grp) {
         final double minX = PAD + a * COARSE_PX;
         final double minZ = PAD + b * COARSE_PX;
-        final double[] seed = sourceSeed(c.ccx(), c.ccz(), minX, minZ, FractalTerrainConfig.riverInfluence(width));
-        final int seedNode = addNode(nodeSpecs, seed[0], seed[1], Endpoint.Type.SOURCE);
         final double downstreamBed = Math.max(
                 0, (c.outDirection() != -1) ? grp.getElevation(c.dcx(), c.dcz()) : grp.getElevation(c.ccx(), c.ccz()));
+        final double[] seed = sourceSeed(c.ccx(), c.ccz(), minX, minZ, HydrologyTuning.maxInfluence(width));
+        final int seedNode = addNode(nodeSpecs, seed[0], seed[1], Endpoint.Type.SOURCE);
         boundaryElevByNodeIdx.put(seedNode, Math.max(sampleBilinear(elev, seed[0], seed[1]), downstreamBed));
         edgeSpecs.add(
                 new RiverNetwork.EdgeSpec(seedNode, centre, pts(seed, centreCoord), grp.getFlow(c.ccx(), c.ccz())));

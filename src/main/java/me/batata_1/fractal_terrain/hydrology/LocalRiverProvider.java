@@ -267,6 +267,7 @@ public class LocalRiverProvider {
             // the local-only PNG is intentionally empty.
             stages.channels = network.getChannels();
             stages.localChannels = new ArrayList<>();
+            stages.rawElevation = cropToTile(base[0].clone()).data;
             stages.carvedElevation = carvedTile.copyRange(0, carvedTile.getSize());
             stages.network = network;
             stages.unitTree = unitIndex;
@@ -395,6 +396,7 @@ public class LocalRiverProvider {
     @TestOnly
     public static final class Stages {
         public float[] flow;
+        public float[] rawElevation;
         public boolean[] riverMask;
         public float[] carvedElevation;
         /** Global-only channels of {@link #network} (see class javadoc for the local/global split). */

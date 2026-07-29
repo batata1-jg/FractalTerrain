@@ -8,7 +8,7 @@ import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
-import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
+import me.batata_1.fractal_terrain.hydrology.rosgen.RosgenProfile;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import me.batata_1.fractal_terrain.relief.DecoderChannels;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
@@ -168,9 +168,26 @@ public class Infinite3DVisualizer {
     }
 
     // hydrology carve-zone painting (bed / floodplain / blending)
-    private static final BlockState BED_ZONE = Blocks.RED_CONCRETE.defaultBlockState();
-    private static final BlockState FLOODPLAIN_ZONE = Blocks.ORANGE_CONCRETE.defaultBlockState();
-    private static final BlockState BLENDING_ZONE = Blocks.PINK_CONCRETE.defaultBlockState();
+    private static final BlockState FLOODPLAIN_ZONE = Blocks.GRAY_CONCRETE.defaultBlockState();
+    private static final BlockState BLENDING_ZONE = Blocks.LIGHT_GRAY_CONCRETE.defaultBlockState();
+
+    /**
+     * Bed-zone block per {@link HydrologicalUnit.RosgenType}, indexed by {@link Enum#ordinal()}. The enum
+     * order is frozen by unit serialization, so this mapping cannot drift.
+     */
+    private static final BlockState[] BED_ZONE_BY_ROSGEN = {
+        Blocks.RED_CONCRETE.defaultBlockState(), // A   steep entrenched
+        Blocks.PINK_CONCRETE.defaultBlockState(), // Aa  very steep
+        Blocks.ORANGE_CONCRETE.defaultBlockState(), // B   moderately entrenched
+        Blocks.YELLOW_CONCRETE.defaultBlockState(), // C   meandering, broad floodplain
+        Blocks.LIME_CONCRETE.defaultBlockState(), // D   braided
+        Blocks.GREEN_CONCRETE.defaultBlockState(), // DA  anastomosing
+        Blocks.LIGHT_BLUE_CONCRETE.defaultBlockState(), // E   narrow, deep, highly sinuous
+        Blocks.BLUE_CONCRETE.defaultBlockState(), // F   entrenched meandering
+        Blocks.PURPLE_CONCRETE.defaultBlockState(), // G   entrenched gully
+    };
+
+    private static final BlockState NOT_RIVER = Blocks.BLACK_CONCRETE.defaultBlockState();
 
     /**
      * Paints the carve zone at {@code (xx, zz)} as the deepest zone reached by any influencing
@@ -179,10 +196,16 @@ public class Infinite3DVisualizer {
      * min-composite (deepest covering channel wins) rather than a single nearest-unit seam:
      *
      * <ul>
-     *   <li><b>bed</b> ({@code radialDist ≤ bedHalfWidth}) → red;</li>
-     *   <li><b>floodplain</b> ({@code radialDist ≤ floodPlainLength}) → orange;</li>
-     *   <li><b>blending</b> (out to the unit's influence radius) → pink.</li>
+     *   <li><b>bed</b> ({@code radialDist ≤ bedHalfWidth}) → the unit's Rosgen-type colour, see
+     *       {@link #BED_ZONE_BY_ROSGEN};</li>
+     *   <li><b>floodplain</b> ({@code radialDist ≤ floodPlainLength}) → gray;</li>
+     *   <li><b>blending</b> (out to the unit's influence radius) → light gray.</li>
      * </ul>
+     *
+     * <p>A unit with a {@code null} Rosgen type paints its bed as {@code A} (red) rather than as its own
+     * colour, matching how {@code HydrologyProfileCarver} and {@link HydrologicalUnit#getRadius()}
+     * coalesce the type — this preview shows what will be carved, not what was measured. Use
+     * {@link HydrologyUnitVisualizer#seeByRosgenType} to see unclassified reaches called out.
      *
      * <p>{@code radialDist} is the plain Euclidean distance from the point to the unit's centre — the
      * same measure {@link HydrologicalUnit#channelContains} and {@code HydrologyProfileCarver#carvePrefetched}
@@ -197,6 +220,9 @@ public class Infinite3DVisualizer {
         final HydrologicalUnit[] units =
                 FractalTerrainInstance.getLocalRiverProvider().queryInfluence(pt);
         // LOG.info("]");
+        if(xx==-4262&&zz==-4662) {
+            LOG.info("oi");
+        }
         BlockState deepest = DEFAULT;
         for (final HydrologicalUnit unit : units) {
             final double du = pt[0] - unit.coord()[0];
@@ -204,11 +230,14 @@ public class Infinite3DVisualizer {
             final double radialDist = Math.hypot(du, dv);
             if (radialDist >= unit.getRadius()) continue; // outside this unit's influence circle
 
-            if (radialDist <= ChannelGeometry.bedHalfWidth(unit.width())) return BED_ZONE; // deepest possible
+            if(unit.rosgenType()==null||unit.type()!=HydrologicalUnit.HydrologicalFeature.RIVER) return NOT_RIVER;
 
-            if (deepest == BED_ZONE) continue;
-            final RosgenProfile profile =
-                    RosgenProfile.of(unit.rosgenType() == null ? HydrologicalUnit.RosgenType.A : unit.rosgenType());
+            final HydrologicalUnit.RosgenType type = unit.rosgenType();
+
+            // Bed is the deepest possible zone: no later unit can beat it, so paint and stop.
+            if (radialDist <= ChannelGeometry.bedHalfWidth(unit.width())) return BED_ZONE_BY_ROSGEN[type.ordinal()];
+
+            final RosgenProfile profile = RosgenProfile.of(type);
             if (radialDist <= profile.floodPlainLength(unit.width())) {
                 deepest = FLOODPLAIN_ZONE;
             } else if (deepest == DEFAULT) {

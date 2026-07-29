@@ -1,7 +1,8 @@
 package me.batata_1.fractal_terrain.config;
 
+import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
-import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
+import me.batata_1.fractal_terrain.hydrology.rosgen.RosgenProfile;
 
 /**
  * Hydrology tuning: the river width/carve-profile law constants and the spline-resampling guards used
@@ -55,12 +56,6 @@ public final class HydrologyTuning {
     public static final double DX = 1.5;
     /** max per-step displacement for the valley-seeking migration. */
     public static final double MAX_MIGRATION = HydrologyTuning.DX;
-    /**
-     * Width of the border margin band {@code Meanders} keeps clear of the grid edge, as a multiple of
-     * channel width. An independent margin factor (deliberately wider than {@link #riverInfluence}) so a
-     * channel's whole carve band stays inside the grid.
-     */
-    public static final double MARGIN_INFLUENCE_FACTOR = 5.0;
 
     // ──────────────────────────────────────────────────────────────────────────
     // Flow accumulation (see Drainage.computeFlow)
@@ -74,7 +69,7 @@ public final class HydrologyTuning {
     public static final float FLOW_THRESHOLD = 0.5f;
 
     // only generate sources for local rivers above this to prevent weird behavior in plains.
-    public static final float GRAD_THRESHOLD = 1f;
+    public static final float GRAD_THRESHOLD = 10f;
 
     public static final float FLOW_INITIAL_GLOBAL = 0.4f;
 
@@ -101,7 +96,7 @@ public final class HydrologyTuning {
     // ──────────────────────────────────────────────────────────────────────────
 
     /** Floor on every river width, in native pixels. */
-    public static final double MIN_WIDTH = 0.2f;
+    public static final double MIN_WIDTH = 0.4f;
 
     /** Scale on {@code sqrt(flow)} shared by the global and local networks (see {@link #widthFromFlow}). */
     public static final double WIDTH_FLOW_SCALE = 0.4f;
@@ -132,7 +127,7 @@ public final class HydrologyTuning {
      * full-strength ellipse along the channel — at the limit the delta would apply unfaded over the whole
      * floodplain disc. First-cut, untuned value pending visual calibration via {@code localRiverTest}.
      */
-    public static final double MAX_ECCENTRICITY = 0.5;
+    public static final double MAX_ECCENTRICITY = 0.9;
 
     /**
      * Dimensionless multiplier on {@link #floodPlainLength} used to derive a river's outer influence
@@ -147,35 +142,20 @@ public final class HydrologyTuning {
      * uses. Bounds the per-pixel carve/paint work and the query span; rivers whose computed
      * {@link #riverInfluence} would exceed this are clamped to it.
      */
-    public static final double MAX_INFLUENCE_RADIUS = 128.0f;
+    public static final double MAX_INFLUENCE_RADIUS = 64.0f;
 
     /**
-     * Floodplain half-extent for a river of the given width and Rosgen type (native px). Delegates to the
-     * type's {@link RosgenProfile#floodPlainLength} — the profile enum is the authority so extents can vary
-     * by type; {@link #FLOODPLAIN_BASE} / {@link #FLOODPLAIN_WIDTH_FACTOR} back its shared placeholder law.
+     * Width of the border margin band {@code Meanders} keeps clear of the grid edge, as a multiple of
+     * channel width. An independent margin factor (deliberately wider than {@link #riverInfluence}) so a
+     * channel's whole carve band stays inside the grid.
      */
-    public static double floodPlainLength(double width, RosgenType type) {
-        return RosgenProfile.of(type).floodPlainLength(width);
+    public static final double MARGIN_INFLUENCE_FACTOR = 5.0;
+
+    public static double maxInfluence(double width) {
+        return Math.min(
+                HydrologyTuning.MAX_INFLUENCE_RADIUS, width * (MAX_INFLUENCE_RADIUS/MAX_WIDTH));
     }
 
-    /** Floodplain half-extent for a typeless river (native px) — assumes {@link RosgenType#A}. */
-    public static double floodPlainLength(double width) {
-        return floodPlainLength(width, RosgenType.A);
-    }
-
-    /**
-     * Outer influence radius for a river of the given width and Rosgen type (native px): floodplain + blend
-     * band, clamped to {@link #MAX_INFLUENCE_RADIUS}. Beyond this radius a river no longer affects a pixel.
-     * Delegates to the type's {@link RosgenProfile#riverInfluence} so the radius can vary by type.
-     */
-    public static double riverInfluence(double width, RosgenType type) {
-        return RosgenProfile.of(type).riverInfluence(width);
-    }
-
-    /** Outer influence radius for a typeless river (native px) — assumes {@link RosgenType#A}. */
-    public static double riverInfluence(double width) {
-        return riverInfluence(width, RosgenType.A);
-    }
 
     public static double widthFromFlow(double rawFlow) {
         final double lawWidth = WIDTH_FLOW_SCALE * Math.sqrt(rawFlow);
@@ -197,6 +177,8 @@ public final class HydrologyTuning {
     // localRiverTest before judging any other threshold. The key tests slope first, so
     // slope miscalibration dominates every other error.
     // ──────────────────────────────────────────────────────────────────────────
+
+    public static final double RIVER_SLOPE_RESCALE = 50;
 
     /** Slope at or above which a reach is {@code Aa+} (very steep, step/waterfall). Needs recalibration. */
     public static final double S_AA = 0.10;
@@ -238,7 +220,7 @@ public final class HydrologyTuning {
      * Maximum bankfull depth as a multiple of mean bankfull depth, setting the flood-prone stage
      * ({@code bed + 2·dMax}). A rule of thumb rather than a sourced figure — calibrate visually.
      */
-    public static final double DEPTH_MAX_FACTOR = 1.5;
+    public static final double DEPTH_MAX_FACTOR = 1;
 
     /**
      * Bed elevation (native px above sea level, which is {@code 0}) below which a reach counts as near
@@ -274,6 +256,9 @@ public final class HydrologyTuning {
      */
     public static final double REACH_MAX_PX = 64.0;
 
+    //bias towards lower ER, mostly affects streams with small widths.
+    public static final double ENTRENTMENT_RATIO_BIAS = 1;
+
     /**
      * Entrenchment transect half-walk as a multiple of bankfull width. The key resolves ER only at 1.4,
      * 2.2 and 4.0, and {@code ER = floodProneWidth / bankfullWidth}, so {@code 2.05·width} per side
@@ -283,7 +268,7 @@ public final class HydrologyTuning {
      * rather than failing, so an overrun silently returns the edge pixel repeated and reports
      * {@code ER = ∞}.
      */
-    public static final double ER_WALK_WIDTHS = 2.05;
+    public static final double ER_WALK_WIDTHS = 5;
 
     /**
      * Entrenchment transect step (native px) as a fraction of bankfull width, floored at
@@ -303,5 +288,7 @@ public final class HydrologyTuning {
      * makes the step shrink with the walk instead. First-cut, untuned value pending visual calibration
      * via {@code localRiverTest}.
      */
-    public static final double ER_MIN_STEPS_PER_SIDE = 8.0;
+    public static final double ER_MIN_STEPS_PER_SIDE = 1.0;
+
+
 }

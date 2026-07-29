@@ -14,6 +14,8 @@ import me.batata_1.fractal_terrain.hydrology.meanders.ChannelTyper;
 import me.batata_1.fractal_terrain.hydrology.meanders.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork;
 import me.batata_1.fractal_terrain.math.VectorOps;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Segments every channel into reaches, measures each reach, and runs the Rosgen key over the whole graph
@@ -33,6 +35,7 @@ import me.batata_1.fractal_terrain.math.VectorOps;
  */
 public final class ReachRosgenClassifier implements ChannelTyper {
 
+    private static final Logger LOG = LoggerFactory.getLogger(ReachRosgenClassifier.class);
     private final ReachMetricsSampler sampler;
     private final Map<Integer, RosgenType[]> typesByChannelId = new HashMap<>();
 
@@ -183,7 +186,7 @@ public final class ReachRosgenClassifier implements ChannelTyper {
         final List<double[]> pts = ch.spline.points();
         final int n = pts.size();
         if (n < 2) {
-            reaches.add(new int[] {0, Math.max(0, n - 1)});
+            reaches.add(new int[] {0, 0});
             return reaches;
         }
         int from = 0;
@@ -209,23 +212,15 @@ public final class ReachRosgenClassifier implements ChannelTyper {
     /** Measure one reach at its midpoint. One transect per reach — see the class javadoc. */
     private ReachMetrics measure(Channel ch, int from, int to) {
         final List<double[]> pts = ch.spline.points();
-        final int mid = (from + to) / 2;
-        final double width = ch.widthAt(mid);
+        if(from>to||from<0||to>=pts.size()) throw new IllegalArgumentException("channel reach is bigger than itself");
+        final double mid = (from + to) / 2.0;
+        final double width = ch.widthAt((int)mid);
 
         double arcLength = 0.0;
         for (int i = from + 1; i <= to; i++) arcLength += VectorOps.distance(pts.get(i - 1), pts.get(i));
 
-        final double bedElev;
-        final double slope;
-        if (ch.bedElevations != null && ch.bedElevations.length == pts.size()) {
-            bedElev = ch.bedElevations[mid];
-            slope = ReachMetricsSampler.slope(ch.bedElevations, arcLength, from, to);
-        } else {
-            // Removed features (oxbows, abandoned rivers) carry no beds. Sea level with zero slope keeps
-            // them out of the steep branches; their geometry is not a channel profile anyway.
-            bedElev = 0.0;
-            slope = 0.0;
-        }
+        final double bedElev = sampler.elevAt(ch.spline.sample(mid));
+        final double slope = sampler.slope(pts,arcLength, from, to);
 
         // spline.normal never returns null: VectorOps.normalize returns a zero vector, not null, when the
         // tangent degenerates (duplicate consecutive spline points), and perpendicular preserves that. A
@@ -235,10 +230,13 @@ public final class ReachRosgenClassifier implements ChannelTyper {
         // F/G — visible types, deliberately, so the case shows up in the type PNG instead of hiding in
         // the C/E majority. Once the type mix is calibrated (P1), decide whether a degenerate reach
         // should instead inherit its downstream neighbour's type or be dropped from classification.
-        final double[] normal = ch.spline.normal(mid);
+        double[] normal = ch.spline.normal(mid);
+        if(isDegenerate(normal)) {
+            LOG.warn("degenerate");
+        }
         final double entrenchment = isDegenerate(normal)
                 ? DEGENERATE_ENTRENCHMENT
-                : sampler.entrenchmentRatio(pts.get(mid), normal, bedElev, width);
+                : sampler.entrenchmentRatio(pts.get((int)mid), normal, bedElev, width);
 
         return new ReachMetrics(slope, entrenchment, ChannelGeometry.widthDepthRatio(width), width, bedElev);
     }

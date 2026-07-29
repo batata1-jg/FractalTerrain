@@ -74,25 +74,6 @@ public record FractalTerrainConfig() {
     public static final double INFLUENCE_BLEND_MULTIPLIER = HydrologyTuning.INFLUENCE_BLEND_MULTIPLIER;
     public static final double MAX_INFLUENCE_RADIUS = HydrologyTuning.MAX_INFLUENCE_RADIUS;
 
-    /** @see HydrologyTuning#floodPlainLength(double, RosgenType) */
-    public static double floodPlainLength(double width, RosgenType type) {
-        return HydrologyTuning.floodPlainLength(width, type);
-    }
-
-    /** @see HydrologyTuning#floodPlainLength(double) */
-    public static double floodPlainLength(double width) {
-        return HydrologyTuning.floodPlainLength(width);
-    }
-
-    /** @see HydrologyTuning#riverInfluence(double, RosgenType) */
-    public static double riverInfluence(double width, RosgenType type) {
-        return HydrologyTuning.riverInfluence(width, type);
-    }
-
-    /** @see HydrologyTuning#riverInfluence(double) */
-    public static double riverInfluence(double width) {
-        return HydrologyTuning.riverInfluence(width);
-    }
 
     /** @see HydrologyTuning#maxNativeWidth() */
     public static double maxNativeWidth() {

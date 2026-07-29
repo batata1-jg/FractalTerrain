@@ -37,7 +37,7 @@ public final class DebugConfig {
      * Whether the 3D visualizer replaces normal chunk fill. Checked once per chunk fill, not per block, so
      * a runtime read costs nothing on the generation hot path.
      */
-    public static final boolean DISABLE_3D_VISUALIZER = false;
+    public static final boolean DISABLE_3D_VISUALIZER = true;
 
     /**
      * Drives the elevation each visualizer column is raised to ({@link Infinite3DVisualizer#debugElevController}).

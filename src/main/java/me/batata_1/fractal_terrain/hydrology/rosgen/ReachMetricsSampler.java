@@ -4,6 +4,8 @@ import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.math.Interpolation;
 
+import java.util.List;
+
 /**
  * The raster side of Rosgen classification: measures along-channel slope and the entrenchment ratio for
  * one reach.
@@ -44,10 +46,14 @@ public final class ReachMetricsSampler {
      * uphill reach means degenerate geometry rather than real terrain; flooring at zero keeps such a
      * reach out of the {@code Aa+}/{@code A} branches rather than producing a nonsense negative slope.
      */
-    public static double slope(double[] bedElevations, double arcLength, int fromIndex, int toIndex) {
+    public double slope(List<double[]> pts, double arcLength, int fromIndex, int toIndex) {
         if (arcLength <= 0.0) return 0.0;
-        final double drop = bedElevations[fromIndex] - bedElevations[toIndex];
-        return Math.max(0.0, drop / arcLength);
+        final double drop = elevAt(pts.get(fromIndex)) - elevAt(pts.get(toIndex));
+        return Math.max(0.0, drop / arcLength) / HydrologyTuning.RIVER_SLOPE_RESCALE;
+    }
+
+    public double elevAt(double[] sample) {
+        return Interpolation.sampleBilinear(elev, sample[0],sample[1], gridSize);
     }
 
     /**
@@ -70,33 +76,32 @@ public final class ReachMetricsSampler {
      * @param width   bankfull width, native px
      */
     public double entrenchmentRatio(double[] point, double[] normal, double bedElev, double width) {
-        final double safeWidth = Math.max(width, HydrologyTuning.MIN_WIDTH);
-        final double dMax = HydrologyTuning.DEPTH_MAX_FACTOR * ChannelGeometry.depthForWidth(safeWidth);
-        final double floodProneStage = bedElev + 2.0 * dMax;
-        final double maxWalk = HydrologyTuning.ER_WALK_WIDTHS * safeWidth;
-        final double step = Math.min(
-                Math.max(HydrologyTuning.ER_STEP_MIN, safeWidth * HydrologyTuning.ER_STEP_WIDTH_FRACTION),
-                maxWalk / HydrologyTuning.ER_MIN_STEPS_PER_SIDE);
+        final double bankfullWidth = Math.max(width, HydrologyTuning.MIN_WIDTH);
+        final double depth = HydrologyTuning.DEPTH_MAX_FACTOR * ChannelGeometry.depthForWidth(bankfullWidth);
+        final double floodProneStage = bedElev + 2.0 * depth;
+        final double maxFloodPlainWidth = HydrologyTuning.ER_WALK_WIDTHS * bankfullWidth;
+        final double step = Math.clamp(bankfullWidth * HydrologyTuning.ER_STEP_WIDTH_FRACTION, HydrologyTuning.ER_STEP_MIN,
+                maxFloodPlainWidth / HydrologyTuning.ER_MIN_STEPS_PER_SIDE);
 
-        final double positive = halfWidth(point, normal, +1.0, floodProneStage, maxWalk, step);
-        final double negative = halfWidth(point, normal, -1.0, floodProneStage, maxWalk, step);
+        final double positive = halfWidth(point, normal, +1.0, floodProneStage, maxFloodPlainWidth, step);
+        final double negative = halfWidth(point, normal, -1.0, floodProneStage, maxFloodPlainWidth, step);
         if (Double.isInfinite(positive) && Double.isInfinite(negative)) return Double.POSITIVE_INFINITY;
 
-        final double positiveWidth = Double.isInfinite(positive) ? maxWalk : positive;
-        final double negativeWidth = Double.isInfinite(negative) ? maxWalk : negative;
-        return (positiveWidth + negativeWidth) / safeWidth;
+        final double positiveWidth = Double.isInfinite(positive) ? maxFloodPlainWidth : positive;
+        final double negativeWidth = Double.isInfinite(negative) ? maxFloodPlainWidth : negative;
+        return (positiveWidth + negativeWidth) / (bankfullWidth + HydrologyTuning.ENTRENTMENT_RATIO_BIAS);
     }
 
     /**
      * Distance from {@code point} along {@code side · normal} at which elevation first exceeds
-     * {@code floodProneStage}, or {@code +inf} when the walk reaches {@code maxWalk} without doing so.
+     * {@code maxFloodProneAreaHeight}, or {@code +inf} when the walk reaches {@code maxFloodPlainWidth} without doing so.
      */
     private double halfWidth(
-            double[] point, double[] normal, double side, double floodProneStage, double maxWalk, double step) {
-        for (double d = step; d <= maxWalk; d += step) {
+            double[] point, double[] normal, double side, double maxFloodProneAreaHeight, double maxFloodPlainWidth, double step) {
+        for (double d = step; d <= maxFloodPlainWidth; d += step) {
             final double x = point[0] + side * d * normal[0];
             final double z = point[1] + side * d * normal[1];
-            if (Interpolation.sampleBilinear(elev, x, z, gridSize) > floodProneStage) return d;
+            if (Interpolation.sampleBilinear(elev, x, z, gridSize) > maxFloodProneAreaHeight) return d;
         }
         return Double.POSITIVE_INFINITY;
     }

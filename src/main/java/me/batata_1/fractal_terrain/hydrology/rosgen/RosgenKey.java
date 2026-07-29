@@ -82,7 +82,7 @@ public final class RosgenKey {
      *
      * <p>The tolerances exist because the field metrics are noisy; a raster implementation is noisier
      * still. Without the dead band, types flicker along a single river, and because
-     * {@link me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile} controls {@code floodPlainLength}
+     * {@link RosgenProfile} controls {@code floodPlainLength}
      * and {@code riverInfluence}, a flicker becomes a visibly scalloped floodplain edge.
      *
      * <p><b>Scope: ER and W/D only.</b> The slope bands ({@code S_AA}, {@code S_A}, {@code S_DA}) and the
@@ -94,13 +94,14 @@ public final class RosgenKey {
      * @param previous the neighbouring reach's committed type, or {@code null} at a network leaf
      */
     public static RosgenType applyDeadBand(ReachMetrics m, RosgenType raw, @Nullable RosgenType previous) {
-        if (previous == null || raw == previous) return raw;
-        final boolean onThreshold =
-                nearThreshold(m.entrenchment(), HydrologyTuning.ER_ENTRENCHED, HydrologyTuning.ER_TOLERANCE)
-                        || nearThreshold(m.entrenchment(), HydrologyTuning.ER_SLIGHT, HydrologyTuning.ER_TOLERANCE)
-                        || nearThreshold(m.entrenchment(), HydrologyTuning.ER_ANASTOMOSE, HydrologyTuning.ER_TOLERANCE)
-                        || nearThreshold(m.widthDepth(), HydrologyTuning.WD_NARROW, HydrologyTuning.WD_TOLERANCE);
-        return onThreshold ? previous : raw;
+        return raw;
+//        if (previous == null || raw == previous) return raw;
+//        final boolean onThreshold =
+//                nearThreshold(m.entrenchment(), HydrologyTuning.ER_ENTRENCHED, HydrologyTuning.ER_TOLERANCE)
+//                        || nearThreshold(m.entrenchment(), HydrologyTuning.ER_SLIGHT, HydrologyTuning.ER_TOLERANCE)
+//                        || nearThreshold(m.entrenchment(), HydrologyTuning.ER_ANASTOMOSE, HydrologyTuning.ER_TOLERANCE)
+//                        || nearThreshold(m.widthDepth(), HydrologyTuning.WD_NARROW, HydrologyTuning.WD_TOLERANCE);
+//        return onThreshold ? previous : raw;
     }
 
     /** Whether {@code value} sits within {@code tolerance} of {@code threshold}. Infinities are never near. */
