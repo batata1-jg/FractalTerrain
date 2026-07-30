@@ -73,11 +73,11 @@ public final class HydrologyTuning {
 
     public static final float FLOW_INITIAL_GLOBAL = 0.4f;
 
-    public static final float FLOW_INITIAL_LOCAL = 0.002f;
+    public static final float FLOW_INITIAL_LOCAL = 0.02f;
 
     public static final float FLOW_PER_CELL_GLOBAL = 2f;
 
-    public static final float FLOW_PER_CELL_LOCAL = 0.001f;
+    public static final float FLOW_PER_CELL_LOCAL = 0.01f;
 
     /**
      * Near-drain flow smoothing (see {@code RiverNetwork.accumulateAndCorrectFlow}). A drain reads its

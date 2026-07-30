@@ -63,15 +63,15 @@ public class HydrologyUnitVisualizer {
      * unit serialization, so the mapping cannot drift.
      */
     private static final Color[] ROSGEN_PALETTE = {
-        new Color(0xE6194B), // A   steep entrenched
-        new Color(0x800000), // Aa  very steep
-        new Color(0xF58231), // B   moderately entrenched
-        new Color(0x3CB44B), // C   meandering, broad floodplain
-        new Color(0xFFE119), // D   braided
-        new Color(0x42D4F4), // DA  anastomosing
-        new Color(0x4363D8), // E   narrow, deep, highly sinuous
-        new Color(0x911EB4), // F   entrenched meandering
-        new Color(0xA9A9A9), // G   entrenched gully
+        new Color(0xFF0059), // A   steep entrenched
+        new Color(0xFF7DDE), // Aa  very steep
+        new Color(0xFF6A00), // B   moderately entrenched
+        new Color(0xFFD500), // C   meandering, broad floodplain
+        new Color(0x38FF19), // D   braided
+        new Color(0x318323), // DA  anastomosing
+        new Color(0x00FFFF), // E   narrow, deep, highly sinuous
+        new Color(0x0055FF), // F   entrenched meandering
+        new Color(0x7B00FF), // G   entrenched gully
     };
 
     /** Rendered for a unit with no Rosgen type: a source, a drain, an oxbow, or an unclassified reach. */

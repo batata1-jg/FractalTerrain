@@ -123,6 +123,8 @@ final class LocalDrainageTracer {
             if ((--inDegree[next]) == 0 && !isDrain) sourceQueue.add(next);
         }
 
+        sources.clear();
+
         if (DEBUG_STEPS) {
             Debug.river.seeNetwork(net, 514, "afterTracingNet", "0");
         }
