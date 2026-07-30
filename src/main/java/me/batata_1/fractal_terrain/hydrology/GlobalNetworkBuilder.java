@@ -81,7 +81,7 @@ final class GlobalNetworkBuilder {
                     }
                 int dcx = ccx, dcz = ccz;
                 double[] drain;
-                final double marginInfl = HydrologyTuning.maxInfluence(Math.max(grp.getWidth(ccx, ccz), FractalTerrainConfig.MIN_WIDTH));
+                final double marginInfl = HydrologyTuning.maxInfluence(Math.max(grp.getWidth(ccx, ccz), HydrologyTuning.MIN_WIDTH));
                 if (outDir != -1) {
                     dcx = ccx + Drainage.NEIGHBOR_OFFSET_X[outDir];
                     dcz = ccz + Drainage.NEIGHBOR_OFFSET_Z[outDir];
@@ -132,7 +132,7 @@ final class GlobalNetworkBuilder {
                 if (c == null) continue;
                 final int centre = centerIdx.get(cellKey(ccx, ccz));
                 final double[] centreCoord = nodeCoord(nodeSpecs, centre);
-                final double width = Math.max(grp.getWidth(ccx, ccz), FractalTerrainConfig.MIN_WIDTH);
+                final double width = Math.max(grp.getWidth(ccx, ccz), HydrologyTuning.MIN_WIDTH);
 
                 // drains to another cell. Places the channel that connects the center to the drainage point
                 if (c.outDirection() != -1 && c.drain() != null) {

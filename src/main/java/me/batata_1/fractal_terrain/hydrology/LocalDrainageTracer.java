@@ -12,9 +12,7 @@ import me.batata_1.fractal_terrain.hydrology.meanders.AtomicView;
 import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
 import me.batata_1.fractal_terrain.hydrology.meanders.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork;
-import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
-import me.batata_1.fractal_terrain.math.ds.QuadTree;
-import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
+import me.batata_1.fractal_terrain.math.ds.*;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -83,6 +81,8 @@ final class LocalDrainageTracer {
             Arrays.fill(riverMask, false);
         }
 
+        final QuadTree<CoordPoint> sources = new QuadTree<>(new double[]{0,0},new double[]{PADDED + 1, PADDED + 1},7);
+
         while (!sourceQueue.isEmpty()) {
             final int current = sourceQueue.poll();
             if (elev[current] < 0) continue;
@@ -91,14 +91,17 @@ final class LocalDrainageTracer {
             boolean isDrain = elev[next] < 0;
             if ((flow[next] >= FLOW_THRESHOLD && gradMag[next] >= GRAD_THRESHOLD) || nodeIndex[current] != -1) {
                 if (stages != null) riverMask[current] = true;
-                // create the source if there isnt a source
-                if (nodeIndex[current] == -1)
+                // create the source if there isnt a source nearby
+                final double[] curNodePos = new double[]{Math.floorDiv(current, PADDED) + 0.5, (current % PADDED) + 0.5};
+                if (nodeIndex[current] == -1 && nodeIndex[next] == -1 && !sources.containsPointInCircle(curNodePos,5.0)) {
                     nodeIndex[current] = net.addNode(
-                            new double[] {Math.floorDiv(current, PADDED) + 0.5, (current % PADDED) + 0.5},
+                            curNodePos,
                             Endpoint.Type.SOURCE,
                             -1,
                             flow[current],
                             -1);
+                    sources.insertPoint(new CoordPoint(curNodePos));
+                }
                 // check if reaches ocean.
                 if (nodeIndex[next] == -1) {
                     final double[] nextNodePos =
@@ -115,7 +118,7 @@ final class LocalDrainageTracer {
                         net.addDirectedEdge(nodeIndex[next], unit.id());
                     }
                 }
-                net.addDirectedEdge(nodeIndex[current], nodeIndex[next]);
+                if(nodeIndex[current]!=-1) net.addDirectedEdge(nodeIndex[current], nodeIndex[next]);
             }
             if ((--inDegree[next]) == 0 && !isDrain) sourceQueue.add(next);
         }
@@ -131,6 +134,7 @@ final class LocalDrainageTracer {
             stages.riverMask = riverMask;
         }
     }
+
 
     private static List<GlobalRiverUnit> getGlobalUnits(AtomicView net) {
         final double[] flow = net.accumulateAndCorrectFlow();

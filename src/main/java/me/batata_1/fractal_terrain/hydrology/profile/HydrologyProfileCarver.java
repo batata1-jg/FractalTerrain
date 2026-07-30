@@ -171,6 +171,9 @@ public final class HydrologyProfileCarver {
         final ImmutableRTree<HydrologicalUnit> index =
                 new ImmutableRTree<>(Arrays.asList(units), HydrologicalUnit.PROTOTYPE);
 
+        double avgSum=0;
+        double avgWeight=0;
+
         for (int pi = 0; pi < paddedSize; pi++) {
             for (int pj = 0; pj < paddedSize; pj++) {
                 final int idx = pi * paddedSize + pj;
@@ -181,25 +184,22 @@ public final class HydrologyProfileCarver {
                 if (nearby.isEmpty()) continue;
 
                 final double curElev = elevation[idx];
-                HydrologicalUnit nearest = null;
-                double nearestDist = Double.POSITIVE_INFINITY;
+                avgSum = avgWeight = 0;
+                RosgenProfile mutableProfile = null;
                 for (HydrologicalUnit unit : nearby) {
                     final double[] coord = unit.coord();
                     final double dx = pixel[0] - coord[0];
                     final double dz = pixel[1] - coord[1];
                     final double radialDist = Math.hypot(dx, dz);
                     if (radialDist >= unit.getRadius()) continue; // outside this unit's influence
-                    if (radialDist < nearestDist) {
-                        nearestDist = radialDist;
-                        nearest = unit;
-                    }
+                    final double width = unit.width();
+                    mutableProfile = RosgenProfile.of(unit.rosgenType() == null ? RosgenType.A : unit.rosgenType());
+                    avgSum += (1 - radialDist / unit.getRadius()) * mutableProfile.riverInfluenceElevation(radialDist,width,curElev,unit.elevation());
+                    avgWeight += (1 - radialDist / unit.getRadius());
                 }
-                if (nearest == null) continue;
 
-                final RosgenType type = nearest.rosgenType() == null ? RosgenType.A : nearest.rosgenType();
-                final RosgenProfile profile = RosgenProfile.of(type);
-                elevation[idx] = (float)
-                        profile.riverInfluenceElevation(nearestDist, nearest.width(), curElev, nearest.elevation());
+                if(avgWeight<=1e-6) continue;
+                elevation[idx] = (float) (avgSum / avgWeight);
             }
         }
     }

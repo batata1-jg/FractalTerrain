@@ -1,6 +1,7 @@
 package me.batata_1.fractal_terrain.hydrology.profile;
 
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
+import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
@@ -51,7 +52,7 @@ public final class HydrologyProfilePainter {
      * allocation-free (early-exit traversal, no result list).
      */
     public boolean insideChannel(double[] pixelPt) {
-        final double tileVisitRadius = FractalTerrainConfig.maxNativeWidth() / 2.0;
+        final double tileVisitRadius = HydrologyTuning.maxNativeWidth() / 2.0;
         return localRiver.anyInfluencingUnit(pixelPt, tileVisitRadius, HydrologicalUnit::channelContains);
     }
 }

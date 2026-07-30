@@ -66,7 +66,7 @@ public final class HydrologyTuning {
      * global-proximity exclusion to build the river mask. Local to this tracer rather than a
      * {@link HydrologyTuning} constant, so tuning it affects only the local network.
      */
-    public static final float FLOW_THRESHOLD = 0.5f;
+    public static final float FLOW_THRESHOLD = 0.75f;
 
     // only generate sources for local rivers above this to prevent weird behavior in plains.
     public static final float GRAD_THRESHOLD = 10f;

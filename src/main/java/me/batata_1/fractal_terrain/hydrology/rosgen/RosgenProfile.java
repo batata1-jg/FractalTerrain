@@ -29,8 +29,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>The profile is also the authority for the two horizontal extents of the cross-section —
  * {@link #floodPlainLength} and {@link #riverInfluence} — so a river's floodplain half-extent and outer
- * influence radius can vary by Rosgen type. {@link FractalTerrainConfig#floodPlainLength} /
- * {@link FractalTerrainConfig#riverInfluence} are thin delegates to these (their width-only overloads
+ * influence radius can vary by Rosgen type. {@link HydrologyTuning#floodPlainLength} /
+ * {@link HydrologyTuning#riverInfluence} are thin delegates to these (their width-only overloads
  * assume {@link RosgenType#A}).
  *
  * <p>The floodplain and blending zones are unions of per-unit radial discs; the smoothness of that
@@ -54,7 +54,7 @@ public enum RosgenProfile {
 
         @Override
         public double riverInfluence(double width) {
-            return Math.min(FractalTerrainConfig.MAX_INFLUENCE_RADIUS, width / HydrologyTuning.MIN_WIDTH );
+            return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, width / HydrologyTuning.MIN_WIDTH );
         }
 
         @Override
@@ -67,7 +67,7 @@ public enum RosgenProfile {
 
         @Override
         public double riverInfluence(double width) {
-            return Math.clamp(0.5 * (width / HydrologyTuning.MIN_WIDTH), width, FractalTerrainConfig.MAX_INFLUENCE_RADIUS);
+            return Math.clamp(0.5 * (width / HydrologyTuning.MIN_WIDTH), width, HydrologyTuning.MAX_INFLUENCE_RADIUS);
         }
 
         @Override
@@ -94,7 +94,7 @@ public enum RosgenProfile {
 
         @Override
         public double riverInfluence(double width) {
-            return Math.min(FractalTerrainConfig.MAX_INFLUENCE_RADIUS, floodPlainLength(width) / HydrologyTuning.MIN_WIDTH);
+            return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, floodPlainLength(width) / HydrologyTuning.MIN_WIDTH);
         }
 
         @Override
@@ -119,7 +119,7 @@ public enum RosgenProfile {
 
         @Override
         public double riverInfluence(double width) {
-            return Math.min(FractalTerrainConfig.MAX_INFLUENCE_RADIUS, 4*maxHalfWidth*Math.pow(floodPlainLength(width)/(2*maxHalfWidth),0.75) );
+            return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, 4*maxHalfWidth*Math.pow(floodPlainLength(width)/(2*maxHalfWidth),0.75) );
         }
 
         @Override
@@ -150,7 +150,7 @@ public enum RosgenProfile {
 
         @Override
         public double riverInfluence(double width) {
-            return Math.min(FractalTerrainConfig.MAX_INFLUENCE_RADIUS, 3*maxHalfWidth*Math.pow(floodPlainLength(width)/(1.5*maxHalfWidth),0.75) );
+            return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, 3*maxHalfWidth*Math.pow(floodPlainLength(width)/(1.5*maxHalfWidth),0.75) );
         }
 
         @Override
@@ -169,7 +169,7 @@ public enum RosgenProfile {
 
         @Override
         public double riverInfluence(double width) {
-            return Math.min(FractalTerrainConfig.MAX_INFLUENCE_RADIUS, 1.3*floodPlainLength(width) );
+            return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, 1.3*floodPlainLength(width) );
         }
 
         @Override
@@ -198,7 +198,7 @@ public enum RosgenProfile {
 
         @Override
         public double riverInfluence(double width) {
-            return Math.min(FractalTerrainConfig.MAX_INFLUENCE_RADIUS, 1.5*maxHalfWidth*Math.pow(floodPlainLength(width)/(maxHalfWidth),0.75) );
+            return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, 1.5*maxHalfWidth*Math.pow(floodPlainLength(width)/(maxHalfWidth),0.75) );
         }
 
         @Override
@@ -214,7 +214,7 @@ public enum RosgenProfile {
 
         @Override
         public double riverInfluence(double width) {
-            return Math.min(FractalTerrainConfig.MAX_INFLUENCE_RADIUS, floodPlainLength(width) / HydrologyTuning.MIN_WIDTH);
+            return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, floodPlainLength(width) / HydrologyTuning.MIN_WIDTH);
         }
     };
 
@@ -240,7 +240,7 @@ public enum RosgenProfile {
 
     /**
      * Outer influence radius (native px) for a river of the given width under this Rosgen type: floodplain +
-     * blend band, clamped to {@link FractalTerrainConfig#MAX_INFLUENCE_RADIUS}. Beyond this radius the river
+     * blend band, clamped to {@link HydrologyTuning#MAX_INFLUENCE_RADIUS}. Beyond this radius the river
      * no longer affects a pixel; it is also the unit's R-tree membership-circle radius
      * ({@link me.batata_1.fractal_terrain.hydrology.HydrologicalUnit#getRadius()}). Placeholder law shared by
      * all types; override per constant to widen/narrow a type's reach. Note it calls the (virtual)
@@ -248,7 +248,7 @@ public enum RosgenProfile {
      */
     public double riverInfluence(double width) {
         return Math.min(
-                HydrologyTuning.MAX_INFLUENCE_RADIUS, width * FractalTerrainConfig.INFLUENCE_BLEND_MULTIPLIER);
+                HydrologyTuning.MAX_INFLUENCE_RADIUS, width * HydrologyTuning.INFLUENCE_BLEND_MULTIPLIER);
     }
 
     /**

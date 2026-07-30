@@ -56,7 +56,7 @@ import org.slf4j.Logger;
  */
 public final class RiverNetwork {
 
-    private static final double INF = 1e9;
+    private static final double INF = 1e3;
     /** Floor on the resample spacing used when converting features to {@link HydrologicalUnit}s. */
     private static final double MIN_CONVERT_SPACING = 0.5;
 

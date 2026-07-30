@@ -10,6 +10,7 @@ import java.util.Set;
 import java.util.function.ToLongFunction;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
+import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
@@ -71,7 +72,7 @@ public class SpatialIndexBenchmark {
      * (MAX_INFLUENCE_RADIUS) never forces a neighbouring tile to build mid-benchmark (each build runs
      * diffusion inference and would swamp the timings).
      */
-    private static final double PROVIDER_MARGIN = FractalTerrainConfig.MAX_INFLUENCE_RADIUS + 2.0;
+    private static final double PROVIDER_MARGIN = HydrologyTuning.MAX_INFLUENCE_RADIUS + 2.0;
 
     /**
      * Quadtree adapter for the legacy path: {@link HydrologicalUnit} no longer implements
@@ -114,7 +115,7 @@ public class SpatialIndexBenchmark {
 
         crossCheckInfluenceQueries(allUnits, unitQuadTree, unitRTree);
 
-        final double membershipRadius = FractalTerrainConfig.maxNativeWidth() / 2.0;
+        final double membershipRadius = HydrologyTuning.maxNativeWidth() / 2.0;
         // World-pixel origin of the benchmark tile (provider-level queries take world coords).
         final double worldOriginX = TILE_X * (double) GRID;
         final double worldOriginZ = TILE_Z * (double) GRID;
@@ -122,7 +123,7 @@ public class SpatialIndexBenchmark {
         // ---- influence query: legacy quadtree+filter vs one R-tree stab -------------------------
         final List<UnitPoint> legacyQueryBuffer = new ArrayList<>(256);
         final double legacyInfluenceOpsPerSec = bench(
-                "quadtree influence query (circle r=" + FractalTerrainConfig.MAX_INFLUENCE_RADIUS + " + reach filter)",
+                "quadtree influence query (circle r=" + HydrologyTuning.MAX_INFLUENCE_RADIUS + " + reach filter)",
                 tileLocalPoints(1),
                 pt -> legacyInfluenceQuery(unitQuadTree, pt, legacyQueryBuffer));
         final List<HydrologicalUnit> stabQueryBuffer = new ArrayList<>(256);
@@ -180,7 +181,7 @@ public class SpatialIndexBenchmark {
     private static long legacyInfluenceQuery(
             ImmutableQuadTree<UnitPoint> unitQuadTree, double[] pt, List<UnitPoint> buffer) {
         buffer.clear();
-        unitQuadTree.getPointsInCircle(pt, FractalTerrainConfig.MAX_INFLUENCE_RADIUS, buffer);
+        unitQuadTree.getPointsInCircle(pt, HydrologyTuning.MAX_INFLUENCE_RADIUS, buffer);
         long keptCount = 0;
         for (final UnitPoint unitPoint : buffer) {
             final HydrologicalUnit unit = unitPoint.unit();
@@ -241,7 +242,7 @@ public class SpatialIndexBenchmark {
             }
 
             legacyBuffer.clear();
-            unitQuadTree.getPointsInCircle(pt, FractalTerrainConfig.MAX_INFLUENCE_RADIUS, legacyBuffer);
+            unitQuadTree.getPointsInCircle(pt, HydrologyTuning.MAX_INFLUENCE_RADIUS, legacyBuffer);
             final Set<HydrologicalUnit> legacyHits = new HashSet<>();
             for (final UnitPoint unitPoint : legacyBuffer) {
                 final HydrologicalUnit unit = unitPoint.unit();

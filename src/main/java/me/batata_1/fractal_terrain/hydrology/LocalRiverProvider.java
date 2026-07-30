@@ -337,7 +337,7 @@ public class LocalRiverProvider {
         final List<HydrologicalUnit> tileLocalHits = new ArrayList<>(64); // reused across tiles; cleared per tile
         final double[] tileLocalPoint = new double[2];
         units.forEachTileWithin(
-                pt, FractalTerrainConfig.MAX_INFLUENCE_RADIUS + extraRadius, (tileOriginX, tileOriginZ, tileIndex) -> {
+                pt, HydrologyTuning.MAX_INFLUENCE_RADIUS + extraRadius, (tileOriginX, tileOriginZ, tileIndex) -> {
                     tileLocalPoint[0] = pt[0] - tileOriginX;
                     tileLocalPoint[1] = pt[1] - tileOriginZ;
                     tileLocalHits.clear();

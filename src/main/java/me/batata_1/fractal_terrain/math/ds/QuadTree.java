@@ -10,7 +10,8 @@ import me.batata_1.fractal_terrain.storage.Persistable;
 /**
  * 2-D spatial index. Concurrency contract: <b>multiple concurrent readers</b>
  * ({@link #getPointsInBox}, {@link #getPointsInCircle}, {@link #getPointCoordsInBox},
- * {@link #containsPoint}) are safe, guarded by the read side of a {@link ReentrantReadWriteLock};
+ * {@link #containsPoint}, {@link #containsPointInCircle}) are safe, guarded by the read side of a
+ * {@link ReentrantReadWriteLock};
  * mutations ({@link #insertPoint}, {@link #removePoint}, {@link #clear}) take the exclusive write
  * lock, so writes never run concurrently with each other or with reads. All recursion-local state
  * is kept on the stack (no shared mutable fields), so readers do not interfere with one another.
@@ -22,12 +23,20 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
     private static final int QQ = 3;
     private static final int X = 0;
     private static final int Z = 1;
-    private static final int MAX_TREE_DEPTH = 50;
+    /** Depth cap for trees built without an explicit one. */
+    public static final int DEFAULT_MAX_TREE_DEPTH = 12;
     /** Format tag for the binary tile layout written by {@link #serialize()}. */
     private static final int MAGIC = 0x51545231; // "QTR1"
 
     private final double[] minXZ;
     private final double[] maxXZ;
+
+    /**
+     * Subdivision cap: no node deeper than this splits, so a leaf at this depth holds every point
+     * that falls in its cell. Sets the finest cell size the tree can resolve — {@code (maxXZ - minXZ)
+     * / 2^maxTreeDepth} — so a tree over a wide extent needs a larger cap to keep leaves sparse.
+     */
+    private final int maxTreeDepth;
 
     /**
      * A point used only to {@linkplain Persistable#deserialize(byte[]) deserialize} stored point
@@ -71,8 +80,18 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
     /** Guards {@link #tree}: many concurrent readers (queries) or one exclusive writer (mutations). */
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
+    /** Builds a tree capped at {@link #DEFAULT_MAX_TREE_DEPTH}. */
     public QuadTree(double[] minXZ, double[] maxXZ) {
-        this(minXZ, maxXZ, (T) null);
+        this(minXZ, maxXZ, (T) null, DEFAULT_MAX_TREE_DEPTH);
+    }
+
+    /**
+     * Builds a tree capped at {@code maxTreeDepth} levels of subdivision. Size the cap against the
+     * extent: leaf cells are {@code (maxXZ - minXZ) / 2^maxTreeDepth} wide, and points sharing a leaf
+     * are scanned linearly.
+     */
+    public QuadTree(double[] minXZ, double[] maxXZ, int maxTreeDepth) {
+        this(minXZ, maxXZ, (T) null, maxTreeDepth);
     }
 
     /**
@@ -82,16 +101,28 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
      * tiles.
      */
     public QuadTree(double[] minXZ, double[] maxXZ, T pointPrototype) {
+        this(minXZ, maxXZ, pointPrototype, DEFAULT_MAX_TREE_DEPTH);
+    }
+
+    /** {@link #QuadTree(double[], double[], SpatialIndexPoint)} with an explicit depth cap. */
+    public QuadTree(double[] minXZ, double[] maxXZ, T pointPrototype, int maxTreeDepth) {
+        if (maxTreeDepth < 0) throw new IllegalArgumentException("maxTreeDepth must be >= 0: " + maxTreeDepth);
         this.minXZ = minXZ;
         this.maxXZ = maxXZ;
         this.pointPrototype = pointPrototype;
+        this.maxTreeDepth = maxTreeDepth;
         tree.add(new Node<>());
         tree.add(new Node<>(minXZ, maxXZ, 0));
     }
 
     /** Builds a tree and bulk-inserts {@code points} (the fast path for a fully-known point set). */
     public QuadTree(double[] minXZ, double[] maxXZ, List<T> points, T pointPrototype) {
-        this(minXZ, maxXZ, pointPrototype);
+        this(minXZ, maxXZ, points, pointPrototype, DEFAULT_MAX_TREE_DEPTH);
+    }
+
+    /** {@link #QuadTree(double[], double[], List, SpatialIndexPoint)} with an explicit depth cap. */
+    public QuadTree(double[] minXZ, double[] maxXZ, List<T> points, T pointPrototype, int maxTreeDepth) {
+        this(minXZ, maxXZ, pointPrototype, maxTreeDepth);
         for (T pt : points) {
             if (pt.size() != 2) throw new IllegalStateException();
             update(pt, 1);
@@ -227,7 +258,7 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
         final double[] min = {buf.getDouble(), buf.getDouble()};
         final double[] max = {buf.getDouble(), buf.getDouble()};
         final int count = buf.getInt();
-        final QuadTree<T> result = new QuadTree<>(min, max, pointPrototype);
+        final QuadTree<T> result = new QuadTree<>(min, max, pointPrototype, maxTreeDepth);
         for (int i = 0; i < count; i++) {
             final int len = buf.getInt();
             final byte[] chunk = new byte[len];
@@ -249,7 +280,7 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
         if (cur.points.size() == 1) {
             final T p = cur.points.stream().toList().getFirst();
             final int section = findSection(p, middle);
-            if (cur.depth < MAX_TREE_DEPTH) {
+            if (cur.depth < maxTreeDepth) {
                 if (cur.child[section] == 0)
                     cur.child[section] = createNode(
                             getLowerBound(cur.p0, middle, section),
@@ -260,7 +291,7 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
         }
         final int section = findSection(pt, middle);
         cur.points.add(pt);
-        if (cur.depth < MAX_TREE_DEPTH) {
+        if (cur.depth < maxTreeDepth) {
             if (cur.child[section] == 0)
                 cur.child[section] = createNode(
                         getLowerBound(cur.p0, middle, section), getUpperBound(middle, cur.p1, section), cur.depth + 1);
@@ -284,16 +315,41 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
         final Node<T> cur = tree.get(id);
         if (shape.notIntersect(cur.p0, cur.p1)) return null;
         if (shape.contains(cur.p0, cur.p1)) return new ArrayList<>(cur.points);
-        if (cur.points.size() == 1) {
-            final var ptList = new ArrayList<>(cur.points);
-            var pt = ptList.getFirst();
-            return shape.contains(pt) ? ptList : null;
+        // terminal node: one point, or a depth-capped node that never split
+        if (cur.points.size() == 1 || cur.depth >= maxTreeDepth) {
+            ArrayList<T> hits = null;
+            for (T pt : cur.points) {
+                if (!shape.contains(pt)) continue;
+                if (hits == null) hits = new ArrayList<>();
+                hits.add(pt);
+            }
+            return hits;
         }
         ArrayList<T> mergedPoints = null;
         for (int section : cur.child) {
             mergedPoints = merge(mergedPoints, query(shape, section));
         }
         return mergedPoints;
+    }
+
+    /** Existence-only twin of {@link #query}: stops at the first point inside {@code shape}. */
+    private <S extends SpatialIndexShape> boolean anyPoint(final S shape, final int id) {
+        if (id == 0) return false;
+        final Node<T> cur = tree.get(id);
+        if (cur.points.isEmpty()) return false;
+        if (shape.notIntersect(cur.p0, cur.p1)) return false;
+        if (shape.contains(cur.p0, cur.p1)) return true;
+        // terminal node: one point, or a depth-capped node that never split
+        if (cur.points.size() == 1 || cur.depth >= maxTreeDepth) {
+            for (T pt : cur.points) {
+                if (shape.contains(pt)) return true;
+            }
+            return false;
+        }
+        for (int section : cur.child) {
+            if (anyPoint(shape, section)) return true;
+        }
+        return false;
     }
 
     public void insertPoint(final T pt) {
@@ -344,6 +400,21 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
             List<T> resp = query(new SpatialIndexShape.Circle(pt, r), 1);
             if (resp == null) return new ArrayList<>();
             return resp;
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    /**
+     * True when at least one indexed point lies within {@code radius} of {@code center}. Same walk as
+     * {@link #getPointsInCircle}, but it short-circuits on the first hit and never materializes a
+     * result list.
+     */
+    public boolean containsPointInCircle(final double[] center, final double radius) {
+        if (center.length != 2) throw new IllegalStateException();
+        lock.readLock().lock();
+        try {
+            return anyPoint(new SpatialIndexShape.Circle(center, radius), 1);
         } finally {
             lock.readLock().unlock();
         }

@@ -62,25 +62,6 @@ public record FractalTerrainConfig() {
     public static final boolean TEST_HEIGHT_MAP = DebugConfig.TEST_HEIGHT_MAP;
 
     // ──────────────────────────────────────────────────────────────────────────
-    // Hydrology — river width & carve-profile tuning — see HydrologyTuning
-    // ──────────────────────────────────────────────────────────────────────────
-
-    public static final double MIN_WIDTH = HydrologyTuning.MIN_WIDTH;
-    public static final double WIDTH_FLOW_SCALE = HydrologyTuning.WIDTH_FLOW_SCALE;
-    public static final double MAX_WIDTH = HydrologyTuning.MAX_WIDTH;
-    public static final double MAX_LOCAL_WIDTH = HydrologyTuning.MAX_LOCAL_WIDTH;
-    public static final double FLOODPLAIN_BASE = HydrologyTuning.FLOODPLAIN_BASE;
-    public static final double FLOODPLAIN_WIDTH_FACTOR = HydrologyTuning.FLOODPLAIN_WIDTH_FACTOR;
-    public static final double INFLUENCE_BLEND_MULTIPLIER = HydrologyTuning.INFLUENCE_BLEND_MULTIPLIER;
-    public static final double MAX_INFLUENCE_RADIUS = HydrologyTuning.MAX_INFLUENCE_RADIUS;
-
-
-    /** @see HydrologyTuning#maxNativeWidth() */
-    public static double maxNativeWidth() {
-        return HydrologyTuning.maxNativeWidth();
-    }
-
-    // ──────────────────────────────────────────────────────────────────────────
     // Property-file config — see ModConfig
     // ──────────────────────────────────────────────────────────────────────────
 
