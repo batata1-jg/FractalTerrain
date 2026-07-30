@@ -1,9 +1,5 @@
 package me.batata_1.fractal_terrain.config;
 
-import me.batata_1.fractal_terrain.FractalTerrainConfig;
-import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
-import me.batata_1.fractal_terrain.hydrology.rosgen.RosgenProfile;
-
 /**
  * Hydrology tuning: the river width/carve-profile law constants and the spline-resampling guards used
  * while tracing river geometry. Home for the width-from-flow law and the floodplain/influence-radius
@@ -152,10 +148,8 @@ public final class HydrologyTuning {
     public static final double MARGIN_INFLUENCE_FACTOR = 5.0;
 
     public static double maxInfluence(double width) {
-        return Math.min(
-                HydrologyTuning.MAX_INFLUENCE_RADIUS, width * (MAX_INFLUENCE_RADIUS/MAX_WIDTH));
+        return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, width * (MAX_INFLUENCE_RADIUS / MAX_WIDTH));
     }
-
 
     public static double widthFromFlow(double rawFlow) {
         final double lawWidth = WIDTH_FLOW_SCALE * Math.sqrt(rawFlow);
@@ -167,7 +161,7 @@ public final class HydrologyTuning {
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    // Rosgen Level-I classification (see plans/rosgen-classification-plan.md)
+    // Rosgen Level-I classification (see hydrology/rosgen/ — ReachRosgenClassifier, RosgenKey, RosgenProfile)
     //
     // Slope bands: Rosgen's published values are real-world channel slopes. A
     // Minecraft-scale world is vertically exaggerated relative to its horizontal run
@@ -256,7 +250,7 @@ public final class HydrologyTuning {
      */
     public static final double REACH_MAX_PX = 64.0;
 
-    //bias towards lower ER, mostly affects streams with small widths.
+    // bias towards lower ER, mostly affects streams with small widths.
     public static final double ENTRENTMENT_RATIO_BIAS = 1;
 
     /**
@@ -289,6 +283,4 @@ public final class HydrologyTuning {
      * via {@code localRiverTest}.
      */
     public static final double ER_MIN_STEPS_PER_SIDE = 1.0;
-
-
 }

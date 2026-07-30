@@ -2,7 +2,6 @@ package me.batata_1.fractal_terrain.math.spline;
 
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.MAX_SPLINE_LENGTH;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
-import static me.batata_1.fractal_terrain.debug.Debug.spline;
 import static me.batata_1.fractal_terrain.math.VectorOps.distance;
 
 import java.util.ArrayList;
@@ -23,7 +22,7 @@ public record QuinticHermiteSpline(
         for (int i = 1; i < pt.size() - 1; i++) {
             dxy.add(VectorOps.scale(VectorOps.sub(pt.get(i + 1), pt.get(i - 1)), 0.5));
         }
-        if(dxy.size()>=2){
+        if (dxy.size() >= 2) {
             dxy.set(0, dxy.get(1));
         }
         dxy.add(dxy.getLast());
@@ -100,7 +99,8 @@ public record QuinticHermiteSpline(
         newT.add(0.0);
         for (int counter = 0; counter < MAX_SPLINE_LENGTH; counter++) {
             newT.add(nextInSpline(newT.getLast(), samplingDist));
-            if (newT.getLast() >= getMaxT() || VectorOps.distanceSquared(points().getLast(),sample(newT.getLast())) <= 1e-6 ) {
+            if (newT.getLast() >= getMaxT()
+                    || VectorOps.distanceSquared(points().getLast(), sample(newT.getLast())) <= 1e-6) {
                 newT.add(getMaxT());
                 return new Resampled(
                         new QuinticHermiteSpline(
@@ -169,9 +169,9 @@ public record QuinticHermiteSpline(
 
     public double[] tangent(double t) {
         final double dx = 0.5;
-        final double[] p0 = sample(t-dx);
-        final double[] p1 = sample(t+dx);
-        return VectorOps.normalize(VectorOps.sub(p1,p0));
+        final double[] p0 = sample(t - dx);
+        final double[] p1 = sample(t + dx);
+        return VectorOps.normalize(VectorOps.sub(p1, p0));
     }
 
     public double[] firstDerivative(double t) {

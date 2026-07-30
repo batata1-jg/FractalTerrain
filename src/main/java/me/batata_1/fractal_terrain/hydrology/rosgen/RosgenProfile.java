@@ -6,7 +6,6 @@ import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver;
-import me.batata_1.fractal_terrain.noise.NoiseSampler;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,21 +48,20 @@ public enum RosgenProfile {
     A {
         @Override
         public double floodPlainLength(double width) {
-            return 1.2*(width/2);
+            return 1.2 * (width / 2);
         }
 
         @Override
         public double riverInfluence(double width) {
-            return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, width / HydrologyTuning.MIN_WIDTH );
+            return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, width / HydrologyTuning.MIN_WIDTH);
         }
 
         @Override
         protected double bedDelta(long seed, double signedPerpDist, double depth) {
-            return -depth*(1-Math.abs(signedPerpDist));
+            return -depth * (1 - Math.abs(signedPerpDist));
         }
-
     },
-    Aa{
+    Aa {
 
         @Override
         public double riverInfluence(double width) {
@@ -77,19 +75,18 @@ public enum RosgenProfile {
 
         @Override
         protected double bedDelta(long seed, double signedPerpDist, double depth) {
-            return -depth*(1-Math.abs(signedPerpDist));
+            return -depth * (1 - Math.abs(signedPerpDist));
         }
 
         @Override
         protected double floodPlainDelta(long seed, double signedPerpDist, double width, double floodPlainLength) {
-            return 2*(1-Math.abs(signedPerpDist));
+            return 2 * (1 - Math.abs(signedPerpDist));
         }
-
     },
-    B{
+    B {
         @Override
         public double floodPlainLength(double width) {
-            return 1.2*(width/2);
+            return 1.2 * (width / 2);
         }
 
         @Override
@@ -99,117 +96,112 @@ public enum RosgenProfile {
 
         @Override
         protected double bedDelta(long seed, double signedPerpDist, double depth) {
-            return Math.min(-1,0.25*super.bedDelta(seed, signedPerpDist, depth));
+            return Math.min(-1, 0.25 * super.bedDelta(seed, signedPerpDist, depth));
         }
 
         @Override
         protected double floodPlainDelta(long seed, double signedPerpDist, double width, double floodPlainLength) {
-            return 1-Math.abs(signedPerpDist);
+            return 1 - Math.abs(signedPerpDist);
         }
-
     },
-    C{
+    C {
 
         private static final double maxHalfWidth = HydrologyTuning.MAX_WIDTH / 2;
 
         @Override
         public double floodPlainLength(double width) {
-            return 2*maxHalfWidth*Math.sqrt(width/HydrologyTuning.MAX_WIDTH);
+            return 2 * maxHalfWidth * Math.sqrt(width / HydrologyTuning.MAX_WIDTH);
         }
 
         @Override
         public double riverInfluence(double width) {
-            return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, 4*maxHalfWidth*Math.pow(floodPlainLength(width)/(2*maxHalfWidth),0.75) );
+            return Math.min(
+                    HydrologyTuning.MAX_INFLUENCE_RADIUS,
+                    4 * maxHalfWidth * Math.pow(floodPlainLength(width) / (2 * maxHalfWidth), 0.75));
         }
 
         @Override
         protected double bedDelta(long seed, double signedPerpDist, double depth) {
-            return 0.6 * depth * smoothMax(Math.exp(-7*(signedPerpDist+1))-1,(signedPerpDist-1)*0.6,0.001);
+            return 0.6 * depth * smoothMax(Math.exp(-7 * (signedPerpDist + 1)) - 1, (signedPerpDist - 1) * 0.6, 0.001);
         }
-
     },
     D {
 
-        private static final OctaveSimplexNoiseSampler noiseSampler = new OctaveSimplexNoiseSampler(
-                0,
-                1,
-                1,
-                1,
-                1,
-                1,
-                null,
-                null
-        );
+        private static final OctaveSimplexNoiseSampler noiseSampler =
+                new OctaveSimplexNoiseSampler(0, 1, 1, 1, 1, 1, null, null);
 
         private static final double maxHalfWidth = HydrologyTuning.MAX_WIDTH / 2;
 
         @Override
         public double floodPlainLength(double width) {
-            return 1.5*maxHalfWidth*Math.sqrt(width/HydrologyTuning.MAX_WIDTH);
+            return 1.5 * maxHalfWidth * Math.sqrt(width / HydrologyTuning.MAX_WIDTH);
         }
 
         @Override
         public double riverInfluence(double width) {
-            return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, 3*maxHalfWidth*Math.pow(floodPlainLength(width)/(1.5*maxHalfWidth),0.75) );
+            return Math.min(
+                    HydrologyTuning.MAX_INFLUENCE_RADIUS,
+                    3 * maxHalfWidth * Math.pow(floodPlainLength(width) / (1.5 * maxHalfWidth), 0.75));
         }
 
         @Override
         protected double bedDelta(long seed, double signedPerpDist, double depth) {
-            return -3*Math.abs(noiseSampler.sample(1.0/seed, signedPerpDist));
+            return -3 * Math.abs(noiseSampler.sample(1.0 / seed, signedPerpDist));
         }
     },
     DA,
-    E{
+    E {
         private static final double maxHalfWidth = HydrologyTuning.MAX_WIDTH / 2;
 
         @Override
         public double floodPlainLength(double width) {
-            return maxHalfWidth*Math.pow(width/HydrologyTuning.MAX_WIDTH,0.3);
+            return maxHalfWidth * Math.pow(width / HydrologyTuning.MAX_WIDTH, 0.3);
         }
 
         @Override
         public double riverInfluence(double width) {
-            return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, 1.3*floodPlainLength(width) );
+            return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, 1.3 * floodPlainLength(width));
         }
 
         @Override
         protected double bedDelta(long seed, double signedPerpDist, double depth) {
-            return Math.min(-1,0.5 * super.bedDelta(seed, signedPerpDist, depth));
+            return Math.min(-1, 0.5 * super.bedDelta(seed, signedPerpDist, depth));
         }
 
         @Override
         protected double floodPlainDelta(long seed, double signedPerpDist, double width, double floodPlainLength) {
-            return 3*(1-Math.abs(signedPerpDist));
+            return 3 * (1 - Math.abs(signedPerpDist));
         }
 
         @Override
         protected double valleyShapeCarve(double dist) {
-            return Math.pow(dist,2.5);
+            return Math.pow(dist, 2.5);
         }
-
     },
-    F{
+    F {
         private static final double maxHalfWidth = HydrologyTuning.MAX_WIDTH / 2;
 
         @Override
         public double floodPlainLength(double width) {
-            return (width/2)*1.275;
+            return (width / 2) * 1.275;
         }
 
         @Override
         public double riverInfluence(double width) {
-            return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, 1.5*maxHalfWidth*Math.pow(floodPlainLength(width)/(maxHalfWidth),0.75) );
+            return Math.min(
+                    HydrologyTuning.MAX_INFLUENCE_RADIUS,
+                    1.5 * maxHalfWidth * Math.pow(floodPlainLength(width) / (maxHalfWidth), 0.75));
         }
 
         @Override
         protected double bedDelta(long seed, double signedPerpDist, double depth) {
-            return -Math.min(1, 0.5 * depth * Math.pow(1 - signedPerpDist * signedPerpDist,0.16));
+            return -Math.min(1, 0.5 * depth * Math.pow(1 - signedPerpDist * signedPerpDist, 0.16));
         }
     },
-    G{
+    G {
         @Override
         public double floodPlainLength(double width) {
-            return 1.2*(width/2);
+            return 1.2 * (width / 2);
         }
 
         @Override
@@ -221,12 +213,12 @@ public enum RosgenProfile {
     // ---- Horizontal extents (type-dependent; shared placeholder law, override per constant) ----
     private static final Logger LOG = LoggerFactory.getLogger(RosgenProfile.class);
 
-    public static double smoothMax(double a , double b , double lambda) {
-        return (a + b + Math.sqrt((a-b)*(a-b) + lambda)) / 2;
+    public static double smoothMax(double a, double b, double lambda) {
+        return (a + b + Math.sqrt((a - b) * (a - b) + lambda)) / 2;
     }
 
-    public static double smoothMin(double a , double b , double lambda) {
-        return (a + b - Math.sqrt((a-b)*(a-b) + lambda)) / 2;
+    public static double smoothMin(double a, double b, double lambda) {
+        return (a + b - Math.sqrt((a - b) * (a - b) + lambda)) / 2;
     }
 
     /**
@@ -235,7 +227,7 @@ public enum RosgenProfile {
      * constant's body to make a type's floodplain wider/narrower.
      */
     public double floodPlainLength(double width) {
-        return width/2;
+        return width / 2;
     }
 
     /**
@@ -247,8 +239,7 @@ public enum RosgenProfile {
      * {@link #floodPlainLength} so a type that overrides only its floodplain gets a consistent influence.
      */
     public double riverInfluence(double width) {
-        return Math.min(
-                HydrologyTuning.MAX_INFLUENCE_RADIUS, width * HydrologyTuning.INFLUENCE_BLEND_MULTIPLIER);
+        return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, width * HydrologyTuning.INFLUENCE_BLEND_MULTIPLIER);
     }
 
     /**
@@ -261,19 +252,19 @@ public enum RosgenProfile {
     public double riverInfluenceElevation(double radialDist, double width, double curElev, double unitElev) {
         final double riverInfluence = riverInfluence(width);
         final double floodPlainLength = floodPlainLength(width);
-        if( radialDist < floodPlainLength) return unitElev;
-        if( radialDist < riverInfluence) {
+        if (radialDist < floodPlainLength) return unitElev;
+        if (radialDist < riverInfluence) {
             final double t = (radialDist - floodPlainLength) / (riverInfluence - floodPlainLength);
             final double lambda = (1 - t) * 0.5;
             final double influenceContribution = (1 - t) * unitElev + t * curElev;
-            final double valleyContribution = smoothMin(curElev, unitElev + valleyShapeCarve(radialDist-floodPlainLength), lambda);
-            return smoothMax(valleyContribution,influenceContribution,lambda);
+            final double valleyContribution =
+                    smoothMin(curElev, unitElev + valleyShapeCarve(radialDist - floodPlainLength), lambda);
+            return smoothMax(valleyContribution, influenceContribution, lambda);
         }
         return curElev;
     }
 
-
-    //always starts as 0 and gradually carve the valley shape.
+    // always starts as 0 and gradually carve the valley shape.
     protected double valleyShapeCarve(double v) {
         return v;
     }
@@ -291,8 +282,11 @@ public enum RosgenProfile {
         final double marginLen = width / 2;
         if (Math.abs(signedPerpDist) <= marginLen) {
             // LOG.info("hallooo");
-            //return -10;
-            return bedDelta(randSeed,signedPerpDist / marginLen, FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depthForWidth(width));
+            // return -10;
+            return bedDelta(
+                    randSeed,
+                    signedPerpDist / marginLen,
+                    FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depthForWidth(width));
         }
         return floodPlainDelta(
                 randSeed,
@@ -311,7 +305,7 @@ public enum RosgenProfile {
 
     // should be between the range -1 and 1
     protected double bedDelta(long seed, double signedPerpDist, double depth) {
-        return -Math.min(1,depth * Math.sqrt(1 - signedPerpDist * signedPerpDist));
+        return -Math.min(1, depth * Math.sqrt(1 - signedPerpDist * signedPerpDist));
     }
 
     /** The profile for a unit's Rosgen type. */

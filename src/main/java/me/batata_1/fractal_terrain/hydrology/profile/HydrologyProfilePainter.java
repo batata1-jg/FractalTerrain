@@ -1,6 +1,5 @@
 package me.batata_1.fractal_terrain.hydrology.profile;
 
-import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
@@ -28,10 +27,6 @@ public final class HydrologyProfilePainter {
      * bed-residual delta cut below the tile-carved shell, not below the original decoded terrain — and
      * where that delta is negative fills to {@code reliefHeight − diff}. The chunk filler turns the air
      * between {@code reliefHeight} and this top into water.
-     *
-     * <p><b>Yields no water today.</b> {@code PopulateNoiseStep} computes {@code RIVER_DIFFERENCE} from a
-     * bed-residual stage that is currently a no-op, so the heightmap is uniformly {@code 0} and this
-     * method always returns {@code reliefHeight}.
      */
     public int riverWaterTop(FractalTerrainHeightmap heightmaps, int dx, int dz, int reliefHeight) {
         final float diff = heightmaps.get(Types.RIVER_DIFFERENCE, dx, dz);
@@ -45,7 +40,7 @@ public final class HydrologyProfilePainter {
      * Candidates come from the R-tree stabbing query, which returns the units whose <em>influence</em>
      * circle contains the point — a sound superset of the channel discs, because
      * {@code riverInfluence(w) > w/2} for every representable width — and the {@code width/2} test
-     * filters them. The tile-visit radius is {@link FractalTerrainConfig#maxNativeWidth()}{@code /2} —
+     * filters them. The tile-visit radius is {@link HydrologyTuning#maxNativeWidth()}{@code /2} —
      * now including the native-rescale factor, so it correctly covers the widest global trunk's half-width
      * disc — meaning any unit whose half-width disc could contain the point must lie inside that radius.
      * Correct across tile borders ({@code anyInfluencingUnit} visits every overlapping tile) and

@@ -1,11 +1,10 @@
 package me.batata_1.fractal_terrain.hydrology.profile;
 
+import java.util.Arrays;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.rosgen.RosgenProfile;
 import me.batata_1.fractal_terrain.math.VectorOps;
-
-import java.util.Arrays;
 
 /**
  * Per-unit elevation primitive shared by the two sides of the hydrology profile —
@@ -16,8 +15,6 @@ import java.util.Arrays;
  * contributions, taking the minimum (deepest) across influencing units.
  */
 public final class HydrologyProfile {
-
-    private HydrologyProfile() {}
 
     /**
      * The bed elevation at {@code pt} contributed by a single influencing {@code unit}: the unit's
@@ -37,7 +34,8 @@ public final class HydrologyProfile {
      * along the channel, leaving the stretch between two units to their overlapping ellipses — which is
      * why the {@code dx <= width/2} unit spacing noted on {@link RosgenProfile} matters here too.
      */
-    public static double computeForUnit(double[] pt, double floodPlainLength, double width,HydrologicalUnit unit, double elevAtPixel) {
+    public static double computeForUnit(
+            double[] pt, double floodPlainLength, double width, HydrologicalUnit unit, double elevAtPixel) {
         //  return elevAtPixel;
         final double[] normal = unit.normal();
         if (normal == null) return elevAtPixel;
@@ -58,14 +56,14 @@ public final class HydrologyProfile {
         SignedPerpDist = VectorOps.dot(normal, ptToUnit);
         alongDist = Math.abs(VectorOps.dot(normTangent, ptToUnit));
 
-        final double uninterpolatedDelta = profile.riverAreaDelta(Arrays.hashCode(unitCoord),SignedPerpDist, alongDist, width);
+        final double uninterpolatedDelta =
+                profile.riverAreaDelta(Arrays.hashCode(unitCoord), SignedPerpDist, alongDist, width);
 
         if (radiusSq - SignedPerpDist * SignedPerpDist < 1e-6) return elevAtPixel;
-        final double eccentricity = Math.sqrt(Math.abs(1 - (alongDist * alongDist) / (radiusSq - SignedPerpDist * SignedPerpDist)));
-        final double t = Math.clamp(0.5*(Math.tanh(8*(eccentricity-HydrologyTuning.MAX_ECCENTRICITY))+1),0,1);
-      //  final double t = Math.clamp(eccentricity / HydrologyTuning.MAX_ECCENTRICITY, 0, 1);
+        final double eccentricity =
+                Math.sqrt(Math.abs(1 - (alongDist * alongDist) / (radiusSq - SignedPerpDist * SignedPerpDist)));
+        final double t = Math.clamp(0.5 * (Math.tanh(8 * (eccentricity - HydrologyTuning.MAX_ECCENTRICITY)) + 1), 0, 1);
+        //  final double t = Math.clamp(eccentricity / HydrologyTuning.MAX_ECCENTRICITY, 0, 1);
         return elevAtPixel + t * uninterpolatedDelta;
     }
-
-
 }

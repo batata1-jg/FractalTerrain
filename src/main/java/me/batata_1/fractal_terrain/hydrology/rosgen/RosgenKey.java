@@ -95,13 +95,16 @@ public final class RosgenKey {
      */
     public static RosgenType applyDeadBand(ReachMetrics m, RosgenType raw, @Nullable RosgenType previous) {
         return raw;
-//        if (previous == null || raw == previous) return raw;
-//        final boolean onThreshold =
-//                nearThreshold(m.entrenchment(), HydrologyTuning.ER_ENTRENCHED, HydrologyTuning.ER_TOLERANCE)
-//                        || nearThreshold(m.entrenchment(), HydrologyTuning.ER_SLIGHT, HydrologyTuning.ER_TOLERANCE)
-//                        || nearThreshold(m.entrenchment(), HydrologyTuning.ER_ANASTOMOSE, HydrologyTuning.ER_TOLERANCE)
-//                        || nearThreshold(m.widthDepth(), HydrologyTuning.WD_NARROW, HydrologyTuning.WD_TOLERANCE);
-//        return onThreshold ? previous : raw;
+        //        if (previous == null || raw == previous) return raw;
+        //        final boolean onThreshold =
+        //                nearThreshold(m.entrenchment(), HydrologyTuning.ER_ENTRENCHED, HydrologyTuning.ER_TOLERANCE)
+        //                        || nearThreshold(m.entrenchment(), HydrologyTuning.ER_SLIGHT,
+        // HydrologyTuning.ER_TOLERANCE)
+        //                        || nearThreshold(m.entrenchment(), HydrologyTuning.ER_ANASTOMOSE,
+        // HydrologyTuning.ER_TOLERANCE)
+        //                        || nearThreshold(m.widthDepth(), HydrologyTuning.WD_NARROW,
+        // HydrologyTuning.WD_TOLERANCE);
+        //        return onThreshold ? previous : raw;
     }
 
     /** Whether {@code value} sits within {@code tolerance} of {@code threshold}. Infinities are never near. */

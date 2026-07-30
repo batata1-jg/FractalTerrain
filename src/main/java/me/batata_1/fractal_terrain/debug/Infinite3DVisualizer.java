@@ -220,7 +220,7 @@ public class Infinite3DVisualizer {
         final HydrologicalUnit[] units =
                 FractalTerrainInstance.getLocalRiverProvider().queryInfluence(pt);
         // LOG.info("]");
-        if(xx==-4262&&zz==-4662) {
+        if (xx == -4262 && zz == -4662) {
             LOG.info("oi");
         }
         BlockState deepest = DEFAULT;
@@ -230,7 +230,8 @@ public class Infinite3DVisualizer {
             final double radialDist = Math.hypot(du, dv);
             if (radialDist >= unit.getRadius()) continue; // outside this unit's influence circle
 
-            if(unit.rosgenType()==null||unit.type()!=HydrologicalUnit.HydrologicalFeature.RIVER) return NOT_RIVER;
+            if (unit.rosgenType() == null || unit.type() != HydrologicalUnit.HydrologicalFeature.RIVER)
+                return NOT_RIVER;
 
             final HydrologicalUnit.RosgenType type = unit.rosgenType();
 

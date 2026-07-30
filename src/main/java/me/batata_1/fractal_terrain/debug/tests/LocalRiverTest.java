@@ -17,7 +17,6 @@ import me.batata_1.fractal_terrain.hydrology.rosgen.ReachMetricsSampler;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.ml.models.ModelAssetManager;
-import org.apache.commons.lang3.NotImplementedException;
 import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -97,7 +96,7 @@ public class LocalRiverTest {
                 stages.localChannels.size());
         checkMonotonicElevations(stages.network, tx, tz);
         ReachMetricsSampler sampler = new ReachMetricsSampler(stages.rawElevation, GRID);
-        dumpSlopeHistogram(stages.network,sampler);
+        dumpSlopeHistogram(stages.network, sampler);
         dumpUnitTree(stages, tx, tz, prefix);
     }
 
@@ -112,8 +111,8 @@ public class LocalRiverTest {
      * {@code Channel.keepOnly} slices the spline without slicing {@code bedElevations}, so a stale array
      * would index out of bounds.
      */
-    private static void dumpSlopeHistogram(RiverNetwork network,ReachMetricsSampler sampler) {
-       // throw new NotImplementedException();
+    private static void dumpSlopeHistogram(RiverNetwork network, ReachMetricsSampler sampler) {
+        // throw new NotImplementedException();
         if (network == null) return;
         final List<Double> slopes = new ArrayList<>();
         for (Channel ch : network.getChannels()) {

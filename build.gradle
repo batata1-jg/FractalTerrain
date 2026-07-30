@@ -19,7 +19,6 @@ import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 import java.security.MessageDigest
 
-def useCpu = project.hasProperty('useCpu') && project.property('useCpu').toString().toLowerCase() == 'true'
 def withSourcesJar = project.hasProperty('withSourcesJar') && project.property('withSourcesJar').toString().toLowerCase() == 'true'
 def modelRepositorySlug = 'xandergos/terrain-diffusion-30m-onnx'
 def modelRepositoryRevision = 'ad2df557eca5645f588766101cf3bc3682455c3e'

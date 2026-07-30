@@ -30,8 +30,25 @@ public final class ModConfig {
     private static final String RESOURCE_PATH = "/" + FILE_NAME;
     private static final Properties PROPERTIES = new Properties();
     private static final String DEFAULT_INFERENCE_DEVICE = "gpu";
+
+    /**
+     * Last-resort fallback used only if the bundled {@code terrain-diffusion-mc.properties} resource
+     * fails to load entirely. The operative default normally comes from that resource's {@code
+     * inference.offload_models} value. Note the resource-load-failure branch in {@link
+     * #loadDefaults()} does not set an explicit {@code inference.offload_models} property, so this
+     * constant IS reached in that branch (unlike {@link #DEFAULT_VALIDATE_MODEL}).
+     */
     private static final boolean DEFAULT_OFFLOAD_MODELS = false;
+
+    /**
+     * Last-resort fallback used only if the bundled {@code terrain-diffusion-mc.properties} resource
+     * fails to load entirely. The operative default normally comes from that resource's {@code
+     * validate_model} value. Note the resource-load-failure branch in {@link #loadDefaults()} sets an
+     * explicit {@code validate_model} property equal to this constant, so this value is consulted
+     * directly in that branch rather than via {@link #readBoolean}'s default parameter.
+     */
     private static final boolean DEFAULT_VALIDATE_MODEL = false;
+
     private static final int DEFAULT_EXPLORER_PORT = 19801;
 
     static {

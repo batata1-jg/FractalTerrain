@@ -5,7 +5,6 @@ import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.config.ModConfig;
 import me.batata_1.fractal_terrain.config.TensorLayout;
 import me.batata_1.fractal_terrain.debug.Infinite3DVisualizer;
-import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
 
 /**
  * Thin delegating facade over the {@code config} package: re-exports {@link TensorLayout}, {@link

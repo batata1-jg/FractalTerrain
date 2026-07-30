@@ -3,11 +3,13 @@
 System overview for `FractalTerrain` post the 2026-07 code-hygiene refactor. Package root:
 `src/main/java/me/batata_1/fractal_terrain/`.
 
-> **The `feature/hydrology` branch is mid-rework and several stages are switched off.** Terrain
-> generation does not currently produce relief: `PopulateNoiseStep.updateToFinalElev` overwrites every
-> column's elevation with a flat `max(minY,0) + seaLevel - 1`, the per-pixel river bed carve is a no-op,
-> and the surface/biome-decoration steps are disabled by debug flags. See "Current debug state" below
-> before assuming any generation behaviour described here is observable in-game.
+> **The `feature/hydrology` branch is mid-rework and some stages are switched off.** The per-pixel
+> hydrology carve stack is active: `PopulateNoiseStep.updateToFinalElev` reads each column's real
+> per-column relief and refines it through `HydrologyProfileCarver.carvePrefetched` before writing
+> `ELEVATION`, so `Types.RIVER_DIFFERENCE` is not uniformly `0`. Biome decoration is still
+> unconditionally disabled by a debug flag. See "Current debug state" below for the exact per-flag state
+> (including the surface step, which currently runs) before assuming any generation behaviour described
+> here is observable in-game.
 
 ## Overview
 
@@ -94,27 +96,25 @@ its own 64×64-coarse-px tiles directly (coarse-px addressed, not the 512-native
 Coordinate frames).
 
 **Hydrology carve pipeline.** `RosgenProfile` defines a feature's *reference* elevation as the bank.
-Two carve stages exist, but only the first is live:
+Two carve stages exist and both are live:
 
-1. **Tile-level shell carve** (`HydrologyProfileCarver.carveRiverShells`, static) — the live stage. For
-   each pixel of the padded tile buffer it stabs an R-tree built over the units it was handed, keeps the
-   candidates whose influence circle actually contains the pixel, takes the **single nearest** one, and
-   overwrites the pixel with `RosgenProfile.riverInfluenceElevation`: a lerp holding the unit's reference
-   elevation out to `floodPlainLength` and released linearly back to the buffer's current value at
-   `riverInfluence`. Only the nearest unit contributes — there is no min-composite and no pristine
-   ambient snapshot — so at a confluence the closest channel's profile wins outright. Pixels with a
-   negative ambient elevation (ocean) are skipped. The carve reads and writes the same buffer, so the two
-   passes per tile compound.
+1. **Tile-level shell carve** (`HydrologyProfileCarver.carveRiverShells`, static). For each pixel of the
+   padded tile buffer it stabs an R-tree built over the units it was handed, keeps the candidates whose
+   influence circle actually contains the pixel, takes the **single nearest** one, and overwrites the
+   pixel with `RosgenProfile.riverInfluenceElevation`: a lerp holding the unit's reference elevation out
+   to `floodPlainLength` and released linearly back to the buffer's current value at `riverInfluence`.
+   Only the nearest unit contributes — there is no min-composite and no pristine ambient snapshot — so at
+   a confluence the closest channel's profile wins outright. Pixels with a negative ambient elevation
+   (ocean) are skipped. The carve reads and writes the same buffer, so the two passes per tile compound.
 2. **Per-pixel bed residual** (`HydrologyProfileCarver.carve`/`carveAtPixel`/`carvePrefetched` →
-   `HydrologyProfile.computeForUnit`) — **currently inert**. `computeForUnit` returns its input unchanged
-   with the whole cross-section body commented out, and `PopulateNoiseStep` additionally has its
-   `carvePrefetched` call commented out, so nothing invokes it during chunk fill. Consequently
-   `Types.RIVER_DIFFERENCE` is uniformly `0` and `HydrologyProfilePainter` places no river water.
+   `HydrologyProfile.computeForUnit`), invoked from `PopulateNoiseStep` during chunk fill and written into
+   `Types.RIVER_DIFFERENCE`. `computeForUnit` fades `RosgenProfile.riverAreaDelta` (the per-type bed
+   trench, computed within the bed half-width from `ChannelGeometry.depthForWidth`) in over an elliptical
+   footprint around the contributing unit, at full strength from `HydrologyTuning.MAX_ECCENTRICITY`
+   outward. `HydrologyProfilePainter` reads the resulting `RIVER_DIFFERENCE` to place river water.
 
-There is no freeboard and no lens mask on the live path. `HydrologyTuning.FREEBOARD`,
-`HydrologyTuning.MAX_CARVE_DELTA`, `HydrologyTuning.MAX_LOCAL_WIDTH` and `HydrologyTuning.d()` are all
-retained but unread by live code; `RosgenProfile.riverAreaDelta` is reachable only from the commented-out
-body above.
+`HydrologyTuning.MAX_LOCAL_WIDTH` is retained but unread by live code, not even through the
+`FractalTerrainConfig` facade re-export.
 
 `LocalRiverProvider.buildTile` order — note that `assign` and the shell carve each run **twice**:
 
@@ -306,11 +306,9 @@ files — flipping them back means editing source.
 
 | What | Where | Effect |
 | ---- | ----- | ------ |
-| Elevation flat-lined | `PopulateNoiseStep.updateToFinalElev` | Every column's `ELEVATION` is overwritten with `max(minY,0) + seaLevel - 1`, discarding the relief value. No per-block relief reaches the world. |
-| Per-pixel bed carve off | `HydrologyProfile.computeForUnit` (body commented out) + `PopulateNoiseStep` (`carvePrefetched` call commented out) | `RIVER_DIFFERENCE` is uniformly `0`, so `HydrologyProfilePainter` places no river water. |
-| Surface step skipped | `DebugConfig.DISABLE_SURFACE_STEP = false \|\| !DISABLE_3D_VISUALIZER` | With `DISABLE_3D_VISUALIZER = false` this evaluates **true**, so `buildSurface()` is a no-op. |
+| Surface step runs | `DebugConfig.DISABLE_SURFACE_STEP = false \|\| !DISABLE_3D_VISUALIZER` | `DISABLE_3D_VISUALIZER = true`, so this evaluates to **false** — `buildSurface()` is NOT skipped; the surface step runs normally. |
 | Biome decoration skipped | `DebugConfig.DISABLE_BIOME_DECORATION = true \|\| !DISABLE_3D_VISUALIZER` | Unconditionally true; `applyBiomeDecoration()` is a no-op. |
-| Visualizer fill path active | `DISABLE_3D_VISUALIZER = false` | `fillFromNoise()` takes `debugDoFill()` rather than the production `doFill()`. |
+| Visualizer fill path inactive | `DebugConfig.DISABLE_3D_VISUALIZER = true` | `fillFromNoise()` takes the production `doFill()` branch, not the debug `debugDoFill()` path. |
 | River humidity dead | `BiomeProvider.riverHumidity` | Loop body commented out; the method has no call sites and returns an all-zero array. |
 
 ## Coordinate frames
@@ -358,23 +356,45 @@ files — flipping them back means editing source.
 
 ## Testing stance
 
-**Deterministic layers have a golden gate.** `src/test/java/me/batata_1/fractal_terrain/` (JUnit 5,
-`gradle test`, configured `useJUnitPlatform()` in `build.gradle`) holds:
+**Deterministic layers have a golden gate — but the suite does not currently compile.**
+`src/test/java/me/batata_1/fractal_terrain/` (JUnit 5, `gradle test`, configured `useJUnitPlatform()` in
+`build.gradle`) holds 10 test classes with 56 `@Test`/`@ParameterizedTest` methods total. As of this
+writing, `gradle test` fails at `:compileTestJava`:
 
-| Test | Covers | Status |
+```
+SpatialIndexCorrectnessGoldenTest.java:51: error: cannot find symbol
+  symbol:   method maxNativeWidth()
+  location: class FractalTerrainConfig
+```
+
+Commit `ea43e40` ("changed tracer") deleted the `FractalTerrainConfig.maxNativeWidth()` facade method and
+migrated `SpatialIndexBenchmark.java:118` to call `HydrologyTuning.maxNativeWidth()` directly, but did not
+migrate this test's call site. **No test in the suite currently runs.** The pass/fail numbers below
+predate that breakage and cannot be reproduced until the call site is fixed — treat them as a pre-breakage
+record, not current state.
+
+| Test | Covers | Status (pre-breakage record) |
 | ---- | ------ | ------ |
 | `hydrology/GlobalRiverGoldenTest.java` | `GlobalRiverProvider`'s per-tile pipeline via `computeTileForTest` | 1 of 2 failing — tile checksum does not match the captured golden |
 | `hydrology/LocalRiverGoldenTest.java` | `LocalRiverProvider`'s local-network trace via `traceLocalNetworkForTest` | **4 of 4 failing — `ArrayIndexOutOfBoundsException: Index 262144 out of bounds for length 262144`** |
-| `hydrology/meanders/MeandersGoldenTest.java` | `Meanders`/`RiverNetwork` collision semantics + a migration golden | 2 of 5 failing, 1 skipped |
+| `hydrology/meanders/MeandersGoldenTest.java` | `Meanders`/`RiverNetwork` collision semantics + a migration golden | 7 methods (6 active, 1 `@Disabled`) — 2 of 6 active failing |
 | `hydrology/meanders/RiverNetworkSeamGoldenTest.java` | The canonical↔atomic seam round trip (`viewAtomic`/`accumulateAndCorrectFlow`/`update`) | 4 passing |
 | `hydrology/SpatialIndexCorrectnessGoldenTest.java` | R-tree query correctness against brute force over a synthetic unit set | 1 of 2 failing — hit-set-size checksum mismatch |
 | `ml/pipeline/PipelineSessionReloadRaceTest.java` | MUST-1 — the reload-race regression (see above) | 1 passing |
+| `hydrology/ChannelGeometryTest.java` | Channel cross-section geometry laws (width/depth ratio, width-depth exponent) | 5 methods — added after last doc sync (Rosgen commits); no pre-breakage baseline recorded here |
+| `hydrology/rosgen/RosgenKeyTest.java` | `RosgenKey`'s Level-I decision key — table-driven exact input/output pairs, one case per type plus ordering cases | 17 methods — added after last doc sync; no pre-breakage baseline recorded here |
+| `hydrology/rosgen/ReachRosgenClassifierTest.java` | Reach segmentation + the downstream-first graph classification walk | 6 methods — added after last doc sync; no pre-breakage baseline recorded here |
+| `hydrology/rosgen/ReachMetricsSamplerTest.java` | `ReachMetricsSampler`'s raster sampling against hand-derived analytic answers | 8 methods — added after last doc sync; no pre-breakage baseline recorded here |
 
 Each headless golden test drives the exact production code path over a synthetic seeded fixture (no
-ONNX dependency), so a divergence in the deterministic hydrology math fails `gradle test` immediately.
+ONNX dependency), so a divergence in the deterministic hydrology math fails `gradle test` immediately —
+once the suite compiles again.
 
-**The suite is red on `feature/hydrology`: 20 tests, 8 failing, 1 skipped.** Re-establish this baseline
-before attributing a red suite to your own change. The failures are three distinct kinds:
+**The pre-breakage baseline was: 20 tests, 8 failing, 1 skipped.** That count predates both the compile
+break above and the four Rosgen-era classes now in the table (`ChannelGeometryTest`, `RosgenKeyTest`,
+`ReachRosgenClassifierTest`, `ReachMetricsSamplerTest`) — it is historical record only, not a live target.
+Do not attribute a currently red or currently non-compiling `gradle test` to your own change without
+checking against this record first. The historical failures were three distinct kinds:
 
 - **Four `LocalRiverGoldenTest` errors** — `262144` is exactly `512²`, so the local-network trace indexes
   one past the end of a `GRID×GRID` buffer. A genuine out-of-bounds in the traced path, not a stale

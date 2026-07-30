@@ -1,7 +1,6 @@
 # meanders/
 
-Per-tile, single-threaded meander relaxation network. A fresh `Meanders`/`RiverNetwork` is built per tile
-build — no state is shared across tiles or threads (see `ARCHITECTURE.md` Invariants).
+Meander relaxation network; see `README.md` for the per-tile/single-threaded contract.
 
 ## Files
 

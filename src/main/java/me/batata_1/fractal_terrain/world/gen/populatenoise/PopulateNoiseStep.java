@@ -26,14 +26,13 @@ public class PopulateNoiseStep {
     }
 
     /**
-     * Second-pass ELEVATION override, indexed {@code localX * 16 + localZ}. As currently written, this
-     * method discards the per-block relief entirely: after computing {@code riverDifference}, it
-     * overwrites every column of the {@link Types#ELEVATION} heightmap with the single constant
-     * {@code Math.max(bottom, 0) + seaLevel - 1}, regardless of {@code baseElev}.
-     *
-     * <p>The per-pixel hydrology refinement call ({@link HydrologyProfileCarver#carvePrefetched}) is
-     * commented out, so {@code refinedElev} is always just {@code baseElev} — no bed trench is cut —
-     * and the delta written to {@link Types#RIVER_DIFFERENCE} is always {@code 0}.
+     * Second-pass ELEVATION override, indexed {@code localX * 16 + localZ}. For every column, reads the
+     * tile-carved shell elevation ({@code baseElev}) out of the {@link Types#ELEVATION} heightmap, prefetches
+     * the hydrological units that could influence the chunk once, then refines each column with
+     * {@link HydrologyProfileCarver#carvePrefetched} to get {@code refinedElev} — the per-pixel bed-residual
+     * trench cut into the shell. The delta ({@code refinedElev - baseElev}) is written to
+     * {@link Types#RIVER_DIFFERENCE}, and {@link Types#ELEVATION} is overwritten with
+     * {@code Math.max(bottom, refinedElev) + seaLevel - 1}.
      */
     public void updateToFinalElev(ChunkPos chunkPos, FractalTerrainHeightmap heightmap) {
         final int seaLevel = settings.seaLevel();

@@ -1,7 +1,6 @@
 # mixin/
 
-SpongePowered mixins/accessors into vanilla worldgen. These are Fabric-instantiated and resolve providers
-through `FractalTerrainInstance` (no constructor the mod controls — see `ARCHITECTURE.md` caller migration).
+SpongePowered mixins/accessors into vanilla worldgen, Fabric-instantiated.
 
 ## Files
 

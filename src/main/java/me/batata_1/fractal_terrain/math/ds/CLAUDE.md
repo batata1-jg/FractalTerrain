@@ -1,7 +1,6 @@
 # ds/
 
-Spatial-index data structures. `QuadTree` is safe for concurrent reads under its own read/write lock;
-immutable variants back per-tile hydrology indexes (see `ARCHITECTURE.md` Invariants).
+Spatial-index data structures: a mutable `QuadTree` and immutable, build-once `ImmutableQuadTree`/`ImmutableRTree` variants.
 
 ## Files
 

@@ -1,7 +1,6 @@
 # infinitetensor/
 
-Tiled "infinite" tensor abstraction over `Storage`: windowed compute, slice accumulation, and the frozen
-cache-tensor contract (MUST-3, see `ARCHITECTURE.md`).
+Tiled "infinite" tensor abstraction over `Storage`: windowed compute and slice accumulation.
 
 ## Files
 

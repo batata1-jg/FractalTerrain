@@ -1,8 +1,6 @@
 # storage/
 
-Per-tile in-memory cache with optional disk persistence. Reads are lock-free; compute/load claims use
-atomic `putIfAbsent` single-flight; entries are frozen before publication (see `ARCHITECTURE.md` MUST-3
-and the `Storage`/`InfiniteTensor` lock-ordering invariant).
+Per-tile in-memory cache with optional disk persistence.
 
 ## Files
 

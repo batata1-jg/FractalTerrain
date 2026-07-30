@@ -440,12 +440,17 @@ rivers whose apparent shape disagrees with their assigned type. Pick one exponen
 
 ## 6. Integration points
 
+**Status: implemented.** This section was written as a forward-looking plan; the Rosgen classification
+work it describes has since been built out in `hydrology/rosgen/` (`ReachMetricsSampler`, `RosgenKey`,
+`ReachRosgenClassifier`). Rows below are kept for their design rationale, with citations updated to
+reflect what shipped.
+
 | Where | What changes |
 | ----- | ------------ |
-| `hydrology/HydrologicalUnit.java:71` `RosgenType` | Enum currently holds `A B C D` only. Level I needs `Aa+ A B C D DA E F G`. Note the serialisation writes `rosgenType.ordinal()` (`:169`) and reads it back by index (`:187`) — **appending is safe, reordering breaks every persisted tile**. |
+| `hydrology/HydrologicalUnit.java`, the `RosgenType` enum | Enum currently holds `A B C D` only. Level I needs `Aa+ A B C D DA E F G`. Note the serialisation writes `rosgenType.ordinal()` (the `serialize()` method) and reads it back by index (the `deserialize()` method) — **appending is safe, reordering breaks every persisted tile**. |
 | `hydrology/profile/RosgenProfile.java` | Mirror enum, currently only `A` overrides anything. New constants need `floodPlainLength` / `riverInfluence` / bed-profile overrides; the §3.1 prescription lives here. |
-| `hydrology/meanders/RiverNetwork.java:853-854` | `\ TODO: change this to the correct type` / `HydrologicalUnit.RosgenType.A`. This is the single point where every unit's type is stamped — the classifier's output goes here. |
-| `hydrology/LocalRiverProvider.java:214-217` | First `ChannelElevationAssigner.assign` then first `carveRiverShells`. **Classification must run between these two calls**: `assign` provides `bedElevations` (needed for slope and flood-prone stage), and the carve destroys the raw valley geometry ER depends on (§2.2). |
+| `hydrology/meanders/RiverNetwork.java` — **RESOLVED**. | The `\ TODO: change this to the correct type` placeholder and its hardcoded `HydrologicalUnit.RosgenType.A` fallback are gone, resolved in commit 83e972f ("feat(hydrology): stamp Rosgen type and endpoint kind on units in collectUnits"). The stamping point is now the `final RosgenType rosgen = ...` assignment inside `collectUnits`, fed by the classifier in `hydrology/rosgen/`. |
+| `hydrology/LocalRiverProvider.java`, in `buildTile` | First `ChannelElevationAssigner.assign` then first `HydrologyProfileCarver.carveRiverShells`. **Classification must run between these two calls**: `assign` provides `bedElevations` (needed for slope and flood-prone stage), and the carve destroys the raw valley geometry ER depends on (§2.2). |
 | `config/HydrologyTuning.java` | New home for `S_AA`, `S_A`, `ER_ENTRENCHED`, `ER_SLIGHT`, `ER_ANASTOMOSE`, `WD_NARROW`, `FLOW_TO_KM2`, `DEPTH_MAX_FACTOR`. |
 | `hydrology/meanders/Meanders` | If sinuosity becomes prescriptive per type (§4.2), the relaxation needs a per-type target. |
 

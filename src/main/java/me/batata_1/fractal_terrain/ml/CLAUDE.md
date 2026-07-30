@@ -1,7 +1,6 @@
 # ml/
 
-ONNX diffusion pipeline and model loading. The pipeline is a JVM-lifetime object (outlives any single
-world); model load happens in `init()`, not a static initializer (MUST-2, see `ARCHITECTURE.md`).
+ONNX diffusion pipeline and model loading; the pipeline is a JVM-lifetime object.
 
 ## Subdirectories
 

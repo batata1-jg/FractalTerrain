@@ -1,10 +1,9 @@
 package me.batata_1.fractal_terrain.hydrology.rosgen;
 
+import java.util.List;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.math.Interpolation;
-
-import java.util.List;
 
 /**
  * The raster side of Rosgen classification: measures along-channel slope and the entrenchment ratio for
@@ -53,7 +52,7 @@ public final class ReachMetricsSampler {
     }
 
     public double elevAt(double[] sample) {
-        return Interpolation.sampleBilinear(elev, sample[0],sample[1], gridSize);
+        return Interpolation.sampleBilinear(elev, sample[0], sample[1], gridSize);
     }
 
     /**
@@ -80,7 +79,9 @@ public final class ReachMetricsSampler {
         final double depth = HydrologyTuning.DEPTH_MAX_FACTOR * ChannelGeometry.depthForWidth(bankfullWidth);
         final double floodProneStage = bedElev + 2.0 * depth;
         final double maxFloodPlainWidth = HydrologyTuning.ER_WALK_WIDTHS * bankfullWidth;
-        final double step = Math.clamp(bankfullWidth * HydrologyTuning.ER_STEP_WIDTH_FRACTION, HydrologyTuning.ER_STEP_MIN,
+        final double step = Math.clamp(
+                bankfullWidth * HydrologyTuning.ER_STEP_WIDTH_FRACTION,
+                HydrologyTuning.ER_STEP_MIN,
                 maxFloodPlainWidth / HydrologyTuning.ER_MIN_STEPS_PER_SIDE);
 
         final double positive = halfWidth(point, normal, +1.0, floodProneStage, maxFloodPlainWidth, step);
@@ -97,7 +98,12 @@ public final class ReachMetricsSampler {
      * {@code maxFloodProneAreaHeight}, or {@code +inf} when the walk reaches {@code maxFloodPlainWidth} without doing so.
      */
     private double halfWidth(
-            double[] point, double[] normal, double side, double maxFloodProneAreaHeight, double maxFloodPlainWidth, double step) {
+            double[] point,
+            double[] normal,
+            double side,
+            double maxFloodProneAreaHeight,
+            double maxFloodPlainWidth,
+            double step) {
         for (double d = step; d <= maxFloodPlainWidth; d += step) {
             final double x = point[0] + side * d * normal[0];
             final double z = point[1] + side * d * normal[1];

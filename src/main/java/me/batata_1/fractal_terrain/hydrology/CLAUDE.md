@@ -1,9 +1,7 @@
 # hydrology/
 
-River-network tracing, carving, and per-tile hydrology providers. `LocalRiverProvider` orchestrates a
-dual-store cache (spatial index of hydrological units + carved-elevation tensor); the deterministic math
-is factored into the builder/tracer helpers. See repo-root `ARCHITECTURE.md` "Hydrology split" and
-"Coordinate frames".
+River-network tracing, carving, and per-tile hydrology providers; see `README.md` for the dual-store
+cache design and coordinate frames.
 
 ## Files
 

@@ -1,7 +1,6 @@
 # models/
 
-ONNX Runtime wrapper and model-asset management. Loading runs on a background thread started from
-`init()` (MUST-2), not a static initializer.
+ONNX Runtime wrapper and model-asset management.
 
 ## Files
 

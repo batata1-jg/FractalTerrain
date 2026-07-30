@@ -1,7 +1,6 @@
 # noise/
 
-Noise samplers. `FastNoiseLite` dispatches to per-type strategies (M-012); `PortableRng` reproduces the
-Python inference RNG bit-for-bit so JVM and Python noise streams match.
+Noise samplers: `FastNoiseLite` dispatcher over per-type strategies, plus `PortableRng` matching the Python inference RNG.
 
 ## Files
 

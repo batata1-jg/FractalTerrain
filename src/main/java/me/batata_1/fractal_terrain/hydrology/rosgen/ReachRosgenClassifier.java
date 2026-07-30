@@ -212,15 +212,16 @@ public final class ReachRosgenClassifier implements ChannelTyper {
     /** Measure one reach at its midpoint. One transect per reach — see the class javadoc. */
     private ReachMetrics measure(Channel ch, int from, int to) {
         final List<double[]> pts = ch.spline.points();
-        if(from>to||from<0||to>=pts.size()) throw new IllegalArgumentException("channel reach is bigger than itself");
+        if (from > to || from < 0 || to >= pts.size())
+            throw new IllegalArgumentException("channel reach is bigger than itself");
         final double mid = (from + to) / 2.0;
-        final double width = ch.widthAt((int)mid);
+        final double width = ch.widthAt((int) mid);
 
         double arcLength = 0.0;
         for (int i = from + 1; i <= to; i++) arcLength += VectorOps.distance(pts.get(i - 1), pts.get(i));
 
         final double bedElev = sampler.elevAt(ch.spline.sample(mid));
-        final double slope = sampler.slope(pts,arcLength, from, to);
+        final double slope = sampler.slope(pts, arcLength, from, to);
 
         // spline.normal never returns null: VectorOps.normalize returns a zero vector, not null, when the
         // tangent degenerates (duplicate consecutive spline points), and perpendicular preserves that. A
@@ -231,12 +232,12 @@ public final class ReachRosgenClassifier implements ChannelTyper {
         // the C/E majority. Once the type mix is calibrated (P1), decide whether a degenerate reach
         // should instead inherit its downstream neighbour's type or be dropped from classification.
         double[] normal = ch.spline.normal(mid);
-        if(isDegenerate(normal)) {
+        if (isDegenerate(normal)) {
             LOG.warn("degenerate");
         }
         final double entrenchment = isDegenerate(normal)
                 ? DEGENERATE_ENTRENCHMENT
-                : sampler.entrenchmentRatio(pts.get((int)mid), normal, bedElev, width);
+                : sampler.entrenchmentRatio(pts.get((int) mid), normal, bedElev, width);
 
         return new ReachMetrics(slope, entrenchment, ChannelGeometry.widthDepthRatio(width), width, bedElev);
     }

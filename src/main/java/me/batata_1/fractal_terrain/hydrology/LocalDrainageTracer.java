@@ -81,7 +81,8 @@ final class LocalDrainageTracer {
             Arrays.fill(riverMask, false);
         }
 
-        final QuadTree<CoordPoint> sources = new QuadTree<>(new double[]{0,0},new double[]{PADDED + 1, PADDED + 1},7);
+        final QuadTree<CoordPoint> sources =
+                new QuadTree<>(new double[] {0, 0}, new double[] {PADDED + 1, PADDED + 1}, 7);
 
         while (!sourceQueue.isEmpty()) {
             final int current = sourceQueue.poll();
@@ -92,14 +93,12 @@ final class LocalDrainageTracer {
             if ((flow[next] >= FLOW_THRESHOLD && gradMag[next] >= GRAD_THRESHOLD) || nodeIndex[current] != -1) {
                 if (stages != null) riverMask[current] = true;
                 // create the source if there isnt a source nearby
-                final double[] curNodePos = new double[]{Math.floorDiv(current, PADDED) + 0.5, (current % PADDED) + 0.5};
-                if (nodeIndex[current] == -1 && nodeIndex[next] == -1 && !sources.containsPointInCircle(curNodePos,5.0)) {
-                    nodeIndex[current] = net.addNode(
-                            curNodePos,
-                            Endpoint.Type.SOURCE,
-                            -1,
-                            flow[current],
-                            -1);
+                final double[] curNodePos =
+                        new double[] {Math.floorDiv(current, PADDED) + 0.5, (current % PADDED) + 0.5};
+                if (nodeIndex[current] == -1
+                        && nodeIndex[next] == -1
+                        && !sources.containsPointInCircle(curNodePos, 5.0)) {
+                    nodeIndex[current] = net.addNode(curNodePos, Endpoint.Type.SOURCE, -1, flow[current], -1);
                     sources.insertPoint(new CoordPoint(curNodePos));
                 }
                 // check if reaches ocean.
@@ -118,7 +117,7 @@ final class LocalDrainageTracer {
                         net.addDirectedEdge(nodeIndex[next], unit.id());
                     }
                 }
-                if(nodeIndex[current]!=-1) net.addDirectedEdge(nodeIndex[current], nodeIndex[next]);
+                if (nodeIndex[current] != -1) net.addDirectedEdge(nodeIndex[current], nodeIndex[next]);
             }
             if ((--inDegree[next]) == 0 && !isDrain) sourceQueue.add(next);
         }
@@ -136,7 +135,6 @@ final class LocalDrainageTracer {
             stages.riverMask = riverMask;
         }
     }
-
 
     private static List<GlobalRiverUnit> getGlobalUnits(AtomicView net) {
         final double[] flow = net.accumulateAndCorrectFlow();

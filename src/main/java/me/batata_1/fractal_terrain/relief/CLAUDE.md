@@ -1,7 +1,6 @@
 # relief/
 
-Decodes the diffusion decoder residual into relief elevation and rock strata. `DecoderChannels` is a
-stateless shared decode used by both `ReliefProvider` and `LocalRiverProvider` to avoid a provider cycle.
+Decodes the diffusion decoder residual into relief elevation and rock strata.
 
 ## Files
 

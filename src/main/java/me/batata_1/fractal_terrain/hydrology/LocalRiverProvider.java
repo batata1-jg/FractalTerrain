@@ -219,7 +219,7 @@ public class LocalRiverProvider {
 
         final float[] carvedElevation = base[0];
         ChannelElevationAssigner.assign(network, boundaryElev, carvedElevation);
-        LOG.info("passed first assignemnt");
+        LOG.debug("finished first assign() pass");
         HydrologyProfileCarver.carveRiverShells(
                 carvedElevation, sim.collectUnits(0, 0, 0, new int[] {0}).toArray(new HydrologicalUnit[0]), PADDED);
 
@@ -251,7 +251,7 @@ public class LocalRiverProvider {
 
         // 5. ONE bed-elevation assignment over the whole unified graph.
         ChannelElevationAssigner.assign(network, boundaryElev, carvedElevation);
-        LOG.info("passed second assignment");
+        LOG.debug("finished second assign() pass");
         HydrologyProfileCarver.carveRiverShells(
                 carvedElevation, sim.collectUnits(0, 0, 0, new int[] {0}).toArray(new HydrologicalUnit[0]), PADDED);
 

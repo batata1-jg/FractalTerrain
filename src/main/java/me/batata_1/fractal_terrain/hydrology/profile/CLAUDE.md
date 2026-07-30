@@ -1,9 +1,7 @@
 # profile/
 
-Turns the hydrological-unit index into carve/paint operations: a tile-level valley/floodplain shell
-carve run inside `LocalRiverProvider.buildTile`, plus a per-pixel bed-residual carve/paint consumed by
-`world/gen/`. The per-pixel bed stage runs, but its trench depth is a hard-coded constant rather than a
-cross-section — see `RosgenProfile.riverAreaDelta`.
+Turns the hydrological-unit index into carve/paint operations consumed by `world/gen/`; see `README.md`
+for the two carve stages and the bed-depth limitation.
 
 ## Files
 
