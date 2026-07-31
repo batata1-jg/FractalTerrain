@@ -8,9 +8,11 @@ import java.util.List;
 import java.util.Random;
 import java.util.Set;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
+import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit.HydrologicalFeature;
 import me.batata_1.fractal_terrain.hydrology.features.RiverUnit;
+import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
 import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
@@ -46,9 +48,64 @@ class SpatialIndexCorrectnessGoldenTest {
         for (int i = 0; i < UNIT_COUNT; i++) {
             final double x = rng.nextDouble() * GRID;
             final double z = rng.nextDouble() * GRID;
-            final double width = 1.0 + rng.nextDouble() * (FractalTerrainConfig.maxNativeWidth() - 1.0);
+            final double width = 1.0 + rng.nextDouble() * (HydrologyTuning.maxNativeWidth() - 1.0);
             units.add(new HydrologicalUnit(
-                    HydrologicalFeature.RIVER, RiverUnit.RosgenType.A, new double[] {x, z}, null, width, 0.0, 0, i));
+                    HydrologicalFeature.RIVER, RiverUnit.RosgenType.A, new double[]{x, z}, null, width, 0.0, 0, i) {
+                @Override
+                public double[] getCoords() {
+                    return new double[0];
+                }
+
+                @Override
+                public double[] getCenter() {
+                    return new double[0];
+                }
+
+                @Override
+                public HydrologicalFeature getType() {
+                    return null;
+                }
+
+                @Override
+                public boolean equals(Object o) {
+                    return false;
+                }
+
+                @Override
+                public int hashCode() {
+                    return 0;
+                }
+
+                @Override
+                public HydrologyProfile getProfile() {
+                    return null;
+                }
+
+                @Override
+                public double carveFineGrained(double[] pt, double elevAtPixel) {
+                    return 0;
+                }
+
+                @Override
+                public double[] coord() {
+                    return new double[0];
+                }
+
+                @Override
+                public long unitByteSize() {
+                    return 0;
+                }
+
+                @Override
+                public byte[] serializeUnit() {
+                    return new byte[0];
+                }
+
+                @Override
+                public HydrologicalUnit deserializeUnit(byte[] rawBytes) {
+                    return null;
+                }
+            });
         }
         return units;
     }

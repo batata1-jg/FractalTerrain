@@ -112,8 +112,7 @@ public final class RiverNetwork {
     /**
      * A directed crossingEdge of the supplied initial network — an atomic crossingEdge spec; {@code pts} include the two
      * endpoints. {@code flow} is the (per-cell) raw flow-accumulation value for the crossingEdge: a SOURCE start
-     * carries it as its seed {@code ownFlow}, a DRAIN end as its {@code anchorFlow}; interior/junction nodes
-     * carry the per-cell constant, and real per-point flow is derived by {@link #accumulateAndCorrectFlow}.
+     * carries it as its seed {@code ownFlow}, a DRAIN end as its {@code anchorFlow};
      * Width is derived downstream via {@link HydrologyTuning#widthFromFlow}.
      */
     public record EdgeSpec(int startNodeIdx, int endNodeIdx, ArrayList<double[]> pts, double flow) {}
@@ -515,8 +514,7 @@ public final class RiverNetwork {
     }
 
     /** The pruned, oriented atomic view the collision pass promotes crossings into. Roles, canonical ids
-     *  and flow inputs carry through so {@link #update} keeps SOURCE/DRAIN ids and {@link
-     *  #accumulateAndCorrectFlow} re-derives flow over the new topology. */
+     *  and flow inputs carry through so {@link #update} keeps SOURCE/DRAIN ids and  re-derives flow over the new topology. */
     private static AtomicView buildOriented(AtomicView atomic, boolean[] alive, int[] outgoing) {
         final int n = atomic.size();
         final AtomicView oriented = new AtomicView();
