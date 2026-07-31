@@ -1,10 +1,11 @@
-package me.batata_1.fractal_terrain.hydrology.meanders;
+package me.batata_1.fractal_terrain.hydrology.network;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Objects;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
+import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;

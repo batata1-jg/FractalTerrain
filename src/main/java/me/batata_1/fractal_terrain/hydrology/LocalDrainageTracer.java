@@ -8,10 +8,10 @@ import static me.batata_1.fractal_terrain.hydrology.meanders.Meanders.DEBUG_STEP
 import java.util.*;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
-import me.batata_1.fractal_terrain.hydrology.meanders.AtomicView;
-import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
-import me.batata_1.fractal_terrain.hydrology.meanders.Endpoint;
-import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork;
+import me.batata_1.fractal_terrain.hydrology.network.AtomicView;
+import me.batata_1.fractal_terrain.hydrology.network.Channel;
+import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
+import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import me.batata_1.fractal_terrain.math.ds.*;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;

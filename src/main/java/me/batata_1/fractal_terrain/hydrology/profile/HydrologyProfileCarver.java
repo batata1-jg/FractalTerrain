@@ -2,10 +2,8 @@ package me.batata_1.fractal_terrain.hydrology.profile;
 
 import java.util.Arrays;
 import java.util.List;
-import me.batata_1.fractal_terrain.FractalTerrainConfig;
-import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
-import me.batata_1.fractal_terrain.hydrology.features.River;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 
 /**
@@ -13,22 +11,19 @@ import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
  *
  * <ul>
  *   <li><b>Tile-level shell carve</b> ({@link #carveRiverShells}, static) — the valley/floodplain carve
- *       run over a whole padded relief tile by {@code LocalRiverProvider.buildTile}. For each pixel it
- *       selects the single <em>nearest</em> influencing unit and lerps the elevation toward that unit's
- *       reference elevation ({@link RosgenProfile#riverInfluenceElevation}). {@code buildTile} calls it
- *       twice, both times over an <em>unfiltered</em> unit collection. The first call is global-only by
- *       timing alone — the local network does not exist yet — while the second, running after the local
- *       trace, carves local shells too.</li>
- *   <li><b>Per-pixel refinement</b> ({@link #carve}, {@link #carveAtPixel}, {@link #carvePrefetched}) —
- *       queries the per-tile river network ({@link LocalRiverProvider#queryInfluence}) and takes the
- *       minimum (deepest) {@link HydrologyProfile#computeForUnit} elevation over every influencing unit.
- *       Each unit contributes its cross-section delta faded over an elliptical footprint, so the stage
- *       cuts the bed trench below the shell; it is driven per chunk from {@code PopulateNoiseStep}.</li>
+ *       run over a whole padded relief tile by {@code LocalRiverProvider.buildTile}. Each pixel is pulled
+ *       toward the distance-weighted average of every influencing unit's
+ *       {@link HydrologyProfile#shellElevation}. {@code buildTile} calls it twice, both times over an
+ *       <em>unfiltered</em> unit collection. The first call is global-only by timing alone — the local
+ *       network does not exist yet — while the second, running after the local trace, carves local shells
+ *       too.</li>
+ *   <li><b>Per-pixel refinement</b> ({@link #carveAtPixel}, {@link #carvePrefetched}) — queries the
+ *       per-tile river network ({@link LocalRiverProvider#queryInfluence}) and resolves the influencing
+ *       units through the {@link ZoneCategory} hierarchy, cutting the bed trench below the shell. Driven
+ *       per chunk from {@code PopulateNoiseStep}.</li>
  * </ul>
  *
- * All geometry is in the relief-pixel frame; only {@link #carve} converts from world/block coordinates
- * (divide by {@link FractalTerrainConfig#GLOBAL_SCALE_CORRECTION}). This is the carving twin of
- * {@code HydrologyProfilePainter}.
+ * All geometry is in the relief-pixel frame. This is the carving twin of {@code HydrologyProfilePainter}.
  */
 public final class HydrologyProfileCarver {
 
@@ -39,7 +34,7 @@ public final class HydrologyProfileCarver {
     }
 
     // -------------------------------------------------------------------------
-    // Per-pixel refinement (nearest influencing unit)
+    // Per-pixel refinement (zone-priority merge)
     // -------------------------------------------------------------------------
 
     /**
@@ -61,9 +56,9 @@ public final class HydrologyProfileCarver {
     /**
      * One cross-tile influence query serving a whole chunk of carve calls: gathers every unit that could
      * influence <em>any</em> point within {@code chunkRadiusPx} of {@code (centerPixelX, centerPixelZ)}
-     * (a unit is kept when the center lies within {@code maxRiverInfluence(unit.width()) +
-     * chunkRadiusPx}). Feed the result to {@link #carvePrefetched} for each block — one tree query per
-     * chunk instead of one per block. All arguments are in the relief-pixel frame.
+     * (a unit is kept when the center lies within its influence radius {@code + chunkRadiusPx}). Feed the
+     * result to {@link #carvePrefetched} for each block — one tree query per chunk instead of one per
+     * block. All arguments are in the relief-pixel frame.
      */
     public PrefetchedUnits prefetchChunk(double centerPixelX, double centerPixelZ, double chunkRadiusPx) {
         return queryUnits(new double[] {centerPixelX, centerPixelZ}, chunkRadiusPx);
@@ -74,73 +69,57 @@ public final class HydrologyProfileCarver {
         return new PrefetchedUnits(localRiver.queryInfluence(pt, extraRadius));
     }
 
+    /**
+     * The elevation at {@code pt} after every prefetched unit that reaches it has had its say, resolved
+     * through the {@link ZoneCategory} hierarchy. Three steps:
+     *
+     * <ol>
+     *   <li><b>Claim.</b> Each unit asks its own {@link HydrologyProfile} which single zone the point
+     *       falls in at this radial distance ({@link HydrologyProfile#categoryAt}) — its bed, its
+     *       floodplain, its outer influence band, or nothing at all. A unit claims exactly one zone, the
+     *       innermost it defines, never several.</li>
+     *   <li><b>Average per zone.</b> The unit's own cross-section
+     *       ({@link HydrologicalUnit#carveFineGrained}) goes into that zone's running average, weighted by
+     *       {@link HydrologyProfile#zoneWeight} so nearer units dominate and each fades out smoothly at
+     *       its zone boundary. Zones accumulate independently — a bed contribution never dilutes the
+     *       floodplain average.</li>
+     *   <li><b>Resolve.</b> The winner is the first zone in {@link ZoneCategory}'s declared priority order
+     *       that any unit actually claimed, and its average is the answer. <b>Empty zones are skipped, not
+     *       ranked</b>: a pixel deep in a floodplain that no bed contains resolves to the floodplain
+     *       average, even though {@code BED} outranks it. So the hierarchy decides who wins where features
+     *       overlap, and is silent everywhere else.</li>
+     * </ol>
+     *
+     * <p>Averaging within a zone but switching hard between zones is deliberate: two rivers sharing a
+     * floodplain should blend, but a channel bed crossing that same floodplain should cut through it
+     * rather than be averaged into it.
+     *
+     * <p>Returns {@code elevAtPixel} untouched when no unit claims anything.
+     */
     public float carvePrefetched(PrefetchedUnits prefetched, double[] pt, double elevAtPixel) {
-        // return carvePrefetchedNearest(prefetched, pt, elevAtPixel);
         final HydrologicalUnit[] units = prefetched.units();
-        double avgSumInfluence = 0;
-        double avgWeightInfluence = 0;
-        boolean intersectsFloodplain = false;
-        double avgSumFloodPlain = 0;
-        double avgWeightFloodPlain = 0;
-        boolean intersectsBed = false;
-        double avgSumBed = 0;
-        double avgWeightBed = 0;
+        final double[] zoneSums = new double[ZoneCategory.COUNT];
+        final double[] zoneWeights = new double[ZoneCategory.COUNT];
+
         for (final HydrologicalUnit unit : units) {
-            final double influenceRadius = unit.getRadius();
-            final double[] unitCoord = unit.coord();
-            final double dist = Math.hypot(pt[0] - unitCoord[0], pt[1] - unitCoord[1]);
-            if (dist >= influenceRadius) continue; // outside this unit's reach
-            final double width = unit.width();
-            final RosgenProfile profile =
-                    RosgenProfile.of(unit.rosgenType() == null ? River.RosgenType.A : unit.rosgenType());
-            final double floodPlainLength = profile.floodPlainLength(width);
-            final double unitElev = unit.carveFineGrained(pt, elevAtPixel);
-            avgSumInfluence += unitElev * (1 - dist / influenceRadius);
-            avgWeightInfluence += (1 - dist / influenceRadius);
-            if (dist >= floodPlainLength) continue;
-            intersectsFloodplain = true;
-            avgSumFloodPlain += unitElev * (1 - dist / floodPlainLength);
-            avgWeightFloodPlain += (1 - dist / floodPlainLength);
-            if (dist >= width / 2) continue;
-            intersectsBed = true;
-            avgSumBed += unitElev * (1 - (2 * dist) / width);
-            avgWeightBed += (1 - (2 * dist) / width);
+            final double[] unitCoord = unit.getCenter();
+            final double radialDist = Math.hypot(pt[0] - unitCoord[0], pt[1] - unitCoord[1]);
+            final HydrologyProfile profile = unit.getProfile();
+            final ZoneCategory zone = profile.categoryAt(unit, radialDist);
+            if (zone == null) continue; // out of this unit's reach
+            final double weight = profile.zoneWeight(unit, zone, radialDist);
+            if (weight <= 0) continue;
+            final int slot = zone.ordinal();
+            zoneSums[slot] += weight * unit.carveFineGrained(pt, elevAtPixel);
+            zoneWeights[slot] += weight;
         }
 
-        double avgSum = avgSumInfluence;
-        double avgWeight = avgWeightInfluence;
-
-        if (intersectsFloodplain) {
-            avgSum = avgSumFloodPlain;
-            avgWeight = avgWeightFloodPlain;
+        for (final ZoneCategory zone : ZoneCategory.BY_PRIORITY) {
+            final int slot = zone.ordinal();
+            if (zoneWeights[slot] > 1e-6) return (float) (zoneSums[slot] / zoneWeights[slot]);
         }
-
-        if (intersectsBed) {
-            avgSum = avgSumBed;
-            avgWeight = avgWeightBed;
-        }
-
-        if (avgWeight < 1e-6) return (float) elevAtPixel;
-        return (float) (avgSum / avgWeight);
+        return (float) elevAtPixel;
     }
-
-    //    public float carvePrefetchedNearest(PrefetchedUnits prefetched, double[] pt, double elevAtPixel) {
-    //        throw new NotImplementedException();
-    //        final HydrologicalUnit[] units = prefetched.units();
-    //        HydrologicalUnit nearest = null;
-    //        double nearestDist = Double.POSITIVE_INFINITY;
-    //        for (HydrologicalUnit unit : units) {
-    //            final double[] unitCoord = unit.coord();
-    //            final double dist = Math.hypot(pt[0] - unitCoord[0], pt[1] - unitCoord[1]);
-    //            if (dist >= unit.getRadius()) continue; // outside this unit's influence
-    //            if (dist < nearestDist) {
-    //                nearestDist = dist;
-    //                nearest = unit;
-    //            }
-    //        }
-    //        if (nearest == null) return (float) elevAtPixel;
-    //        return (float) HydrologyProfile.computeForUnit(pt, nearest, elevAtPixel);
-    //    }
 
     // -------------------------------------------------------------------------
     // Tile-level shell pre-carve (moved from LocalRiverProvider)
@@ -154,10 +133,12 @@ public final class HydrologyProfileCarver {
      * {@code paddedSize × paddedSize} row-major tile buffer, relief-pixel frame).
      *
      * <p>Per pixel: stab a freshly-built R-tree over {@code units}, keep the candidates whose influence
-     * circle actually contains the pixel, take the <em>nearest</em> one, and overwrite the pixel with
-     * {@link RosgenProfile#riverInfluenceElevation}. Only the nearest unit contributes — contributions
-     * are not composited — so a confluence takes the profile of whichever channel passes closest rather
-     * than the deepest. Pixels with a negative ambient elevation (ocean) are skipped.
+     * circle actually contains the pixel, and overwrite the pixel with the distance-weighted average of
+     * their {@link HydrologyProfile#shellElevation} values — so a confluence blends the profiles of both
+     * channels rather than snapping to one. Pixels with a negative ambient elevation (ocean) are skipped.
+     *
+     * <p>Unlike {@link #carvePrefetched} this stage does not zone: the shell is the one broad valley pull,
+     * and it runs before any unit has a bed to distinguish.
      *
      * <p>Writes into the same buffer it reads, so repeated calls on one buffer compound: {@code buildTile}
      * relies on this, carving the global shell once before the drainage trace and again after the
@@ -167,9 +148,6 @@ public final class HydrologyProfileCarver {
         if (units.length == 0) return;
         final ImmutableRTree<HydrologicalUnit> index =
                 new ImmutableRTree<>(Arrays.asList(units), HydrologicalUnit.PROTOTYPE);
-
-        double avgSum = 0;
-        double avgWeight = 0;
 
         for (int pi = 0; pi < paddedSize; pi++) {
             for (int pj = 0; pj < paddedSize; pj++) {
@@ -181,19 +159,18 @@ public final class HydrologyProfileCarver {
                 if (nearby.isEmpty()) continue;
 
                 final double curElev = elevation[idx];
-                avgSum = avgWeight = 0;
-                RosgenProfile mutableProfile = null;
-                for (HydrologicalUnit unit : nearby) {
-                    final double[] coord = unit.coord();
+                double avgSum = 0;
+                double avgWeight = 0;
+                for (final HydrologicalUnit unit : nearby) {
+                    final double[] coord = unit.getCenter();
                     final double dx = pixel[0] - coord[0];
                     final double dz = pixel[1] - coord[1];
                     final double radialDist = Math.hypot(dx, dz);
-                    if (radialDist >= unit.getRadius()) continue; // outside this unit's influence
-                    final double width = unit.width();
-                    mutableProfile = RosgenProfile.of(unit.rosgenType() == null ? River.RosgenType.A : unit.rosgenType());
-                    avgSum += (1 - radialDist / unit.getRadius())
-                            * mutableProfile.riverInfluenceElevation(radialDist, width, curElev, unit.elevation());
-                    avgWeight += (1 - radialDist / unit.getRadius());
+                    final double influenceRadius = unit.getRadius();
+                    if (radialDist >= influenceRadius) continue; // outside this unit's influence
+                    final double weight = 1 - radialDist / influenceRadius;
+                    avgSum += weight * unit.getProfile().shellElevation(unit, radialDist, curElev);
+                    avgWeight += weight;
                 }
 
                 if (avgWeight <= 1e-6) continue;

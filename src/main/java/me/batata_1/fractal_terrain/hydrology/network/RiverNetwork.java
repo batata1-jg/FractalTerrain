@@ -1,4 +1,4 @@
-package me.batata_1.fractal_terrain.hydrology.meanders;
+package me.batata_1.fractal_terrain.hydrology.network;
 
 import static me.batata_1.fractal_terrain.config.DebugConfig.DEBUG_CROSSING_WINNER;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
@@ -806,47 +806,6 @@ public final class RiverNetwork {
         return collectUnits(time, offsetX, offsetZ, nextFeatureId, channelId -> true, typer);
     }
 
-    /**
-     * Collect the network's {@link HydrologicalUnit}s (active channels plus recorded removed features —
-     * oxbow lakes / abandoned rivers) in one pass over the unified graph — global and local channels
-     * alike, since local segments are first-class graph members — as a mutable list the caller freezes
-     * into a single spatial index. Each feature is first resampled at
-     * {@code dx = max(width/2, MIN_CONVERT_SPACING)}; emitted coordinates are the network coordinate
-     * minus {@code (offsetX, offsetZ)} (e.g. to drop a halo pad). Per-point bed elevation is read
-     * directly from the already-assigned {@link Channel#bedElevations} — this pass never invents or
-     * re-derives it from decoded terrain; removed paths (oxbows/abandoned rivers) carry no
-     * {@code bedElevations}, so their elevation falls back to sampling decoded terrain at each point.
-     *
-     * <p>A graph channel's units are emitted only when {@code channelIdFilter} accepts its
-     * {@link Channel#channelId}; recorded removed features (oxbow/abandoned) are always emitted
-     * regardless (the local drainage tracer never produces removed paths, so this only ever filters live
-     * graph channels). <b>No caller passes a real filter today.</b> The only invocations are the
-     * overloads above delegating with {@code channelId -> true}. This exists to let a caller carve or
-     * index one subgraph (e.g. global-only channels) out of the unified network, but
-     * {@code LocalRiverProvider} currently collects unfiltered for every purpose.
-     *
-     * <p>Channels whose geometry is degenerate ({@code !isResampleable()}) or that overrun the spline
-     * length cap during resampling are skipped silently, contributing no units.
-     *
-     * <p>A channel's points are {@link HydrologicalFeature#RIVER} except at an endpoint sitting on a
-     * source or drain node, which is emitted as {@link HydrologicalFeature#SOURCE} /
-     * {@link HydrologicalFeature#DRAIN} (see {@link #featureKinds}); the channel is still one feature
-     * under one id.
-     *
-     * <p>Classification runs once per call, between resampling and emission: every accepted channel is
-     * resampled first, then {@link ChannelTyper#prepare} is called once over the whole network, then
-     * {@link ChannelTyper#typesFor} per channel — a type depends on neighbouring channels, so all of
-     * them must hold their final geometry before any is classified. A {@code null} typer leaves every
-     * unit's {@link HydrologicalUnit#rosgenType() rosgenType} {@code null}, which consumers coalesce to
-     * {@link RosgenType#A}. Source and drain points are never typed: they are network endpoints, not
-     * reaches. Removed features are never typed either — they carry no bed elevations, so there is no
-     * reach profile to classify.
-     *
-     * <p>{@code nextFeatureId} is a single-element mutable counter threaded by the caller so every unit
-     * this one pass emits — global and local alike — shares one tile-unique
-     * {@link HydrologicalUnit#id() id} space — every point of one feature gets the same id, and the
-     * counter advances once per feature.
-     */
     public List<HydrologicalUnit> collectUnits(
             int time,
             double offsetX,

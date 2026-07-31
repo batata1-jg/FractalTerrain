@@ -1,8 +1,8 @@
 package me.batata_1.fractal_terrain.hydrology.rosgen;
 
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
-import me.batata_1.fractal_terrain.hydrology.features.River.RosgenType;
 import me.batata_1.fractal_terrain.hydrology.features.River;
+import me.batata_1.fractal_terrain.hydrology.features.River.RosgenType;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import org.jetbrains.annotations.Nullable;
 

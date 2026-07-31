@@ -1,5 +1,6 @@
 package me.batata_1.fractal_terrain.math.ds;
 
+import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -8,7 +9,7 @@ import org.jetbrains.annotations.NotNull;
  * everything else (axis access, rank, comparison) is derived by default.
  *
  * <p>Implementations are typically {@code record}s that carry extra payload alongside the
- * coordinates (e.g. {@link me.batata_1.fractal_terrain.hydrology.meanders.Channel.ChannelPt},
+ * coordinates (e.g. {@link Channel.ChannelPt},
  * {@link CoordPoint}). A point that must be persisted additionally implements
  * {@link me.batata_1.fractal_terrain.storage.Persistable}; that responsibility is left to the
  * implementation, not this interface.

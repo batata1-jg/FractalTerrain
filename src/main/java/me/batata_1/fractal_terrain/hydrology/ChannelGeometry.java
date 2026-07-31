@@ -1,5 +1,7 @@
 package me.batata_1.fractal_terrain.hydrology;
 
+import me.batata_1.fractal_terrain.hydrology.network.Channel;
+import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 
 /**
@@ -7,8 +9,8 @@ import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
  * half-width, the empirical depth-from-width law, and the channel-overlap test. Centralizing these here
  * keeps the carve ({@link me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver}), paint
  * ({@link me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfilePainter}), meander
- * ({@link me.batata_1.fractal_terrain.hydrology.meanders.Channel} /
- * {@link me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork}) and profile
+ * ({@link Channel} /
+ * {@link RiverNetwork}) and profile
  * ({@link RosgenProfile}) sides agreeing on one definition.
  */
 public final class ChannelGeometry {

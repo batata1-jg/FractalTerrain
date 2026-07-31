@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.debug.Debug;
+import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import org.slf4j.Logger;
 
@@ -89,7 +90,7 @@ public record QuinticHermiteSpline(
     /**
      * Resamples this spline at {@code samplingDist} and exposes the arc-length parameter list it built
      * by binary search, in addition to the resampled spline, so a caller can resample a parallel
-     * per-point array (e.g. {@link me.batata_1.fractal_terrain.hydrology.meanders.Channel#bedElevations})
+     * per-point array (e.g. {@link Channel#bedElevations})
      * on the identical t-basis.
      */
     public Resampled reSampleWithTs(double samplingDist) {

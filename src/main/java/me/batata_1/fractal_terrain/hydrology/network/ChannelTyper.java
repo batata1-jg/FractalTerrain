@@ -1,4 +1,4 @@
-package me.batata_1.fractal_terrain.hydrology.meanders;
+package me.batata_1.fractal_terrain.hydrology.network;
 
 import me.batata_1.fractal_terrain.hydrology.features.River.RosgenType;
 

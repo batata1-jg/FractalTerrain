@@ -9,9 +9,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
-import me.batata_1.fractal_terrain.hydrology.meanders.Endpoint;
-import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork;
+import me.batata_1.fractal_terrain.hydrology.network.Channel;
+import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
+import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import org.junit.jupiter.api.Test;
 
 /**

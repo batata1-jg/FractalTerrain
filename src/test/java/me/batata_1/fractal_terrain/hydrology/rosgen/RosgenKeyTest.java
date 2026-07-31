@@ -110,7 +110,8 @@ class RosgenKeyTest {
         // A transect that never exceeds the flood-prone stage reports ER = +inf. That is the correct
         // semantic (a broad flat valley), not a failure, and must not throw or fall through.
         assertEquals(
-                River.RosgenType.C, RosgenKey.classify(new ReachMetrics(0.001, Double.POSITIVE_INFINITY, 20.0, 2.0, 80.0)));
+                River.RosgenType.C,
+                RosgenKey.classify(new ReachMetrics(0.001, Double.POSITIVE_INFINITY, 20.0, 2.0, 80.0)));
     }
 
     @Test

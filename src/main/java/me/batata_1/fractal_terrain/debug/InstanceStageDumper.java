@@ -4,7 +4,7 @@ import java.io.File;
 import java.util.List;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
-import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
+import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.relief.ReliefProvider;
 import org.jetbrains.annotations.TestOnly;

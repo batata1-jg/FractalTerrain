@@ -4,7 +4,9 @@ import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
+import me.batata_1.fractal_terrain.hydrology.features.River;
 import me.batata_1.fractal_terrain.hydrology.features.River.RosgenType;
+import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,8 +23,8 @@ import org.slf4j.LoggerFactory;
  *       elevation: full pull inside {@link #floodPlainLength}, linearly released to no change at
  *       {@link #riverInfluence}.
  *   <li>{@link #riverAreaDelta} — the per-pixel bed TRENCH below the shell, within the bed half-width.
- *       Applied by {@link HydrologyProfile#computeForUnit}, which fades it in over an elliptical
- *       footprint around the contributing unit rather than applying it raw.
+ *       Applied by {@link River#carveFineGrained}, which fades it in over an elliptical footprint around
+ *       the contributing unit rather than applying it raw.
  * </ul>
  *
  * <p>The profile is also the authority for the two horizontal extents of the cross-section —
@@ -33,7 +35,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>The floodplain and blending zones are unions of per-unit radial discs; the smoothness of that
  * union relies on adjacent units' discs overlapping, which requires unit spacing {@code dx <=
- * width/2} (enforced in {@link me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork}).
+ * width/2} (enforced in {@link RiverNetwork}).
  * Loosening that spacing risks scalloping or gaps in the floodplain corridor.
  *
  * <p><b>Only type A overrides anything</b> — A supplies its own {@link #floodPlainLength},
@@ -208,6 +210,35 @@ public enum RosgenProfile implements HydrologyProfile {
             return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, floodPlainLength(width) / HydrologyTuning.MIN_WIDTH);
         }
     };
+
+    // ---- Zone mapping (the HydrologyProfile contract, expressed over a River's width) ----
+
+    /**
+     * The river zones, nested {@code BED ⊂ FLOODPLAIN ⊂ INFLUENCE}: the bank-full half-width, this type's
+     * {@link #floodPlainLength}, and the unit's own index radius. Taking {@link ZoneCategory#INFLUENCE}
+     * from {@link HydrologicalUnit#getRadius()} rather than from {@link #riverInfluence} keeps a unit's
+     * carve reach identical to the circle the R-tree found it by.
+     *
+     * <p>Every zone this profile does not define — a waterfall's, a lake's — falls through to the
+     * interface default, as does any non-{@link River} unit that happens to be carrying a Rosgen profile.
+     */
+    @Override
+    public double zoneRadius(HydrologicalUnit unit, ZoneCategory category) {
+        if (!(unit instanceof River river)) return HydrologyProfile.super.zoneRadius(unit, category);
+        return switch (category) {
+            case BED -> ChannelGeometry.bedHalfWidth(river.width());
+            case FLOODPLAIN -> floodPlainLength(river.width());
+            case INFLUENCE -> river.getRadius();
+            default -> NO_ZONE;
+        };
+    }
+
+    /** Delegates to {@link #riverInfluenceElevation} with the reach's width and bank elevation. */
+    @Override
+    public double shellElevation(HydrologicalUnit unit, double radialDist, double curElev) {
+        if (!(unit instanceof River river)) return curElev;
+        return riverInfluenceElevation(radialDist, river.width(), curElev, river.elevation());
+    }
 
     // ---- Horizontal extents (type-dependent; shared placeholder law, override per constant) ----
     private static final Logger LOG = LoggerFactory.getLogger(RosgenProfile.class);

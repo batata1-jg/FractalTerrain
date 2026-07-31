@@ -17,10 +17,10 @@ import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
-import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
-import me.batata_1.fractal_terrain.hydrology.meanders.Endpoint;
+import me.batata_1.fractal_terrain.hydrology.network.Channel;
+import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
-import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork;
+import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
@@ -344,15 +344,10 @@ public class LocalRiverProvider {
                     tileLocalHits.clear();
                     tileIndex.queryContaining(tileLocalPoint, extraRadius, tileLocalHits);
                     for (final HydrologicalUnit unit : tileLocalHits) {
-                        influencingUnits.add(new HydrologicalUnit(
-                                unit.type(),
-                                unit.rosgenType(),
-                                new double[] {unit.coord()[0] + tileOriginX, unit.coord()[1] + tileOriginZ},
-                                unit.normal(),
-                                unit.width(),
-                                unit.elevation(),
-                                unit.time(),
-                                unit.id()));
+                        final HydrologicalUnit unitClone = unit.clone();
+                        unitClone.coord()[0] = unitClone.coord()[0] + tileOriginX;
+                        unitClone.coord()[1] = unitClone.coord()[1] + tileOriginZ;
+                        influencingUnits.add(unitClone);
                     }
                     return false;
                 });

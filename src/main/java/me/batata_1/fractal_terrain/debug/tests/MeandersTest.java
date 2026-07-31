@@ -5,11 +5,11 @@ import java.util.Arrays;
 import java.util.List;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
-import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
-import me.batata_1.fractal_terrain.hydrology.meanders.Endpoint;
+import me.batata_1.fractal_terrain.hydrology.network.Channel;
+import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
-import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork.EdgeSpec;
-import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork.NodeSpec;
+import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork.EdgeSpec;
+import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork.NodeSpec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

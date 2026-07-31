@@ -1,4 +1,6 @@
-package me.batata_1.fractal_terrain.hydrology.meanders;
+package me.batata_1.fractal_terrain.hydrology.network;
+
+import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
 
 import java.util.HashSet;
 import java.util.Set;

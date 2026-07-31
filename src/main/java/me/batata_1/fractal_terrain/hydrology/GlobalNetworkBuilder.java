@@ -13,6 +13,8 @@ import java.util.Map;
 import java.util.Random;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.meanders.*;
+import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
+import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 
 /**
  * Responsibility: build the per-tile <em>global</em>-river subgraph — the 2×2 owned coarse cells plus

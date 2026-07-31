@@ -9,8 +9,12 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
-import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork.EdgeSpec;
-import me.batata_1.fractal_terrain.hydrology.meanders.RiverNetwork.NodeSpec;
+import me.batata_1.fractal_terrain.hydrology.network.Channel;
+import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
+import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
+import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork.EdgeSpec;
+import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork.NodeSpec;
+import me.batata_1.fractal_terrain.hydrology.network.AtomicView;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 

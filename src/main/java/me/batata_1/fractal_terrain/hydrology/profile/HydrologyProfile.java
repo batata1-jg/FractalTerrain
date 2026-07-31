@@ -1,71 +1,98 @@
 package me.batata_1.fractal_terrain.hydrology.profile;
 
-import java.util.Arrays;
-import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
-import me.batata_1.fractal_terrain.hydrology.features.River;
-import me.batata_1.fractal_terrain.math.VectorOps;
+import org.jetbrains.annotations.Nullable;
 
 /**
- * Per-unit elevation primitive shared by the two sides of the hydrology profile —
- * {@link HydrologyProfileCarver} (elevation) and {@code HydrologyProfilePainter}
- * (blocks/biomes/vegetation). Both consume the flat {@link HydrologicalUnit}[] returned by
- * {@link me.batata_1.fractal_terrain.hydrology.LocalRiverProvider#queryInfluence}: every unit
- * contributes a per-unit value ({@link #computeForUnit} for elevation) and the caller merges the
- * contributions, taking the minimum (deepest) across influencing units.
+ * How one kind of hydrological feature shapes the terrain around it — the extension point every new
+ * feature type plugs into. A unit hands out its profile via {@link HydrologicalUnit#getProfile()}, and
+ * the two carve stages ask that profile, never the unit's concrete class, what the feature does:
+ *
+ * <ul>
+ *   <li><b>Zoning</b> ({@link #zoneRadius}, {@link #categoryAt}, {@link #zoneWeight}) — which
+ *       {@link ZoneCategory} the unit claims a point for and how strongly, driving the per-block merge in
+ *       {@link HydrologyProfileCarver#carvePrefetched}.</li>
+ *   <li><b>Shell elevation</b> ({@link #shellElevation}) — the tile-level valley pull applied by
+ *       {@link HydrologyProfileCarver#carveRiverShells}.</li>
+ * </ul>
+ *
+ * <p>The fine cross-section itself is not here: it is per-unit state (a normal, a width, a bed
+ * elevation), so it lives on the unit as {@link HydrologicalUnit#carveFineGrained}. The profile decides
+ * <em>where</em> and <em>how much</em>; the unit decides <em>what</em>.
+ *
+ * <p>Every default on this interface describes the minimum viable feature: a single {@link
+ * ZoneCategory#INFLUENCE} disc of radius {@link HydrologicalUnit#getRadius()}, linear falloff, no shell
+ * pull. A new profile only overrides what it actually changes — see {@link RosgenProfile} for the river
+ * case and {@link DefaultProfile} for a type that keeps every default.
  */
 public interface HydrologyProfile {
 
     /**
-     * The bed elevation at {@code pt} contributed by a single influencing {@code unit}: the unit's
-     * cross-section delta ({@link RosgenProfile#riverAreaDelta}) faded in over an elliptical footprint
-     * centred on the unit, i.e. {@code elevAtPixel + t · delta}.
-     *
-     * <p>The fade weight {@code t} is read off the point's position in the unit's own frame — {@code x}
-     * along the channel (tangent), {@code y} across it (the unit {@code normal}) — via
-     * {@code e = 1 − x²/(l² − y²)}, with {@code l} the floodplain half-extent. The level sets of
-     * {@code e} are ellipses of semi-axis {@code l·sqrt(1 − e)} along the channel and {@code l} across
-     * it: {@code e = 1} on the unit's own cross-section line (the {@code x = 0} segment), decaying to
-     * {@code e = 0} on the circle of radius {@code l}. Points at or above
-     * {@link HydrologyTuning#MAX_ECCENTRICITY} take the delta in full ({@code t = 1}); below it {@code t}
-     * lerps linearly down to {@code 0}, and outside radius {@code l} the pixel is returned untouched.
-     *
-     * <p>So a unit carves its full cross-section for the whole width of the floodplain but tapers off
-     * along the channel, leaving the stretch between two units to their overlapping ellipses — which is
-     * why the {@code dx <= width/2} unit spacing noted on {@link RosgenProfile} matters here too.
+     * Returned by {@link #zoneRadius} for a zone this profile does not define. Any non-positive value
+     * reads as absent; this constant names the intent.
      */
-    static double computeForUnit(
-            double[] pt, double floodPlainLength, double width, HydrologicalUnit unit, double elevAtPixel) {
-          return elevAtPixel;
-        if(unit instanceof River river) {
-            final double[] normal = river.normal();
-            if (normal == null) return elevAtPixel;
-            final RosgenProfile profile =
-                    RosgenProfile.of(unit.rosgenType() == null ? River.RosgenType.A : unit.rosgenType());
+    double NO_ZONE = -1.0;
 
-            final double[] normTangent = VectorOps.perpendicular(normal);
-            final double[] unitCoord = unit.coord();
-            final double radiusSq = floodPlainLength * floodPlainLength;
-            if (VectorOps.distanceSquared(pt, unitCoord) >= radiusSq) return elevAtPixel;
-            if (Math.abs(normal[0]) < 1e-6 || Math.abs(normal[1]) < 1e-6) {
-                return elevAtPixel;
-            }
+    /**
+     * Outer radius (native px) of {@code category} around {@code unit}, or {@link #NO_ZONE} when this
+     * profile has no such zone.
+     *
+     * <p>The default defines only {@link ZoneCategory#INFLUENCE}, at the unit's own {@link
+     * HydrologicalUnit#getRadius()} — the same circle the R-tree indexes the unit by, so a unit's carve
+     * reach and its query reach cannot drift apart.
+     *
+     * <p>An override may consult {@code unit}'s concrete type for the state it needs (a river's width,
+     * say) and must fall back to {@code HydrologyProfile.super.zoneRadius} for units it does not
+     * recognise — a profile is selected by the unit, but nothing stops a shared profile serving several
+     * unit types.
+     */
+    default double zoneRadius(HydrologicalUnit unit, ZoneCategory category) {
+        return category == ZoneCategory.INFLUENCE ? unit.getRadius() : NO_ZONE;
+    }
 
-            final double SignedPerpDist;
-            final double alongDist;
-            final double[] ptToUnit = VectorOps.sub(pt, unitCoord);
-            SignedPerpDist = VectorOps.dot(normal, ptToUnit);
-            alongDist = Math.abs(VectorOps.dot(normTangent, ptToUnit));
-
-            final double uninterpolatedDelta =
-                    profile.riverAreaDelta(Arrays.hashCode(unitCoord), SignedPerpDist, alongDist, width);
-
-            if (radiusSq - SignedPerpDist * SignedPerpDist < 1e-6) return elevAtPixel;
-            final double eccentricity =
-                    Math.sqrt(Math.abs(1 - (alongDist * alongDist) / (radiusSq - SignedPerpDist * SignedPerpDist)));
-            final double t = Math.clamp(0.5 * (Math.tanh(8 * (eccentricity - HydrologyTuning.MAX_ECCENTRICITY)) + 1), 0, 1);
-            //  final double t = Math.clamp(eccentricity / HydrologyTuning.MAX_ECCENTRICITY, 0, 1);
-            return elevAtPixel + t * uninterpolatedDelta;
+    /**
+     * The single zone {@code unit} claims a point at radial distance {@code radialDist} for, or
+     * {@code null} when the point is out of reach and the unit contributes nothing.
+     *
+     * <p>The default walks {@link ZoneCategory#BY_PRIORITY} and returns the first defined zone whose
+     * radius contains the distance — i.e. for the usual nested layout (bed ⊂ floodplain ⊂ influence) the
+     * innermost, most specific zone. Override for a profile whose zones are not nested, e.g. an annular
+     * plunge-pool rim that starts at a non-zero radius.
+     */
+    @Nullable
+    default ZoneCategory categoryAt(HydrologicalUnit unit, double radialDist) {
+        for (final ZoneCategory category : ZoneCategory.BY_PRIORITY) {
+            final double radius = zoneRadius(unit, category);
+            if (radius > 0 && radialDist < radius) return category;
         }
+        return null;
+    }
+
+    /**
+     * How much weight {@code unit}'s contribution carries in {@code category}'s average at {@code
+     * radialDist}: {@code 1} at the unit's centre falling linearly to {@code 0} at the zone's outer
+     * radius, so nearer units dominate and a unit fades out smoothly at its zone boundary rather than
+     * dropping out.
+     *
+     * <p>Weights are only ever compared within one zone, so an override is free to use any non-negative
+     * scale it likes; a weight of {@code 0} is equivalent to not contributing at all.
+     */
+    default double zoneWeight(HydrologicalUnit unit, ZoneCategory category, double radialDist) {
+        final double radius = zoneRadius(unit, category);
+        if (radius <= 0) return 0;
+        return Math.clamp(1 - radialDist / radius, 0, 1);
+    }
+
+    /**
+     * The tile-level shell elevation {@code unit} pulls a pixel at {@code radialDist} toward, given the
+     * live buffer's current elevation {@code curElev}. Applied once per tile by
+     * {@link HydrologyProfileCarver#carveRiverShells}, before any bed detail exists.
+     *
+     * <p>The default is no pull at all ({@code curElev}) — a feature with no valley of its own leaves the
+     * shell to whichever units do have one. {@link RosgenProfile#riverInfluenceElevation} is the river
+     * override.
+     */
+    default double shellElevation(HydrologicalUnit unit, double radialDist, double curElev) {
+        return curElev;
     }
 }
