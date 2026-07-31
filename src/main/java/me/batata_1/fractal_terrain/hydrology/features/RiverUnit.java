@@ -8,7 +8,6 @@ import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
-import me.batata_1.fractal_terrain.math.VectorOps;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -72,26 +71,24 @@ public record RiverUnit(
         if (normal == null) return elevAtPixel;
         final RosgenProfile profile = (RosgenProfile) getProfile();
 
-        final double[] normTangent = VectorOps.perpendicular(normal);
+        final double nx = normal[0], nz = normal[1];
+        final double dx = pt[0] - coord[0], dz = pt[1] - coord[1];
         final double floodPlainLength = profile.floodPlainLength(width);
         final double radiusSq = floodPlainLength * floodPlainLength;
-        if (VectorOps.distanceSquared(pt, coord) >= radiusSq) return elevAtPixel;
-        if (Math.abs(normal[0]) < 1e-6 || Math.abs(normal[1]) < 1e-6) {
+        if (dx * dx + dz * dz >= radiusSq) return elevAtPixel;
+        if (Math.abs(nx) < 1e-6 || Math.abs(nz) < 1e-6) {
             return elevAtPixel;
         }
 
-        final double SignedPerpDist;
-        final double alongDist;
-        final double[] ptToUnit = VectorOps.sub(pt, coord);
-        SignedPerpDist = VectorOps.dot(normal, ptToUnit);
-        alongDist = Math.abs(VectorOps.dot(normTangent, ptToUnit));
+        final double signedPerpDist = nx * dx + nz * dz;
+        final double alongDist = Math.abs(nz * dx - nx * dz);
 
         final double uninterpolatedDelta =
-                profile.riverAreaDelta(Arrays.hashCode(coord), SignedPerpDist, alongDist, width);
+                profile.riverAreaDelta(Arrays.hashCode(coord), signedPerpDist, alongDist, width);
 
-        if (radiusSq - SignedPerpDist * SignedPerpDist < 1e-6) return elevAtPixel;
+        if (radiusSq - signedPerpDist * signedPerpDist < 1e-6) return elevAtPixel;
         final double eccentricity =
-                Math.sqrt(Math.abs(1 - (alongDist * alongDist) / (radiusSq - SignedPerpDist * SignedPerpDist)));
+                Math.sqrt(Math.abs(1 - (alongDist * alongDist) / (radiusSq - signedPerpDist * signedPerpDist)));
         final double t = Math.clamp(0.5 * (Math.tanh(8 * (eccentricity - HydrologyTuning.MAX_ECCENTRICITY)) + 1), 0, 1);
         //  final double t = Math.clamp(eccentricity / HydrologyTuning.MAX_ECCENTRICITY, 0, 1);
         return elevAtPixel + t * uninterpolatedDelta;

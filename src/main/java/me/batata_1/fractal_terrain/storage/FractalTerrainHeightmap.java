@@ -42,7 +42,7 @@ public record FractalTerrainHeightmap(float[][] data) {
         VEGETATION(pos -> fillBilinear(pos, getBiomeProvider()::getVegetation)),
         WEIRDNESS(getBiomeProvider()::fillWeirdness),
         // Special (like ELEVATION): zero-filled here, then populated by the second pass
-        // (PopulateNoiseStep#updateToFinalElev) as carve(x,z) − pre-carve elevation. Negative where the
+        // (PopulateNoiseStep#fineGrainedUnitPass) as carve(x,z) − pre-carve elevation. Negative where the
         // river carved below the original terrain; the surface painter places water there.
         RIVER_DIFFERENCE(pos -> new float[1 << 8]);
 

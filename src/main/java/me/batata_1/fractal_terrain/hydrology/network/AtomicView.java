@@ -2,7 +2,6 @@ package me.batata_1.fractal_terrain.hydrology.network;
 
 import java.util.*;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
-import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
 
@@ -301,15 +300,14 @@ public final class AtomicView {
     /** Interior-only segment intersection for {@link #resolveCrossingEdges}; endpoint touches are not
      *  crossings, since channels legitimately share endpoints at confluences. */
     private static double[] segmentCrossing(double[] p1, double[] p2, double[] p3, double[] p4) {
-        final double[] d1 = VectorOps.sub(p2, p1);
-        final double[] d2 = VectorOps.sub(p4, p3);
-        final double denom = VectorOps.cross2D(d1, d2);
+        final double d1x = p2[0] - p1[0], d1y = p2[1] - p1[1];
+        final double d2x = p4[0] - p3[0], d2y = p4[1] - p3[1];
+        final double denom = d1x * d2y - d1y * d2x;
         if (Math.abs(denom) < CROSS_EPS) return null; // parallel or collinear
-        final double[] r = VectorOps.sub(p3, p1);
-        final double t = VectorOps.cross2D(r, d2) / denom; // param along p1->p2
-        final double s = VectorOps.cross2D(r, d1) / denom; // param along p3->p4
+        final double rx = p3[0] - p1[0], ry = p3[1] - p1[1];
+        final double t = (rx * d2y - ry * d2x) / denom; // param along p1->p2
+        final double s = (rx * d1y - ry * d1x) / denom; // param along p3->p4
         if (t <= CROSS_EPS || t >= 1 - CROSS_EPS || s <= CROSS_EPS || s >= 1 - CROSS_EPS) return null;
-        final double[] x = VectorOps.add(p1, VectorOps.scale(d1, t));
-        return new double[] {t, s, x[0], x[1]};
+        return new double[] {t, s, p1[0] + d1x * t, p1[1] + d1y * t};
     }
 }

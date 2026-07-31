@@ -28,7 +28,7 @@ public class PopulateNoiseStep {
     /** Cuts the river bed into the tile-carved shell, the last elevation pass before blocks are
      *  placed. The shell-to-bed delta lands in {@link Types#RIVER_DIFFERENCE}, which is what the
      *  water fill later reads. */
-    public void updateToFinalElev(ChunkPos chunkPos, FractalTerrainHeightmap heightmap) {
+    public void fineGrainedUnitPass(ChunkPos chunkPos, FractalTerrainHeightmap heightmap) {
         final int seaLevel = settings.seaLevel();
         final int bottom = settings.noiseSettings().minY();
         final float[] interpolatedElevs = heightmap.get(Types.ELEVATION);

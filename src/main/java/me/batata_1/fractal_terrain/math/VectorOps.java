@@ -1,6 +1,8 @@
 package me.batata_1.fractal_terrain.math;
 
-public class VectorOps {
+public final class VectorOps {
+
+    private VectorOps() {}
 
     public static double magnitude(double[] vec) {
         return Math.sqrt(dot(vec, vec));
@@ -39,9 +41,7 @@ public class VectorOps {
     }
 
     public static double[] normalize(double[] vec) {
-        double len = 0;
-        for (double v : vec) len += v * v;
-        len = Math.sqrt(len);
+        double len = magnitude(vec);
         if (len < 1e-12) return new double[vec.length];
         double[] resp = new double[vec.length];
         for (int i = 0; i < vec.length; i++) resp[i] = vec[i] / len;
@@ -57,13 +57,13 @@ public class VectorOps {
     // projects a onto b
     public static double[] project(double[] a, double[] b) {
         checkLengths(a, b);
-        final double magB = magnitude(b);
-        if (magB < 1e-5) return new double[a.length];
-        return scale(b, dot(a, b) / (magB * magB));
+        final double magSqB = dot(b, b);
+        if (magSqB < 1e-10) return new double[a.length];
+        return scale(b, dot(a, b) / magSqB);
     }
 
     public static double[] div(double[] vec, double scalar) {
-        if (scalar == 0) throw new RuntimeException("division by zero");
+        if (scalar == 0) throw new IllegalArgumentException("division by zero");
         double[] resp = new double[vec.length];
         for (int i = 0; i < vec.length; i++) resp[i] = vec[i] / scalar;
         return resp;
@@ -83,16 +83,19 @@ public class VectorOps {
         return resp;
     }
 
-    /** Returns the z-component of the 3D cross product (vec1 × vec2) for 2D vectors. */
+    /**
+     * Returns the z-component of the 3D cross product (vec1 × vec2) for 2D vectors.
+     * 2D-only by design: reads only indices 0 and 1, no length check (hot path).
+     */
     public static double cross2D(double[] vec1, double[] vec2) {
         return vec1[0] * vec2[1] - vec1[1] * vec2[0];
     }
 
     private static void checkLengths(double[] vec1, double[] vec2) {
-        if (vec1.length != vec2.length) throw new RuntimeException("vectors with different lengths");
+        if (vec1.length != vec2.length) throw new IllegalArgumentException("vectors with different lengths");
     }
 
-    // Only works for 2d
+    /** 2D-only by design: reads only indices 0 and 1, no length check (hot path). */
     public static double[] perpendicular(double[] d) {
         return new double[] {d[1], -d[0]};
     }

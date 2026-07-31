@@ -46,7 +46,7 @@ public final class FractalTerrainHeightmapCache {
         // Now that every other heightmap (gradients, residual, biome parameters) is available, recompute
         // ELEVATION from the full set — biome-aware shaping, ocean-height correction, bottomY clamp — and
         // overwrite it in place. (The record shares the same backing array, so the new values are visible.)
-        getPopulateNoiseStep().updateToFinalElev(pos, heightmap);
+        getPopulateNoiseStep().fineGrainedUnitPass(pos, heightmap);
         return heightmap;
     }
 

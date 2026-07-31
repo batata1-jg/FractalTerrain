@@ -208,9 +208,9 @@ public final class Meanders {
             }
             final double rate = Math.clamp(DT * migrationRates[i], -maxMigrationMagnetude, maxMigrationMagnetude);
             final double[] point = ch.spline.points().get(i);
-            final double[] migrationVector = VectorOps.scale(
-                    ch.spline.normal(i), -rate * borderDamping(point[0], point[1], ch.dischargeWidth()));
-            double[] migratedPoint = VectorOps.add(point, migrationVector);
+            final double[] normal = ch.spline.normal(i);
+            final double factor = -rate * borderDamping(point[0], point[1], ch.dischargeWidth());
+            final double[] migratedPoint = {point[0] + normal[0] * factor, point[1] + normal[1] * factor};
             Debug.isNan(migratedPoint);
             migratedPoints.add(migratedPoint);
         }
@@ -224,16 +224,21 @@ public final class Meanders {
         for (int i = 0; i < pointCount; i++) {
             final double[] point = ch.spline.points().get(i);
             final double[] gradient = sampleGradient(point[0], point[1]);
-            double[] displacementNormal = VectorOps.project(gradient, ch.spline.normal(i));
+            final double[] displacementNormal = VectorOps.project(gradient, ch.spline.normal(i));
 
-            double[] displacement =
-                    VectorOps.add(VectorOps.scale(displacementNormal, -1), VectorOps.scale(gradient, -1));
-            //  double[] displacement = VectorOps.scale(gradient, -1);
-            final double magnitude = VectorOps.magnitude(displacement);
-            if (magnitude > MAX_MIGRATION) displacement = VectorOps.scale(displacement, MAX_MIGRATION / magnitude);
+            double dx = displacementNormal[0] * -1 + gradient[0] * -1;
+            double dz = displacementNormal[1] * -1 + gradient[1] * -1;
+            final double magnitude = Math.sqrt(dx * dx + dz * dz);
+            if (magnitude > MAX_MIGRATION) {
+                final double clampFactor = MAX_MIGRATION / magnitude;
+                dx = dx * clampFactor;
+                dz = dz * clampFactor;
+            }
 
-            displacement = VectorOps.scale(displacement, borderDamping(point[0], point[1], ch.dischargeWidth()));
-            migratedPoints.add(VectorOps.add(point, displacement));
+            final double dampFactor = borderDamping(point[0], point[1], ch.dischargeWidth());
+            dx = dx * dampFactor;
+            dz = dz * dampFactor;
+            migratedPoints.add(new double[] {point[0] + dx, point[1] + dz});
         }
         ch.spline = QuinticHermiteSpline.createCatmullRom(migratedPoints);
     }
