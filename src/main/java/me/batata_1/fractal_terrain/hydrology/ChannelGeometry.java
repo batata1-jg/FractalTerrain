@@ -1,6 +1,6 @@
 package me.batata_1.fractal_terrain.hydrology;
 
-import me.batata_1.fractal_terrain.hydrology.rosgen.RosgenProfile;
+import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 
 /**
  * The single authority for channel cross-section geometry shared across the hydrology pipeline: the bed

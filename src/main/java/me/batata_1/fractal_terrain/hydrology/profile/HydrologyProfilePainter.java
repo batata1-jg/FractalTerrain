@@ -1,7 +1,7 @@
 package me.batata_1.fractal_terrain.hydrology.profile;
 
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
-import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
@@ -36,7 +36,7 @@ public final class HydrologyProfilePainter {
 
     /**
      * True when {@code pixelPt} (relief-pixel frame) lies inside some channel's water span — i.e. within
-     * {@code unit.width()/2} of any {@link me.batata_1.fractal_terrain.hydrology.HydrologicalUnit}.
+     * {@code unit.width()/2} of any {@link HydrologicalUnit}.
      * Candidates come from the R-tree stabbing query, which returns the units whose <em>influence</em>
      * circle contains the point — a sound superset of the channel discs, because
      * {@code riverInfluence(w) > w/2} for every representable width — and the {@code width/2} test

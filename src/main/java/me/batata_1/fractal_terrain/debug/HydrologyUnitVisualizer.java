@@ -12,9 +12,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import javax.imageio.ImageIO;
-import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
-import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.HydrologicalFeature;
-import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit.HydrologicalFeature;
+import me.batata_1.fractal_terrain.hydrology.features.River.RosgenType;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndex;
 
 /**

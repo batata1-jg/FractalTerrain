@@ -1,11 +1,10 @@
-package me.batata_1.fractal_terrain.hydrology.rosgen;
+package me.batata_1.fractal_terrain.hydrology.profile;
 
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
-import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
-import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
-import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
+import me.batata_1.fractal_terrain.hydrology.features.River.RosgenType;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,7 +43,7 @@ import org.slf4j.LoggerFactory;
  */
 
 // influence > floodplainLen > width/2
-public enum RosgenProfile {
+public enum RosgenProfile implements HydrologyProfile {
     A {
         @Override
         public double floodPlainLength(double width) {
@@ -234,7 +233,7 @@ public enum RosgenProfile {
      * Outer influence radius (native px) for a river of the given width under this Rosgen type: floodplain +
      * blend band, clamped to {@link HydrologyTuning#MAX_INFLUENCE_RADIUS}. Beyond this radius the river
      * no longer affects a pixel; it is also the unit's R-tree membership-circle radius
-     * ({@link me.batata_1.fractal_terrain.hydrology.HydrologicalUnit#getRadius()}). Placeholder law shared by
+     * ({@link HydrologicalUnit#getRadius()}). Placeholder law shared by
      * all types; override per constant to widen/narrow a type's reach. Note it calls the (virtual)
      * {@link #floodPlainLength} so a type that overrides only its floodplain gets a consistent influence.
      */

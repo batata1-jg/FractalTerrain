@@ -1,7 +1,9 @@
 package me.batata_1.fractal_terrain.hydrology.rosgen;
 
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
-import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
+import me.batata_1.fractal_terrain.hydrology.features.River.RosgenType;
+import me.batata_1.fractal_terrain.hydrology.features.River;
+import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -41,27 +43,27 @@ public final class RosgenKey {
      */
     public static RosgenType classify(ReachMetrics m) {
         // Steep confined headwaters: slope alone decides.
-        if (m.slope() >= HydrologyTuning.S_AA) return RosgenType.Aa;
-        if (m.slope() >= HydrologyTuning.S_A) return RosgenType.A;
+        if (m.slope() >= HydrologyTuning.S_AA) return River.RosgenType.Aa;
+        if (m.slope() >= HydrologyTuning.S_A) return River.RosgenType.A;
 
         // Entrenched: the valley pinches the channel.
         if (m.entrenchment() < HydrologyTuning.ER_ENTRENCHED) {
-            return m.widthDepth() < HydrologyTuning.WD_NARROW ? RosgenType.G : RosgenType.F;
+            return m.widthDepth() < HydrologyTuning.WD_NARROW ? River.RosgenType.G : River.RosgenType.F;
         }
 
         // Moderately entrenched.
-        if (m.entrenchment() < HydrologyTuning.ER_SLIGHT) return RosgenType.B;
+        if (m.entrenchment() < HydrologyTuning.ER_SLIGHT) return River.RosgenType.B;
 
         // Slightly entrenched: a broad floodplain is available.
         if (m.bedElev() < HydrologyTuning.DELTA_ELEV
                 && m.slope() < HydrologyTuning.S_DA
                 && m.entrenchment() > HydrologyTuning.ER_ANASTOMOSE) {
-            return RosgenType.DA;
+            return River.RosgenType.DA;
         }
         if (m.width() > HydrologyTuning.BRAID_MIN_WIDTH && m.slope() > braidThreshold(m.width())) {
-            return RosgenType.D;
+            return River.RosgenType.D;
         }
-        return m.widthDepth() < HydrologyTuning.WD_NARROW ? RosgenType.E : RosgenType.C;
+        return m.widthDepth() < HydrologyTuning.WD_NARROW ? River.RosgenType.E : River.RosgenType.C;
     }
 
     /**

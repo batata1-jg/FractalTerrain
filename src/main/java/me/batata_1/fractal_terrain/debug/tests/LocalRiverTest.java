@@ -12,6 +12,7 @@ import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.Drainage;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.meanders.*;
 import me.batata_1.fractal_terrain.hydrology.rosgen.ReachMetricsSampler;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
@@ -144,7 +145,7 @@ public class LocalRiverTest {
         final var savedPath = Debug.units.debugPath;
         Debug.units.debugPath = DEBUG_PATH;
         try {
-            final List<me.batata_1.fractal_terrain.hydrology.HydrologicalUnit> units = stages.unitTree.getAllEntries();
+            final List<HydrologicalUnit> units = stages.unitTree.getAllEntries();
             Debug.units.see(units, prefix + "06_units", GRID, 4);
             Debug.units.seeByRosgenType(units, prefix + "07_rosgen", GRID, 4);
             Debug.units.logStats(units, "tile (" + tx + "," + tz + ")");

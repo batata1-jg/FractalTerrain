@@ -7,8 +7,9 @@ import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
-import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
-import me.batata_1.fractal_terrain.hydrology.rosgen.RosgenProfile;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
+import me.batata_1.fractal_terrain.hydrology.features.River;
+import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import me.batata_1.fractal_terrain.relief.DecoderChannels;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
@@ -172,7 +173,7 @@ public class Infinite3DVisualizer {
     private static final BlockState BLENDING_ZONE = Blocks.LIGHT_GRAY_CONCRETE.defaultBlockState();
 
     /**
-     * Bed-zone block per {@link HydrologicalUnit.RosgenType}, indexed by {@link Enum#ordinal()}. The enum
+     * Bed-zone block per {@link River.RosgenType}, indexed by {@link Enum#ordinal()}. The enum
      * order is frozen by unit serialization, so this mapping cannot drift.
      */
     private static final BlockState[] BED_ZONE_BY_ROSGEN = {
@@ -233,7 +234,7 @@ public class Infinite3DVisualizer {
             if (unit.rosgenType() == null || unit.type() != HydrologicalUnit.HydrologicalFeature.RIVER)
                 return NOT_RIVER;
 
-            final HydrologicalUnit.RosgenType type = unit.rosgenType();
+            final River.RosgenType type = unit.rosgenType();
 
             // Bed is the deepest possible zone: no later unit can beat it, so paint and stop.
             if (radialDist <= ChannelGeometry.bedHalfWidth(unit.width())) return BED_ZONE_BY_ROSGEN[type.ordinal()];

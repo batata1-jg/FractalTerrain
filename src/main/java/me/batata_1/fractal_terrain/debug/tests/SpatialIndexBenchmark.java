@@ -13,7 +13,7 @@ import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
-import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver;

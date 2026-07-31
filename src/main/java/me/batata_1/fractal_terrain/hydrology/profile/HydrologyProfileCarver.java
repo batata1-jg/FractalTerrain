@@ -3,10 +3,9 @@ package me.batata_1.fractal_terrain.hydrology.profile;
 import java.util.Arrays;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
-import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
-import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
-import me.batata_1.fractal_terrain.hydrology.rosgen.RosgenProfile;
+import me.batata_1.fractal_terrain.hydrology.features.River;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 
 /**
@@ -93,9 +92,9 @@ public final class HydrologyProfileCarver {
             if (dist >= influenceRadius) continue; // outside this unit's reach
             final double width = unit.width();
             final RosgenProfile profile =
-                    RosgenProfile.of(unit.rosgenType() == null ? HydrologicalUnit.RosgenType.A : unit.rosgenType());
+                    RosgenProfile.of(unit.rosgenType() == null ? River.RosgenType.A : unit.rosgenType());
             final double floodPlainLength = profile.floodPlainLength(width);
-            final double unitElev = HydrologyProfile.computeForUnit(pt, floodPlainLength, width, unit, elevAtPixel);
+            final double unitElev = unit.carveFineGrained(pt, elevAtPixel);
             avgSumInfluence += unitElev * (1 - dist / influenceRadius);
             avgWeightInfluence += (1 - dist / influenceRadius);
             if (dist >= floodPlainLength) continue;
@@ -191,7 +190,7 @@ public final class HydrologyProfileCarver {
                     final double radialDist = Math.hypot(dx, dz);
                     if (radialDist >= unit.getRadius()) continue; // outside this unit's influence
                     final double width = unit.width();
-                    mutableProfile = RosgenProfile.of(unit.rosgenType() == null ? RosgenType.A : unit.rosgenType());
+                    mutableProfile = RosgenProfile.of(unit.rosgenType() == null ? River.RosgenType.A : unit.rosgenType());
                     avgSum += (1 - radialDist / unit.getRadius())
                             * mutableProfile.riverInfluenceElevation(radialDist, width, curElev, unit.elevation());
                     avgWeight += (1 - radialDist / unit.getRadius());

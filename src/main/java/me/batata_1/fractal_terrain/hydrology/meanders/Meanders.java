@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.function.Consumer;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
-import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.rosgen.ReachRosgenClassifier;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;

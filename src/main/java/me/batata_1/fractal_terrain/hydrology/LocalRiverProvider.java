@@ -16,6 +16,7 @@ import java.util.function.Predicate;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.meanders.Channel;
 import me.batata_1.fractal_terrain.hydrology.meanders.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;

@@ -8,8 +8,9 @@ import java.util.List;
 import java.util.Random;
 import java.util.Set;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
-import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.HydrologicalFeature;
-import me.batata_1.fractal_terrain.hydrology.HydrologicalUnit.RosgenType;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit.HydrologicalFeature;
+import me.batata_1.fractal_terrain.hydrology.features.River;
 import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
@@ -50,7 +51,7 @@ class SpatialIndexCorrectnessGoldenTest {
             final double z = rng.nextDouble() * GRID;
             final double width = 1.0 + rng.nextDouble() * (FractalTerrainConfig.maxNativeWidth() - 1.0);
             units.add(new HydrologicalUnit(
-                    HydrologicalFeature.RIVER, RosgenType.A, new double[] {x, z}, null, width, 0.0, 0, i));
+                    HydrologicalFeature.RIVER, River.RosgenType.A, new double[] {x, z}, null, width, 0.0, 0, i));
         }
         return units;
     }
