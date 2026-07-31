@@ -17,9 +17,9 @@ import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
+import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
-import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
@@ -233,7 +233,7 @@ public class LocalRiverProvider {
         ChannelElevationAssigner.assign(network, boundaryElev, carvedElevation);
         LOG.debug("finished first assign() pass");
         HydrologyProfileCarver.carveRiverShells(
-                carvedElevation, sim.collectUnits(0, 0, 0, new int[] {0}).toArray(new HydrologicalUnit[0]), PADDED);
+                carvedElevation, sim.collectUnits(0, 0).toArray(new HydrologicalUnit[0]), PADDED);
 
         // 2. sink-fill + drainage on the RAW decoded elevation (not yet carved): the local trace no
         //    longer needs a pre-carved valley to route toward the global network -- LOCAL_ATTACH_RADIUS
@@ -265,7 +265,7 @@ public class LocalRiverProvider {
         ChannelElevationAssigner.assign(network, boundaryElev, carvedElevation);
         LOG.debug("finished second assign() pass");
         HydrologyProfileCarver.carveRiverShells(
-                carvedElevation, sim.collectUnits(0, 0, 0, new int[] {0}).toArray(new HydrologicalUnit[0]), PADDED);
+                carvedElevation, sim.collectUnits(0, 0).toArray(new HydrologicalUnit[0]), PADDED);
 
         // The indexed units are stamped in the WORLD relief-pixel frame. collectUnits subtracts the
         // offset it is given, so (PAD - tileOrigin) drops the halo pad and adds the tile's world origin
@@ -278,9 +278,7 @@ public class LocalRiverProvider {
         // tile frame: they index against a PADDED x PADDED buffer addressed by pixel index.
         final int tileOriginX = tileX * GRID;
         final int tileOriginZ = tileZ * GRID;
-        final int[] nextFeatureId = {0};
-        final List<HydrologicalUnit> unitPoints =
-                sim.collectUnits(0, PAD - tileOriginX, PAD - tileOriginZ, nextFeatureId);
+        final List<HydrologicalUnit> unitPoints = sim.collectUnits(PAD - tileOriginX, PAD - tileOriginZ);
         final ImmutableRTree<HydrologicalUnit> unitIndex = new ImmutableRTree<>(unitPoints, HydrologicalUnit.PROTOTYPE);
 
         final FloatTensor carvedTile = cropToTile(carvedElevation);

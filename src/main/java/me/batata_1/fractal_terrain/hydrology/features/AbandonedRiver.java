@@ -31,6 +31,11 @@ public record AbandonedRiver(double[] coord) implements HydrologicalUnit {
     }
 
     @Override
+    public HydrologicalUnit atCoord(double[] newCoord) {
+        return new AbandonedRiver(newCoord);
+    }
+
+    @Override
     public HydrologyProfile getProfile() {
         return DefaultProfile.INSTANCE;
     }

@@ -14,6 +14,7 @@ import java.util.function.Function;
 import javax.imageio.ImageIO;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit.HydrologicalFeature;
+import me.batata_1.fractal_terrain.hydrology.features.River;
 import me.batata_1.fractal_terrain.hydrology.features.River.RosgenType;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndex;
 
@@ -95,8 +96,7 @@ public class HydrologyUnitVisualizer {
      * obvious instead of hiding it inside the {@code A} count.
      */
     private static Color rosgenColor(HydrologicalUnit unit) {
-        final RosgenType type = unit.rosgenType();
-        return type == null ? UNCLASSIFIED : ROSGEN_PALETTE[type.ordinal()];
+        return unit.getType() != HydrologicalFeature.RIVER ? UNCLASSIFIED : ROSGEN_PALETTE[((River) unit).rosgenType().ordinal()];
     }
 
     /**
@@ -136,10 +136,12 @@ public class HydrologyUnitVisualizer {
 
         // Pass 1 — width girths: translucent filled disc of radius width/2 (tile px) per unit.
         for (final HydrologicalUnit unit : units) {
+            if(unit.getType()!=HydrologicalFeature.RIVER) continue;
+            River  river = ((River) unit);
             final int rgb = palette.apply(unit).getRGB();
             final double centerX = (unit.coord()[0] - originX) * upscale;
             final double centerZ = (unit.coord()[1] - originZ) * upscale;
-            final double radius = unit.width() * 0.5 * upscale;
+            final double radius = river.width() * 0.5 * upscale;
             blendDisc(image, centerX, centerZ, radius, rgb);
         }
 
@@ -226,17 +228,15 @@ public class HydrologyUnitVisualizer {
      */
     private static Color colorFor(HydrologicalUnit unit) {
         final float hue =
-                switch (unit.type()) {
+                switch (unit.getType()) {
                     case RIVER -> 0.60f; // blue
                     case ABANDONED_RIVER -> 0.08f; // orange
                     case OXBOW_LAKE -> 0.85f; // magenta
                     case SOURCE -> 0.33f; // green
-                    case DRAIN -> 0.00f; // red
+                    case DELTA -> 0.00f; // red
                     default -> 0.60f;
                 };
-        final double idHash = (unit.id() * 0.6180339887498949) % 1.0;
-        final float brightness = (float) (0.55 + 0.45 * idHash);
-        return Color.getHSBColor(hue, 0.9f, brightness);
+        return Color.getHSBColor(hue, 0.9f, 1);
     }
 
     /** Alpha-blend a filled disc of {@code rgb} at {@link #GIRTH_ALPHA} over the image (manual RGB lerp). */

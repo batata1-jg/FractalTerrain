@@ -231,16 +231,16 @@ public class Infinite3DVisualizer {
             final double radialDist = Math.hypot(du, dv);
             if (radialDist >= unit.getRadius()) continue; // outside this unit's influence circle
 
-            if (unit.rosgenType() == null || unit.type() != HydrologicalUnit.HydrologicalFeature.RIVER)
+            if (unit.getType() != HydrologicalUnit.HydrologicalFeature.RIVER)
                 return NOT_RIVER;
-
-            final River.RosgenType type = unit.rosgenType();
+            River river = ((River) unit);
+            final River.RosgenType type = river.rosgenType();
 
             // Bed is the deepest possible zone: no later unit can beat it, so paint and stop.
-            if (radialDist <= ChannelGeometry.bedHalfWidth(unit.width())) return BED_ZONE_BY_ROSGEN[type.ordinal()];
+            if (radialDist <= ChannelGeometry.bedHalfWidth(river.width())) return BED_ZONE_BY_ROSGEN[type.ordinal()];
 
             final RosgenProfile profile = RosgenProfile.of(type);
-            if (radialDist <= profile.floodPlainLength(unit.width())) {
+            if (radialDist <= profile.floodPlainLength(river.width())) {
                 deepest = FLOODPLAIN_ZONE;
             } else if (deepest == DEFAULT) {
                 deepest = BLENDING_ZONE;

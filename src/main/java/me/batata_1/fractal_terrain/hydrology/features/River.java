@@ -36,8 +36,8 @@ import org.jetbrains.annotations.Nullable;
 public record River(
         double[] coord,
         double radius,
-        @Nullable RosgenType rosgenType,
-        @Nullable double[] normal,
+        RosgenType rosgenType,
+        double @Nullable [] normal,
         double width,
         double elevation)
         implements HydrologicalUnit {

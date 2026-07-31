@@ -241,10 +241,6 @@ public final class Meanders {
         ArrayList<double[]> migratedPoints = new ArrayList<>(pointCount);
         for (int i = 0; i < pointCount; i++) {
             final double[] point = ch.spline.points().get(i);
-            //            if (i == 0 || i == pointCount - 1) {
-            //                migratedPoints.add(point); // pin node endpoints
-            //                continue;
-            //            }
             final double[] gradient = sampleGradient(point[0], point[1]);
             double[] displacementNormal = VectorOps.project(gradient, ch.spline.normal(i));
 
@@ -351,10 +347,10 @@ public final class Meanders {
      * {@code riverInfluence} — the unit's own R-tree membership radius — so the type has to exist before
      * {@code carveRiverShells} builds its index over these units.
      */
-    public List<HydrologicalUnit> collectUnits(int time, double offsetX, double offsetZ, int[] nextFeatureId) {
+    public List<HydrologicalUnit> collectUnits(double offsetX, double offsetZ) {
         if (elev == null) {
             throw new IllegalStateException("collectUnits needs the raw elevation raster; construct Meanders with it");
         }
-        return network.collectUnits(time, offsetX, offsetZ, nextFeatureId, new ReachRosgenClassifier(elev, gridSize));
+        return network.collectUnits(offsetX, offsetZ, new ReachRosgenClassifier(elev, gridSize));
     }
 }

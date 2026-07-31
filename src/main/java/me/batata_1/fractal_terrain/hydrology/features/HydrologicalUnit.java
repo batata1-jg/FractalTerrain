@@ -2,8 +2,14 @@ package me.batata_1.fractal_terrain.hydrology.features;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.List;
 import java.util.function.Supplier;
+
+import me.batata_1.fractal_terrain.hydrology.network.Channel;
+import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
+import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
+import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.ZoneCategory;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
@@ -78,13 +84,57 @@ public interface HydrologicalUnit extends SpatialIndexPoint, SpatialIndexCircle,
      * type, so an attempt to persist it fails loudly at the one place that can name what is missing.
      */
     enum HydrologicalFeature {
-        RIVER(() -> River.PROTOTYPE),
-        ABANDONED_RIVER(() -> AbandonedRiver.PROTOTYPE),
-        OXBOW_LAKE(() -> OxbowLake.PROTOTYPE),
-        SOURCE(() -> Source.PROTOTYPE),
-        DRAIN(null),
-        WATERFALL(() -> Waterfall.PROTOTYPE),
-        DELTA(() -> Delta.PROTOTYPE);
+        RIVER(() -> River.PROTOTYPE) {
+            @Override
+            public void addUnits(List<HydrologicalUnit> out, Object... args) {
+                ChannelTyper typer = (ChannelTyper) args[0];
+                Channel ch = (Channel) args[1];
+                River.RosgenType[] types = typer.typesFor(ch);
+                for (int i = 0; i < ch.numPts(); i++) {
+                    final double width = ch.widthAt(i);
+                    final RosgenProfile profile = RosgenProfile.of(types[i]);
+                    out.add(new River(
+                            ch.spline.sample(i),
+                            profile.riverInfluence(width),
+                            types[i],
+                            ch.spline.normal(i),
+                            width,
+                            ch.bedElev(i)
+                    ));
+                }
+            }
+        },
+        ABANDONED_RIVER(() -> AbandonedRiver.PROTOTYPE) {
+            @Override
+            public void addUnits(List<HydrologicalUnit> units, Object... args) {
+
+            }
+        },
+        OXBOW_LAKE(() -> OxbowLake.PROTOTYPE) {
+            @Override
+            public void addUnits(List<HydrologicalUnit> units, Object... args) {
+
+            }
+        },
+        SOURCE(() -> Source.PROTOTYPE) {
+            @Override
+            public void addUnits(List<HydrologicalUnit> units, Object... args) {
+                Endpoint endpoint = (Endpoint) args[0];
+                units.add(new Source(endpoint.coord));
+            }
+        },
+        WATERFALL(() -> Waterfall.PROTOTYPE) {
+            @Override
+            public void addUnits(List<HydrologicalUnit> units, Object... args) {
+
+            }
+        },
+        DELTA(() -> Delta.PROTOTYPE) {
+            @Override
+            public void addUnits(List<HydrologicalUnit> units, Object... args) {
+
+            }
+        };
 
         /** {@code values()} without the defensive copy; indexed by the on-disk type tag. */
         private static final HydrologicalFeature[] VALUES = values();
@@ -115,6 +165,9 @@ public interface HydrologicalUnit extends SpatialIndexPoint, SpatialIndexCircle,
             }
             return prototypeSupplier.get();
         }
+
+        public abstract void addUnits(List<HydrologicalUnit> units, Object...  args);
+
     }
 
     // Records compare array components by reference; these compare contents instead.
