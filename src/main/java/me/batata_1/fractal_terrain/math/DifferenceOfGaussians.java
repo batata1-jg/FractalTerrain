@@ -31,23 +31,14 @@ public class DifferenceOfGaussians {
                 path, "dog_tensor", new int[] {1, COARSE_TILE_SIZE, COARSE_TILE_SIZE}, this::buildTile);
     }
 
-    /**
-     * Halo width (in pixels) a Difference-of-Gaussians needs on every side so the cropped result
-     * is free of border artifacts: {@code ceil(3 * max(sigma1, sigma2))}. Single source of the pad
-     * size — used by the constructor and by downstream pipelines (e.g. {@code GlobalRiverProvider})
-     * that size their own padded slices so the cropped output lands on the requested tile size.
-     */
+    /** The single source of the pad size, so callers sizing their own padded slices cannot disagree
+     *  with the constructor. */
     public static int padFor(double sigma1, double sigma2) {
         return (int) Math.ceil(3.0 * Math.max(sigma1, sigma2));
     }
 
-    /**
-     * Stateless Difference-of-Gaussians core: blurs the (square) input at both sigmas and returns
-     * {@code gaussian(sigma1) - gaussian(sigma2)}. The result keeps the SAME size/padding as the
-     * input — no normalization, clamping, or cropping is applied (the caller supplies a ready-to-blur
-     * array and removes any padding later). Intended for pipelines that use the DoG as an intermediate
-     * step. The input is assumed square ({@code width == height == sqrt(img.length)}).
-     */
+    /** Stateless core for pipelines using the DoG as an intermediate: no normalization, clamping or
+     *  cropping, so the caller keeps control of padding. Input must be square. */
     public static float[] run(float[] img, int W, int H, double sigma1, double sigma2) {
         final float[] lowSigmaBlur = Blur.gaussianSeparable(img, W, H, sigma1);
         final float[] highSigmaBlur = Blur.gaussianSeparable(img, W, H, sigma2);

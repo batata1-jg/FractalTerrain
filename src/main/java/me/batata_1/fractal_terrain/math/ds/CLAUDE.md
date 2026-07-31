@@ -6,6 +6,7 @@ Spatial-index data structures: a mutable `QuadTree` and immutable, build-once `I
 
 | File                          | What                                                        | When to read                                    |
 | ----------------------------- | ---------------------------------------------------------- | ----------------------------------------------- |
+| `README.md` | Index-choice rationale, the `ImmutableQuadTree` alignment bug, locking invariants | Choosing an index, debugging dropped points, before adding a mutation path |
 | `SpatialIndex.java`           | Query interface over indexed shapes                        | Consuming a spatial index                       |
 | `QuadTree.java`               | Mutable quadtree with read/write lock                      | Building a quadtree, concurrent-read contract   |
 | `ImmutableQuadTree.java`      | Immutable, frozen quadtree                                 | Cached per-tile point indexes                   |

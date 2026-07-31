@@ -35,10 +35,8 @@ public class Infinite3DVisualizer {
         /** Elevation <em>after</em> the carving step: the carved+filled ch0 imported by ReliefProvider. */
         RELIEF(0.2f, 1.0f, 5.0f, xz -> FractalTerrainInstance.getReliefProvider()
                 .getElev(xz)),
-        /**
-         * Elevation <em>before</em> the carving step: the raw decoded terrain ({@link DecoderChannels}
-         * {@code base[0]}), same vertical scale as {@link #RELIEF} so before/after are directly comparable.
-         */
+        /** Elevation before carving (raw {@link DecoderChannels} {@code base[0]}), same scale as
+         *  {@link #RELIEF} so before/after compare directly. */
         DECODED(0.2f, 1.0f, 5.0f, xz -> FractalTerrainInstance.getInfinite3DVisualizer()
                 .getDecodedElev(xz)),
         COARSE(1.0f, 1.0f, 256.0f, xz -> FractalTerrainInstance.getInfinite3DVisualizer()
@@ -117,10 +115,8 @@ public class Infinite3DVisualizer {
     private final ThreadLocal<long[]> decodedTileKey = ThreadLocal.withInitial(() -> new long[] {Long.MIN_VALUE});
     private final ThreadLocal<float[]> decodedTileElev = ThreadLocal.withInitial(() -> null);
 
-    /**
-     * Decoded (pre-carve) elevation at relief-pixel {@code (xz[1], xz[2])} — the {@link DecoderChannels}
-     * {@code base[0]} that {@link DebugModes#DECODED} projects, before any river carving is applied.
-     */
+    /** Decoded (pre-carve) elevation at relief-pixel {@code (xz[1], xz[2])} — what {@link DebugModes#DECODED}
+     *  projects, before river carving. */
     private Float getDecodedElev(int[] xz) {
         final int px = xz[1];
         final int pz = xz[2];
@@ -172,10 +168,7 @@ public class Infinite3DVisualizer {
     private static final BlockState FLOODPLAIN_ZONE = Blocks.GRAY_CONCRETE.defaultBlockState();
     private static final BlockState BLENDING_ZONE = Blocks.LIGHT_GRAY_CONCRETE.defaultBlockState();
 
-    /**
-     * Bed-zone block per {@link RiverUnit.RosgenType}, indexed by {@link Enum#ordinal()}. The enum
-     * order is frozen by unit serialization, so this mapping cannot drift.
-     */
+    /** Bed-zone block per {@link RiverUnit.RosgenType} ordinal; frozen order matches unit serialization. */
     private static final BlockState[] BED_ZONE_BY_ROSGEN = {
         Blocks.RED_CONCRETE.defaultBlockState(), // A   steep entrenched
         Blocks.PINK_CONCRETE.defaultBlockState(), // Aa  very steep
@@ -190,29 +183,8 @@ public class Infinite3DVisualizer {
 
     private static final BlockState NOT_RIVER = Blocks.BLACK_CONCRETE.defaultBlockState();
 
-    /**
-     * Paints the carve zone at {@code (xx, zz)} as the deepest zone reached by any influencing
-     * {@link HydrologicalUnit}, mirroring
-     * {@link me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver#carvePrefetched}'s
-     * min-composite (deepest covering channel wins) rather than a single nearest-unit seam:
-     *
-     * <ul>
-     *   <li><b>bed</b> ({@code radialDist ≤ bedHalfWidth}) → the unit's Rosgen-type colour, see
-     *       {@link #BED_ZONE_BY_ROSGEN};</li>
-     *   <li><b>floodplain</b> ({@code radialDist ≤ floodPlainLength}) → gray;</li>
-     *   <li><b>blending</b> (out to the unit's influence radius) → light gray.</li>
-     * </ul>
-     *
-     * <p>A unit with a {@code null} Rosgen type paints its bed as {@code A} (red) rather than as its own
-     * colour, matching how {@code HydrologyProfileCarver} and {@link HydrologicalUnit#getRadius()}
-     * coalesce the type — this preview shows what will be carved, not what was measured. Use
-     * {@link HydrologyUnitVisualizer#seeByRosgenType} to see unclassified reaches called out.
-     *
-     * <p>{@code radialDist} is the plain Euclidean distance from the point to the unit's centre — the
-     * same measure {@link HydrologicalUnit#channelContains} and {@code HydrologyProfileCarver#carvePrefetched}
-     * use — not a perpendicular/along-channel decomposition, so this is an approximation near sharply
-     * curved channels rather than an exact geometric preview.
-     */
+    /** Preview of what {@code HydrologyProfileCarver} will carve at {@code (xx, zz)}: composites the
+     *  deepest zone across covering {@link RiverUnit}s, but returns black on any non-river unit in range. */
     public BlockState debugHydroZones(int xx, int y, int zz) {
         final double[] pt = mutableCoordsXZ.get();
         pt[0] = xx * 0.2; // block -> relief-pixel frame (÷ GLOBAL_SCALE_CORRECTION)
@@ -233,10 +205,12 @@ public class Infinite3DVisualizer {
 
             if (!(unit instanceof RiverUnit riverUnit)) return NOT_RIVER;
             // An unclassified reach paints as A, matching how the carve coalesces a null type.
-            final RiverUnit.RosgenType type = riverUnit.rosgenType() == null ? RiverUnit.RosgenType.A : riverUnit.rosgenType();
+            final RiverUnit.RosgenType type =
+                    riverUnit.rosgenType() == null ? RiverUnit.RosgenType.A : riverUnit.rosgenType();
 
             // Bed is the deepest possible zone: no later unit can beat it, so paint and stop.
-            if (radialDist <= ChannelGeometry.bedHalfWidth(riverUnit.width())) return BED_ZONE_BY_ROSGEN[type.ordinal()];
+            if (radialDist <= ChannelGeometry.bedHalfWidth(riverUnit.width()))
+                return BED_ZONE_BY_ROSGEN[type.ordinal()];
 
             final RosgenProfile profile = RosgenProfile.of(type);
             if (radialDist <= profile.floodPlainLength(riverUnit.width())) {
@@ -255,13 +229,8 @@ public class Infinite3DVisualizer {
     private static final BlockState PV_HIGH = Blocks.LIME_CONCRETE.defaultBlockState();
     private static final BlockState PV_PEAKS = Blocks.YELLOW_CONCRETE.defaultBlockState();
 
-    /**
-     * Paints a peaks-and-valleys band derived from biome weirdness. The weirdness {@code w} at
-     * {@code (x, z)} (scale-5 interpolation from {@link me.batata_1.fractal_terrain.world.biome.BiomeProvider})
-     * is folded into {@code pv = 1 - |3·|w| - 2|} and quantized into five bands:
-     * Valleys {@code [-1, -0.85)}, Low {@code [-0.85, -0.2)}, Mid {@code [-0.2, 0.2)},
-     * High {@code [0.2, 0.7)}, Peaks {@code [0.7, 1]}.
-     */
+    /** Paints a peaks-and-valleys band derived from biome weirdness — quick visual check of the PV
+     *  classification before it drives biome/feature placement. */
     public BlockState debugPV(int x, int y, int z) {
         final double weirdness = FractalTerrainInstance.getBiomeProvider().getWeirdness(x, z);
         final double pv = 1.0 - Math.abs(3.0 * Math.abs(weirdness) - 2.0);

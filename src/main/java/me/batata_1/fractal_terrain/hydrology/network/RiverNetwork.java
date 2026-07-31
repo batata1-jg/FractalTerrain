@@ -29,30 +29,14 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 /**
- * The river-network graph and all topology/geometry it owns: a directed dendritic in-tree whose edges
- * are {@link Channel}s (keyed by {@code channelId}) and whose vertices are typed {@link Endpoint}s sitting
- * on channel endpoints (single-outflow invariant — see {@link Endpoint}).
+ * The river-network graph, owning every topology and geometry mutation the hydrology pipeline performs.
  *
- * <p>All network mutation is collapsed onto a single validated seam: an explicit conversion between the
- * <b>canonical (channel) view</b> (the {@code channels}/{@code nodes} maps) and an <b>atomic (node) view</b>
- * ({@link AtomicView} — a {@code List<List<Integer>>} adjacency where every interior spline point is a
- * first-class node). {@link #viewAtomic()} builds the atomic view; {@link #accumulateAndCorrectFlow}
- * derives per-point flow over it; {@link #update} folds it back into {@code this} in place. Collision
- * handling ({@link #manageCollisions}) is a from-scratch orient-and-prune over the atomic view (a
- * deterministic two-mark DFS), and {@code Channel} stores <b>flow</b> (additive at confluences), with width
- * derived via {@link HydrologyTuning#widthFromFlow}.
+ * <p>All mutation funnels through one validated seam between the canonical channel view and the atomic
+ * node view ({@link AtomicView}), so topology rules are checked in exactly one place. Stream-capture
+ * collision handling lives here in {@link #manageCollisions}, never split into its own resolver.
  *
- * <p>When {@code savePreviousStates} is enabled it additionally records, per step, the paths removed by
- * collisions (as {@link HydrologicalFeature#ABANDONED_RIVER}) and by cutoffs (as
- * {@link HydrologicalFeature#OXBOW_LAKE}), plus bounded network snapshots. The relaxation phase runs
- * with recording disabled, so it produces no history.
- *
- * <p>{@link #collectUnits} packages the current network (plus recorded removed features) into a list of
- * {@link HydrologicalUnit}s, resampling every feature at {@code dx = max(width/2, MIN_CONVERT_SPACING)}
- * so wider features carry proportionally fewer points; the caller freezes the list into its spatial
- * index of choice. A graph channel emits {@link HydrologicalFeature#RIVER} units except at an endpoint
- * that sits on a source or drain node, which emits {@link HydrologicalFeature#SOURCE} /
- * {@link HydrologicalFeature#DRAIN}; the channel-id filter applies to all of a channel's units alike.
+ * <p>{@link #collectUnits} is the pipeline's exit: it packages the network into {@link HydrologicalUnit}s
+ * for the caller to freeze into a spatial index. See {@code README.md} for the view seam in detail.
  */
 public final class RiverNetwork {
 
@@ -158,15 +142,9 @@ public final class RiverNetwork {
     // Construction: everything enters through the atomic view (no split/mint primitives)
     // ---------------------------------------------------------------------------------------------
 
-    /**
-     * Fold a batch of {@link NodeSpec}/{@link EdgeSpec} entries into {@code this} through the seam: build an
-     * {@link AtomicView} directly (interior crossingEdge points become fresh atomic nodes; the two endpoints collapse
-     * on their shared node-spec index so a confluence is one atomic node), seed each boundary node's flow
-     * input (SOURCE seed / DRAIN anchor), derive per-point flow with {@link #accumulateAndCorrectFlow}, then
-     * {@link #update} emits {@link Channel}s/{@link Endpoint}s into {@code this}. SOURCE/DRAIN canonical ids
-     * are pinned to their node-spec index (so a boundary-elevation map keyed on the spec index stays valid —
-     * the historic {@code specIndex == nodeId} contract); JUNCTION-equivalents get fresh ids.
-     */
+    /** Bulk-builds the graph from specs through the same seam every other mutation uses.
+     *  SOURCE/DRAIN ids are pinned to their spec index, so a caller's boundary-elevation map keyed on
+     *  that index stays valid across the build. */
     private void buildFromSpecs(List<NodeSpec> nodeSpecs, List<EdgeSpec> edgeSpecs, double resampleDist) {
         final AtomicView atomic = new AtomicView();
 
@@ -237,14 +215,8 @@ public final class RiverNetwork {
     /** The per-cell own-flow constant carried by interior/junction atomic nodes (see {@link #viewAtomic()}). */
     private static final double FLOW_PER_CELL = HydrologyTuning.FLOW_PER_CELL_LOCAL;
 
-    /**
-     * Canonical -> atomic. Iterates channels in sorted-by-id order (so atomic-id assignment is reproducible
-     * and HashMap iteration order never leaks in). Each channel's interior points become fresh atomic nodes;
-     * the two endpoints collapse keyed on the canonical {@link Endpoint} node id (the first channel touching
-     * a node adds it, later channels reuse it), so channels sharing a graph node share one atomic node.
-     * SOURCE/DRAIN provenance (and their canonical id) is carried so {@link #update} can preserve their ids.
-     * Velocity/acceleration are not carried — {@code createCatmullRom} re-infers them on rebuild.
-     */
+    /** Half of the mutation seam: exposes every spline point as a graph node so per-point algorithms
+     *  (flow, planarization, capture) can work uniformly. {@link #update} folds the result back. */
     public AtomicView viewAtomic() {
         final AtomicView atomic = new AtomicView();
         final Map<Integer, Integer> endpointToAtomicId = new HashMap<>(); // canonical Endpoint id -> atomic id
@@ -293,13 +265,8 @@ public final class RiverNetwork {
         return atomic;
     }
 
-    /**
-     * Single-outflow check (invariant K1), modelled on {@link Endpoint#degree()} + {@link Endpoint.Type}:
-     * SOURCE exactly 1 outgoing, DRAIN 0 outgoing, JUNCTION/interior exactly 1 outgoing. Counts only the
-     * directed tree-successor slot ({@code adjacency.get(id).size()}). Throws (rather than {@code assert})
-     * so the guard holds regardless of whether {@code -ea} is enabled — the plan pins this as a hard
-     * precondition of {@link #update}.
-     */
+    /** Enforces invariant K1, the hard precondition of {@link #update}. Throws rather than asserts, so
+     *  the guard holds without {@code -ea}. */
     void assertSingleOutflow(AtomicView atomic) {
         for (int id = 0; id < atomic.size(); id++) {
             final int outdeg = atomic.adjacency.get(id).size();
@@ -316,16 +283,9 @@ public final class RiverNetwork {
         }
     }
 
-    /**
-     * Atomic -> canonical, IN PLACE. Mutates {@code this}: clears {@code channels}/{@code nodes}/
-     * {@code quadTree}, resets the id counters (node counter set PAST every preserved id so a fresh
-     * JUNCTION-equivalent id can never collide with a preserved SOURCE/DRAIN id), then re-emits maximal
-     * directed chains between structural nodes (source / drain / in-degree &ge; 2 confluence) as
-     * {@link Channel}s wired directly into {@code this}. The canonical id of every atomic node whose
-     * provenance is SOURCE or DRAIN is preserved (boundary-elevation lookups key on these); every
-     * JUNCTION-equivalent structural node gets a fresh id. {@code bedElevations} are intentionally not
-     * preserved. Does NOT allocate a new {@code RiverNetwork} — returns {@code this} for chaining.
-     */
+    /** The other half of the seam, folding the atomic view back in place. Preserves SOURCE/DRAIN ids
+     *  because boundary-elevation maps key on them; re-assigns every channel id, which is why the
+     *  local/global channel distinction cannot survive a collision pass. */
     public RiverNetwork update(AtomicView atomic) {
 
         final double[] flow = atomic.accumulateAndCorrectFlow();
@@ -391,12 +351,7 @@ public final class RiverNetwork {
         return atomic.adjacency.get(id).getFirst();
     }
 
-    /**
-     * Builds a {@link Channel} from {@code chain} and wires it directly into {@code this}, reusing the
-     * kept {@link #insertChannelInQuadTree} QuadTree helper. The start/end canonical ids come from
-     * {@code canonicalIdOf} (preserved SOURCE/DRAIN, or fresh JUNCTION-equivalent). Applies the inlined
-     * single-outflow (K1) guard. {@code bedElevations} are not preserved.
-     */
+    /** Emits one chain as a wired-in {@link Channel}; the per-chain step of {@link #update}. */
     private void emitChannel(AtomicView atomic, double[] accumulatedFlow, List<Integer> chain, int[] canonicalIdOf) {
         final ArrayList<double[]> points = new ArrayList<>(chain.size());
         final double[] flow = new double[chain.size()];
@@ -426,11 +381,8 @@ public final class RiverNetwork {
         // bedElevations intentionally NOT preserved — the seam is bed-elevation-agnostic
     }
 
-    /**
-     * Fetches (or lazily creates) the {@link Endpoint} for a structural atomic node in {@code this}. A
-     * SOURCE/DRAIN atomic node keeps its type; every other structural node becomes a JUNCTION. Endpoints
-     * are shared across chains (a confluence is the end of one chain and the start of others).
-     */
+    /** Gets or creates the {@link Endpoint} for a structural node, shared across chains so a confluence
+     *  is one vertex rather than one per incident channel. */
     private Endpoint ensureNode(AtomicView atomic, int atomicId, int canonicalId, double[] pos) {
         final Endpoint existing = nodes.get(canonicalId);
         if (existing != null) return existing;
@@ -450,24 +402,9 @@ public final class RiverNetwork {
     // Collisions (stream capture) — a from-scratch orient-and-prune over the atomic view
     // ---------------------------------------------------------------------------------------------
 
-    /**
-     * Rebuild the network's topology from scratch over the atomic view:
-     *
-     * <ol>
-     *   <li>Detect crossings between channels (bed-overlap on per-point {@link Channel#widthAt}); connect the
-     *       crossing atomic-node pairs with undirected edges.</li>
-     *   <li>Deterministic two-mark DFS from each source (sorted source id, pinned adjacency: directed
-     *       tree-successor first, then undirected crossing partners ascending by atomic id). Promotion — of
-     *       the not-yet-{@code streamMarked} stack suffix — happens only on reaching a DRAIN or an
-     *       already-{@code streamMarked} node; each node's single outgoing crossingEdge is set exactly once, at the
-     *       instant it becomes {@code streamMarked}. Acyclic + single-outflow by construction.</li>
-     *   <li>Build the oriented view from the promoted edges (kept = promoted edges only).</li>
-     *   <li>Prune unmarked nodes — each dangling unmarked sub-path becomes an {@link
-     *       HydrologicalFeature#ABANDONED_RIVER} (recorded only when {@code savePreviousStates}).</li>
-     *   <li>{@link #accumulateAndCorrectFlow} over the oriented view, then {@link #update} folds it back in
-     *       place.</li>
-     * </ol>
-     */
+    /** Stream capture: where channels have drifted into each other, re-orients the network so one
+     *  captures the other and prunes what no longer reaches a drain. Rebuilds topology from scratch
+     *  rather than patching it, which is what keeps the result acyclic and single-outflow. */
     public void manageCollisions(int step, AtomicView atomic) {
 
         // step 1: undirected crossing edges + the pinned per-node adjacency (tree successor + partners).
@@ -522,10 +459,7 @@ public final class RiverNetwork {
         return sources; // ids are appended in ascending order already
     }
 
-    /**
-     * Returns true iff {@code node}'s branch reached a drain / {@code streamMarked} terminus (promoted, or
-     * was already a terminus on entry). {@code stack} is the current path from the originating source.
-     */
+    /** Recursive step of the capture DFS; true means this branch reached a terminus and was promoted. */
     private boolean dfsVisit(
             AtomicView atomic,
             int node,
@@ -568,11 +502,8 @@ public final class RiverNetwork {
         return false; // exhausted — node stays merely visited, unpromoted; pruned in step 4
     }
 
-    /**
-     * Wires each node on {@code stack} (top-of-stack first) to its single outgoing crossingEdge toward
-     * {@code terminus}, then streamMarks it. Each node's outgoing crossingEdge is set EXACTLY ONCE, at the instant it
-     * transitions unmarked -> streamMarked; an already-streamMarked node is never on the stack.
-     */
+    /** Promotes {@code stack} into the oriented tree toward {@code terminus} — the sole place outgoing
+     *  edges are assigned, preserving the single-outflow invariant established during DFS orientation. */
     private static void promoteSuffix(Deque<Integer> stack, int terminus, boolean[] streamMarked, int[] outgoing) {
         int next = terminus;
         streamMarked[next] = true; // ensures terminus is streamMarked
@@ -583,12 +514,9 @@ public final class RiverNetwork {
         }
     }
 
-    /**
-     * Build the oriented, pruned atomic view: only {@code alive} nodes, re-indexed ascending, with each
-     * kept node's single promoted outgoing crossingEdge. Drains and pruned nodes get an empty adjacency. Roles /
-     * canonical ids / flow inputs are carried through, so {@link #update} preserves SOURCE/DRAIN ids and
-     * {@link #accumulateAndCorrectFlow} re-derives flow over the oriented topology.
-     */
+    /** The pruned, oriented atomic view the collision pass promotes crossings into. Roles, canonical ids
+     *  and flow inputs carry through so {@link #update} keeps SOURCE/DRAIN ids and {@link
+     *  #accumulateAndCorrectFlow} re-derives flow over the new topology. */
     private static AtomicView buildOriented(AtomicView atomic, boolean[] alive, int[] outgoing) {
         final int n = atomic.size();
         final AtomicView oriented = new AtomicView();
@@ -611,11 +539,8 @@ public final class RiverNetwork {
         return oriented;
     }
 
-    /**
-     * Record each maximal unmarked (pruned) directed sub-path as an {@link HydrologicalFeature#ABANDONED_RIVER}
-     * removed feature. Walks the ORIGINAL directed adjacency; a run head is an unmarked node with no unmarked
-     * directed predecessor.
-     */
+    /** Records each pruned sub-path the collision pass drops, staged for {@link #collectUnits} to emit
+     *  as an {@link HydrologicalFeature#ABANDONED_RIVER} entry. */
     private void recordAbandoned(AtomicView atomic, boolean[] alive, int step) {
         final int n = atomic.size();
         final boolean[] hasUnmarkedPred = new boolean[n];
@@ -640,13 +565,8 @@ public final class RiverNetwork {
         }
     }
 
-    /**
-     * Detect channel crossings: one undirected atomic-node-pair crossingEdge per overlapping channel pair (the
-     * closest overlapping point pair between them), bed-overlap tested via {@link ChannelGeometry#channelsOverlap}
-     * on per-point {@link Channel#widthAt}. Deterministic: channels iterated in sorted id order; the chosen
-     * pair per partner is the globally closest (independent of query order); shared confluence nodes (same
-     * atomic id) are skipped.
-     */
+    /** Finds one crossing edge per overlapping channel pair (closest overlapping points, tested via
+     *  {@link ChannelGeometry#channelsOverlap}), feeding the collision/orientation pass below. */
     private List<int[]> detectCrossings(AtomicView atomic) {
         quadTree.clear();
         final List<Integer> channelIds = new ArrayList<>(channels.keySet());
@@ -791,11 +711,8 @@ public final class RiverNetwork {
     // Conversion to the queryable, persistable unit tree
     // ---------------------------------------------------------------------------------------------
 
-    /**
-     * {@link #collectUnits(double, double, IntPredicate, ChannelTyper)} over every channel, untyped: every
-     * emitted {@link RiverUnit}'s {@link RiverUnit#rosgenType() rosgenType} is {@code null}, which every consumer
-     * coalesces to {@link RosgenType#A}.
-     */
+    /** {@link #collectUnits(double, double, IntPredicate, ChannelTyper)} untyped: every unit's {@link
+     *  RiverUnit#rosgenType() rosgenType} is null, which callers coalesce to {@link RosgenType#A}. */
     public List<HydrologicalUnit> collectUnits(double offsetX, double offsetZ) {
         return collectUnits(offsetX, offsetZ, channelId -> true, null);
     }
@@ -808,7 +725,7 @@ public final class RiverNetwork {
     public List<HydrologicalUnit> collectUnits(
             double offsetX, double offsetZ, IntPredicate channelIdFilter, @Nullable ChannelTyper typer) {
         final List<HydrologicalUnit> units = new ArrayList<>();
-        final double[] offset = new double[]{offsetX, offsetZ};
+        final double[] offset = new double[] {offsetX, offsetZ};
         // Phase 1: resample every emitting channel. Types depend on neighbouring channels, so every
         // channel must hold its final geometry before any of them is classified.
         final List<Channel> emitting = new ArrayList<>();

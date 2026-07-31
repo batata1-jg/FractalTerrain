@@ -11,19 +11,8 @@ public final class GaussianNoisePatch {
     private static final int DEFAULT_TILE_H = 256;
     private static final int DEFAULT_TILE_W = 256;
 
-    /**
-     * Returns a (channels, h, w) patch of standard-normal noise.
-     *
-     * @param baseSeed  world seed (64-bit, matches Python WorldPipeline.seed)
-     * @param y0        top pixel row (can be negative)
-     * @param x0        left pixel column (can be negative)
-     * @param h         output height in pixels
-     * @param w         output width in pixels
-     * @param channels  number of channels
-     * @param tileH     tile height for seeding
-     * @param tileW     tile width for seeding
-     * @return float array [channels][h][w] with Gaussian values
-     */
+    /** Deterministic Gaussian noise for a pixel region (origin may be negative); tile-seeded so results
+     *  stay stitchable across tile boundaries — the noise primitive every diffusion stage conditions on. */
     public static float[][][] generate(
             long baseSeed, int y0, int x0, int h, int w, int channels, int tileH, int tileW) {
         float[][][] out = new float[channels][h][w];

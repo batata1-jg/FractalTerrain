@@ -46,10 +46,7 @@ public abstract class InfiniteTensor {
 
     protected volatile AtomicLong counter = new AtomicLong(0);
 
-    /**
-     * Soft limit on cached window bytes.  {@code Long.MAX_VALUE} = unlimited.
-     * Eviction occurs after a new window is written.
-     */
+    /** Soft cap on cached window bytes; {@code Long.MAX_VALUE} disables eviction. */
     protected final long cacheLimitBytes;
 
     InfiniteTensor(
@@ -74,13 +71,7 @@ public abstract class InfiniteTensor {
         this.cacheLimitBytes = cacheLimitBytes;
     }
 
-    /**
-     * Retrieve a contiguous slice of this tensor.
-     *
-     * @param start inclusive pixel start per dimension
-     * @param end   exclusive pixel end per dimension
-     * @return the accumulated FloatTensor
-     */
+    /** The read entry point: assembles a slice from however many windows it spans. */
     public FloatTensor getSlice(int[] start, int[] end) {
         int n = shape.length;
         int[][] pixelRange = buildRange(start, end);
@@ -128,12 +119,8 @@ public abstract class InfiniteTensor {
         return output;
     }
 
-    /**
-     * Read a cached window, self-healing on a fetch failure: if the storage cannot supply the tile
-     * (e.g. a corrupt or vanished on-disk file), log a warning and recompute it once instead of
-     * propagating the error. {@code ensureComputed} has already produced every needed window, so a
-     * failure here means a previously-persisted tile became unreadable.
-     */
+    /** Self-heals a failed window read by recomputing once, since a failure here means an
+     *  already-produced tile became unreadable on disk rather than a genuine miss. */
     private FloatTensor getEntryOrRecompute(int[] windowIndex) {
         try {
             return storage.getEntry(windowIndex);
@@ -151,20 +138,13 @@ public abstract class InfiniteTensor {
     protected abstract void updateOutput(
             final FloatTensor output, final FloatTensor src, final int[][] dstRegion, final int[][] srcRegion);
 
-    /**
-     * Ensures every window intersecting {@code pixelRange} is present in the cache.
-     * Recursively ensures upstream dependencies are computed first.
-     */
+    /** Materializes every window a read will touch, recursing into upstream dependencies first. */
     protected void ensureComputed(int[][] pixelRange) {
         ensureComputedRanges(Collections.singletonList(pixelRange));
     }
 
-    /**
-     * Ensures every window that intersects any of the given pixel ranges is present.
-     * Matches Python _apply_f_range: each range is expanded to window indices, then
-     * deduped (no bounding-box union, so we only request windows that actually intersect
-     * at least one range).
-     */
+    /** Multi-range form of {@link #ensureComputed}. Dedupes rather than taking a bounding-box union,
+     *  so scattered ranges do not drag in the windows between them. */
     protected void ensureComputedRanges(List<int[][]> pixelRanges) {
         Set<TileKey> pendingSet = new LinkedHashSet<>();
         for (int[][] range : pixelRanges) {
@@ -324,13 +304,8 @@ public abstract class InfiniteTensor {
         return range;
     }
 
-    /**
-     * Iterate over all window index combinations in the inclusive range [lo, hi].
-     *
-     * <p><b>Contract:</b> the {@code int[]} handed to {@code action} is a single mutable buffer
-     * reused across iterations. Consumers must read it within the callback and must NOT retain a
-     * reference — copy it (e.g. via {@code TileKey}/{@code clone()}) if it must outlive the call.
-     */
+    /** Walks window indices without allocating per iteration. The {@code int[]} handed to
+     *  {@code action} is a reused buffer — copy it if it must outlive the callback. */
     static void iterateWindows(int[] lo, int[] hi, InfiniteTensor.WindowConsumer action) {
         int n = lo.length;
         for (int d = 0; d < n; d++) {

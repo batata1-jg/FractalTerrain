@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.debug.Debug;
-import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import org.slf4j.Logger;
 
@@ -87,12 +86,8 @@ public record QuinticHermiteSpline(
         return reSampleWithTs(samplingDist).spline();
     }
 
-    /**
-     * Resamples this spline at {@code samplingDist} and exposes the arc-length parameter list it built
-     * by binary search, in addition to the resampled spline, so a caller can resample a parallel
-     * per-point array (e.g. {@link Channel#bedElevations})
-     * on the identical t-basis.
-     */
+    /** Resample that also returns its t-basis, so a caller can resample a parallel per-point array
+     *  such as bed elevations onto exactly the same points. */
     public Resampled reSampleWithTs(double samplingDist) {
         if (this.checkNaN()) throw new IllegalStateException();
         if (points.size() < 2) throw new IllegalStateException("spline must have at least 2 points");
@@ -137,13 +132,7 @@ public record QuinticHermiteSpline(
         return false;
     }
 
-    /**
-     * Whether {@link #reSample} can run on this spline: it needs at least two points and no NaN
-     * components. A spline failing this is degenerate and would make {@code reSample} throw
-     * {@link IllegalStateException}; callers should test this up front rather than catch that as control
-     * flow. (A well-formed spline may still hit runaway geometry, which {@code reSample} reports
-     * separately.)
-     */
+    /** Whether {@link #reSample} can run safely — check this instead of catching the {@link IllegalStateException} it throws on a degenerate spline. */
     public boolean isResampleable() {
         return points.size() >= 2 && !checkNaN();
     }

@@ -104,17 +104,8 @@ public class LocalRiverTest {
         dumpUnitTree(stages, tx, tz, prefix);
     }
 
-    /**
-     * Prints the along-channel reach-slope distribution. Rosgen's published slope bands (0.02 / 0.04 /
-     * 0.10) are real-world channel slopes; this world's relief is vertically exaggerated relative to its
-     * horizontal run, so copying them classifies most of the world as Aa+. Place S_A and S_AA at
-     * percentiles of this distribution instead -- matching the shape matters more than the numbers.
-     *
-     * <p>One slope per channel, measured end to end, not one per {@code ReachRosgenClassifier} reach.
-     * Channels whose {@code bedElevations} are absent or mis-sized against the spline are skipped:
-     * {@code Channel.keepOnly} slices the spline without slicing {@code bedElevations}, so a stale array
-     * would index out of bounds.
-     */
+    /** Along-channel slope percentiles: Rosgen's published slope bands are real-world values that this
+     *  world's vertical exaggeration would misclassify as mostly Aa+, so S_A/S_AA are set from this shape instead. */
     private static void dumpSlopeHistogram(RiverNetwork network, ReachMetricsSampler sampler) {
         // throw new NotImplementedException();
         if (network == null) return;
@@ -135,15 +126,8 @@ public class LocalRiverTest {
         }
     }
 
-    /**
-     * Render the tile's built {@code HydrologicalUnit} R-tree (type-colored points, id shades, width
-     * girths — see {@link me.batata_1.fractal_terrain.debug.HydrologyUnitVisualizer}) and log its stats.
-     * Reads the index {@code debugStages} captured, so the tile is not rebuilt.
-     *
-     * <p>Those units carry world relief-pixel coords (unlike every raster in {@code Stages}), so the
-     * tile's world origin is handed to the renderer to bring them back onto this tile's canvas —
-     * otherwise every tile but {@code (0,0)} would render blank.
-     */
+    /** Renders the tile's unit R-tree via {@link me.batata_1.fractal_terrain.debug.HydrologyUnitVisualizer}
+     *  from the already-captured {@code debugStages} (no rebuild), shifting world coords onto this tile's canvas. */
     private static void dumpUnitTree(LocalRiverProvider.Stages stages, int tx, int tz, String prefix) {
         if (stages.unitTree == null) {
             LOG.warn("tile ({},{}): no unit tree captured — skipping unit dump", tx, tz);
@@ -168,14 +152,8 @@ public class LocalRiverTest {
     /** Cardinal direction labels for arrow bits 4..7 (see {@code Drainage.NEIGHBOR_OFFSET_*}). */
     private static final String[] DIRECTION_NAME = {"", "", "", "", "-Z", "+Z", "-X", "+X"};
 
-    /**
-     * Log the 4×4 grid of global-river cells covering relief tile {@code (tx, tz)} — the same window
-     * {@code LocalRiverProvider.buildGlobalNetwork} reads (relative offsets {@code a,b ∈ [-1,2]}, so the
-     * inner 2×2 are the tile's owned cells). For each cell logs its coarse-cell coordinates, the
-     * source/sink/coast/river flags, width, bed elevation, and the downstream cell its outgoing arrow
-     * points to. Reads only {@link GlobalRiverProvider}, so it runs independently of the (possibly
-     * failing) {@code Meanders} build.
-     */
+    /** Logs the 4×4 global-river coarse-cell window covering tile {@code (tx, tz)}. Reads only
+     *  {@link GlobalRiverProvider}, so it still runs when the {@code Meanders} build fails. */
     private static void globalRiverNetworkCellProfile(GlobalRiverProvider grp, int tx, int tz) {
         LOG.info(
                 "global-river cell profile for relief tile ({},{}) [coarse cells {}..{} x {}..{}]:",
@@ -221,13 +199,8 @@ public class LocalRiverTest {
         return "-> (no outgoing)";
     }
 
-    /**
-     * Verify the global river network's bed elevations decrease downstream: walk each SOURCE→DRAIN path
-     * (following the single {@link Endpoint#outgoing} edge of the dendritic in-tree) and assert the node
-     * elevation sequence (source → junctions → drain) is monotonically non-increasing. Logs a warning for
-     * every violating step and a per-tile pass/fail summary. {@code NaN} elevations (unassigned nodes) are
-     * skipped rather than treated as failures.
-     */
+    /** Verifies bed elevations decrease downstream along every source→drain path — a sanity check for
+     *  drainage carving; logs each violation and a per-tile pass/fail summary. */
     private static boolean checkMonotonicElevations(RiverNetwork network, int tx, int tz) {
         if (network == null) {
             LOG.warn("tile ({},{}): no network captured — skipping monotonicity check", tx, tz);

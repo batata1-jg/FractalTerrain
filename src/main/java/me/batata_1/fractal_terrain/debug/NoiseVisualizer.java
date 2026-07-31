@@ -12,14 +12,11 @@ import me.batata_1.fractal_terrain.noise.NoiseSampler;
 
 /**
  * Renders a {@link NoiseSampler} (FastNoiseLite, octave Simplex, Voronoi, …) over a square window to a
- * normalised grayscale PNG. Mirrors {@link TensorVisualizer} / {@link SplineVisualizer}: it takes an
- * explicit {@code debugPath} and does <em>not</em> depend on a running server, so it works from the
- * standalone test harnesses too. (Distinct from {@link Debug#seeNoise} which is server-bound and reseeds
- * from the live world.)
+ * normalised grayscale PNG. Mirrors {@link TensorVisualizer} / {@link SplineVisualizer}: explicit
+ * {@code debugPath}, no running-server dependency, so it works from standalone harnesses too — unlike
+ * {@link Debug#seeNoise}, which is server-bound and reseeds from the live world.
  *
- * <p>The sampler is assumed already seeded (call {@link NoiseSampler#init(long)} or
- * {@link NoiseSampler#initSampler(long)} first); {@link #see(NoiseSampler, String, long, int, int, int)}
- * seeds it for you.
+ * <p>The sampler is assumed already seeded; the {@code see(..., seed, ...)} overload seeds it for you.
  */
 public class NoiseVisualizer {
 

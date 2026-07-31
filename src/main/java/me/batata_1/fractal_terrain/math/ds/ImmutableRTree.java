@@ -13,37 +13,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Build-once, query-many 2-D R-tree over {@link SpatialIndexShape}s — the shape-storing sibling of
- * {@link ImmutableQuadTree}. Where the quadtree indexes <em>points</em> and answers
- * region-collect queries, this indexes <em>extended shapes</em> (circles, rectangles — each with its
- * own minimum bounding rectangle) and answers <b>point-stabbing</b> queries: given a coordinate,
- * return every stored shape that contains it ({@link #queryContaining}), optionally with the search
- * boundary inflated by a radius, plus the early-exit twin {@link #anyContaining}.
+ * Build-once, query-many R-tree over extended shapes — the shape-storing sibling of
+ * {@link ImmutableQuadTree}, and what backs the hydrology unit index.
  *
- * <p><b>Bulk load — Sort-Tile-Recursive (STR).</b> The full element set is supplied at construction
- * and packed bottom-up: entries are sorted by MBR center X, cut into {@code ceil(sqrt(numGroups))}
- * vertical slices, each slice sorted by center Z, then cut into groups of {@code leafCapacity}
- * (elements) / {@link #NODE_FANOUT} (nodes). The same tiling is applied level by level — physically
- * reordering each level into its STR order before cutting parents, so every parent's children form a
- * contiguous run — until a single root remains. The result is a fully-packed, spatially-clustered
- * tree with no insert/remove machinery, so it is <b>naturally concurrent</b> and needs no lock.
+ * <p>Exists because the quadtree answers region-collect queries over points, while the carve needs
+ * the inverse: given a pixel, which influence circles reach it — a stabbing query.
  *
- * <p><b>Memory layout.</b> Elements are stored once in STR leaf order in {@link #elements} (no
- * nulls). Nodes live in parallel primitive arrays — four {@code double[]} MBR corners plus two
- * {@code int[]}s ({@link #nodeChildStart}, {@link #nodeChildCount}) — with no per-node objects.
- * Levels are flattened leaves-first: nodes {@code [0, leafNodeCount)} are leaves (their
- * {@code childStart} indexes {@link #elements}), everything above is internal (their
- * {@code childStart} indexes the node arrays), and the <b>root is the last node</b>.
- *
- * <p><b>Debugging.</b> Mirrors the {@link ImmutableQuadTree} toolkit: {@link #validate()} /
- * {@link #validateOrThrow()} self-check the frozen structure (flip {@link #VALIDATE_ON_BUILD} to run
- * it in the constructor), and {@link #debugPrint()} dumps the node tree. Compile-time flags — zero
- * cost when off.
- *
- * <p>Implements {@link Persistable} exactly like {@link ImmutableQuadTree}: serializable iff a
- * {@link Persistable} element prototype whose own {@code serialize()} works is supplied (else the
- * backing {@code Storage} is cache-only). Only the elements are written; the tree is rebuilt on
- * {@link #deserialize}.
+ * <p>Sort-Tile-Recursive bulk load packs the tree into parallel primitive arrays with no per-node
+ * objects; frozen afterwards, which is what lets queries run lock-free.
  */
 public final class ImmutableRTree<T extends SpatialIndexShape>
         implements SpatialIndex<T>, Persistable<ImmutableRTree<T>> {
@@ -54,29 +31,16 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
     /** Format tag for the binary tile layout written by {@link #serialize()} ("IRT1"). */
     private static final int MAGIC = 0x49525431;
 
-    /**
-     * Default max elements per leaf. Stab queries return small hit sets, so a modest capacity keeps
-     * leaf scans short while the node arrays stay a few percent of the element count. Overridable per
-     * tree via the three-arg constructor (e.g. for benchmark sweeps).
-     */
+    /** Sized so leaf scans stay short given that stab queries return small hit sets. */
     private static final int DEFAULT_LEAF_CAPACITY = 16;
 
     /** Max children per internal node (the STR group size above the leaf level). */
     private static final int NODE_FANOUT = 16;
 
-    /**
-     * When {@code true}, the constructor runs {@link #validate()} after freezing the tree and throws on
-     * any structural inconsistency. Handy while changing the build logic; leave {@code false} in
-     * production (validation is O(nodes + elements)).
-     */
+    /** Turn on while changing the build logic; the constructor then self-checks and throws. */
     private static final boolean VALIDATE_ON_BUILD = false;
 
-    /**
-     * Safety bound on the number of node-stack pops a single {@link #stab} walk may perform. A
-     * correctly-built tree visits at most {@code nodeChildStart.length} nodes, so this is a generous
-     * upper bound meant only to catch a corrupt/cyclic node structure; exceeding it logs a warning and
-     * ends the walk early instead of hanging.
-     */
+    /** Catches a corrupt or cyclic node structure so a query ends rather than hanging generation. */
     private static final int MAX_STACK_ITERATIONS = 1_000_000;
 
     private static final Logger LOG = LoggerFactory.getLogger(ImmutableRTree.class);
@@ -102,10 +66,7 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
 
     private final int leafCapacity;
 
-    /**
-     * An element used only to {@linkplain Persistable#deserialize(byte[]) deserialize} stored element
-     * chunks (its own state is ignored). {@code null} for a transient, never-persisted index.
-     */
+    /** Supplies the concrete element type on deserialize; null for a never-persisted index. */
     private final T elementPrototype;
 
     /** Convenience: default leaf capacity. */
@@ -113,14 +74,8 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
         this(inputElements, elementPrototype, DEFAULT_LEAF_CAPACITY);
     }
 
-    /**
-     * Builds and freezes the tree via STR bulk load.
-     *
-     * @param inputElements the full element set; copied, not mutated; {@code null} entries are skipped
-     * @param elementPrototype prototype used to rebuild elements on {@link #deserialize(byte[])}; may
-     *     be {@code null} for a transient, never-persisted index
-     * @param leafCapacity max elements per leaf; must be {@code >= 2}
-     */
+    /** Builds and freezes the tree. {@code elementPrototype} may be null for an index that is never
+     *  persisted; {@code leafCapacity} must be at least 2. */
     @SuppressWarnings("unchecked")
     public ImmutableRTree(List<T> inputElements, T elementPrototype, int leafCapacity) {
         if (leafCapacity < 2) throw new IllegalArgumentException("leafCapacity must be >= 2");
@@ -319,12 +274,8 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
         }
     }
 
-    /**
-     * The Sort-Tile-Recursive ordering of {@code count} entries with the given MBR centers:
-     * sort by center X, cut into {@code ceil(sqrt(numGroups))} vertical slices, sort each slice by
-     * center Z. Cutting the result into consecutive runs of {@code groupCapacity} yields the STR
-     * groups. Returns the permutation (slot → original index).
-     */
+    /** The STR ordering, applied identically at every level so each parent's children stay a
+     *  contiguous run. Returns the permutation, slot to original index. */
     private static Integer[] strOrder(int count, double[] centerX, double[] centerZ, int groupCapacity) {
         final Integer[] order = new Integer[count];
         for (int i = 0; i < count; i++) order[i] = i;
@@ -373,22 +324,13 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
         return queryContaining(queryPoint, 0.0, new ArrayList<>());
     }
 
-    /**
-     * {@link #queryContaining(double[])} appending into a caller-supplied buffer (returned for
-     * chaining). The buffer is <b>not</b> cleared — hot paths reuse one list across queries and clear
-     * it themselves.
-     */
+    /** Buffer-reusing overload for hot paths. {@code out} is appended to, never cleared. */
     public List<T> queryContaining(final double[] queryPoint, final List<T> out) {
         return queryContaining(queryPoint, 0.0, out);
     }
 
-    /**
-     * The stabbing query with the search boundary expanded outward: collects every stored shape lying
-     * within {@code inflateRadius} of {@code queryPoint} (via
-     * {@link SpatialIndexShape#containsPointInflated}). Node MBRs are pruned with the box inflated by
-     * {@code inflateRadius} per axis — a conservative superset of the per-element Euclidean inflate, so
-     * nothing is ever wrongly pruned. Appends into {@code out} (not cleared) and returns it.
-     */
+    /** Radius-expanded stab, so one query can serve a whole chunk of carve points.
+     *  MBR pruning uses a box inflate, a conservative superset that never prunes wrongly. */
     public List<T> queryContaining(final double[] queryPoint, final double inflateRadius, final List<T> out) {
         stab(queryPoint, inflateRadius, element -> {
             out.add(element);
@@ -402,11 +344,7 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
         return anyContaining(queryPoint, 0.0, acceptanceTest);
     }
 
-    /**
-     * Early-exit twin of {@link #queryContaining(double[], double, List)}: identical traversal, but the
-     * first shape within {@code inflateRadius} of {@code queryPoint} that passes {@code acceptanceTest}
-     * ends the walk. Allocates no result list.
-     */
+    /** Existence-only twin of {@link #queryContaining}, for callers that need no result list. */
     public boolean anyContaining(
             final double[] queryPoint, final double inflateRadius, final Predicate<T> acceptanceTest) {
         return stab(queryPoint, inflateRadius, acceptanceTest::test);
@@ -421,14 +359,8 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
         boolean visit(T element);
     }
 
-    /**
-     * The one stabbing traversal both public queries ride on: an explicit node stack seeded with the
-     * root, MBR-pruned per child (inflated by {@code inflateRadius} per axis, a conservative superset of
-     * the per-element Euclidean inflate), handing every element that passes
-     * {@link SpatialIndexShape#containsPointInflated} to {@code visitor}.
-     *
-     * @return {@code true} iff {@code visitor} ended the walk early
-     */
+    /** The single traversal both public queries ride on, so pruning rules cannot diverge between
+     *  the gathering and early-exit paths. */
     private boolean stab(final double[] queryPoint, final double inflateRadius, final StabVisitor<T> visitor) {
         if (queryPoint.length != 2) throw new IllegalStateException();
         if (elements.length == 0) return false;
@@ -486,20 +418,8 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
     // Debugging / self-checking (see VALIDATE_ON_BUILD)
     // -------------------------------------------------------------------------
 
-    /**
-     * Checks that the frozen tree is internally consistent and returns {@code true} when it is. Every
-     * failed invariant is logged via {@link #LOG} (it does not throw). Verifies:
-     *
-     * <ul>
-     *   <li>node child indices/slices stay in bounds; internal children reference strictly lower node
-     *       indices (levels are flattened leaves-first);
-     *   <li>every child MBR is contained in its parent's MBR, and every element's MBR is contained in
-     *       its leaf's MBR;
-     *   <li>the leaf element slices partition {@code [0, elements.length)} exactly — contiguous,
-     *       gap-free, no overlap;
-     *   <li>every node is reachable from the root exactly once, and node MBR corners are finite.
-     * </ul>
-     */
+    /** Self-check for the frozen structure; logs rather than throws so tests can call it.
+     *  The MBR-containment check is the one that catches a bad bulk load. */
     public boolean validate() {
         final List<String> errors = new ArrayList<>();
         final int nodeCount = nodeChildStart.length;
@@ -627,13 +547,7 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
         return (long) nodeChildStart.length * bytesPerNode + (long) elements.length * bytesPerElement;
     }
 
-    /**
-     * Serialize to a flat little-endian byte array:
-     * {@code [magic, leafCapacity, elementCount, (chunkLen, chunk)...]}, where each chunk is an
-     * element's own {@link Persistable#serialize()} bytes. <b>Elements only</b> — the tree (and every
-     * MBR) is rebuilt on {@link #deserialize(byte[])}. Throws {@link UnsupportedOperationException}
-     * when the element type is not {@link Persistable} (the backing {@code Storage} is then cache-only).
-     */
+    /** Writes elements only; the tree and every MBR are cheaper to rebuild than to store. */
     @Override
     public byte[] serialize() {
         if (!(elementPrototype instanceof Persistable<?> prototypePersistable))
@@ -668,13 +582,8 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
         return buf.array();
     }
 
-    /**
-     * Rebuild a tree from bytes produced by {@link #serialize()} by deserializing each element with
-     * this tree's {@link #elementPrototype} and re-running the STR construction. Returns a fresh
-     * instance; the receiver is only a prototype. A magic mismatch (e.g. a legacy {@code IQT1} tile)
-     * throws {@link IllegalStateException} — which {@code Storage.loadInto} converts into a recompute,
-     * so stale on-disk caches self-heal.
-     */
+    /** Re-runs the STR build over restored elements. A legacy tile throws, which {@code Storage}
+     *  converts into a recompute — that is how stale caches self-heal. */
     @Override
     @SuppressWarnings("unchecked")
     public ImmutableRTree<T> deserialize(byte[] rawBytes) {

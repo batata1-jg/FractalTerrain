@@ -14,13 +14,14 @@ cache design and coordinate frames.
 | `ChannelElevationAssigner.java` | Three-phase bed-elevation propagation; `buildTile` runs it twice per tile                   | Channel bed elevations, downstream propagation, topology failures   |
 | `Drainage.java`                 | Sink-fill, D8/D4 drainage direction, flow accumulation, `FlowGraph` routing topology        | Drainage/flow math; the shared upstream→downstream walk             |
 | `HydrologyTileGeometry.java`    | Shared tile-frame geometry (`GRID=512`, `PAD=1`, `PADDED=514`, `COARSE_PX=256`)             | Tile origins, padding, frame conversions used by all three helpers  |
-| `HydrologicalUnit.java`         | Record for one hydrological-unit entry in the spatial index; serializable, influence-circle  | Reading/extending the units index, unit persistence format          |
-| `ChannelGeometry.java`          | Lower-level channel-geometry helper (bed half-width)                                        | Channel width/shape geometry                                        |
+| `ChannelGeometry.java`          | Width-to-depth law, bed half-width, channel-overlap test                                    | Channel width/shape geometry, `W_REF` calibration                   |
 
 ## Subdirectories
 
 | Directory   | What                                                     | When to read                                   |
 | ----------- | -------------------------------------------------------- | ---------------------------------------------- |
-| `meanders/` | Meander relaxation network (`Meanders`, `RiverNetwork`)  | Meander geometry, per-tile network relaxation  |
+| `features/` | `HydrologicalUnit` interface + the per-feature records and their codec | Reading/extending the units index, adding a feature type, unit persistence |
+| `network/`  | The graph itself: `RiverNetwork`, `Channel`, `Endpoint`, `AtomicView`, `ChannelTyper` | Graph topology, the canonical↔atomic seam, stream capture, per-point flow |
+| `meanders/` | Meander relaxation over the network (`Meanders`)         | Meander geometry, per-tile network relaxation  |
 | `profile/`  | Turns the hydrological-unit index into carve/paint ops   | Per-pixel carve/paint consumed by `world/gen/` |
 | `rosgen/`   | Rosgen Level-I classification of each reach from the raw elevation | Stream types, reach slope/entrenchment measurement, the decision key |

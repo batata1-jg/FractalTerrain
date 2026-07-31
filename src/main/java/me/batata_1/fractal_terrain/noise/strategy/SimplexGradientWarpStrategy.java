@@ -4,22 +4,13 @@ import me.batata_1.fractal_terrain.math.Vector2;
 import me.batata_1.fractal_terrain.math.Vector3;
 
 /**
- * The {@code OpenSimplex2} / {@code OpenSimplex2Reduced} domain-warp strategy: warps a coordinate along
- * simplex-lattice gradient contributions (2D) or the OpenSimplex2 rotated-cube-grid contributions (3D).
- * The {@code outGradOnly} flag selects the cheaper "reduced" variant (single random vector per corner)
- * versus the full gradient-dot-random-vector combination.
+ * The {@code OpenSimplex2} domain-warp strategy: warps along simplex-lattice gradient contributions.
  *
- * <p><b>Responsibility:</b> {@link #SingleDomainWarpSimplexGradient} (2D) and
- * {@link #SingleDomainWarpOpenSimplex2Gradient} (3D) - the {@code DomainWarpType.OpenSimplex2} /
- * {@code OpenSimplex2Reduced} branches of {@code FastNoiseLite}'s domain-warp dispatcher
- * ({@code DoSingleDomainWarp}). Mutates the passed {@code coord} in place, matching the original API.
+ * <p>One of the interchangeable domain-warp strategies {@code FastNoiseLite} dispatches to; extracted so the
+ * dispatcher stays readable and each variant can be read on its own.
  *
- * <p><b>Collaborators:</b> {@link NoiseTables} for the shared hash/gradient/random-vector tables;
- * {@link me.batata_1.fractal_terrain.math.Vector2} / {@link me.batata_1.fractal_terrain.math.Vector3}
- * for the mutable warp accumulator.
- *
- * <p><b>Invariants:</b> mechanical extraction from the embedded FastNoiseLite 1.1.1 implementation -
- * every constant and evaluation order is unchanged; output is byte-identical to the pre-split code.
+ * <p><b>Do not "clean up" any constant or reorder any expression.</b> This is a mechanical extraction
+ * from FastNoiseLite 1.1.1 and must stay byte-identical — every world already generated depends on it.
  */
 public final class SimplexGradientWarpStrategy {
 

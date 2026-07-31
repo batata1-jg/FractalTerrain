@@ -5,19 +5,13 @@ import me.batata_1.fractal_terrain.world.biome.parameters.ErosionLevel;
 import me.batata_1.fractal_terrain.world.biome.parameters.PeaksValleys;
 
 /**
- * Classifies vanilla biome-parameter values (continentalness, erosion, weirdness) against the
- * wiki-published bands in {@code world.biome.parameters}.
+ * Band predicates over a single vanilla biome-parameter value, consulted mid-computation by
+ * {@link ClimateToBiomeTransformer}.
  *
- * <p><b>Responsibility:</b> pure {@code is…(value)} predicates over a single biome-parameter value —
- * no tile geometry, no noise, no cross-parameter mutation.
+ * <p>Kept free of tile geometry and noise so the wiki-published band boundaries live in exactly one
+ * place and can be checked against the source enums.
  *
- * <p><b>Collaborators:</b> {@link Continentalness}, {@link ErosionLevel}, {@link PeaksValleys} (the
- * enums whose bands back each predicate); called by {@link ClimateToBiomeTransformer} while building a
- * tile's biome parameters.
- *
- * <p><b>Invariants:</b> stateless and side-effect free; classification boundaries must stay exactly as
- * published in {@code worldgeneration101.md} — do not adjust a threshold without updating the source
- * enum's range.
+ * <p>Never adjust a threshold here without updating the owning enum's range.
  */
 public class BiomeParameterClassifier {
 

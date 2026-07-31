@@ -5,17 +5,12 @@ import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
 
 /**
- * Rasterises two point sets (ridges and valleys) into a scalar "field-line" image.
+ * Rasterises ridge and valley point sets into a scalar field-line image, upstream of skeletonization.
  *
- * <p>For every output cell the net angle to all nearby ridge points (added) and valley points
- * (subtracted) is accumulated, then {@code sin(netAngle * frequency)} is written. Plain {@code sin}
- * produces lines that are crisp near the seed points but spread out farther away; a screen-space
- * derivative ({@code fwidth}) normalisation pass divides each value by the local gradient magnitude
- * so the traced lines stay uniformly thin across the whole image.
+ * <p>The fwidth normalization pass exists because plain {@code sin} gives lines that are crisp near
+ * the seeds and spread out far from them; dividing by the local gradient keeps them uniformly thin.
  *
- * <p>The output grid is sampled at {@link #UPSAMPLE} times the input resolution per axis (so the
- * returned array is {@code UPSAMPLE * UPSAMPLE} times the input length); the higher resolution lets
- * a downstream skeletonizer resolve more/finer lines.
+ * <p>Output is upsampled per axis so a downstream skeletonizer can resolve finer lines.
  */
 public class FieldLinePlacer {
 
@@ -54,21 +49,14 @@ public class FieldLinePlacer {
         return UPSAMPLE * height;
     }
 
-    /**
-     * Compute the field-line image for the given ridge/valley point sets. Returns a flat
-     * {@code float[outputHeight * outputWidth]} (= {@code UPSAMPLE * UPSAMPLE * width * height}) in row-major order,
-     * after the {@link #normalizeByFwidth} pass. The supplied trees must be in the same coordinate
-     * frame that {@code (row*resolution, col*resolution)} addresses.
-     */
+    /** The production entry point: the raw field plus normalization. Trees must be in the frame that
+     *  {@code (row*resolution, col*resolution)} addresses. */
     public float[] apply(
             ImmutableQuadTree<SpatialIndexPoint> ridgePoints, ImmutableQuadTree<SpatialIndexPoint> valleyPoints) {
         return normalizeByFwidth(applyRaw(ridgePoints, valleyPoints), outputWidth(), outputHeight());
     }
 
-    /**
-     * Raw {@code sin(netAngle * frequency)} field, BEFORE the fwidth normalization. Exposed so debug
-     * harnesses can visualise the pre-normalization image; production callers use {@link #apply}.
-     */
+    /** Pre-normalization field, exposed for debug visualisation; production uses {@link #apply}. */
     public float[] applyRaw(
             ImmutableQuadTree<SpatialIndexPoint> ridgePoints, ImmutableQuadTree<SpatialIndexPoint> valleyPoints) {
         final int outH = outputHeight();
@@ -102,11 +90,7 @@ public class FieldLinePlacer {
         return rawField;
     }
 
-    /**
-     * Divide each cell by its screen-space derivative magnitude
-     * {@code fwidth ≈ |∂/∂row| + |∂/∂col|} (central differences inside, one-sided at borders),
-     * clamped to {@link #FWIDTH_EPS}. Keeps the traced lines uniformly thin.
-     */
+    /** Divides out the local gradient so line thickness stops varying with distance from the seeds. */
     public static float[] normalizeByFwidth(float[] rawField, int outW, int outH) {
         final float[] out = new float[rawField.length];
         for (int row = 0; row < outH; row++) {

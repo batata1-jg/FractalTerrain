@@ -1,9 +1,11 @@
 package me.batata_1.fractal_terrain.config;
 
 /**
- * Hydrology tuning: the river width/carve-profile law constants and the spline-resampling guards used
- * while tracing river geometry. Home for the width-from-flow law and the floodplain/influence-radius
- * helpers shared by the global and local river networks.
+ * Tuning constants for river width, carve profile, and Rosgen classification.
+ *
+ * <p>One home for values the global and local river networks must agree on — split across the two
+ * providers they would drift. Most are first-cut and uncalibrated; see {@code README.md} for which ones,
+ * what miscalibration looks like on screen, and how to recalibrate.
  */
 public final class HydrologyTuning {
 
@@ -23,10 +25,7 @@ public final class HydrologyTuning {
     // Meanders (one home per concept; values unchanged from their prior per-class declarations).
     // ──────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Halo width (coarse px) over which {@code GlobalRiverProvider}'s isolate ramp rises toward the tile
-     * border; also that provider's padding halo (equal to the ramp width).
-     */
+    /** Coarse-px halo for {@code GlobalRiverProvider}'s isolate ramp, and that provider's padding. */
     public static final int RAMP_WIDTH = 6;
 
     /** Sink-fill border-blend padding (native px) used by {@code LocalRiverProvider}'s tile carve. */
@@ -35,20 +34,10 @@ public final class HydrologyTuning {
     /** Resample spacing (native px) for a freshly traced local channel, in {@code LocalDrainageTracer}. */
     public static final double RESAMPLE_DIST = 2.0;
 
-    /**
-     * Native-px proximity radius at which a local river is considered to meet a global channel: gates
-     * the local drainage tracer's reach-seed adjacency, its walk-termination exclusion, and its
-     * junction-attachment split -- all three now read this one radius instead of the removed per-pixel
-     * global mask. First-cut, untuned value pending visual calibration via {@code localRiverTest},
-     * mirroring {@code Meanders}'s {@code MAX_MARGIN_FRACTION} first-cut pattern: too small yields
-     * parallel double rivers (the local walk runs alongside the global channel instead of joining it);
-     * too large truncates local detail (interior tributaries get excluded/terminated well before they
-     * would naturally reach the global channel).
-     */
+    /** Radius at which a local river is taken to meet a global channel. Uncalibrated — see README. */
     public static final double LOCAL_ATTACH_RADIUS = 4.0;
 
-    /** Meander-simulation resample/migration step (native px), shared by {@code Meanders} and callers
-     *  that need to reason about its point spacing (debug visualizers, tests). */
+    /** Meander resample/migration step (native px); debug visualizers and tests reason about it too. */
     public static final double DX = 1.5;
     /** max per-step displacement for the valley-seeking migration. */
     public static final double MAX_MIGRATION = HydrologyTuning.DX;
@@ -57,11 +46,7 @@ public final class HydrologyTuning {
     // Flow accumulation (see Drainage.computeFlow)
     // ──────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Minimum accumulated flow for a cell to count as local river. Combined with the reach test and the
-     * global-proximity exclusion to build the river mask. Local to this tracer rather than a
-     * {@link HydrologyTuning} constant, so tuning it affects only the local network.
-     */
+    /** Accumulated-flow floor for a cell to count as local river; one of three river-mask gates. */
     public static final float FLOW_THRESHOLD = 0.75f;
 
     // only generate sources for local rivers above this to prevent weird behavior in plains.
@@ -75,14 +60,7 @@ public final class HydrologyTuning {
 
     public static final float FLOW_PER_CELL_LOCAL = 0.01f;
 
-    /**
-     * Near-drain flow smoothing (see {@code RiverNetwork.accumulateAndCorrectFlow}). A drain reads its
-     * anchor flow exactly, which can be far larger than the natural accumulated flow of the mainstem just
-     * upstream; to keep width continuous into the joined river, the last few mainstem nodes before a drain
-     * are ramped up toward the anchor. {@code DRAIN_FLOW_SMOOTH_STEP} is the minimum drain-to-upstream flow
-     * jump that triggers the ramp (and the per-step ceiling below which the natural profile is deemed to
-     * have caught up); {@code DRAIN_FLOW_SMOOTH_MAX_NODES} caps how many mainstem nodes the ramp spans.
-     */
+    /** Flow jump triggering the near-drain ramp that keeps width continuous where a tributary joins. */
     public static final double DRAIN_FLOW_SMOOTH_STEP = 10;
 
     public static final int DRAIN_FLOW_SMOOTH_MAX_NODES = 20;
@@ -99,52 +77,24 @@ public final class HydrologyTuning {
 
     public static final double MAX_WIDTH = 16f;
 
-    /**
-     * Currently unused: no live code reads this, not even through the {@code FractalTerrainConfig} facade
-     * re-export.
-     */
+    /** Dead: nothing reads this, not even through the {@code FractalTerrainConfig} facade. */
     public static final double MAX_LOCAL_WIDTH = 6f;
 
-    /**
-     * Floodplain half-extent (native px) = {@code FLOODPLAIN_BASE + FLOODPLAIN_WIDTH_FACTOR · width}. This
-     * is the <em>flat</em> band carved at floodplain elevation; the blend to decoded terrain starts only
-     * past it. Kept very tunable — a later plan adds noise to make this vary.
-     */
+    /** Base of the flat floodplain band; the blend to decoded terrain starts past it. */
     public static final double FLOODPLAIN_BASE = 0.6f;
 
     public static final double FLOODPLAIN_WIDTH_FACTOR = 1.0f;
 
-    /**
-     * Eccentricity at (or above) which the per-unit bed delta applies at full strength — the knob shaping
-     * the elliptical footprint over which
-     * {@link me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile#computeForUnit} fades a unit's
-     * cross-section delta in. Dimensionless, in {@code (0, 1]}: {@code 1} confines full strength to the
-     * unit's own cross-section line (everything else is faded), while smaller values widen the
-     * full-strength ellipse along the channel — at the limit the delta would apply unfaded over the whole
-     * floodplain disc. First-cut, untuned value pending visual calibration via {@code localRiverTest}.
-     */
+    /** Shapes the elliptical footprint over which a unit's bed delta fades in. Uncalibrated — see README. */
     public static final double MAX_ECCENTRICITY = 0.9;
 
-    /**
-     * Dimensionless multiplier on {@link #floodPlainLength} used to derive a river's outer influence
-     * radius (see {@code RosgenProfile#riverInfluence}): {@code riverInfluence = floodPlainLength ·
-     * INFLUENCE_BLEND_MULTIPLIER}, clamped to {@link #MAX_INFLUENCE_RADIUS}. Not itself a native-px
-     * width -- the blend band's actual width is {@code riverInfluence − floodPlainLength}.
-     */
+    /** Multiplier taking floodplain half-extent to outer influence radius; sizes the blend band. */
     public static final double INFLUENCE_BLEND_MULTIPLIER = 2f;
 
-    /**
-     * Hard cap (native px) on any river's influence radius — also the radius the cross-tile unit query
-     * uses. Bounds the per-pixel carve/paint work and the query span; rivers whose computed
-     * {@link #riverInfluence} would exceed this are clamped to it.
-     */
+    /** Hard cap on influence radius, bounding both per-pixel carve work and the cross-tile query span. */
     public static final double MAX_INFLUENCE_RADIUS = 64.0f;
 
-    /**
-     * Width of the border margin band {@code Meanders} keeps clear of the grid edge, as a multiple of
-     * channel width. An independent margin factor (deliberately wider than {@link #riverInfluence}) so a
-     * channel's whole carve band stays inside the grid.
-     */
+    /** Border margin kept clear, wider than the influence radius — see README. */
     public static final double MARGIN_INFLUENCE_FACTOR = 5.0;
 
     public static double maxInfluence(double width) {
@@ -180,11 +130,7 @@ public final class HydrologyTuning {
     /** Slope at or above which a reach is {@code A} (steep, cascading step-pool). Needs recalibration. */
     public static final double S_A = 0.04;
 
-    /**
-     * Slope below which an anastomosing ({@code DA}) reach is plausible — essentially flat. Not a
-     * published Rosgen figure: it is a gate this plan introduces so {@code DA} cannot claim a reach with
-     * any real fall. First-cut, untuned value pending visual calibration via {@code localRiverTest}.
-     */
+    /** Flatness gate keeping {@code DA} off any reach with real fall. Not a published Rosgen figure. */
     public static final double S_DA = 0.005;
 
     /** Entrenchment ratio below which a reach is entrenched ({@code F}/{@code G}). Rosgen: 1.0–1.4. */
@@ -196,12 +142,7 @@ public final class HydrologyTuning {
     /** Entrenchment ratio above which the flood-prone area is wide enough for {@code DA}. */
     public static final double ER_ANASTOMOSE = 4.0;
 
-    /**
-     * Width-to-depth ratio separating narrow-deep ({@code E G}) from wide-shallow ({@code C F}). Rosgen
-     * publishes this boundary at {@code 12}, but the W/D it is compared against is prescribed by
-     * {@link me.batata_1.fractal_terrain.hydrology.ChannelGeometry#widthDepthRatio} rather than measured,
-     * so the pair only means what {@code W_REF} makes it mean. Calibrate {@code W_REF}, not this.
-     */
+    /** Splits narrow-deep ({@code E G}) from wide-shallow ({@code C F}); calibrate {@code W_REF}, not this. */
     public static final double WD_NARROW = 12.0;
 
     /** Rosgen's published ER tolerance — the dead band that suppresses type flicker at a threshold. */
@@ -210,77 +151,39 @@ public final class HydrologyTuning {
     /** Rosgen's published W/D tolerance — the dead band that suppresses type flicker at a threshold. */
     public static final double WD_TOLERANCE = 2.0;
 
-    /**
-     * Maximum bankfull depth as a multiple of mean bankfull depth, setting the flood-prone stage
-     * ({@code bed + 2·dMax}). A rule of thumb rather than a sourced figure — calibrate visually.
-     */
+    /** Sets the flood-prone stage as a multiple of mean bankfull depth. Rule of thumb, not sourced. */
     public static final double DEPTH_MAX_FACTOR = 1;
 
-    /**
-     * Bed elevation (native px above sea level, which is {@code 0}) below which a reach counts as near
-     * base level for the {@code DA} gate — deltas and tidal flats. First-cut, untuned.
-     */
+    /** Bed elevation below which a reach counts as near base level for the {@code DA} gate. Uncalibrated. */
     public static final double DELTA_ELEV = 4.0;
 
-    /**
-     * Coefficient of the braiding threshold {@code S_braid = K_BRAID · width^-0.88}. Leopold &amp; Wolman
-     * (1957) give {@code S = k·Q^-0.44}; with {@code W ∝ √flow ∝ √DA} this becomes a law in width.
-     * Braiding is a style choice here, not a measurement — there is no sediment-transport model — so this
-     * gates where braiding would be *plausible*. First-cut, untuned.
-     */
+    /** Coefficient of the braiding threshold; an authored gate, not a measurement. See README. */
     public static final double K_BRAID = 0.02;
 
     /** Exponent of the braiding threshold in width. Derived: {@code -0.44 / 0.50}. */
     public static final double BRAID_WIDTH_EXPONENT = -0.88;
 
-    /**
-     * Minimum native-px width for a {@code D} (braided) reach — braiding needs a large channel. Half the
-     * width cap, chosen so {@code D} stays rare rather than from any published figure. First-cut,
-     * untuned value pending visual calibration via {@code localRiverTest}.
-     */
+    /** Width floor for a braided {@code D} reach, set to keep {@code D} rare. Uncalibrated — see README. */
     public static final double BRAID_MIN_WIDTH = 8.0;
 
     /** Reach length as a multiple of bankfull width — Rosgen's own reach definition (20–30 widths). */
     public static final double REACH_WIDTHS = 20.0;
 
-    /**
-     * Hard cap (native px) on a reach window. {@code REACH_WIDTHS · MAX_WIDTH} is 320 px, over half a
-     * 512 px tile, which would make a trunk river's reach span most of the tile. Shorter windows are
-     * noisier, not wrong; the dead band absorbs the noise.
-     */
+    /** Caps a reach window so a trunk river's reach cannot span most of a tile. */
     public static final double REACH_MAX_PX = 64.0;
 
     // bias towards lower ER, mostly affects streams with small widths.
     public static final double ENTRENTMENT_RATIO_BIAS = 1;
 
-    /**
-     * Entrenchment transect half-walk as a multiple of bankfull width. The key resolves ER only at 1.4,
-     * 2.2 and 4.0, and {@code ER = floodProneWidth / bankfullWidth}, so {@code 2.05·width} per side
-     * resolves ER up to 4.1 — everything the key needs. <b>Deliberately not
-     * {@link #MAX_INFLUENCE_RADIUS}</b>: that is a carve constant, and a 128 px walk on a 514 px padded
-     * buffer overruns the tile for any channel within 128 px of a border. {@code sampleBilinear} clamps
-     * rather than failing, so an overrun silently returns the edge pixel repeated and reports
-     * {@code ER = ∞}.
-     */
+    /** Entrenchment transect half-walk; never substitute {@link #MAX_INFLUENCE_RADIUS} — see README. */
     public static final double ER_WALK_WIDTHS = 5;
 
-    /**
-     * Entrenchment transect step (native px) as a fraction of bankfull width, floored at
-     * {@link #ER_STEP_MIN}. Scaling with width keeps the step count roughly constant (~16 per side)
-     * across the width range; ER is a ratio compared at four coarse thresholds, so sub-pixel precision
-     * buys nothing.
-     */
+    /** Transect step as a fraction of width, keeping the sample count roughly constant across widths. */
     public static final double ER_STEP_WIDTH_FRACTION = 0.125;
 
     /** Floor (native px) on the entrenchment transect step. */
     public static final double ER_STEP_MIN = 0.5;
 
-    /**
-     * Minimum entrenchment-transect samples per side. {@link #ER_STEP_MIN} keeps the step count low at
-     * normal widths, but a reach at the {@link #MIN_WIDTH} clamp floor has a walk shorter than one step,
-     * which would sample nothing and report every such reach as unconfined. Flooring the sample count
-     * makes the step shrink with the walk instead. First-cut, untuned value pending visual calibration
-     * via {@code localRiverTest}.
-     */
+    /** Sample-count floor, so a minimum-width reach still gets sampled instead of reading as unconfined. */
     public static final double ER_MIN_STEPS_PER_SIDE = 1.0;
 }

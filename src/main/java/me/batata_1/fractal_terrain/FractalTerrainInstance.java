@@ -36,20 +36,10 @@ public class FractalTerrainInstance {
     private static final Logger LOG = getLogger(FractalTerrainInstance.class);
     public static volatile WorldPipeline pipeline;
 
-    /**
-     * The current world's context. {@code volatile}, and completed with a fully-constructed
-     * {@link GenerationContext}; {@code get()} gives readers a happens-before edge with {@code complete()},
-     * so a worker never observes a partially-built or null context. Reset to a fresh incomplete future on
-     * {@link #close()} so a subsequent load re-publishes cleanly.
-     */
+    /** Current world's context; reset to a fresh future on {@link #close()} so a later world load republishes cleanly. */
     private static volatile CompletableFuture<GenerationContext> context = new CompletableFuture<>();
 
-    /**
-     * Loads the terrain-diffusion models and constructs the shared {@link WorldPipeline}, if not already
-     * done. Safe to call repeatedly. Unlike the class-init-time loading this replaces, a load failure
-     * (e.g. a missing datapack) surfaces here as a normal exception instead of an
-     * {@code ExceptionInInitializerError} that would permanently poison this class.
-     */
+    /** Loads the models and builds the shared {@link WorldPipeline} once per JVM, moved out of class-init so a load failure surfaces as a normal exception instead of poisoning the class. */
     public static synchronized void initPipeline() {
         if (pipeline != null) return;
         PipelineModels.load();
@@ -132,12 +122,7 @@ public class FractalTerrainInstance {
         return current().getHydrologyPainter();
     }
 
-    /**
-     * Debug aid: recompute {@code (tileX, tileZ)} through every provider that exposes {@code debugStages}
-     * (global river, local river, relief) and dump a PNG of each intermediate stage under
-     * {@code <DEFAULT_DEBUG_PATH>/instance/}, one subdirectory per provider. The tile pair is forwarded to
-     * each provider in its own tile grid (see {@link InstanceStageDumper}).
-     */
+    /** Debug aid: dumps each provider's intermediate stages for one tile as PNGs under {@code <DEFAULT_DEBUG_PATH>/instance/} (see {@link InstanceStageDumper}). */
     @TestOnly
     public static void dumpDebugStages(int tileX, int tileZ) {
         final GenerationContext ctx = current();

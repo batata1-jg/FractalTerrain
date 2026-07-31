@@ -45,10 +45,7 @@ public class TensorWindow {
         return size.length;
     }
 
-    /**
-     * Returns the pixel-space bounds [start, stop) for the given window index.
-     * result[d] = {start, stop}.
-     */
+    /** Pixel-space bounds of a window. */
     public int[][] getBounds(int[] windowIndex) {
         int n = size.length;
         int[][] bounds = new int[n][2];
@@ -59,13 +56,7 @@ public class TensorWindow {
         return bounds;
     }
 
-    /**
-     * Returns the lowest window index (per dimension) whose bounds overlap the pixel range.
-     * pixelRange[d] = {start, stop}.
-     *
-     * Solves: pixelRange[d].start < w * stride + offset + size
-     * i.e. w > (p - offset - size) / stride
-     */
+    /** Lower window bound of a pixel range, so a read touches no window it does not need. */
     public int[] getLowestIntersection(int[][] pixelRange) {
         int n = size.length;
         int[] result = new int[n];
@@ -83,13 +74,7 @@ public class TensorWindow {
         return result;
     }
 
-    /**
-     * Returns the highest window index (per dimension) whose bounds overlap the pixel range.
-     * pixelRange[d] = {start, stop}.
-     *
-     * Solves: w * stride + offset <= pixelRange[d].stop - 1
-     * i.e. w <= (p - offset) / stride  (floor division)
-     */
+    /** Upper window bound of a pixel range; pairs with {@link #getLowestIntersection}. */
     public int[] getHighestIntersection(int[][] pixelRange) {
         int n = size.length;
         int[] result = new int[n];

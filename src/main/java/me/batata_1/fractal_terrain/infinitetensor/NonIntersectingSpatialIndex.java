@@ -10,31 +10,18 @@ import me.batata_1.fractal_terrain.storage.Storage;
 import me.batata_1.fractal_terrain.storage.TileKey;
 
 /**
- * Lazily-computed, infinitely-tiled store whose per-tile payload is any {@link SpatialIndex}
- * (an {@code ImmutableRTree} for the hydrology unit tiles). Mirrors
- * {@link NonIntersectingInfiniteTensor}: non-overlapping tiles keyed by window index, each computed
- * on demand by {@code entryCreatingFunction} and cached in {@link Storage}.
+ * Spatial-index counterpart to {@link NonIntersectingInfiniteTensor}: an infinitely-tiled store whose
+ * per-tile payload is a {@link SpatialIndex} rather than a raster.
  *
- * <p>The store is <b>index-agnostic</b>: it never runs a spatial query itself. Cross-tile queries go
- * through {@link #forEachTileWithin}, which hands the visitor each overlapping tile's world origin
- * plus the tile's <em>whole index</em> — the visitor runs whatever query the concrete index supports
- * (stab, circle, box, …) in the tile-local frame and merges results into one world frame itself.
+ * <p>Index-agnostic by design — {@link #forEachTileWithin} hands the visitor each tile's origin and
+ * whole index, so any query the concrete index supports works without this class knowing about it.
  *
- * <p>Whether tiles persist to disk depends on the payload: {@code Storage}'s constructor probes
- * {@code prototypeIndex.serialize()} once — disk-backed when it succeeds, cache-only when it throws
- * {@link UnsupportedOperationException}. The caller supplies the prototype and <b>must seed it with
- * at least one real entry</b> so the probe exercises entry serialization (an empty index would
- * trivially "serialize" and misclassify a store whose entries cannot).
+ * <p>The prototype passed to the constructor must be seeded with a real entry: an empty one
+ * serializes trivially and would misclassify entries that cannot.
  */
 public class NonIntersectingSpatialIndex<I extends SpatialIndex<?> & Persistable<I>> extends Storage<I> {
 
-    /**
-     * Compile-time query-stats toggle: when {@code true} every {@link #forEachTileWithin} call counts
-     * calls, tiles visited, empty tiles skipped, and visitor early exits into the static
-     * {@link LongAdder}s below (shared across all instances). Read them via {@link #statsString()} and
-     * reset via {@link #resetStats()}. When {@code false} the JIT removes all counting, so production
-     * queries pay nothing.
-     */
+    /** Turn on to count tile visits when diagnosing an over-broad query radius. */
     public static final boolean DEBUG_QUERY_STATS = false;
 
     private static final LongAdder STAT_FOR_EACH_TILE_CALLS = new LongAdder();
@@ -62,12 +49,7 @@ public class NonIntersectingSpatialIndex<I extends SpatialIndex<?> & Persistable
     private final TensorWindow outWindow;
     private final Function<TileKey, I> entryCreatingFunction;
 
-    /**
-     * @param prototypeIndex the deserialization prototype handed to {@link Storage}. Must be seeded
-     *     with at least one real entry so the serializability probe exercises entry serialization —
-     *     the store is index-type-agnostic and cannot seed one itself.
-     * @param entryCreatingFunction computes a tile's index on demand (and on a disk-cache miss)
-     */
+    /** @param prototypeIndex must carry at least one real entry — see the class doc */
     public NonIntersectingSpatialIndex(
             String path, String name, int[] shape, I prototypeIndex, Function<TileKey, I> entryCreatingFunction) {
         super(path, name, shape.length, prototypeIndex);
@@ -75,13 +57,8 @@ public class NonIntersectingSpatialIndex<I extends SpatialIndex<?> & Persistable
         this.outWindow = new TensorWindow(shape);
     }
 
-    /**
-     * Like {@link NonIntersectingInfiniteTensor#loadInto}: try the base disk-reload path first, and
-     * when it cannot produce the entry (signalled by {@link EntryNotLoadableException} — cache-only,
-     * unpersisted, or a corrupt/incompatible file, e.g. a legacy-format tile) recompute the tile from
-     * {@code entryCreatingFunction} on the CALLING thread. Cleanup of a failed claim is handled by
-     * {@code fetchEntry}.
-     */
+    /** Makes a cache miss recoverable by recomputing, mirroring
+     *  {@link NonIntersectingInfiniteTensor#loadInto}. */
     @Override
     protected void loadInto(TileKey key, CompletableFuture<I> promise) {
         try {
@@ -95,27 +72,14 @@ public class NonIntersectingSpatialIndex<I extends SpatialIndex<?> & Persistable
 
     /** Receives one overlapping tile's index during {@link #forEachTileWithin}. */
     public interface TileVisitor<IndexType> {
-        /**
-         * @param tileOriginX world X of the tile's local {@code (0,0)} corner — subtract from a world
-         *     coordinate to get its tile-local coordinate (and add to tile-local results to restamp
-         *     them into the world frame)
-         * @param tileOriginZ world Z of the tile's local {@code (0,0)} corner
-         * @param tileIndex the tile's whole spatial index; run any tile-local query on it
-         * @return {@code true} to stop the walk (early exit), {@code false} to continue
-         */
+        /** Return {@code true} to stop the walk. Tile origins convert between world and tile-local
+         *  frames; a store whose entries are already world-framed can ignore them. */
         boolean visit(int tileOriginX, int tileOriginZ, IndexType tileIndex);
     }
 
-    /**
-     * Visit every tile whose window overlaps the world-space circle ({@code worldCoords ± radius}),
-     * handing {@code tileVisitor} the tile's world origin and its whole per-tile index. Tiles are
-     * computed on demand; tiles with zero entries are skipped. Returns {@code true} iff a visitor
-     * early-exited the walk.
-     *
-     * <p>{@code radius} only sizes the tile window — it must upper-bound how far outside a tile any
-     * entry the visitor cares about can reach (e.g. the max shape influence radius plus any query
-     * expansion); the actual spatial filtering is the visitor's query.
-     */
+    /** The cross-tile query entry point, so callers never handle tile boundaries themselves.
+     *  {@code radius} only sizes the tile window and must upper-bound how far outside a tile any
+     *  entry of interest can reach; the real filtering is the visitor's own query. */
     public boolean forEachTileWithin(
             final double[] worldCoords, final double radius, final TileVisitor<I> tileVisitor) {
         if (DEBUG_QUERY_STATS) STAT_FOR_EACH_TILE_CALLS.increment();

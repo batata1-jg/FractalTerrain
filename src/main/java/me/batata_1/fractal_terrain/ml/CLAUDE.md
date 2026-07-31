@@ -2,6 +2,12 @@
 
 ONNX diffusion pipeline and model loading; the pipeline is a JVM-lifetime object.
 
+## Files
+
+| File        | What                                                          | When to read                                                |
+| ----------- | ------------------------------------------------------------- | ----------------------------------------------------------- |
+| `README.md` | How inference is split across stages and why ONNX was chosen  | Onboarding to the diffusion pipeline, cross-cutting concerns |
+
 ## Subdirectories
 
 | Directory         | What                                                            | When to read                                          |

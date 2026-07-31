@@ -19,21 +19,14 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.TestOnly;
 
 /**
- * Builds the per-tile vanilla biome-parameter field consumed by {@code FractalTerrainBiomeSource}.
- * See {@code worldgeneration101.md} ("Biomes → Overworld Biomes").
+ * Builds the per-tile vanilla biome-parameter field {@code FractalTerrainBiomeSource} resolves biomes
+ * from — the bridge between the diffusion model's output and vanilla's biome machinery.
  *
- * <p>Vanilla resolves an Overworld biome from six parameters — continentalness, erosion, temperature,
- * humidity (vegetation), weirdness, and depth. The first five are horizontal: {@link ClimateVariableTransform}
- * derives them from the diffusion model's climate + relief channels into a cached 512×512 tile (one channel
- * each, see {@link BiomeChannels}). Depth is vertical and supplied directly from block Y by a
- * {@code yClampedGradient} density function (wiki: depth ≈ 0 at the surface, rising downward), so it is not
- * stored in a tile channel.
+ * <p>Producing vanilla's own six parameters, rather than picking biomes directly, is what lets the
+ * existing {@code MultiNoiseBiomeSource} and every datapack biome keep working unchanged.
  *
- * <p>{@link #sampler} wires these channels into a {@link Climate.Sampler} in vanilla's
- * {@code temperature, humidity, continentalness, erosion, depth, weirdness} order.
- *
- * <p>Class layout: constants → fields → channel enum → constructor → private helpers → per-chunk
- * {@code fill*} producers → nested {@link DensityFunction} implementations → public accessors (last).
+ * <p>Five parameters are horizontal and cached per tile; depth is vertical and comes straight from
+ * block Y, so it is never stored in a channel.
  */
 public class BiomeProvider {
 
@@ -204,17 +197,8 @@ public class BiomeProvider {
     // Private helpers
     // -------------------------------------------------------------------------
 
-    /**
-     * Per-coarse-cell distance-to-shore for biome tile {@code (tileX, tileZ)}, as a {@link #DSHORE_GRID}×
-     * {@link #DSHORE_GRID} grid (row-major {@code [Xcell*DSHORE_GRID + Zcell]}). The grid spans the tile's
-     * {@link #COARSE_CELLS_PER_TILE}×{@link #COARSE_CELLS_PER_TILE} owned coarse cells plus a 1-cell halo on
-     * every side, so {@code ClimateVariableTransform} can bilinearly upscale it without falling off the edge.
-     *
-     * <p>Each value is the Manhattan distance (in coarse cells) from that cell to the nearest ocean cell
-     * within a 9×9 window, biased so a cell adjacent to ocean reads {@code 0} (shore): {@code -1} when the
-     * cell itself is ocean, {@code 0..7} for increasing land distance, and {@link #SHORE_DIST_NO_OCEAN}
-     * when no ocean lies within the window.
-     */
+    /** Coarse distance-to-shore, the signal driving every coastal biome. Carries a one-cell halo so
+     *  the upscale can interpolate without falling off the tile edge. */
     private static int[] computeCoarseDistShore(int tileX, int tileZ) {
         // Coarse-cell origin of the tile (1 coarse cell = 256 px ⇒ tileIndex<<9 px = tileIndex*2 cells).
         final int tileCx = tileX * COARSE_CELLS_PER_TILE;
@@ -232,15 +216,8 @@ public class BiomeProvider {
         return distShore;
     }
 
-    /**
-     * Distance-to-shore for one coarse cell (1 coarse px) at coarse-pixel {@code (cellCx, cellCz)}. Pulls its
-     * own {@code (2·SHORE_SEARCH_RADIUS+1)²} coarse slice centred on the cell — {@code ci0}/{@code cj0} are
-     * just {@code cell − SHORE_SEARCH_RADIUS}, with no halo (∓1) correction, since the caller already encodes
-     * the halo in the cell coordinate it passes — and returns the Manhattan distance (in coarse cells) to the
-     * nearest ocean cell within that 9×9 window, biased so a cell adjacent to ocean reads {@code 0}:
-     * {@link #SHORE_DIST_OCEAN} when the cell itself is ocean, {@code 0..7} for increasing land distance, and
-     * {@link #SHORE_DIST_NO_OCEAN} when no ocean lies within the window.
-     */
+    /** Per-cell half of {@link #computeCoarseDistShore}. The caller already encodes the halo in the
+     *  coordinate passed, so this applies no halo correction of its own. */
     private static int calculateCell(int cellCx, int cellCz) {
         final int sliceSide = 2 * SHORE_SEARCH_RADIUS + 1;
         final int ci0 = cellCx - SHORE_SEARCH_RADIUS;
@@ -271,15 +248,8 @@ public class BiomeProvider {
         return (minManhattan == Integer.MAX_VALUE) ? SHORE_DIST_NO_OCEAN : minManhattan - 1;
     }
 
-    /**
-     * Unused: no call site references this method. Its per-pixel loop body is commented out, so as
-     * written it is a no-op that always returns an all-zero {@link #TILE_PIXELS}-length array.
-     *
-     * <p>The commented-out body would have computed a river-humidity PDF for biome tile
-     * {@code (tileX, tileZ)}: for each of the 512×512 pixels, the nearest local-river distance mapped
-     * through an exponential falloff (closer ⇒ more humid), 0 where no river lies within the query
-     * radius, indexed {@code ix*512 + iz} to match the relief/biome flat layout.
-     */
+    /** Dead: no call site, and the body is commented out, so it returns all zeros.
+     *  Intended to raise humidity near rivers. */
     private static float[] riverHumidity(int tileX, int tileZ) {
         final LocalRiverProvider localRivers = FractalTerrainInstance.getLocalRiverProvider();
         final float[] vegPdf = new float[TILE_PIXELS];
@@ -426,18 +396,11 @@ public class BiomeProvider {
     }
 
     /**
-     * Weirdness density built from <b>two</b> interpolations of the same channel that are combined:
+     * Weirdness, interpolated as magnitude and sign separately.
      *
-     * <ul>
-     *   <li>{@link #valueInterpolation} — the magnitude {@code |weirdness|}, which carries the value;
-     *   <li>{@link #signInterpolation} — the {@link Math#signum sign} of the weirdness, which picks the
-     *       peaks-or-valleys side.
-     * </ul>
-     *
-     * <p>{@link #sample} returns {@code value × sign}. The terrain reads only the magnitude of weirdness
-     * (PV = {@code 1 − |3·|weirdness| − 2|}), so keeping the magnitude smooth preserves the overall
-     * landscape shape, while the sign — which only biome selection cares about — scatters the world into
-     * more weirdness-folded biome bands.
+     * <p>Split because the two are read by different consumers: terrain uses only the magnitude, so
+     * keeping that smooth preserves landscape shape, while the sign is biome-selection-only and can
+     * scatter freely — which is what folds the world into more weirdness bands.
      */
     private static class WeirdnessDensity implements DensityFunction.SimpleFunction {
 
@@ -512,12 +475,8 @@ public class BiomeProvider {
         return final_tiles;
     }
 
-    /**
-     * Raw biome-tile channel read at scaled-grid {@code xz} (reads {@code xz[X]}/{@code xz[Z]}, clobbers
-     * {@code xz[CH]}), matching the relief getter contract. These back the climate {@code
-     * FractalTerrainHeightmap.Types} entries: the heightmap supplies its own bilinear interpolation around
-     * these point samples (just like the relief getters), so no interpolation happens here.
-     */
+    /** Raw channel read backing the climate heightmap types. Deliberately uninterpolated — the
+     *  heightmap supplies its own, as it does for the relief getters. Clobbers {@code xz[CH]}. */
     private Float biomeChannel(final int[] xz, final int ch) {
         xz[CH] = ch;
         return final_tiles.getValue(xz);
@@ -544,14 +503,8 @@ public class BiomeProvider {
         return weirdnessInterpolation.interpolateBilinear(x, z);
     }
 
-    /**
-     * Per-pixel distance-to-shore at scaled-grid {@code xz} (reads {@code xz[X]}/{@code xz[Z]}, clobbers
-     * {@code xz[CH]}), backing the {@code DIST_SHORE} 3D visualizer
-     * ({@link me.batata_1.fractal_terrain.debug.Infinite3DVisualizer}). Reads the {@link #DEBUG_DSHORE_CHANNEL}
-     * each tile appends while the visualizer runs — the per-pixel signal {@link ClimateVariableTransform#transform}
-     * bilinearly upscales from the coarse grid, i.e. what actually drives the coast biomes. Only meaningful
-     * while the visualizer is enabled ({@link #DEBUG_DSHORE_CHANNEL_ON}).
-     */
+    /** Debug read of the upscaled distance-to-shore, so the visualizer shows what actually drives the
+     *  coast biomes. Meaningful only while {@link #DEBUG_DSHORE_CHANNEL_ON}. */
     @TestOnly
     public Float getDistShore(int[] xz) {
         return biomeChannel(xz, DEBUG_DSHORE_CHANNEL);

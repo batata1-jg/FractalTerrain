@@ -15,14 +15,12 @@ import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import org.junit.jupiter.api.Test;
 
 /**
- * Headless golden gate for the deterministic local-network trace of {@link LocalRiverProvider} (M-005):
- * split out of the pipeline-coupled {@code debug.tests.LocalRiverTest} manual harness (which stays as a
- * PNG dumper). The unified trace attaches local segments directly onto a live {@link RiverNetwork}, so
- * this seam feeds a synthetic global network (a single central trunk channel) instead of a boolean mask,
- * runs the exact production {@link LocalRiverProvider#traceLocalNetworkForTest} path over it, and asserts
- * structural invariants rather than a frozen checksum: local output legitimately changes with the
- * uncalibrated {@code LOCAL_ATTACH_RADIUS} (DL-010), so a bit-exact checksum would demand re-baselining on
- * every calibration pass and cannot even compile against the new void/mask-free seam.
+ * Headless gate on the local-network trace, driving the production path over a synthetic global network
+ * so no ONNX pipeline is needed.
+ *
+ * <p>Asserts structural invariants rather than a frozen checksum: local output legitimately shifts with
+ * the uncalibrated {@code LOCAL_ATTACH_RADIUS}, so a checksum would demand re-baselining on every
+ * calibration pass. {@code debug.tests.LocalRiverTest} remains the PNG-dumping counterpart.
  */
 class LocalRiverGoldenTest {
 
@@ -31,24 +29,12 @@ class LocalRiverGoldenTest {
     /** Distance (rows) from the trunk to each ridge crest (the watershed / source line). */
     private static final int RIDGE_OFFSET = 80;
 
-    /** {@link RiverNetwork#insertSpecs} mints channel ids from 0 on a fresh network -- the synthetic
-     *  trunk (the network's only constructor-supplied edge) is always channel 0. */
+    /** {@link RiverNetwork}'s constructor resets channel ids from 0, so the synthetic trunk is always channel 0. */
     private static final int TRUNK_CHANNEL_ID = 0;
 
-    /**
-     * Deterministic synthetic heightmap over the {@link #GRID} tile, shaped as a symmetric double-ridge
-     * valley (a function of the row distance {@code a = |i - GRID/2|} plus seeded noise):
-     * <ul>
-     *   <li>a central valley at {@code i = GRID/2} (the global-river trunk, {@code +2}),
-     *   <li>rising to a ridge crest at {@code a = RIDGE_OFFSET} ({@code +60}) — the interior source line,
-     *   <li>then falling back toward the border ({@code +20}).
-     * </ul>
-     * The profile is piecewise-monotonic (no enclosed pits for {@code fillSinks} to flood), and the valley
-     * connects to the tile border along its ends so it is never flooded either. Cells on the inner limb
-     * drain to the trunk; cells on the outer limb drain to the border (land, so no outlet → no rivers).
-     * The synthetic global network's trunk channel runs exactly along the valley floor, so channels walk
-     * ridge → trunk, both interior, and survive {@code leavesTile}.
-     */
+    /** Symmetric double-ridge valley over {@link #GRID}: trunk at the center row, ridge crest at {@link
+     *  #RIDGE_OFFSET}, falling to the border beyond — piecewise-monotonic so no interior pit needs
+     *  {@code fillSinks}, and both limbs drain somewhere testable (trunk vs. border). */
     private static float[] syntheticElevation(long seed) {
         final Random rng = new Random(seed);
         final double mid = GRID / 2.0;
@@ -75,14 +61,9 @@ class LocalRiverGoldenTest {
         return Drainage.computeDrainageDirection(filled, uniformWeight, GRID);
     }
 
-    /**
-     * A synthetic global network: a single SOURCE→DRAIN trunk channel running the length of the tile
-     * along {@code z = GRID/2} (the valley floor {@link #syntheticElevation} carves), wide enough that
-     * every ridge-side local segment's downstream end lands within {@code LOCAL_ATTACH_RADIUS} of some
-     * trunk point. Built via {@link RiverNetwork}'s public constructor, exactly as {@code
-     * GlobalNetworkBuilder} would build a real one, but with no Meanders relaxation applied (the trace
-     * being tested reads the network's channel points directly, not a relaxed shape).
-     */
+    /** Single SOURCE→DRAIN trunk along the valley floor {@link #syntheticElevation} carves, wide enough
+     *  that every ridge-side segment's downstream end lands within attach radius. Skips Meanders
+     *  relaxation since the trace under test reads channel points directly. */
     private static RiverNetwork syntheticGlobalNetwork() {
         final int mid = GRID / 2;
         final ArrayList<double[]> trunkPts = new ArrayList<>();
@@ -197,11 +178,8 @@ class LocalRiverGoldenTest {
         assertTrue(sawLocalChannel, "synthetic field produced no local channels — fixture is degenerate");
     }
 
-    /**
-     * Determinism pre-check (mirrors the M-004 pattern): the synthetic heightmap, drainage, and trace all
-     * derive from a fixed seed and touch no other state, so 5 independent runs are expected to be — and
-     * were confirmed — bit-identical; no canonicalization or tolerance was needed.
-     */
+    /** Confirms the synthetic heightmap, drainage and trace derive from the seed alone: 5 runs are
+     *  checked bit-identical, catching hidden nondeterminism the structural assertions alone would miss. */
     @Test
     void localNetworkIsDeterministicAcrossRuns() {
         Long first = null;

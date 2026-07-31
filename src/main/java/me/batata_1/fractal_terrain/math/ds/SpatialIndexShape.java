@@ -1,23 +1,13 @@
 package me.batata_1.fractal_terrain.math.ds;
 
 /**
- * A 2-D shape playing either (or both) of two roles in the spatial-index family:
+ * A 2-D shape, serving as a query region against a point index and as a stored entry in an
+ * {@link ImmutableRTree} — one contract rather than two, so the same geometry serves both.
  *
- * <ul>
- *   <li><b>Query region</b> against a point index ({@link QuadTree}, {@link ImmutableQuadTree}) —
- *       the tree walks prune with {@link #notIntersect} and bulk-accept with
- *       {@link #contains(double[], double[])};
- *   <li><b>Stored entry</b> of an {@link ImmutableRTree} — the stabbing query tests candidates with
- *       {@link #containsPoint} / {@link #containsPointInflated} and the bulk load reads each entry's
- *       bounding box via {@link #writeMbrInto}.
- * </ul>
+ * <p>Box arguments are always {@code (lowerCorner, upperCorner)}, never {@code (corner, extent)}.
  *
- * <p>Box arguments are always {@code (lowerCorner, upperCorner)} pairs — <b>not</b>
- * {@code (corner, extent)}. Like {@link SpatialIndexPoint}, the concrete geometries are interfaces
- * meant to be implemented by payload-carrying records: {@link SpatialIndexCircle} and
- * {@link SpatialIndexRectangle} default every method off their few geometric accessors, and the
- * nested {@link Circle} / {@link Rectangle} records are the ready-made implementations for query
- * construction.
+ * <p>The concrete geometries are interfaces so payload-carrying records can implement them directly;
+ * the nested records are ready-made for building queries.
  */
 public interface SpatialIndexShape {
 
@@ -30,18 +20,10 @@ public interface SpatialIndexShape {
     /** True when this shape contains {@code queryPoint} — the {@link ImmutableRTree} stabbing primitive. */
     boolean containsPoint(double[] queryPoint);
 
-    /**
-     * {@link #containsPoint} with this shape's boundary expanded outward by {@code inflateRadius}:
-     * true when {@code queryPoint} lies within {@code inflateRadius} of the shape. Serves radius-expanded
-     * stabbing queries (e.g. a chunk-prefetch that must catch every shape reaching anywhere in the chunk).
-     */
+    /** Inflated {@link #containsPoint}, so one prefetch can catch every shape reaching a whole chunk. */
     boolean containsPointInflated(double[] queryPoint, double inflateRadius);
 
-    /**
-     * Writes this shape's minimum bounding rectangle into the caller's arrays (lower corner into
-     * {@code mbrLowerCornerOut}, upper corner into {@code mbrUpperCornerOut}) — allocation-free so bulk
-     * loads can reuse two scratch arrays.
-     */
+    /** Writes the MBR into caller arrays, so a bulk load can reuse two scratch arrays. */
     void writeMbrInto(double[] mbrLowerCornerOut, double[] mbrUpperCornerOut);
 
     /** Leaf-scan convenience for the point-tree walks. */

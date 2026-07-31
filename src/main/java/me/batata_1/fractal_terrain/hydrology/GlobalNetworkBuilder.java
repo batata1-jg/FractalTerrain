@@ -17,28 +17,14 @@ import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 
 /**
- * Responsibility: build the per-tile <em>global</em>-river subgraph — the 2×2 owned coarse cells plus
- * their one-cell halo, read off {@link GlobalRiverProvider}'s arrow field — into {@link RiverNetwork}
- * node/edge specs, then relax it down-gradient with a {@link Meanders} simulation, returning the relaxed
- * network together with the boundary-elevation map it accumulated for the caller to assign bed
- * elevations. This is the deterministic core unique to {@code LocalRiverProvider.buildTile}'s step 1
- * ("global rivers: trace + relax"), extracted unchanged.
+ * Step 1 of {@code LocalRiverProvider.buildTile}: turns {@link GlobalRiverProvider}'s coarse arrow field
+ * into a relaxed per-tile graph, and hands back the boundary elevations the caller needs to assign beds.
  *
- * <p>Collaborators: {@link ChannelElevationAssigner} (bed-elevation propagation, invoked by the caller
- * after {@link #build} returns); {@link HydrologyTileGeometry} (shared tile/coarse-cell geometry);
- * {@link Meanders} / {@link RiverNetwork} (the graph structure being built and relaxed);
- * {@link GlobalRiverProvider} (the coarse arrow/width/elevation source).
+ * <p>Split out of the provider so the trace-and-relax core can be read and tested apart from the
+ * dual-store cache plumbing around it.
  *
- * <p>Invariants: purely functional over its parameters — no shared mutable state, so per-tile builds
- * from different worker threads never interact. The owned-cell topology (2×2 centres, drains,
- * junctions, sources) and gate-jitter/relax-step constants are unchanged from the original
- * {@code LocalRiverProvider.buildGlobalNetwork}; do not reorder the node/edge construction passes — later
- * passes rely on {@code centerIdx}/{@code edgeNodeIdx} populated by earlier ones.
- *
- * <p>{@link GlobalRiverProvider#getWidth} already returns native-rescaled widths (coarse-px flow width x
- * {@code GLOBAL_WIDTH_COORD_SCALE}); every {@code EdgeSpec}/margin/seed computation below consumes that
- * value directly, so the {@link Meanders} relax step and the border-confinement margin both operate in
- * the same native-px frame as the local network -- do not re-scale it again here.
+ * <p>Do not reorder the node/edge construction passes — later passes read state earlier ones populate.
+ * Widths arrive already native-rescaled; re-scaling them here would double-apply.
  */
 final class GlobalNetworkBuilder {
 
@@ -215,13 +201,8 @@ final class GlobalNetworkBuilder {
         return new Result(sim, boundaryElevByNodeIdx);
     }
 
-    /**
-     * Release the transient build scaffolding accumulated by {@link #build}. Everything here has already
-     * been consumed (the {@link Meanders}/{@link RiverNetwork} copies the node/edge specs), so clearing
-     * them frees the references before the (returned) {@link Result} is handed back. The
-     * {@code boundaryElevByNodeIdx} map is not cleared here — it is part of the returned {@link Result}
-     * and is the caller's to consume.
-     */
+    /** Drops the build scaffolding once the graph has copied it, so a tile build does not hold it for
+     *  the lifetime of the returned {@link Result}. */
     private static void clearBuildState(
             Map<Long, CellInfo> cells,
             List<RiverNetwork.NodeSpec> nodeSpecs,
@@ -235,12 +216,8 @@ final class GlobalNetworkBuilder {
         edgeNodeIdx.clear();
     }
 
-    /**
-     * Create the SOURCE node for an owned cell flagged {@code isSource}: place a deterministic interior
-     * seed ({@link #sourceSeed}, kept {@code riverInfluence(width)} clear of the cell edges), record its
-     * boundary bed elevation (the decoded terrain at the seed, floored at the downstream coarse bed), and
-     * wire a seed→centre edge.
-     */
+    /** Seeds a headwater inside an owned cell, kept clear of the cell edges so its carve band cannot
+     *  spill into the neighbouring cell. */
     private static void addSourceNode(
             List<RiverNetwork.NodeSpec> nodeSpecs,
             List<RiverNetwork.EdgeSpec> edgeSpecs,
@@ -285,11 +262,8 @@ final class GlobalNetworkBuilder {
         return list;
     }
 
-    /**
-     * Gate point steering a channel between the cell centre and an edge drain point. Returns the midpoint between
-     * {@code centre} and the edge {@code side} point, displaced by a small deterministic offset keyed on the cell
-     * coordinates (so the jitter is stable across rebuilds and consistent for both flanking tiles).
-     */
+    /** Steers a channel between cell centre and edge drain. The offset is keyed on cell coordinates so
+     *  both tiles flanking a seam compute the same gate. */
     private static double[] gateInside(double[] centre, double[] side, int ccx, int ccz) {
         final double mx = 0.5 * (centre[0] + side[0]);
         final double mz = 0.5 * (centre[1] + side[1]);
@@ -341,14 +315,8 @@ final class GlobalNetworkBuilder {
         return ((long) cx << 32) ^ (cz & 0xffffffffL);
     }
 
-    /**
-     * The exit point on the cell's cardinal-arrow edge: the edge pixel whose decoded elevation is closest
-     * to {@code target} (the cell's coarse bed). The exit edge is a constant-Z line (dir 4/5) or a
-     * constant-X line (dir 6/7) on the cell boundary. When that line lies on the tile's outer border the
-     * drain is a hand-off to the neighbour tile and may sit on the seam (only corners are avoided, via
-     * {@link #nearTileCorner}); when the line is interior to the tile the drain must stay clear of the
-     * whole border band ({@link #nearTileBorder}).
-     */
+    /** Where a cell's river exits. On the tile's outer border the drain is a hand-off to the neighbour
+     *  and may sit on the seam; an interior edge must stay clear of the whole border band. */
     private static double[] findDrain(
             int ccx, int ccz, int dir, int tileX, int tileZ, float[] elev, double target, double marginInfl) {
         final int minXi = PAD + (ccx - tileX * 2) * COARSE_PX;
@@ -378,11 +346,7 @@ final class GlobalNetworkBuilder {
         return new double[] {bestX, bestZ};
     }
 
-    /**
-     * The lowest-elevation interior pixel of the cell, or {@code null} if none qualify. Pixels within
-     * {@code marginInfl} of the tile border are skipped so the lastPointElev drain never lands on the outer
-     * band (keeping it clear of the seam shared with the neighbouring tile).
-     */
+    /** Lowest interior pixel of a cell, border band excluded so a drain never lands on a shared seam. */
     private static double[] findLowestInCell(int ccx, int ccz, int tileX, int tileZ, float[] elev, double marginInfl) {
         final int minXi = PAD + (ccx - tileX * 2) * COARSE_PX;
         final int minZi = PAD + (ccz - tileZ * 2) * COARSE_PX;

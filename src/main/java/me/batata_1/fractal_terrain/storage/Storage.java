@@ -21,31 +21,14 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 /**
- * Generic, lazily-populated tile cache keyed by integer coordinate tuples.
+ * Generic lazily-populated tile cache, the persistence layer under every provider in the pipeline.
  *
- * <p>Payloads implement {@link Persistable}. When a payload's {@link Persistable#serialize} /
- * {@link Persistable#deserialize} are real, entries are persisted under {@link #PATH} and survive
- * eviction (re-read on demand); when they throw {@link UnsupportedOperationException}, the
- * {@code Storage} is <em>cache-only</em> and evicted entries are forgotten entirely. Passing a
- * {@code null} path to the constructor also forces <em>cache-only</em> behaviour: nothing touches the
- * filesystem and entries are never persisted regardless of the payload's serialize support.
+ * <p>Disk-backed or cache-only is decided once from the payload's {@link Persistable} support and the
+ * constructor path, so callers never branch on it.
  *
- * <p><b>Concurrency:</b> the read path ({@link #getEntry}) is lock-free for cache hits. On a miss,
- * {@link #fetchEntry} single-flights via a plain {@code get} followed by {@code CACHE.putIfAbsent}
- * (deliberately NOT {@link ConcurrentHashMap#computeIfAbsent}, which would hold a bin lock across the
- * load), so any number of reader threads may run concurrently and only the losing threads await the
- * winner's future. The only locked state is the eviction bookkeeping ({@link #cachedEntryByteSizes} /
- * {@link #totalCachedBytes}), guarded by {@link #evictionLock}, which readers never touch.
- *
- * <p><b>Cache-write boundary / immutability:</b> {@link #persistAndRecord} and the disk-reload path in
- * {@link #loadInto} are the only two places a payload transitions from "just produced" to "published
- * for other worker threads to read"; both call {@link Persistable#freeze()} first, so a type with a
- * freeze contract (e.g. {@code FloatTensor}) is always immutable by the time any other thread can
- * observe it. The freeze write happens-before publication because it runs on the same thread, before
- * the key ever appears completed in {@link #CACHE} (via {@link CompletableFuture#complete}), which is
- * itself a safe-publication point for every awaiting/racing reader.
- *
- * @param <T> the cached payload type.
+ * <p>Chunk generation reads this from many worker threads at once, which shapes the design: hits are
+ * lock-free, misses single-flight without holding a map bin lock, and eviction bookkeeping is the only
+ * locked state. See {@code README.md} for the cache-write/freeze boundary.
  */
 public class Storage<T extends Persistable<T>> {
 
@@ -74,10 +57,7 @@ public class Storage<T extends Persistable<T>> {
     /** Serialize capability, decided once in the constructor: true = disk-backed, false = cache-only. */
     private final boolean payloadIsSerializable;
 
-    /**
-     * @param path persistence directory, or {@code null} for a cache-only Storage that never persists
-     *     and never touches the filesystem.
-     */
+    /** @param path persistence directory, or {@code null} for a cache-only Storage */
     public Storage(@Nullable String path, String name, int rank, T deserializationPrototype) {
         this.rank = rank;
         this.deserializationPrototype = deserializationPrototype;
@@ -228,12 +208,8 @@ public class Storage<T extends Persistable<T>> {
     // given key is computed at most once even when many worker threads race for overlapping slices.
     // -------------------------------------------------------------------------
 
-    /**
-     * Single-flight compute: returns the cached value if one already exists/is in flight, otherwise
-     * atomically claims {@code index} and runs {@code compute} ON THE CALLING THREAD exactly once,
-     * persisting/accounting the result. Losers of the claim block on the winner's future rather than
-     * recomputing. On failure the claim is released so the key can be retried.
-     */
+    /** Single-flight compute, so an expensive tile build never runs twice concurrently.
+     *  Runs {@code compute} on the calling thread; losers block on the winner. */
     public T getOrCompute(final int[] index, final Supplier<T> compute) {
         final CompletableFuture<T> claim = claimForCompute(index);
         if (claim == null) return getEntry(toKey(index)); // someone else owns it — await their result
@@ -247,11 +223,8 @@ public class Storage<T extends Persistable<T>> {
         }
     }
 
-    /**
-     * Atomically claim {@code index} for computation. Returns a fresh promise the caller MUST settle
-     * via {@link #fulfillClaim} or {@link #abandonClaim}; returns {@code null} when another thread
-     * already owns or has produced the entry (the caller must NOT compute it).
-     */
+    /** Claims a key so one build can cross-fill a sibling store. The returned promise MUST be settled;
+     *  {@code null} means another thread owns it and the caller must not compute. */
     public CompletableFuture<T> claimForCompute(final int[] index) {
         final TileKey key = toKey(index);
         if (CACHE.get(key) != null) return null;
@@ -275,14 +248,8 @@ public class Storage<T extends Persistable<T>> {
         promise.completeExceptionally(cause);
     }
 
-    /**
-     * Single-flight fetch: returns the cached future on a hit, otherwise atomically installs a fresh
-     * promise (so concurrent callers for the same key share it) and hands it to {@link #loadInto}.
-     *
-     * <p>The {@code putIfAbsent} winner populates the promise <em>after</em> the map operation
-     * returns, so no CACHE bin lock is held across the (potentially expensive) load — keeping reads
-     * lock-free and avoiding the {@code computeIfAbsent} "recursive update" pitfall.
-     */
+    /** Single-flight fetch. Deliberately not {@code computeIfAbsent}, which would hold a bin lock
+     *  across the load and can deadlock on recursive update. */
     protected CompletableFuture<T> fetchEntry(TileKey key) {
         final CompletableFuture<T> existing = CACHE.get(key);
         if (existing != null) return existing;
@@ -301,14 +268,8 @@ public class Storage<T extends Persistable<T>> {
         return promise;
     }
 
-    /**
-     * Populate the freshly-installed {@code promise} for an uncached {@code key} by reading the
-     * persisted entry from disk. Runs synchronously on the calling thread. Throws
-     * {@link EntryNotLoadableException} whenever it cannot produce the entry — cache-only storage
-     * (null path or non-serializable payload), an unpersisted key, a missing tile file, or a
-     * deserialization failure. Subclasses (e.g. {@code NonIntersectingInfiniteTensor}) override this
-     * to catch that signal and recompute the entry on demand.
-     */
+    /** Loads a key from disk. Throws {@link EntryNotLoadableException} for every not-on-disk reason
+     *  alike, which is the signal subclasses override to recompute instead. */
     protected void loadInto(TileKey key, CompletableFuture<T> promise) throws EntryNotLoadableException {
         if (!payloadIsSerializable) {
             // Cache-only Storage (null path or non-serializable payload): nothing persisted to load.
@@ -331,11 +292,7 @@ public class Storage<T extends Persistable<T>> {
         }
     }
 
-    /**
-     * Mark {@code key} as logically existing, persist it when this Storage is disk-backed (the
-     * serializability was settled in the constructor), and account its size for eviction. Returned for
-     * {@code thenApply} chaining. Acquires only {@link #evictionLock} (never a CACHE bin lock).
-     */
+    /** The publication point: records, persists and accounts a new entry. */
     protected T persistAndRecord(TileKey key, T entry) {
         entry.freeze(); // cache-write boundary: freeze before publishing to other reader threads
         GENERATED_ENTRIES.add(key);
@@ -360,11 +317,8 @@ public class Storage<T extends Persistable<T>> {
         }
     }
 
-    /**
-     * Remove the eldest (earliest-inserted) key from the budget bookkeeping and return it. MUST be
-     * called with {@link #evictionLock} held. Does NOT touch {@link #CACHE}/{@link #GENERATED_ENTRIES}
-     * — the caller performs those removals after releasing the lock (see {@link #evictIfNeeded}).
-     */
+    /** Picks an eviction victim. Call with {@link #evictionLock} held; the caller does the removal
+     *  after releasing it. */
     private TileKey pollOldest() {
         Iterator<Map.Entry<TileKey, Long>> iterator =
                 cachedEntryByteSizes.entrySet().iterator();
@@ -375,12 +329,8 @@ public class Storage<T extends Persistable<T>> {
         return eldest.getKey();
     }
 
-    /**
-     * Drop eldest cached entries until {@link #totalCachedBytes} is back within {@code cacheLimitBytes}.
-     * Victims are selected under {@link #evictionLock}; the lock is released before mutating the
-     * concurrent maps. For cache-only payloads {@link #GENERATED_ENTRIES} is purged BEFORE
-     * {@link #CACHE} so a racing reader never sees an entry that exists logically but nowhere.
-     */
+    /** Trims the cache to its byte budget. Purge order matters for cache-only payloads, or a racing
+     *  reader sees an entry that exists logically but nowhere. */
     public void evictIfNeeded(long cacheLimitBytes) {
         final List<TileKey> victims = new ArrayList<>();
         synchronized (evictionLock) {

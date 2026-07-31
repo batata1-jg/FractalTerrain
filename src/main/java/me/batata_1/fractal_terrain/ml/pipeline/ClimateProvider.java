@@ -4,17 +4,14 @@ import me.batata_1.fractal_terrain.infinitetensor.AdditiveInfiniteTensor;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 
 /**
- * Responsibility: derives native-resolution climate conditioning (real temperature, coarse temperature
- * std, precipitation, precipitation-std, lapse-rate beta) from the coarse tensor via a windowed
- * lapse-rate regression plus bilinear upsampling.
+ * Derives native-resolution climate (temperature, precipitation, lapse-rate beta) from the coarse
+ * tensor via windowed lapse-rate regression plus bilinear upsampling.
  *
- * <p>Collaborators: only the upstream coarse tensor (constructor-injected dependency) and
- * {@link WorldPipeline#LATENT_COMPRESSION}. Unlike {@link CoarseStage}/{@link LatentStage}/
- * {@link DecoderStage}, this stage never reads {@link PipelineSession} — climate derivation has no
- * seed- or tau-dependent noise draw, so it crosses no reload-scoped state.
+ * <p>Unlike {@link CoarseStage}, {@link LatentStage} and {@link DecoderStage}, it never reads
+ * {@link PipelineSession}: climate derivation draws no seed- or tau-dependent noise, so it falls
+ * outside the MUST-1 reload-race contract the other three stages share.
  *
- * <p>Invariants: input/output cross only the coarse tensor's {@code CH=0/X=1/Z=2} tensor boundary; the
- * 5-channel output layout is, in order, {@code [tempReal, tempStd, precip, precipStd, beta]}.
+ * <p>Output channels, in order: {@code [tempReal, tempStd, precip, precipStd, beta]}.
  */
 final class ClimateProvider {
 

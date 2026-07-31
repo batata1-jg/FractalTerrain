@@ -13,7 +13,6 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
-import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
@@ -34,44 +33,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Owner of the whole per-tile river pipeline. From the decoded terrain ({@link DecoderChannels}) and the
- * global river network ({@link GlobalRiverProvider}) it computes, per 512×512 relief tile, two
- * artifacts produced by a single build:
+ * Owner of the per-tile river pipeline, between {@link GlobalRiverProvider} upstream and
+ * {@code ReliefProvider} downstream; stage math lives in {@link GlobalNetworkBuilder},
+ * {@link LocalDrainageTracer} and {@link ChannelElevationAssigner}.
  *
- * <ul>
- *   <li>a serializable {@link NonIntersectingSpatialIndex} of per-tile {@link ImmutableRTree}s of
- *       {@link HydrologicalUnit} influence circles — the queryable river network: global rivers traced
- *       + relaxed by a Meanders sim, with the detailed local network traced from drainage attached onto
- *       the SAME graph as first-class members — answered by point-stabbing queries; and</li>
- *   <li>a {@link NonIntersectingInfiniteTensor} of {@code [1,512,512]} carved+filled elevation tiles,
- *       imported by {@code ReliefProvider} as its elevation channel.</li>
- * </ul>
- *
- * <p>The two stores are populated together: whichever is requested first runs {@link #buildTile} and
- * cross-fills the other via the storage claim API (single-flight guarantees one build per tile).
- *
- * <p><b>Responsibility (thin orchestrator):</b> owns the dual-store cache/single-flight plumbing and the
- * per-tile pipeline sequencing; the actual per-stage math is delegated to
- * {@link GlobalNetworkBuilder} (global-river trace + relax), {@link LocalDrainageTracer} (drainage-derived
- * local network, attached in place onto the global graph) and {@link ChannelElevationAssigner}
- * (bed-elevation propagation). {@link HydrologyTileGeometry} is the shared tile-frame geometry all three
- * depend on.
- *
- * <p>{@code assign} and the global shell carve each run <b>twice</b> per tile: once on the global-only
- * graph, to give the drainage trace a carved valley to route through, and again on the unified graph
- * after the local network is attached. See {@link #buildTile} for the exact ordering.
- *
- * <p><b>Coordinate frames.</b> Everything inside {@link #buildTile} works in the <em>padded tile</em>
- * frame — pixel indices into a {@code PADDED × PADDED} buffer. The unit index published out of it is the
- * one exception: its coords are stamped in the <em>world</em> relief-pixel frame, so the query API
- * ({@link #queryInfluence}, {@link #anyInfluencingUnit}) is frame-free and a hit from a neighbouring tile
- * needs no translation to sit alongside one from this tile. The carved-elevation tile stays tile-local
- * (it is a raster, addressed by pixel index).
- *
- * <p><b>Invariants:</b> {@link #units}/{@link #carved} (a {@link NonIntersectingSpatialIndex} /
- * {@link NonIntersectingInfiniteTensor} pair) are reused per-tile and single-threaded per key — the
- * {@code pending} single-flight map and the storage claim API are what let one {@link #buildTile} call
- * fill both stores; do not bypass them by computing a tile's units/carved elevation independently.
+ * <p>Publishes two stores from a single {@link #buildTile} pass so they can never disagree: an index of
+ * {@link HydrologicalUnit} influence circles answering point-stabbing queries, and carved elevation tiles
+ * imported as ReliefProvider's elevation channel. Unit coords are stamped in the world relief-pixel
+ * frame so a hit from a neighbouring tile needs no translation; carved tiles stay tile-local.
  */
 public class LocalRiverProvider {
 
@@ -115,18 +84,9 @@ public class LocalRiverProvider {
         return PADDED;
     }
 
-    /**
-     * Headless seam for {@code LocalRiverGoldenTest}: run the local-network trace — the deterministic core
-     * unique to this provider (flow accumulation → reach test → segment walk → attach) — over a supplied
-     * {@code GRID*GRID} drainage/elevation pair and a caller-built {@code network} (a synthetic global
-     * network in the golden test; the real per-tile graph in production), with no pipeline dependency. In
-     * production the drainage and elevation originate from the ONNX-decoded terrain (via {@link
-     * me.batata_1.fractal_terrain.relief.DecoderChannels#decode}); a golden test instead feeds a synthetic
-     * seeded elevation field and its {@code Drainage}-computed drainage, plus a synthetic
-     * central trunk channel for {@code network}. Delegates to the exact production {@link
-     * LocalDrainageTracer#traceLocalNetwork} path, which mutates {@code network} in place and returns
-     * nothing — the caller inspects {@code network} afterwards.
-     */
+    /** Headless seam for {@code LocalRiverGoldenTest}: runs the production trace path over
+     *  caller-supplied fields, so the trace can be exercised without the ONNX pipeline.
+     *  Mutates {@code network} in place; the caller inspects it afterwards. */
     @TestOnly
     public void traceLocalNetworkForTest(int[] drainage, float[] elev, RiverNetwork network) {
         LocalDrainageTracer.traceLocalNetwork(drainage, elev, new float[elev.length], network, null);
@@ -182,42 +142,9 @@ public class LocalRiverProvider {
     // Core pipeline
     // -------------------------------------------------------------------------
 
-    /**
-     * The whole per-tile pipeline, producing both cache artifacts from one pass over a padded
-     * {@code PADDED × PADDED} buffer of decoded terrain. Ordering, which is load-bearing:
-     *
-     * <ol>
-     *   <li>Trace + relax the global network ({@link GlobalNetworkBuilder}), which also returns the
-     *       boundary elevations it accumulated for its source/drain nodes.</li>
-     *   <li>{@link ChannelElevationAssigner#assign} over the global-only graph, then carve the global
-     *       shell into the decoded elevation — so the drainage field in step 3 sees valleys.</li>
-     *   <li>Sink-fill + drainage direction over that carved elevation.</li>
-     *   <li>Trace the local network and attach it in place onto the SAME graph
-     *       ({@link LocalDrainageTracer#traceLocalNetwork}, void). A before/after channel-id snapshot
-     *       identifies the freshly-minted local channels: a minted channel is local iff its start node is
-     *       a new {@code SOURCE} (a {@code split()}-grown global downstream half starts at a
-     *       {@code JUNCTION} instead).</li>
-     *   <li>Seed the boundary map with those local {@code SOURCE}/{@code DRAIN} nodes, then run
-     *       {@code assign} a second time over the now-unified graph.</li>
-     *   <li>Collect every unit (global + local, one shared feature-id counter) into the R-tree — stamped
-     *       into the world relief-pixel frame, see the class javadoc — run the shell carve a second time,
-     *       and crop the padded buffer to {@code GRID × GRID}.</li>
-     *   <li>Every {@code collectUnits} call goes through {@link Meanders}, so each classifies the units it
-     *       emits with a Rosgen type. All three agree because they classify against the same pre-carve
-     *       elevation snapshot {@link GlobalNetworkBuilder} took, not the buffer the carve mutates. The
-     *       type has to exist by then: it selects the unit's carve profile, which sets the unit's
-     *       influence radius, which is the extent {@code carveRiverShells} indexes it under.</li>
-     * </ol>
-     *
-     * <p>Both carve passes collect units <em>unfiltered</em>. That makes the first pass global-only by
-     * timing alone — the local network does not exist yet — while the second pass, running after the
-     * local trace, carves local shells too. Local shells are traced with no coarse halo, so one can be
-     * truncated at this tile's {@code PAD} border and seam against its neighbour; global floodplains use
-     * a 2×2-cell halo and are unaffected. {@code RiverNetwork.collectUnits} has a channel-id-filtering
-     * overload that would restrict the carve to global channels, but nothing calls it.
-     *
-     * <p>{@code stages} is a test/debug sink; production calls pass {@code null}.
-     */
+    /** The per-tile pipeline; both cache artifacts come from this one pass, which is what keeps the two
+     *  stores from disagreeing. Step ordering is load-bearing — see the numbered comments in the body.
+     *  {@code stages} is a test/debug sink; production calls pass {@code null}. */
     private TileResult buildTile(int tileX, int tileZ, @Nullable Stages stages) {
         final GlobalRiverProvider grp = globalRiverProvider();
         final float[][] base = DecoderChannels.decode(tileX, tileZ, PAD); // padded 514, channels 0..6
@@ -317,15 +244,9 @@ public class LocalRiverProvider {
         boolean test(HydrologicalUnit unit, double distSqToQueryPoint);
     }
 
-    /**
-     * Early-exit existence test over the unit index: true iff some unit whose influence circle contains
-     * {@code pt} (world relief-pixel frame) passes {@code test}. Candidates come from the per-tile R-tree
-     * stabbing query; {@code tileVisitRadius} only sizes the cross-tile window and must upper-bound the
-     * distance of any unit the test can accept. Spans tile borders like {@link #queryInfluence} but
-     * allocates no result list and stops at the first accepted unit. Stored coords are already
-     * world-frame, so every tile is stabbed with {@code pt} itself and the {@code distSqToQueryPoint}
-     * the test receives is the world-frame squared distance.
-     */
+    /** Existence-only counterpart to {@link #queryInfluence}, for callers that just need a yes/no and
+     *  should not pay for a result list. {@code tileVisitRadius} sizes the cross-tile window and must
+     *  upper-bound the distance of any unit {@code test} can accept. */
     public boolean anyInfluencingUnit(double[] pt, double tileVisitRadius, InfluencingUnitTest test) {
         final Predicate<HydrologicalUnit> acceptanceTest = unit -> {
             final double deltaX = unit.coord()[0] - pt[0];
@@ -338,22 +259,9 @@ public class LocalRiverProvider {
                 (tileOriginX, tileOriginZ, tileIndex) -> tileIndex.anyContaining(pt, acceptanceTest));
     }
 
-    /**
-     * Gather every hydrological unit whose feature influences {@code pt} (a point in the world
-     * relief-pixel frame) and return them as a flat array in <b>unspecified order</b> — consumed by
-     * {@link HydrologyProfileCarver}'s flat distance-weighted merge (every unit contributes; no
-     * per-feature grouping).
-     *
-     * <p>A unit is kept when {@code pt} lies within that unit's own influence circle
-     * ({@link HydrologicalUnit#getRadius()} = {@link FractalTerrainConfig#riverInfluence
-     * riverInfluence(width)}), optionally inflated by {@code extraRadius} (used by the per-chunk
-     * prefetch so one query serves every block of a chunk) — exactly what the per-tile R-tree stabbing
-     * query returns, so no per-unit reach re-test is needed. The query spans tile borders (a river
-     * within influence may live in a neighbouring tile); every tile's index already stores world coords
-     * ({@link #buildTile}), so each tile is stabbed with {@code pt} itself and the hits from all of them
-     * accumulate straight into one list — no per-hit re-stamping, no copy, and the returned units are
-     * the indexed instances, which callers must treat as read-only.
-     */
+    /** Every unit influencing {@code pt}, unordered — feeds {@link HydrologyProfileCarver}'s flat
+     *  distance-weighted merge. {@code extraRadius} inflates the circles so the per-chunk prefetch can
+     *  serve a whole chunk from one query. Returns indexed instances; callers must not mutate them. */
     public HydrologicalUnit[] queryInfluence(double[] pt, double extraRadius) {
         final List<HydrologicalUnit> influencingUnits = new ArrayList<>(64);
         units.forEachTileWithin(
@@ -373,14 +281,9 @@ public class LocalRiverProvider {
     // Debug access
     // -------------------------------------------------------------------------
 
-    /**
-     * The built {@link ImmutableRTree} of {@link HydrologicalUnit} influence circles for tile
-     * {@code (tileX, tileZ)} (triggers {@link #buildTile} on a cache miss). For debug rendering
-     * ({@code Debug.units.see}) and the spatial-index benchmark harness.
-     *
-     * <p>Its units carry <b>world</b> relief-pixel coords, so a direct stab takes a world point and a
-     * renderer wanting a tile-local canvas must subtract {@code (tileX·GRID, tileZ·GRID)}.
-     */
+    /** Raw index access for debug rendering ({@code Debug.units.see}) and the spatial-index benchmark.
+     *  Units carry world relief-pixel coords, so a tile-local renderer must subtract
+     *  {@code (tileX·GRID, tileZ·GRID)}. */
     @TestOnly
     public ImmutableRTree<HydrologicalUnit> getUnitTree(int tileX, int tileZ) {
         return units.getEntry(new int[] {tileX, tileZ});
@@ -394,13 +297,12 @@ public class LocalRiverProvider {
     }
 
     /**
-     * Debug snapshot of one {@link #buildTile} run, captured for {@code LocalRiverTest}. {@link #network}
-     * is the single unified {@link RiverNetwork} graph (global and local channels as one graph, per
-     * DL-010); {@link #channels} and {@link #localChannels} are that SAME graph's channels split by the
-     * local-vs-global distinction {@link #buildTile} already derives via its before/after channel-id
-     * snapshot (a minted channel is "local" iff its start node is a freshly-minted SOURCE), so the harness
-     * can render the two colorings from one graph without recomputing that distinction or walking any
-     * separate parallel structure.
+     * Debug snapshot of one {@link #buildTile} run, captured for {@code LocalRiverTest} so the harness can
+     * render intermediate stages without re-running the pipeline.
+     *
+     * <p>{@link #localChannels} is always empty: the collision pass re-assigns every channel id, so the
+     * local-vs-global split cannot be recovered here and the local-only render is blank. Accepted
+     * debug-only limitation.
      */
     @TestOnly
     public static final class Stages {
@@ -408,18 +310,14 @@ public class LocalRiverProvider {
         public float[] rawElevation;
         public boolean[] riverMask;
         public float[] carvedElevation;
-        /** Global-only channels of {@link #network} (see class javadoc for the local/global split). */
+        /** Every channel of {@link #network}. */
         public List<Channel> channels;
-        /** Local-only channels of {@link #network} (see class javadoc for the local/global split). */
+        /** Always empty; kept so the harness's local-only render still compiles. */
         public List<Channel> localChannels;
-        /** The single unified per-tile graph (global and local channels together). */
+        /** The single unified per-tile graph. */
         public RiverNetwork network;
 
-        /**
-         * The published unit index. Alone among these fields it is in the <b>world</b> relief-pixel frame
-         * (see the class javadoc) — the rasters above are all tile-local — so rendering it on a tile-sized
-         * canvas means subtracting {@code (tileX·GRID, tileZ·GRID)} first.
-         */
+        /** World-framed, unlike the tile-local rasters above; subtract the tile origin to render it. */
         public ImmutableRTree<HydrologicalUnit> unitTree;
     }
 }

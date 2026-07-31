@@ -5,19 +5,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Upscales {@code BiomeProvider}'s coarse per-cell distance-to-shore grid into a smooth per-pixel
- * signal for one 512×512 biome tile.
+ * Upscales the coarse distance-to-shore grid into the smooth per-pixel signal coastal biomes read.
  *
- * <p><b>Responsibility:</b> convert the integer coarse grid to a bilinear-sampleable float grid, sample
- * it per pixel, and (when enabled) log each grid cell for debugging.
+ * <p>Smoothing here rather than at the coarse stage is what keeps beach and stony-shore bands from
+ * landing on visible coarse-cell steps.
  *
- * <p><b>Collaborators:</b> {@link Interpolation#sampleSmoothStep} does the bilinear sampling; called by
- * {@link ClimateToBiomeTransformer#transform} once per tile ({@link #toFloatGrid}, {@link #logDebugGrid})
- * and once per pixel ({@link #sample}).
- *
- * <p><b>Invariants:</b> stateless; the grid is {@link #DSHORE_GRID}×{@link #DSHORE_GRID} with a
- * 1-coarse-cell halo on every side (see {@code BiomeProvider.computeCoarseDistShore}) — the {@code +1}
- * offset in {@link #sample} skips onto the tile's owned cells and must stay in lockstep with that halo.
+ * <p>The {@code +1} offset in {@link #sample} skips the one-cell halo and must stay in lockstep with
+ * {@code BiomeProvider.computeCoarseDistShore}.
  */
 public class ShoreDistanceCalculator {
     private static final Logger LOG = LoggerFactory.getLogger(ShoreDistanceCalculator.class);

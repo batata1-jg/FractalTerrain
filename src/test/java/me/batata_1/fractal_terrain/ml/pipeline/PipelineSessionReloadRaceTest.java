@@ -9,22 +9,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 /**
- * Reload-race regression exercise for MUST-1 (written before the {@link WorldPipeline} swap was wired).
+ * Headless regression test for MUST-1 (see {@link PipelineSession}): drives the same concurrency
+ * mechanism as the real fix without needing ONNX models or asset-backed
+ * {@link SyntheticMapFactory} (~1 GB weights + GPU, not CI-runnable — plan DL-002).
  *
- * <p>A full runtime reproduction would need the ONNX diffusion models and asset-backed
- * {@link SyntheticMapFactory} (~1 GB weights + GPU), which is not headless/CI-runnable (plan DL-002). This
- * is the headless proxy: it drives the exact concurrency mechanism the fix relies on — a single
- * {@code volatile} {@link PipelineSession} reference swapped as one immutable unit versus multiple
- * independent field reads.
- *
- * <p>The reload-scoped triple is {@code (seed, syntheticMapFactory, tau)}, with the invariant that the
- * factory (and the noise draws that use it) always match {@code seed}. Here that pairing is stood in for by
- * {@code tau[0] == seed} (a real {@code SyntheticMapFactory} cannot be built without assets, so it is left
- * {@code null}). A writer thread continuously "reloads" by swapping in a fresh session whose {@code seed}
- * and {@code tau} agree; reader threads snapshot the volatile <b>once</b> and assert the pair is
- * self-consistent. Because the whole triple is published behind one volatile write of a final-field record,
- * no reader can ever observe a torn {@code (seed, tau)} — the property that a pre-fix trio of separate
- * volatile fields could not guarantee.
+ * <p>Stands in for the {@code (seed, syntheticMapFactory)} pairing with {@code tau[0] == seed}, since a
+ * real factory needs assets. A writer thread swaps sessions with matching seed/tau; readers snapshot the
+ * volatile once and assert the pair never comes apart — the guarantee a pre-fix trio of separate volatile
+ * fields could not make.
  */
 class PipelineSessionReloadRaceTest {
 

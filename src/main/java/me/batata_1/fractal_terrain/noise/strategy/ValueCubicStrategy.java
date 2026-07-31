@@ -1,17 +1,13 @@
 package me.batata_1.fractal_terrain.noise.strategy;
 
 /**
- * The {@code ValueCubic} noise-type strategy: value noise interpolated with a bicubic/tricubic kernel
- * instead of linear/hermite blending, for a smoother result than plain {@code ValueStrategy}.
+ * The {@code ValueCubic} noise strategy: value noise with a cubic kernel, smoother than {@code Value}.
  *
- * <p><b>Responsibility:</b> both overloads of {@link #SingleValueCubic} - the
- * {@code NoiseType.ValueCubic} branch of {@code FastNoiseLite}'s noise dispatcher.
+ * <p>One of the interchangeable noise-type strategies {@code FastNoiseLite} dispatches to; extracted so the
+ * dispatcher stays readable and each variant can be read on its own.
  *
- * <p><b>Collaborators:</b> {@link NoiseTables} for the shared hash/value-coordinate lookup and cubic
- * interpolation helpers; dispatched from {@code FastNoiseLite#GenNoiseSingle}.
- *
- * <p><b>Invariants:</b> mechanical extraction from the embedded FastNoiseLite 1.1.1 implementation -
- * every constant and evaluation order is unchanged; output is byte-identical to the pre-split code.
+ * <p><b>Do not "clean up" any constant or reorder any expression.</b> This is a mechanical extraction
+ * from FastNoiseLite 1.1.1 and must stay byte-identical — every world already generated depends on it.
  */
 public final class ValueCubicStrategy {
 

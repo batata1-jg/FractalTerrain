@@ -101,11 +101,8 @@ public class RiverNetworkVisualizer {
     private static final int COLOR_DRAIN = 0xFF0000; // red
     private static final int COLOR_JUNCTION = 0xFFFF00; // yellow
 
-    /**
-     * Fast whole-network render (O(total channel length + node count); no per-pixel query, unlike
-     * {@link #see}). Draws channel polylines white and node markers by type, into
-     * {@code {debugPath}/{folder}/{name}.png}.
-     */
+    /** Whole-network render: O(channel length + node count), unlike {@link #see}'s per-pixel query —
+     *  use this for large networks where {@link #see} is too slow. */
     public void seeNetwork(Meanders meanders, String folder, String name) {
         final int size = meanders.getGridSize() * NETWORK_SCALE;
         final int[] rgb = new int[size * size]; // black background
@@ -121,12 +118,8 @@ public class RiverNetworkVisualizer {
         writeImage(rgb, size, folder, name);
     }
 
-    /**
-     * Same render as {@link #seeNetwork(Meanders, String, String)} but straight from the raw
-     * {@code nodeSpecs}/{@code edgeSpecs} — without building a {@link Meanders}. Use this to debug a
-     * network that may fail to construct (e.g. a node with two outgoing edges). Edges are drawn between
-     * consecutive {@code EdgeSpec.pts()}; nodes by {@code NodeSpec.type()}.
-     */
+    /** As {@link #seeNetwork(Meanders, String, String)} but from raw {@code nodeSpecs}/{@code edgeSpecs},
+     *  skipping {@link Meanders} construction — use to inspect a network that fails to build. */
     public void seeNetwork(
             int gridSize,
             List<RiverNetwork.NodeSpec> nodeSpecs,
@@ -147,13 +140,8 @@ public class RiverNetworkVisualizer {
         writeImage(rgb, size, folder, name);
     }
 
-    /**
-     * Same white-channel / colored-node render as {@link #seeNetwork(Meanders, String, String)} but over an
-     * {@link AtomicView}, where every interior spline point is a first-class node. Draws each directed
-     * adjacency edge {@code u -> v} as a white segment between {@code pos(u)} and {@code pos(v)}, then marks
-     * every node carrying a role (SOURCE/DRAIN/JUNCTION) by type; interior points (null role) get no marker.
-     * {@code gridSize} sizes the canvas (an {@link AtomicView} carries no grid extent of its own).
-     */
+    /** As {@link #seeNetwork(Meanders, String, String)} but over an {@link AtomicView}, where every
+     *  interior spline point is a first-class node — lets you inspect atomic-graph topology directly. */
     public void seeNetwork(AtomicView atomic, int gridSize, String folder, String name) {
         final int size = gridSize * NETWORK_SCALE;
         final int[] rgb = new int[size * size]; // black background

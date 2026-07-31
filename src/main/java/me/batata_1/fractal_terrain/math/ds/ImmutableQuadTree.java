@@ -11,52 +11,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Build-once, query-many 2-D spatial index — the immutable, memory-lean counterpart of
- * {@link QuadTree}. The full point set is supplied at construction and the structure is frozen;
- * there is no insert/remove afterwards, so the tree is <b>naturally concurrent</b> and needs no
- * lock.
+ * Build-once, query-many 2-D spatial index — the frozen counterpart to {@link QuadTree}, for cached
+ * per-tile point sets fully known at construction.
  *
- * <p>Memory layout (vs. {@link QuadTree}, which duplicates every point into a {@code Set} on every
- * node along its root-to-leaf path and stores explicit bounds per node):
+ * <p>Exists to avoid {@link QuadTree}'s per-node point duplication and its lock: points are stored once
+ * in euler-tour order so each node owns a contiguous slice, and node bounds are recomputed during
+ * traversal rather than stored. Being frozen is what lets queries run lock-free.
  *
- * <ul>
- *   <li>{@link #points} — every point stored <b>once</b>, laid out in euler-tour (depth-first) order
- *       so each node owns a contiguous slice. May contain {@code null} dummy slots; queries skip
- *       them.
- *   <li>{@link #nodes} — a flat {@link Node} array. Each {@code Node} is just two ints: the number
- *       of real points in its square ({@code count}) and a dual-purpose {@code id} — the base index
- *       of its 4 contiguous children in {@code nodes} (internal node) or the start index of its
- *       point slice in {@code points} (leaf). Node bounds are <b>not</b> stored; they are recomputed
- *       on the fly during traversal.
- * </ul>
- *
- * <p>Quadrant assignment ({@link #findSection}) maps a point onto an infinite tiling of cell size
- * {@code m}: {@code floorMod(floor(coord / m), 2)} per axis. The root square's origin and size are
- * derived from the point bounding box (lower corner minus a fixed 5-unit margin per axis, side
- * {@code max(width, height) + 10}) — NOT snapped to any power-of-two-aligned global grid. Because
- * construction, the sort comparator, and query descent all recursively halve that same root square,
- * the quadrant rule stays consistent across all three regardless of the root's alignment.
- *
- * <p><b>Node squares &amp; traversal coordinates ({@code ox}, {@code oz}, {@code size}).</b> Node
- * bounds are never stored (see {@link #nodes}); instead every recursive walk — construction
- * ({@link #buildInto}), queries ({@link #query}), and validation ({@link #validateRec}) — threads
- * the current node's square explicitly through three parameters: {@code ox} and {@code oz} are the
- * coordinates of the square's <em>lower corner</em> (minimum X and minimum Z), and {@code size} is its
- * side length, so the square spans the half-open box {@code [ox, ox + size) × [oz, oz + size)}. The
- * root square is {@code (rootOriginX, rootOriginZ, rootSize)}. Descending into child quadrant
- * {@code k} halves the side ({@code cs = size / 2}) and offsets the origin by the quadrant's bits —
- * {@code (ox + qx·cs, oz + qz·cs)} with {@code qx = k >> 1}, {@code qz = k & 1}. Because this is the
- * same arithmetic {@link #findSection} uses, bounds can be recomputed on the fly rather than stored.
- *
- * <p><b>Debugging.</b> Two zero-overhead-when-off aids are built in: flip {@link #DEBUG_QUERY} to
- * {@code true} for an indented per-node trace of {@link #query} (prune / accept / leaf-scan /
- * descend decisions), and call {@link #validate()} (or set {@link #VALIDATE_ON_BUILD}) to assert the
- * frozen structure is internally consistent — counts, contiguous point slices, and points-within-square.
- * {@link #debugPrint()} dumps the whole node tree. Both flags are compile-time constants, so when
- * {@code false} the JIT elides the guarded branches entirely.
- *
- * <p>Implements {@link Persistable} exactly like {@link QuadTree}: serializable iff a
- * {@link Persistable} point prototype is supplied (else the backing {@code Storage} is cache-only).
+ * <p><b>Root-square alignment is load-bearing and currently unsound — see {@code README.md}.</b>
  */
 public final class ImmutableQuadTree<T extends SpatialIndexPoint>
         implements SpatialIndex<T>, Persistable<ImmutableQuadTree<T>> {
@@ -70,33 +32,16 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
     private static final int DEFAULT_MAX_DEPTH = 8;
     private static final int DEFAULT_MAX_POINTS_NODE = 24;
 
-    /**
-     * When {@code true}, {@link #query} emits an indented, per-node trace (visit / prune / accept /
-     * leaf-scan / descend) through {@link #LOG}. Compile-time constant: when {@code false} the JIT
-     * removes the guarded branches, so production queries pay nothing.
-     */
+    /** Turn on to trace each {@link #query} decision when a query returns the wrong points. */
     private static final boolean DEBUG_QUERY = false;
 
-    /**
-     * When {@code true}, the constructor runs {@link #validate()} after freezing the tree and throws on
-     * any structural inconsistency. Handy while changing the build/sort logic; leave {@code false} in
-     * production (validation is O(nodes + points)).
-     */
+    /** Turn on while changing the build or sort logic; the constructor then self-checks and throws. */
     private static final boolean VALIDATE_ON_BUILD = false;
 
-    /**
-     * When {@code true}, {@link #getPointsInBox} / {@link #getPointsInCircle} validate their arguments —
-     * and the points they return — for NaN coordinates, logging a warning for each offence. A NaN in a
-     * query argument silently yields a meaningless result (every {@link SpatialIndexShape} comparison
-     * against NaN is {@code false}), so this catches it. Compile-time constant: zero cost when {@code false}.
-     */
+    /** Turn on to catch NaN query arguments, which otherwise return empty rather than failing. */
     private static final boolean CHECK_QUERY_NAN = false;
 
-    /**
-     * When {@code true}, the constructor logs the root-cell sizing — the point bounding box and the
-     * resulting {@code (rootOriginX, rootOriginZ, rootSize)} — via {@link #LOG}. Compile-time constant:
-     * zero cost when {@code false}.
-     */
+    /** Turn on to log root-cell sizing when points go missing near the root square's edge. */
     private static final boolean DEBUG_BUILD = false;
 
     /** Format tag for the binary tile layout written by {@link #serialize()} ("IQT1"). */
@@ -104,11 +49,8 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
 
     private static final Logger LOG = LoggerFactory.getLogger(ImmutableQuadTree.class);
 
-    /**
-     * A node of the frozen tree. {@code count} is the number of real points contained in this node's
-     * square; {@code id} is the base index of this node's 4 contiguous children in {@code nodes}
-     * (internal node) or the start index of its point slice in {@code points} (leaf node).
-     */
+    /** Two ints per node, so the tree stays cache-resident; {@code id} means child base on an internal
+     *  node and point-slice start on a leaf. */
     public record Node(int count, int id) {}
 
     /** Placeholder slot reserved during construction before its real {@link Node} is computed. */
@@ -124,17 +66,13 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
 
     private final double[] max;
 
-    /** Aligned root square: lower corner and side length (power-of-two grid anchor). */
+    /** Root square, sized from the point bbox and <b>not</b> grid-aligned — see {@code README.md}. */
     private final double rootOriginX;
 
     private final double rootOriginZ;
     private final double rootSize;
 
-    /**
-     * A point used only to {@linkplain Persistable#deserialize(byte[]) deserialize} stored point
-     * chunks (its own state is ignored). Non-null only on trees built as deserialization prototypes
-     * or with a known point type.
-     */
+    /** Supplies the concrete point type on deserialize; null means this tree can only be cached. */
     private final T pointPrototype;
 
     /** Convenience: default depth/leaf-capacity, no point prototype (cache-only). */
@@ -147,17 +85,9 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
         this(min, max, points, pointPrototype, DEFAULT_MAX_DEPTH, DEFAULT_MAX_POINTS_NODE);
     }
 
-    /**
-     * Builds and freezes the tree.
-     *
-     * @param min lower corner of the intended coverage window (retained for serialization)
-     * @param max upper corner of the intended coverage window
-     * @param inputPoints the full point set; copied, not mutated
-     * @param pointPrototype prototype used to rebuild points on {@link #deserialize(byte[])}; may be
-     *     {@code null} for a transient, never-persisted index
-     * @param maxDepth maximum subdivision depth
-     * @param maxPointsNode leaf capacity; must be {@code >= 4}
-     */
+    /** Builds and freezes the tree. {@code min}/{@code max} are coverage metadata only — the root square
+     *  is derived from the point bbox — and {@code pointPrototype} may be null for an index never
+     *  persisted. */
     @SuppressWarnings("unchecked")
     public ImmutableQuadTree(
             double[] min, double[] max, List<T> inputPoints, T pointPrototype, int maxDepth, int maxPointsNode) {
@@ -260,14 +190,8 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
             throw new IllegalStateException("ImmutableQuadTree failed self-validation after build (see log)");
     }
 
-    /**
-     * The euler-tour ordering comparator: orders points by their quadrant (coarse-to-fine), so that
-     * points sharing a node are contiguous and the four child quadrants appear in PP&lt;PQ&lt;QP&lt;QQ order.
-     *
-     * <p>NOTE: implemented here as the Morton/Z-order comparison consistent with {@link #findSection}
-     * so the structure builds correctly end-to-end; review/replace if a different euler-tour order is
-     * desired.
-     */
+    /** Orders points so each node's slice is contiguous, which is what removes the per-node point
+     *  duplication {@link QuadTree} pays. Must agree with {@link #findSection} or slices break. */
     private int comparator(T a, T b) {
         double m = rootSize / 2.0;
         for (int level = 0; level <= maxDepth; level++, m /= 2.0) {
@@ -278,23 +202,16 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
         return 0;
     }
 
-    /**
-     * Maps {@code pt} to one of the four quadrants of an infinite tiling of cell size {@code m}:
-     * {@code floorMod(floor(coord / m), 2)} per axis, combined as {@code qx * 2 + qz}. {@code floorMod}
-     * (not {@code %}) keeps negative coordinates in {0, 1}.
-     */
+    /** The single quadrant rule the sort, the build and every query must agree on. Its tiling is
+     *  anchored at 0, not at the root square — see {@code README.md}. */
     private int findSection(T pt, double m) {
         final int qx = (int) Math.floorMod((long) Math.floor(pt.get(X) / m), 2L);
         final int qz = (int) Math.floorMod((long) Math.floor(pt.get(Z) / m), 2L);
         return qx * 2 + qz;
     }
 
-    /**
-     * Fills {@code nodes[slot]} for the (pre-sorted) point range {@code [start, end)} and recurses into
-     * its four child quadrants. {@code (ox, oz, size)} is this node's square — lower corner
-     * {@code (ox, oz)} and side {@code size} (see the class javadoc) — used only to position the child
-     * squares; bounds are not persisted.
-     */
+    /** Packs the pre-sorted range into {@code nodes[slot]} and recurses.
+     *  {@code (ox, oz, size)} is the node's square: lower corner plus side length. */
     private void buildInto(
             ArrayList<Node> nodeList, int slot, int start, int end, int depth, double ox, double oz, double size) {
         final int count = end - start;
@@ -341,10 +258,7 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
         return allEntries;
     }
 
-    /**
-     * Per-point acceptance test for {@link #anyPointInCircle}; receives the squared distance from the
-     * query center so implementations can compare against their own squared threshold without a sqrt.
-     */
+    /** Acceptance test for {@link #anyPointInCircle}; gets squared distance so callers can skip a sqrt. */
     @FunctionalInterface
     public interface PointTest<T> {
         boolean test(T point, double distSqToCenter);
@@ -354,11 +268,7 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
         return getPointsInBox(b, d, new ArrayList<>());
     }
 
-    /**
-     * {@link #getPointsInBox(double[], double[])} appending into a caller-supplied buffer (returned for
-     * chaining). The buffer is <b>not</b> cleared — hot paths reuse one list across queries and clear it
-     * themselves.
-     */
+    /** Buffer-reusing overload for hot paths. {@code out} is appended to, never cleared. */
     public List<T> getPointsInBox(final double[] b, final double[] d, final List<T> out) {
         if (b.length != 2 || d.length != 2) throw new IllegalStateException();
         if (CHECK_QUERY_NAN) checkBoxQueryNaN(b, d);
@@ -371,11 +281,7 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
         return getPointsInCircle(center, r, new ArrayList<>());
     }
 
-    /**
-     * {@link #getPointsInCircle(double[], double)} appending into a caller-supplied buffer (returned for
-     * chaining). The buffer is <b>not</b> cleared — hot paths reuse one list across queries and clear it
-     * themselves.
-     */
+    /** Buffer-reusing overload for hot paths. {@code out} is appended to, never cleared. */
     public List<T> getPointsInCircle(final double[] center, final double r, final List<T> out) {
         if (center.length != 2) throw new IllegalStateException();
         if (CHECK_QUERY_NAN) checkCircleQueryNaN(center, r);
@@ -384,13 +290,8 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
         return out;
     }
 
-    /**
-     * Early-exit existence query: true iff some point within {@code radius} of {@code center} passes
-     * {@code test}. Same iterative traversal as {@link #getPointsInCircle} ({@code notIntersect} prune →
-     * bulk-accept → leaf-scan), but no result list is ever allocated and the walk returns on the first
-     * accepted point. Each candidate's squared distance to {@code center} is computed once and handed to
-     * {@code test} (points farther than {@code radius} are never offered).
-     */
+    /** Existence-only counterpart to {@link #getPointsInCircle}, for callers that need a yes/no and
+     *  should not pay for a result list. */
     public boolean anyPointInCircle(final double[] center, final double radius, final PointTest<T> test) {
         if (center.length != 2) throw new IllegalStateException();
         if (CHECK_QUERY_NAN) checkCircleQueryNaN(center, radius);
@@ -401,17 +302,8 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
         return getPointsInBox(b, d).stream().map(SpatialIndexPoint::toArray).toList();
     }
 
-    /**
-     * Iterative query walk (an explicit stack replaces the old recursion). Each stack frame is the
-     * 6-tuple {@code (idx, ox, oz, size, depth, pointsStart)} the recursive walk used to thread —
-     * {@code (ox, oz, size)} is the node's square (lower corner + side; see the class javadoc) and
-     * {@code pointsStart} is the start of its contiguous slice in {@link #points}. Frames live in six
-     * parallel primitive stacks (no per-node object allocation), and the two corner arrays
-     * {@code lo}/{@code hi} are reused across the whole walk (the {@link SpatialIndexShape} implementations
-     * only read them), so a query allocates nothing per node. Semantics are identical to the recursive
-     * form: {@code notIntersect} prune → {@code contains} bulk-accept → leaf-scan vs. push the 4 children
-     * with running {@code childStart} accumulation. Set {@link #DEBUG_QUERY} to trace each decision.
-     */
+    /** The shared walk behind every public query. Written against parallel primitive stacks rather than
+     *  recursion so a query allocates nothing per node — this is the hot path. */
     private void query(final SpatialIndexShape shape, final List<T> out) {
         if (nodes.length == 0) return;
 
@@ -498,12 +390,8 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
         }
     }
 
-    /**
-     * The {@link #anyPointInCircle} walk: identical stack traversal to {@link #query} with a
-     * {@link SpatialIndexShape.Circle}, except leaf-scan and bulk-accept both short-circuit — each
-     * candidate point's squared distance to the center is computed once, points beyond {@code radius} are
-     * skipped, and the first point accepted by {@code test} ends the walk.
-     */
+    /** {@link #query}'s short-circuiting twin, kept separate so the common gather path carries no
+     *  early-exit test. */
     private boolean anyInCircle(final double[] center, final double radius, final PointTest<T> test) {
         if (nodes.length == 0) return false;
         final SpatialIndexShape shape = new SpatialIndexShape.Circle(center, radius);
@@ -609,11 +497,7 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
         return false;
     }
 
-    /**
-     * Validates a box query's lower corner {@code b} and extent {@code d} for NaN coordinates, logging a
-     * warning for each offending argument. Returns {@code true} when a NaN was found (the box query is
-     * then meaningless — every {@link SpatialIndexShape} comparison against NaN is {@code false}).
-     */
+    /** Reports a NaN box query, which would otherwise return empty and read as a legitimate miss. */
     public boolean checkBoxQueryNaN(final double[] b, final double[] d) {
         boolean bad = false;
         if (containsNaN(b)) {
@@ -627,10 +511,7 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
         return bad;
     }
 
-    /**
-     * Validates a circle query's {@code center} and {@code radius} for NaN, logging a warning for each
-     * offence. Returns {@code true} when a NaN was found (the circle query is then meaningless).
-     */
+    /** Reports a NaN circle query, which would otherwise return empty and read as a legitimate miss. */
     public boolean checkCircleQueryNaN(final double[] center, final double radius) {
         boolean bad = false;
         if (containsNaN(center)) {
@@ -644,10 +525,7 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
         return bad;
     }
 
-    /**
-     * Scans query results for points that carry a NaN coordinate (i.e. corrupt indexed data, not a bad
-     * query), logging each. Returns the number of offending points.
-     */
+    /** Distinguishes corrupt indexed data from a bad query by checking results, not arguments. */
     public int checkResultNaN(final String where, final List<T> out) {
         int count = 0;
         for (final T pt : out) {
@@ -663,24 +541,8 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
     // Debugging / self-checking (see DEBUG_QUERY, VALIDATE_ON_BUILD)
     // -------------------------------------------------------------------------
 
-    /**
-     * Checks that the frozen tree is internally consistent and returns {@code true} when it is. Every
-     * failed invariant is logged via {@link #LOG} (it does not throw, so it is safe to call from tests
-     * or assertions). Verifies, by walking the same {@code (ox, oz, size)} squares the queries use:
-     *
-     * <ul>
-     *   <li>node/child indices stay in bounds and a node's slice stays within {@link #points};
-     *   <li>each internal node's {@code count} equals the sum of its children's counts, and the children
-     *       form a contiguous, gap-free partition of the parent's point slice (leaf {@code id} ==
-     *       slice start);
-     *   <li>every point physically lies inside its leaf node's square {@code [ox, ox+size) ×
-     *       [oz, oz+size)} — i.e. the build's quadrant sort agreed with {@link #findSection};
-     *   <li>the root count equals the total number of stored points;
-     *   <li>the computed root square ({@code rootOriginX}, {@code rootOriginZ}, {@code rootSize}) is
-     *       finite and {@code rootSize > 0} — a single NaN/∞ point coordinate poisons the alignment math
-     *       and silently breaks every quadrant decision.
-     * </ul>
-     */
+    /** Self-check for the frozen structure; logs rather than throws so tests and assertions can call it.
+     *  The point-inside-its-leaf-square check is the one that catches sort/query quadrant disagreement. */
     public boolean validate() {
         final List<String> errors = new ArrayList<>();
         checkRootConstants(errors);
@@ -701,13 +563,8 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
         return true;
     }
 
-    /**
-     * Validates the computed root square and the supplied coverage window for non-finite values. A NaN or
-     * infinity in any point coordinate propagates into {@code rootOriginX}/{@code rootOriginZ}/
-     * {@code rootSize} (the alignment loop in the constructor never terminates cleanly), after which every
-     * {@link #findSection} call and bound comparison is garbage — so this is the first thing to check.
-     * Appends a message per offence to {@code errors}.
-     */
+    /** Checked first, because a non-finite root square makes every later quadrant decision garbage.
+     *  {@code min}/{@code max} may legitimately be infinite, so only NaN is an error there. */
     private void checkRootConstants(final List<String> errors) {
         if (!Double.isFinite(rootOriginX)) errors.add("rootOriginX is not finite: " + rootOriginX);
         if (!Double.isFinite(rootOriginZ)) errors.add("rootOriginZ is not finite: " + rootOriginZ);
@@ -723,11 +580,8 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
         if (!validate()) throw new IllegalStateException("ImmutableQuadTree failed self-validation (see log)");
     }
 
-    /**
-     * Recursively validates the subtree rooted at {@code idx} over its square {@code (ox, oz, size)} and
-     * point slice starting at {@code pointsStart}; appends any problems to {@code errors} and returns the
-     * node's reported point {@code count} (so the parent can accumulate child slice offsets).
-     */
+    /** Recursive half of {@link #validate}; returns the node's count so the parent can accumulate child
+     *  slice offsets. */
     private int validateRec(
             int idx, double ox, double oz, double size, int depth, int pointsStart, List<String> errors) {
         if (idx < 0 || idx >= nodes.length) {
@@ -819,13 +673,8 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
         return (long) nodes.length * bytesPerNode + (long) points.length * bytesPerPoint;
     }
 
-    /**
-     * Serialize to a flat little-endian byte array:
-     * {@code [magic, maxDepth, maxPointsNode, min, max, pointCount, (chunkLen, chunk)...]}, where each
-     * chunk is a real point's own {@link Persistable#serialize()} bytes. Only real points are written;
-     * the node/dummy layout is rebuilt on {@link #deserialize(byte[])}. Throws
-     * {@link UnsupportedOperationException} when the point type is not {@link Persistable}.
-     */
+    /** Writes points only; the node layout is cheaper to rebuild on load than to store. Requires a
+     *  {@link Persistable} point prototype, else the backing store stays cache-only. */
     @Override
     public byte[] serialize() {
         if (!(pointPrototype instanceof Persistable<?> protoPersistable))
@@ -868,11 +717,8 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
         return buf.array();
     }
 
-    /**
-     * Rebuild a tree from bytes produced by {@link #serialize()} by deserializing each point with this
-     * tree's {@link #pointPrototype} and re-running construction. Returns a fresh instance; the
-     * receiver is only a prototype.
-     */
+    /** Re-runs construction over the restored points. Returns a fresh tree; the receiver is only a
+     *  prototype and is not modified. */
     @Override
     @SuppressWarnings("unchecked")
     public ImmutableQuadTree<T> deserialize(byte[] rawBytes) {

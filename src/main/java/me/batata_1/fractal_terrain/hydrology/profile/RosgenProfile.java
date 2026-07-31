@@ -6,45 +6,20 @@ import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.features.RiverUnit;
 import me.batata_1.fractal_terrain.hydrology.features.RiverUnit.RosgenType;
-import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The cross-channel elevation profile of a hydrological feature, keyed by Rosgen stream type.
+ * The cross-channel elevation profile, keyed by Rosgen stream type — what makes a steep headwater carve
+ * differently from a lowland trunk.
  *
- * <p>Two deltas are defined here, carved by two different stages:
+ * <p>Authority for the cross-section's horizontal extents too, nested outward as influence >
+ * floodplainLen > width/2; {@code HydrologyTuning} delegates radii to these. Floodplain/blend zones are
+ * unions of per-unit discs, so spacing must stay {@code dx <= width/2} or the corridor scallops.
  *
- * <ul>
- *   <li>{@link #riverInfluenceElevation} — the tile-level valley/floodplain SHELL. Carved once per tile
- *       by {@link HydrologyProfileCarver#carveRiverShells}, which picks the single <em>nearest</em>
- *       influencing unit per pixel and lerps the live buffer's elevation toward that unit's reference
- *       elevation: full pull inside {@link #floodPlainLength}, linearly released to no change at
- *       {@link #riverInfluence}.
- *   <li>{@link #riverAreaDelta} — the per-pixel bed TRENCH below the shell, within the bed half-width.
- *       Applied by {@link RiverUnit#carveFineGrained}, which fades it in over an elliptical footprint around
- *       the contributing unit rather than applying it raw.
- * </ul>
- *
- * <p>The profile is also the authority for the two horizontal extents of the cross-section —
- * {@link #floodPlainLength} and {@link #riverInfluence} — so a river's floodplain half-extent and outer
- * influence radius can vary by Rosgen type. {@link HydrologyTuning#floodPlainLength} /
- * {@link HydrologyTuning#riverInfluence} are thin delegates to these (their width-only overloads
- * assume {@link RosgenType#A}).
- *
- * <p>The floodplain and blending zones are unions of per-unit radial discs; the smoothness of that
- * union relies on adjacent units' discs overlapping, which requires unit spacing {@code dx <=
- * width/2} (enforced in {@link RiverNetwork}).
- * Loosening that spacing risks scalloping or gaps in the floodplain corridor.
- *
- * <p><b>Only type A overrides anything</b> — A supplies its own {@link #floodPlainLength},
- * {@link #bedDelta}, {@link #floodPlainDelta} and {@link #unAffectedDistCalculator}; B, C and D inherit
- * every enum-level default unchanged. Per-type formulas land by overriding the relevant method in a
- * constant's body (e.g. {@code C { @Override public double riverInfluence(double width) { … } }}).
+ * <p><b>Only type A overrides anything today</b>; B, C and D inherit every default.
  */
-
-// influence > floodplainLen > width/2
 public enum RosgenProfile implements HydrologyProfile {
     A {
         @Override
@@ -213,15 +188,8 @@ public enum RosgenProfile implements HydrologyProfile {
 
     // ---- Zone mapping (the HydrologyProfile contract, expressed over a River's width) ----
 
-    /**
-     * The river zones, nested {@code BED ⊂ FLOODPLAIN ⊂ INFLUENCE}: the bank-full half-width, this type's
-     * {@link #floodPlainLength}, and the unit's own index radius. Taking {@link ZoneCategory#INFLUENCE}
-     * from {@link HydrologicalUnit#getRadius()} rather than from {@link #riverInfluence} keeps a unit's
-     * carve reach identical to the circle the R-tree found it by.
-     *
-     * <p>Every zone this profile does not define — a waterfall's, a lake's — falls through to the
-     * interface default, as does any non-{@link RiverUnit} unit that happens to be carrying a Rosgen profile.
-     */
+    /** The nested river zones. INFLUENCE comes from the unit's index radius, not {@link #riverInfluence},
+     *  so carve reach stays identical to the circle the R-tree found the unit by. */
     @Override
     public double zoneRadius(HydrologicalUnit unit, ZoneCategory category) {
         if (!(unit instanceof RiverUnit riverUnit)) return HydrologyProfile.super.zoneRadius(unit, category);
@@ -251,34 +219,19 @@ public enum RosgenProfile implements HydrologyProfile {
         return (a + b - Math.sqrt((a - b) * (a - b) + lambda)) / 2;
     }
 
-    /**
-     * Floodplain half-extent (native px) for a river of the given width under this Rosgen type. Placeholder
-     * law shared by all types: {@code FLOODPLAIN_BASE + FLOODPLAIN_WIDTH_FACTOR · width}. Override in a
-     * constant's body to make a type's floodplain wider/narrower.
-     */
+    /** Floodplain half-extent. Placeholder law shared by all types; override per constant. */
     public double floodPlainLength(double width) {
         return width / 2;
     }
 
-    /**
-     * Outer influence radius (native px) for a river of the given width under this Rosgen type: floodplain +
-     * blend band, clamped to {@link HydrologyTuning#MAX_INFLUENCE_RADIUS}. Beyond this radius the river
-     * no longer affects a pixel; it is also the unit's R-tree membership-circle radius
-     * ({@link HydrologicalUnit#getRadius()}). Placeholder law shared by
-     * all types; override per constant to widen/narrow a type's reach. Note it calls the (virtual)
-     * {@link #floodPlainLength} so a type that overrides only its floodplain gets a consistent influence.
-     */
+    /** Outer reach of the river, and the unit's index radius. Calls the virtual
+     *  {@link #floodPlainLength}, so overriding only the floodplain still yields consistent influence. */
     public double riverInfluence(double width) {
         return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, width * HydrologyTuning.INFLUENCE_BLEND_MULTIPLIER);
     }
 
-    /**
-     * The shell elevation at radial distance {@code radialDist} from a unit: {@code unitElev} (full pull
-     * to the unit's reference elevation) out to {@link #floodPlainLength}, then linearly released back to
-     * {@code curElev} at {@link #riverInfluence} and beyond. {@code curElev} is read from the live carve
-     * buffer, so the result depends on the order units are visited; {@code carveRiverShells} sidesteps
-     * that by applying only the single nearest unit per pixel.
-     */
+    /** The river's valley pull: full inside the floodplain, released to nothing at the influence edge.
+     *  The carver blends this across every unit reaching a pixel, so a confluence gets both profiles. */
     public double riverInfluenceElevation(double radialDist, double width, double curElev, double unitElev) {
         final double riverInfluence = riverInfluence(width);
         final double floodPlainLength = floodPlainLength(width);
@@ -301,11 +254,7 @@ public enum RosgenProfile implements HydrologyProfile {
 
     // ---- Bed (per-pixel residual trench, cut below the already-carved shell) ----
 
-    /**
-     * Bed-residual depth at a point {@code signedPerpDist} across / {@code alongDist} along the channel:
-     * {@link #bedDelta} within the bed half-width, {@link #floodPlainDelta} out to
-     * {@link #floodPlainLength}, {@code 0} beyond. The raw (un-faded) delta — see the class javadoc.
-     */
+    /** The raw bed trench, before {@link RiverUnit#carveFineGrained} fades it over its footprint. */
     public double riverAreaDelta(long randSeed, double signedPerpDist, double alongDist, double width) {
         final double floodPlainLen = floodPlainLength(width);
         if (Math.hypot(signedPerpDist, alongDist) > floodPlainLen) return 0;

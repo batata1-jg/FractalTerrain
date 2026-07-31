@@ -11,24 +11,33 @@ chunk fill.
 ## Architecture
 
 **Shell carve** (`HydrologyProfileCarver.carveRiverShells`, static): per padded-tile pixel, stabs an
-R-tree over the units it was handed, keeps candidates whose influence circle contains the pixel, and
-overwrites the pixel with `RosgenProfile.riverInfluenceElevation` from the single *nearest* unit — full
-pull to the unit's reference elevation out to `floodPlainLength`, released linearly back to the buffer's
-current value at `riverInfluence`. Only the nearest unit contributes (no min-composite), so at a
-confluence the closest channel's profile wins outright; pixels with negative ambient elevation (ocean)
-are skipped. It reads and writes the same buffer, so repeated calls compound — `buildTile` relies on
-this to shape the drainage field before the local trace, then to carve local shells in afterward.
+R-tree over the units it was handed, keeps every candidate whose influence circle contains the pixel, and
+overwrites the pixel with the **distance-weighted average** of those units'
+`HydrologyProfile.shellElevation` values, weighted `1 - radialDist/influenceRadius`. There is no
+nearest-wins rule: at a confluence the overlapping channels blend rather than one winning outright.
 
-**Bed-residual carve** (`HydrologyProfileCarver.carve`/`carveAtPixel`/`carvePrefetched` ->
-`HydrologyProfile.computeForUnit`): queries the per-tile unit index for every unit influencing a point
-and blends their contributions (nearest-tier average: bed-tier units if any intersect, else
-floodplain-tier, else outer-influence-tier — see `carvePrefetched`). Each unit's contribution is its
-`RosgenProfile.riverAreaDelta` cross-section delta, faded in over an elliptical footprint around the
-unit (`HydrologyProfile.computeForUnit`): full delta on the unit's own cross-section line, decaying to
-zero at the floodplain-length ellipse, so the trench tapers along the channel between resample points
-rather than stepping abruptly. This cuts the bed trench *below* the shell the first stage already wrote,
-consumed per-chunk via `HydrologyProfileCarver.prefetchChunk`/`PrefetchedUnits` so one R-tree query
-serves every block of a chunk.
+The buffer's current elevation is sampled once per pixel *before* the unit loop, so every contributing
+unit sees the same `curElev` and the result does not depend on unit order. Pixels with negative ambient
+elevation (ocean) are skipped. It reads and writes the same buffer, so repeated calls compound —
+`buildTile` relies on this to shape the drainage field before the local trace, then to carve local
+shells in afterward.
+
+**Bed-residual carve** (`HydrologyProfileCarver.carveAtPixel`/`carvePrefetched`): queries the per-tile
+unit index for every unit influencing a point and resolves them through the `ZoneCategory` hierarchy.
+Each unit claims exactly one zone — the innermost its profile defines (`HydrologyProfile.categoryAt`) —
+and contributes only to that zone's distance-weighted average. The winner is the first zone in
+`ZoneCategory` declaration order that any unit actually claimed; empty zones are skipped rather than
+ranked, so a pixel in a floodplain no bed contains resolves to the floodplain average.
+
+Averaging within a zone but switching hard between zones is deliberate: two rivers sharing a floodplain
+should blend, but a channel bed crossing that floodplain should cut through it.
+
+Each unit's own contribution comes from `HydrologicalUnit.carveFineGrained` — per-feature-type, since
+the cross-section needs state only that record has. `RiverUnit`'s fades `RosgenProfile.riverAreaDelta`
+over an elliptical footprint: full delta on the unit's own cross-section line, decaying to zero at the
+floodplain-length ellipse, so the trench tapers along the channel between resample points rather than
+stepping abruptly. This cuts the bed trench *below* the shell the first stage wrote, consumed per-chunk
+via `prefetchChunk`/`PrefetchedUnits` so one R-tree query serves every block of a chunk.
 
 **Painter** (`HydrologyProfilePainter`): reads `Types.RIVER_DIFFERENCE` — the delta the bed-residual
 carve wrote — to compute `riverWaterTop` (fills water down to `reliefHeight - diff` where `diff < 0`)

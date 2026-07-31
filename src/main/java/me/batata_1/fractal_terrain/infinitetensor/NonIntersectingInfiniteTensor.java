@@ -17,14 +17,9 @@ public class NonIntersectingInfiniteTensor extends Storage<FloatTensor> {
         this.outWindow = new TensorWindow(shape);
     }
 
-    /**
-     * Unlike the base storage, a miss here is recoverable. First try the base disk-reload path; if it
-     * cannot produce the entry (cache-only, unpersisted, or a corrupt/missing file — signalled by
-     * {@link EntryNotLoadableException}), (re)compute it from {@code entry_creating_function} and
-     * persist/record it. Both the disk load and the compute run synchronously on the CALLING thread,
-     * so a creating function that transitively reads other tiles simply recurses on the call stack.
-     * Cleanup of a failed claim (e.g. if the compute itself throws) is handled by {@code fetchEntry}.
-     */
+    /** Makes a cache miss recoverable by recomputing the tile, which is what turns {@code Storage}
+     *  into a lazily-materialized infinite tensor. Runs on the calling thread, so a creating function
+     *  that reads other tiles simply recurses. */
     @Override
     protected void loadInto(TileKey key, CompletableFuture<FloatTensor> promise) {
         try {

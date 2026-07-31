@@ -142,11 +142,8 @@ public final class OnnxModel implements AutoCloseable {
             throw new RuntimeException("Failed to load ONNX model: " + modelFilePath, e);
         }
     }
-    /**
-     * Optimizes model bytes and caches the optimized file in the model asset directory
-     * ({@link ModelAssetManager}'s {@code onnx-cache} subfolder).
-     * Falls back to the source model bytes if optimization or cache I/O fails.
-     */
+    /** Caches ORT graph-optimization output keyed by model hash + runtime version, so restarts skip
+     *  re-optimizing an unchanged model. Falls back to source bytes if optimization or cache I/O fails. */
     private OptimizedModelLoadResult optimizeModelAtRuntime(byte[] sourceModelBytes, boolean forceRebuildFromSource) {
         Path optimizedModelPath = resolveOptimizedModelPath(sourceModelBytes);
         try {
@@ -291,12 +288,8 @@ public final class OnnxModel implements AutoCloseable {
         }
     }
 
-    /**
-     * Run the model with a flat float array for each named input.
-     * Each entry in {@code inputs} is (name, float[] data, long[] shape).
-     *
-     * @return the output tensor as a flat float array
-     */
+    /** Inference entry point; routes to whichever session is resident (CPU, dedicated GPU, or the
+     *  shared GPU slot claimed via {@link #claimGpuSlot()}). */
     public float[] run(Object[][] inputs) {
         if (cpuSession != null) {
             return runWithSession(cpuSession, inputs);
@@ -320,11 +313,8 @@ public final class OnnxModel implements AutoCloseable {
         return run(inputs);
     }
 
-    /**
-     * Evicts the current GPU session if this model doesn't hold the slot,
-     * then creates a fresh GPU session from CPU-cached weights.
-     * Must be called under GPU_SLOT_LOCK.
-     */
+    /** Swaps this model into the single shared GPU slot, evicting whoever holds it — the eviction
+     *  mechanism behind {@link #run}'s VRAM-offload mode. Caller must hold {@code GPU_SLOT_LOCK}. */
     private void claimGpuSlot() {
         if (gpuSlotHolder == this) return;
 

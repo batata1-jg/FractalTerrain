@@ -9,23 +9,13 @@ import me.batata_1.fractal_terrain.math.Interpolation;
 import net.minecraft.world.level.ChunkPos;
 
 /**
- * One chunk's worth of relief/climate heightmaps, each a flat {@code float[256]} indexed
- * {@code localX * 16 + localZ} (matching the rest of the generator's chunk-local layout).
+ * One chunk's worth of relief and climate heightmaps.
  *
- * <p>Each {@link Types} entry names a heightmap kind and bundles the per-pixel source channel getter
- * with the {@link Interpolation} sampler that turns that channel into a per-block value. The enum
- * composes these into a {@code Function<ChunkPos, float[]>} that fills a whole chunk in one pass, so
- * {@link FractalTerrainHeightmapCache} only has to ask each type for its array. Values are produced
- * through the same {@link Interpolation} machinery (at the same {@code SCALE}) the old
- * {@code ReliefAccessor} used, so they match the previous code exactly — only the <em>when/where</em>
- * (compute-once-per-chunk, cached) changed.
+ * <p>Exists to amortize sampling: each {@link Types} entry knows how to fill a whole chunk in one pass,
+ * so the cache computes once per chunk instead of once per block.
  *
- * <p>{@link Types#ELEVATION} is special: the {@code creator} only produces the <em>raw</em>
- * smoothstep-interpolated relief elevation. After every heightmap is filled,
- * {@link FractalTerrainHeightmapCache} runs a second pass
- * ({@link me.batata_1.fractal_terrain.world.gen.populatenoise.PopulateNoiseStep#updateToFinalElev})
- * that recomputes ELEVATION from the full set of channels (gradients, residual, biome parameters),
- * applying the final terrain tweaks (biome-aware shaping, ocean-height correction, bottomY clamp).
+ * <p>{@link Types#ELEVATION} is only raw here — a second pass recomputes it from the full channel set
+ * once every other heightmap is filled, since the final shaping needs them all.
  */
 public record FractalTerrainHeightmap(float[][] data) {
 

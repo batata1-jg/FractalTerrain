@@ -9,33 +9,23 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
+import me.batata_1.fractal_terrain.hydrology.network.AtomicView;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork.EdgeSpec;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork.NodeSpec;
-import me.batata_1.fractal_terrain.hydrology.network.AtomicView;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 /**
- * Headless JUnit gate for {@code Meanders}/{@code RiverNetwork} rewritten to the Phase-3 seam: all network
- * mutation now flows through {@code viewAtomic()}/{@code accumulateAndCorrectFlow}/{@code update}, and
- * collision handling ({@link RiverNetwork#manageCollisions}) is the deterministic two-mark DFS. The old
- * {@code split}/{@code merge} primitives and their tests are gone; the collision tests are written from
- * scratch to the new semantics:
+ * Headless gate for meander relaxation and stream capture.
  *
- * <ul>
- *   <li>two self-draining channels that merely cross are NOT merged (the DFS follows each stream to its
- *       own drain before considering any crossing);</li>
- *   <li>a dangling tributary (no drain of its own) that crosses a trunk IS captured into it via the
- *       promoted crossing edge — a confluence JUNCTION forms and the tributary reaches the trunk's drain;</li>
- *   <li>a dangling branch that reaches neither a drain nor a {@code streamMarked} node is pruned.</li>
- * </ul>
+ * <p>Pins the three capture outcomes: crossing self-draining channels stay separate, a dangling
+ * tributary is captured into the trunk it crosses, and a branch reaching no drain is pruned.
  *
- * {@code Meanders}/{@code RiverNetwork} do no I/O and draw no randomness (see
- * {@link #meandersSimulationIsDeterministicAcrossRuns()}), so the migration golden signature is frozen
- * bit-exact.
+ * <p>The migration signature is frozen bit-exact — read {@code hydrology/network/README.md} before
+ * re-baselining it.
  */
 class MeandersGoldenTest {
 
@@ -198,13 +188,7 @@ class MeandersGoldenTest {
         }
     }
 
-    /**
-     * Re-baselined for Phase 3: the two-mark DFS collision pass replaces the old split/merge stream-capture
-     * (the two parallel channels now self-drain and are never merged), and every step re-derives flow and
-     * folds the network back through the seam. Captured by running
-     * {@link #meandersGoldenSignatureMatchesCapturedFixture} once. {@code networkSignature} formats with
-     * {@code Locale.ROOT} for a portable decimal separator.
-     */
+    /** Captured by running the golden test once; re-baseline only on an intended behaviour change. */
     private static final String GOLDEN_MEANDERS_SIGNATURE = "channels=2 nodes=4 points=1656 checksum=438656243.300640";
 
     private static String networkSignature(Meanders sim) {
@@ -270,18 +254,8 @@ class MeandersGoldenTest {
     /** Own-flow carried by every atomic node of a fixture tributary. */
     private static final double TRIBUTARY_FLOW = 3.0;
 
-    /**
-     * Append a standalone tributary to {@code atomic}: a fresh {@code SOURCE} at the polyline's first
-     * point, then one interior atomic node per remaining point, chained by directed edges. The final
-     * node is left with <b>no outgoing edge</b> — that dangling end is the whole point of the fixture,
-     * and {@link RiverNetwork#manageCollisions} is what resolves it (captured into a crossed channel,
-     * or pruned when its DFS branch reaches no drain).
-     *
-     * <p>This mirrors how {@code LocalDrainageTracer} attaches a traced local segment in production:
-     * nodes go into the atomic view, and the canonical view is only rebuilt by the collision pass.
-     *
-     * @return the atomic id of the tributary's {@code SOURCE}.
-     */
+    /** A tributary with a deliberately dangling end, mirroring how {@code LocalDrainageTracer} attaches
+     *  a traced segment. The dangling end is what {@link RiverNetwork#manageCollisions} must resolve. */
     private static int addDanglingTributary(AtomicView atomic, List<double[]> pts) {
         final int sourceId = atomic.addNode(pts.get(0).clone(), Endpoint.Type.SOURCE, -1, TRIBUTARY_FLOW, -1);
         int prev = sourceId;

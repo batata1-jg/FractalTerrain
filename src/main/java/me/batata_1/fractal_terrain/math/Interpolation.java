@@ -24,10 +24,8 @@ public class Interpolation {
         return interpolate(x, z, stepBilinear);
     }
 
-    /**
-     * Bilinear sample of a flat row-major {@code side×side} field at fractional {@code (px, pz)},
-     * clamped to the field edges (indexing {@code field[x * side + z]}).
-     */
+    /** Bilinear sample, edge-clamped so an out-of-range coordinate reads the border rather than
+     *  throwing. */
     public static double sampleBilinear(float[] field, double px, double pz, int side) {
         int x0 = (int) Math.floor(px);
         int z0 = (int) Math.floor(pz);

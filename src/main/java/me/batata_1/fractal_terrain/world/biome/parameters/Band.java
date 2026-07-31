@@ -15,13 +15,8 @@ interface Band {
     /** The value range this band covers. */
     Range range();
 
-    /**
-     * The band {@code value} falls in, clamped to the extremes: the last constant whose lower bound
-     * {@code value} has reached, or {@code bands[0]} when {@code value} sits below every lower bound.
-     *
-     * @param bands the enum's constants in declaration order (ascending by {@link Range#min()}).
-     * @param value the parameter value to classify.
-     */
+    /** The band a value falls in, clamped at both extremes so classification is total.
+     *  {@code bands} must be in declaration order, ascending by lower bound. */
     static <T extends Band> T containing(T[] bands, float value) {
         T match = bands[0];
         for (T candidate : bands) {

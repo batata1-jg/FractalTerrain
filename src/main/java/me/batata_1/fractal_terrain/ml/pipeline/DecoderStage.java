@@ -13,18 +13,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Responsibility: runs the single flow-matching decoder step plus the fuzed post-processing model,
- * producing the {@code init_residual_map} {@link AdditiveInfiniteTensor} ({@value #TILE_SIZE}x
- * {@value #TILE_SIZE} native-pixel tiles, {@code DECODER_CHANNELS} channels, {@code CH=0/X=1/Z=2}).
+ * The decoder stage, third of three. Runs one flow-matching step plus the fused post-processing model
+ * to produce {@code init_residual_map}, the relief-residual tensor consumed downstream for terrain
+ * elevation.
  *
- * <p>Collaborators: the {@code decoderModel} and {@code fuzedModel} ONNX models; the upstream latent
- * tensor (constructor-injected dependency, read via a compressed-resolution slice — no hidden coupling
- * with {@link LatentStage}); {@link WorldPipeline#LATENT_COMPRESSION}; the current {@link PipelineSession}
- * (seed and tau) obtained once per tile via {@code sessionSupplier}.
- *
- * <p>Invariants: output tensor is (DECODER_CHANNELS, S, S) with {@code CH=0/X=1/Z=2}; the tile-compute
- * reads the session snapshot exactly once (MUST-1); {@code decoderInputScratch} is a per-thread reusable
- * buffer, fully overwritten on every use.
+ * <p>Reads the upstream latent tensor via a compressed-resolution slice and the current
+ * {@link PipelineSession} (seed and tau) once per tile (MUST-1).
  */
 final class DecoderStage {
 

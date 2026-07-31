@@ -1,26 +1,14 @@
 package me.batata_1.fractal_terrain.noise.strategy;
 
 /**
- * Shared hash primes, gradient/random-vector lookup tables, and low-level math helpers used by every
- * {@code FastNoiseLite} noise and domain-warp strategy.
+ * The hash primes, gradient tables and scalar helpers every {@code FastNoiseLite} strategy shares.
  *
- * <p><b>Responsibility:</b> the one home for the constants and helpers that are identical across noise
- * types — coordinate hashing ({@link #Hash(int, int, int)}), value/gradient lookup
- * ({@link #ValCoord(int, int, int)}, {@link #GradCoord(int, int, int, float, float)}), interpolation
- * ({@link #Lerp}, {@link #InterpHermite}, {@link #InterpQuintic}, {@link #CubicLerp}, {@link #PingPong}),
- * fast scalar ops ({@link #FastMin}, {@link #FastMax}, {@link #FastAbs}, {@link #FastSqrt},
- * {@link #FastFloor}, {@link #FastRound}), and the {@code Gradients2D}/{@code RandVecs2D}/
- * {@code Gradients3D}/{@code RandVecs3D} lookup tables.
+ * <p>One home for them so the strategies cannot drift apart — they must agree exactly or noise stops
+ * being reproducible across types.
  *
- * <p><b>Collaborators:</b> every class in {@code me.batata_1.fractal_terrain.noise.strategy}, plus
- * {@code me.batata_1.fractal_terrain.noise.FastNoiseLite}'s fractal combinators ({@code GenFractalFBm} /
- * {@code GenFractalRidged} / {@code GenFractalPingPong}), which use the same {@code FastMin}/
- * {@code FastAbs}/{@code Lerp}/{@code PingPong} helpers.
- *
- * <p><b>Invariants:</b> every constant, hash, and gradient-table entry is byte-identical to the original
- * embedded {@code FastNoiseLite} implementation (FastNoiseLite 1.1.1, MIT-licensed, public domain).
- * Changing any value here changes noise output for every consumer — do not "clean up" the table
- * formatting or values.
+ * <p><b>Do not "clean up" any value or the table formatting.</b> Everything here is byte-identical to
+ * FastNoiseLite 1.1.1, and changing one entry changes noise output for every consumer, in every world
+ * already generated.
  */
 public final class NoiseTables {
 

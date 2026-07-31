@@ -54,11 +54,8 @@ final class UnitCodec {
         return coord;
     }
 
-    /**
-     * Content equality for a position-only unit: same concrete record type and same coordinates. Records
-     * compare {@code double[]} components by reference, so every unit record must route its
-     * {@code equals} through a contents comparison like this one.
-     */
+    /** Content equality for a position-only unit. Exists because records compare {@code double[]} by
+     *  reference, which would make every unit unequal to its own reloaded copy. */
     static boolean coordsEqual(HydrologicalUnit self, Object other, double[] coord) {
         if (self == other) return true;
         if (other == null || self.getClass() != other.getClass()) return false;

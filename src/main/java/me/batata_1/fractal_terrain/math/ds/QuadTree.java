@@ -31,17 +31,10 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
     private final double[] minXZ;
     private final double[] maxXZ;
 
-    /**
-     * Subdivision cap: no node deeper than this splits, so a leaf at this depth holds every point
-     * that falls in its cell. Sets the finest cell size the tree can resolve — {@code (maxXZ - minXZ)
-     * / 2^maxTreeDepth} — so a tree over a wide extent needs a larger cap to keep leaves sparse.
-     */
+    /** Subdivision cap; a wide extent needs a larger one to keep leaves sparse. */
     private final int maxTreeDepth;
 
-    /**
-     * A point used only to {@linkplain Persistable#deserialize(byte[]) deserialize} stored point
-     * chunks (its own state is ignored). Non-null only on trees built as deserialization prototypes.
-     */
+    /** Supplies the concrete point type on deserialize; null on ordinary trees. */
     private final T pointPrototype;
 
     public static final class Node<T> {
@@ -85,21 +78,12 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
         this(minXZ, maxXZ, (T) null, DEFAULT_MAX_TREE_DEPTH);
     }
 
-    /**
-     * Builds a tree capped at {@code maxTreeDepth} levels of subdivision. Size the cap against the
-     * extent: leaf cells are {@code (maxXZ - minXZ) / 2^maxTreeDepth} wide, and points sharing a leaf
-     * are scanned linearly.
-     */
+    /** Size {@code maxTreeDepth} against the extent — points sharing a leaf are scanned linearly. */
     public QuadTree(double[] minXZ, double[] maxXZ, int maxTreeDepth) {
         this(minXZ, maxXZ, (T) null, maxTreeDepth);
     }
 
-    /**
-     * Builds a tree with a point {@code prototype} used solely by {@link #deserialize(byte[])} to
-     * rebuild stored points (the prototype's own state is ignored). Use this constructor for the
-     * deserialization prototype handed to {@link Storage} so the store can serialize point-bearing
-     * tiles.
-     */
+    /** The constructor to use for a prototype handed to {@link Storage}, so it can persist tiles. */
     public QuadTree(double[] minXZ, double[] maxXZ, T pointPrototype) {
         this(minXZ, maxXZ, pointPrototype, DEFAULT_MAX_TREE_DEPTH);
     }
@@ -166,13 +150,7 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
         }
     }
 
-    /**
-     * Approximate in-memory footprint, used by {@link Storage}'s byte-budget eviction. Estimated
-     * from node count and the total point count (the root node at index 1 holds every inserted
-     * point). Serialization to disk is supported only when the point type is {@link Persistable} and
-     * a point prototype was supplied (see {@link #serialize()} / {@link #deserialize(byte[])});
-     * otherwise a {@code QuadTree}-backed {@code Storage} is cache-only.
-     */
+    /** Feeds {@link Storage}'s byte-budget eviction; an estimate, not a measurement. */
     @Override
     public long byteSize() {
         final long bytesPerNode = 120; // child[4] + 2 double[2] + Set overhead, rough
@@ -187,11 +165,7 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
         }
     }
 
-    /**
-     * Serialize to a flat little-endian byte array: {@code [magic, minXZ, maxXZ, pointCount,
-     * (chunkLen, chunk)...]}, where each point chunk is the point's own {@link Persistable#serialize()}
-     * bytes. Throws {@link UnsupportedOperationException} if the point type is not {@link Persistable}.
-     */
+    /** Writes points only; the tree is rebuilt on load. Requires a {@link Persistable} point type. */
     @Override
     public byte[] serialize() {
         if (!(pointPrototype instanceof Persistable<?> protoPersistable))
@@ -234,10 +208,7 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
         }
     }
 
-    /**
-     * Rebuild a tree from bytes produced by {@link #serialize()}, deserializing each point chunk with
-     * this tree's {@link #pointPrototype}. Requires the prototype to be {@link Persistable}.
-     */
+    /** Re-inserts the restored points. Requires a {@link Persistable} prototype. */
     @Override
     @SuppressWarnings("unchecked")
     public QuadTree<T> deserialize(byte[] rawBytes) {
@@ -405,11 +376,7 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
         }
     }
 
-    /**
-     * True when at least one indexed point lies within {@code radius} of {@code center}. Same walk as
-     * {@link #getPointsInCircle}, but it short-circuits on the first hit and never materializes a
-     * result list.
-     */
+    /** Existence-only twin of {@link #getPointsInCircle}, allocating no result list. */
     public boolean containsPointInCircle(final double[] center, final double radius) {
         if (center.length != 2) throw new IllegalStateException();
         lock.readLock().lock();

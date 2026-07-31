@@ -15,17 +15,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Responsibility: runs the 2 flow-matching steps that refine the coarse output into the
- * {@code step_latent_map_0} latent {@link AdditiveInfiniteTensor} (6, {@value #TILE_SIZE},
- * {@value #TILE_SIZE}) tiles, native pixel space, {@code CH=0/X=1/Z=2}.
+ * The latent stage, second of three. Runs 2 flow-matching steps that refine {@link CoarseStage}'s
+ * output into {@code step_latent_map_0}, the tensor {@link DecoderStage} conditions on.
  *
- * <p>Collaborators: the {@code baseModel} ONNX model; the upstream coarse tensor (constructor-injected
- * dependency, read via a 4x4 conditioning slice — no hidden coupling with {@link CoarseStage}); the
- * current {@link PipelineSession} (seed only) obtained once per batch via {@code sessionSupplier}.
- *
- * <p>Invariants: output tensor is (6, S, S) with {@code CH=0/X=1/Z=2}; each batch reads the session
- * snapshot exactly once (MUST-1); the two internal stages ({@code init_latent_map} then
- * {@code step_latent_map_0}) share the same conditioning-build and batch-model-call logic.
+ * <p>Conditions on a 4x4 slice of the coarse tensor — no hidden coupling with {@link CoarseStage}
+ * beyond that slice. Reads the current {@link PipelineSession} seed once per batch (MUST-1).
  */
 final class LatentStage {
 

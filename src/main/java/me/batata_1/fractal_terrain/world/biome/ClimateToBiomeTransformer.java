@@ -9,25 +9,14 @@ import me.batata_1.fractal_terrain.world.biome.parameters.*;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Builds the five horizontal vanilla biome parameters for one 512×512 tile from the diffusion
- * model's coarse climate + relief channels. See {@code worldgeneration101.md} ("Biomes → Overworld
- * Biomes").
+ * The per-parameter biome math: continentalness, erosion, temperature, vegetation and weirdness for
+ * one tile, plus the cross-parameter coast and altitude tweaks.
  *
- * <p><b>Responsibility:</b> the per-parameter math — continentalness, erosion, temperature,
- * vegetation/humidity and weirdness — plus the noise perturbation fields that feed them and the
- * cross-parameter coast/altitude tweaks ({@link #stonyCliffaceCondition}, {@link #erosionBufferZone}).
- * Depth (vertical) is out of scope; it is supplied by {@code BiomeProvider} from block Y.
+ * <p>Split out of {@link ClimateVariableTransform}, which stays a thin facade, so the formulas can be
+ * read and tuned without the plumbing around them.
  *
- * <p><b>Collaborators:</b> {@link ShoreDistanceCalculator} upscales the coarse distance-to-shore grid
- * this class samples per pixel; {@link BiomeParameterClassifier} classifies the shattered-erosion and
- * valley bands consulted mid-computation; the {@code world.biome.parameters} enums encode the
- * wiki-published output ranges. Invoked by {@link ClimateVariableTransform#transform}, the class's
- * public facade.
- *
- * <p><b>Invariants:</b> no numeric constant, threshold, or evaluation order may change — output must
- * stay bit-for-bit identical to the pre-split implementation. Parameters are written into a shared
- * per-pixel {@code biome[]} buffer in a fixed order (continentalness → erosion → temperature →
- * vegetation → weirdness) because later stages read earlier ones; that order must be preserved.
+ * <p><b>Parameter write order is load-bearing</b> — later parameters read earlier ones out of the
+ * shared per-pixel buffer, so continentalness must precede erosion, and so on.
  */
 public class ClimateToBiomeTransformer {
 
@@ -250,19 +239,9 @@ public class ClimateToBiomeTransformer {
             new float[] {-0.8f, -0.45f, -0.3f, 0.025f, 0.375f, 0.775f},
             new float[] {0, 0, 0, 0, 0, 0});
 
-    /**
-     * Maps the coarse climate array to the five horizontal vanilla biome parameters
-     * (continentalness, erosion, temperature, humidity/vegetation, weirdness) for one 512×512 tile.
-     * Depth — the sixth parameter — is vertical and supplied separately by {@code BiomeProvider}.
-     *
-     * @param coarseDistShore per-coarse-cell distance-to-shore grid, row-major {@code [Xcell*DSHORE_GRID + Zcell]},
-     *     {@code 4×4} (see {@link ShoreDistanceCalculator}). Its origin is one coarse cell before the tile origin
-     *     (the bilinear halo); values are {@code -1} (ocean), {@code 0..7} (increasing land distance) or {@code 8}
-     *     (no ocean within the search window). Bilinearly upscaled here to the per-pixel {@code distShore}.
-     * @param distShoreOut optional per-pixel output buffer ({@code TILE_SIZE_SQUARED}, indexed {@code dx*TILE_SIZE+dz});
-     *     when non-null it receives the upscaled {@code distShore} for each pixel (used by the debug visualizer).
-     *     Pass {@code null} to skip — the biome parameters are unaffected either way.
-     */
+    /** The five horizontal biome parameters for one tile; depth comes separately from block Y.
+     *  {@code coarseDistShore}'s origin is one cell before the tile's, the bilinear halo.
+     *  {@code distShoreOut} is a debug-only side output; pass null to skip it. */
     public static float[] transform(
             int x0,
             int z0,
@@ -385,11 +364,7 @@ public class ClimateToBiomeTransformer {
         return out;
     }
 
-    /**
-     * Continentalness: ocean depth vs. inland region (worldgeneration101.md "Continentalness").
-     * Ocean pixels map elevation into [mushroom-fields edge, coast]; land pixels average an elevation
-     * term with tempStd- and precipCV-driven region targets, then pull toward coast/inland by shore distance.
-     */
+    /** Continentalness: ocean depth against inland region. Written first — later parameters read it. */
     private static void computeContinentalness(
             float[] biome,
             boolean ocean,
@@ -443,11 +418,8 @@ public class ClimateToBiomeTransformer {
         return c1 * normNoise + (1 - normNoise) * c2;
     }
 
-    /**
-     * Erosion: flat (high) vs. mountainous (low), from compressed gradient magnitudes and elevation
-     * (worldgeneration101.md "Erosion"). Erosion level 5 is jittered out of the shattered band and
-     * near-sea-level pixels are forced flat.
-     */
+    /** Erosion: flat against mountainous. Level 5 is jittered out of the shattered band, since
+     *  shattered terrain reads as broken at this scale. */
     private static void computeErosion(
             float[] biome,
             float elevVal,
@@ -490,10 +462,7 @@ public class ClimateToBiomeTransformer {
         biome[EROSION] = erosion;
     }
 
-    /**
-     * Temperature: blends a per-band target, a spline of the raw temperature, elevation cooling, and
-     * noise (worldgeneration101.md "Temperature").
-     */
+    /** Temperature, with elevation cooling so mountains read cold regardless of latitude. */
     private static void computeTemperature(
             float[] biome,
             float temp,
@@ -525,11 +494,7 @@ public class ClimateToBiomeTransformer {
         biome[TEMPERATURE] = temperature;
     }
 
-    /**
-     * Vegetation (humidity): a precipitation term plus a tree-cover model (potential evapotranspiration
-     * vs. precipitation, penalized by seasonality and growing season), thinned on steep slopes
-     * (worldgeneration101.md "Humidity (Vegetation)").
-     */
+    /** Vegetation: precipitation plus a tree-cover model, thinned on steep slopes. */
     private static void computeVegetation(
             float[] biome,
             float temp,
@@ -603,11 +568,8 @@ public class ClimateToBiomeTransformer {
         biome[VEGETATION] = vegetation;
     }
 
-    /**
-     * Weirdness (ridges): residual-driven magnitude, peak-biased at altitude, with the sign coming from
-     * noise (or forced negative over ocean). Valley results are pinned to a small positive value
-     * (worldgeneration101.md "Weirdness (Ridges)").
-     */
+    /** Weirdness: magnitude from the relief residual, sign from noise — see {@code WeirdnessDensity}
+     *  for why the two are kept apart. */
     private static void computeWeirdness(
             float[] biome, boolean ocean, float residual, float weirdnessNoise, float elevVal, float gradInfluence) {
         float resScaled = residual >= 1 ? residual / 2f : residual / 10f;
@@ -623,11 +585,8 @@ public class ClimateToBiomeTransformer {
         biome[WEIRDNESS] = weirdness;
     }
 
-    /**
-     * Cross-parameter coast tweak: at the coast, peaks/high ridges are flattened toward a stony-shore
-     * look by dropping erosion to the level-1 midpoint and pinning weirdness. See
-     * {@code worldgeneration101.md} ("Inland surface biome categories" → Stony Shore).
-     */
+    /** Flattens coastal peaks toward a stony shore, since vanilla has no biome for a cliff meeting
+     *  the sea at ridge weirdness. */
     private static void stonyCliffaceCondition(float[] biome) {
         float cont = biome[CONTINENTALNESS];
         float t = Math.abs(cont - Continentalness.COAST.mid());
@@ -651,10 +610,7 @@ public class ClimateToBiomeTransformer {
             }
         }
     }
-    /**
-     * Length of the growing season in days, from seasonal temperature spread {@code tStd} and mean
-     * {@code temp} (°C): the fraction of the year the temperature stays above the 5 °C tree threshold.
-     */
+    /** Growing-season length, the term that lets seasonality suppress tree cover. */
     private static float getGrowingSeason(float tStd, float temp) {
         float amplitude = tStd * 1.414f;
         float growingSeason;

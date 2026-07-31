@@ -24,12 +24,6 @@ public final class TensorLayout {
     public static final int RELIEF_CHANNELS = 7;
     public static final int BIOME_CHANNELS = 6;
 
-    /**
-     * Global-river tile channels: 0 = packed arrow bitfield, 1 = width, 2 = bed elevation, 3 = raw
-     * flow accumulation. Channel 3 (flow) is persisted so the local network can derive width from flow
-     * without the lossy {@code widthFromFlow} inversion (see {@code GlobalNetworkBuilder}); width stays
-     * channel 1 (still consumed by the relief carve). Bumped 3&rarr;4 in Phase 2 — on-disk cached global
-     * tiles from the old 3-channel layout are incompatible and must be regenerated.
-     */
+    /** Arrow bitfield + width + bed elevation + raw flow; changing this invalidates every cached global tile on disk. */
     public static final int GLOBAL_RIVER_CHANNELS = 4;
 }

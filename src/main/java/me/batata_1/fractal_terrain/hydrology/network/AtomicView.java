@@ -33,10 +33,7 @@ public final class AtomicView {
      * CARRIED input, meaningful only where {@link #role} is DRAIN: the clamp ceiling + near-drain target.
      */
     public final List<Double> anchorFlow = new ArrayList<>();
-    /**
-     * {@code adjacency.get(u)}: directed tree-successor edge(s) out of atomic node {@code u}.
-     * Mutate only via {@link #addDirectedEdge(int, int)} so duplicate edges are never inserted.
-     */
+    /** Directed successors per atomic node. Mutate only via {@link #addDirectedEdge(int, int)}. */
     public final List<List<Integer>> adjacency = new ArrayList<>();
     /**
      * canonical channelId -> atomic id per spline point (only populated by {@link #viewAtomic()}).
@@ -84,10 +81,8 @@ public final class AtomicView {
         return id;
     }
 
-    /**
-     * Add the directed edge {@code a -> b} to the adjacency. If that edge is already present (linear
-     * search over {@code a}'s successors), this does nothing — the adjacency never holds a duplicate edge.
-     */
+    /** The only sanctioned way to grow the adjacency; exists so callers cannot introduce a duplicate
+     *  edge, which the single-outflow invariant would then read as a second outflow. */
     public void addDirectedEdge(int a, int b) {
         final List<Integer> out = adjacency.get(a);
         for (int existing : out) if (existing == b) return;
@@ -108,16 +103,9 @@ public final class AtomicView {
     // Flow accumulation + drain correction (populates the atomic view's DERIVED per-node flow)
     // ---------------------------------------------------------------------------------------------
 
-    /**
-     * Populate {@code atomic.flow[]} (the DERIVED per-node flow that drives width) from the carried inputs
-     * {@code ownFlow[]} (per-cell constant / SOURCE seed) and {@code anchorFlow[]} (DRAIN-only). Reverse-
-     * topological accumulation over the ATOMIC adjacency (never {@link Endpoint#incoming}, a HashSet), so
-     * the confluence sum order is pinned by ascending atomic id and the {@code doubleToLongBits} goldens
-     * stay bit-stable. Then per drain (sorted): clamp every basin node to the anchor ceiling, set the drain
-     * to its anchor exactly, and lerp the last &le; {@link HydrologyTuning#DRAIN_FLOW_SMOOTH_MAX_NODES}
-     * mainstem nodes up to the anchor when the jump exceeds {@link HydrologyTuning#DRAIN_FLOW_SMOOTH_STEP}
-     * — NO basin-wide rescale. Call this before {@link #update} reads the derived flow.
-     */
+    /** Derives the per-node flow that drives channel width, and smooths it toward each drain's anchor so
+     *  width stays continuous into the joined river. Must run before {@link RiverNetwork#update} reads
+     *  flow. Sums over the atomic adjacency, never {@link Endpoint#incoming} — see {@code README.md}. */
     public double[] accumulateAndCorrectFlow() {
         final int n = this.size();
 
@@ -227,23 +215,9 @@ public final class AtomicView {
     /** Geometric tolerance for the segment-crossing test (parallel guard + strict-interior margin). */
     private static final double CROSS_EPS = 1e-9;
 
-    /**
-     * Planarize the adjacency: wherever two edges cross geometrically (their position segments properly
-     * intersect), delete the crossing edges and re-route each one through a fresh interior node placed at
-     * the intersection, preserving flow direction. A crossing between {@code a -> b} and {@code c -> d} at
-     * point {@code x} becomes {@code a -> x -> b} and {@code c -> x -> d} — {@code x} is the single shared
-     * "middle" node inheriting the crossing coordinates.
-     *
-     * <p>Each edge is treated as an undirected position segment (a bidirectional pair collapses to one
-     * segment, and both directions are rewritten). Candidate pairs are pruned with an {@link ImmutableRTree}
-     * over the node positions: because meander edges are short (point spacing ~{@link HydrologyTuning#DX},
-     * migration &le; {@link HydrologyTuning#MAX_MIGRATION}), two edges can only cross when their endpoints
-     * sit within {@code MAX_MIGRATION * 5} of each other, so only segments incident to a node within that
-     * radius of an endpoint are tested. Two straight segments meet in at most one point, so resolving every
-     * original pair once fully planarizes the set in a single pass; the new sub-segments meet only at the
-     * shared crossing nodes and introduce no further crossings. Deterministic: segments and candidates are
-     * visited in ascending order, so crossing-node ids are assigned reproducibly.
-     */
+    /** Planarizes the adjacency by re-routing crossing edges through a shared node at the intersection.
+     *  Exists because meander migration lets channels drift across each other, and downstream carving
+     *  assumes a planar network. */
     public void resolveCrossingEdges() {
         final int originalSize = size();
         if (originalSize < 2) return;
@@ -324,12 +298,8 @@ public final class AtomicView {
         }
     }
 
-    /**
-     * Proper intersection of the open segments {@code p1->p2} and {@code p3->p4}. Returns
-     * {@code {t, s, x, z}} — the parameters along each segment plus the crossing point — when they cross
-     * strictly in their interiors, or {@code null} when they are parallel/collinear or only meet at (or
-     * beyond) an endpoint.
-     */
+    /** Interior-only segment intersection for {@link #resolveCrossingEdges}; endpoint touches are not
+     *  crossings, since channels legitimately share endpoints at confluences. */
     private static double[] segmentCrossing(double[] p1, double[] p2, double[] p3, double[] p4) {
         final double[] d1 = VectorOps.sub(p2, p1);
         final double[] d2 = VectorOps.sub(p4, p3);

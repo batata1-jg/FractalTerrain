@@ -61,7 +61,7 @@ seed ──► WorldPipeline (JVM-lifetime, me/batata_1/fractal_terrain/ml/pipel
 
 Every ONNX-facing tensor uses the fixed axis order `CH=0/X=1/Z=2` and the channel counts in
 `config/TensorLayout.java` (`DECODER_CHANNELS=8`, `RELIEF_CHANNELS=7`, `BIOME_CHANNELS=6`,
-`GLOBAL_RIVER_CHANNELS=3`) — see Invariants.
+`GLOBAL_RIVER_CHANNELS=4`) — see Invariants.
 
 **Diffusion stages** (`ml/pipeline/`): `WorldPipeline.java` is the orchestrator; `CoarseStage.java`,
 `LatentStage.java`, `DecoderStage.java`, `ClimateProvider.java` are the four extracted collaborators
@@ -99,19 +99,28 @@ Coordinate frames).
 Two carve stages exist and both are live:
 
 1. **Tile-level shell carve** (`HydrologyProfileCarver.carveRiverShells`, static). For each pixel of the
-   padded tile buffer it stabs an R-tree built over the units it was handed, keeps the candidates whose
-   influence circle actually contains the pixel, takes the **single nearest** one, and overwrites the
-   pixel with `RosgenProfile.riverInfluenceElevation`: a lerp holding the unit's reference elevation out
-   to `floodPlainLength` and released linearly back to the buffer's current value at `riverInfluence`.
-   Only the nearest unit contributes — there is no min-composite and no pristine ambient snapshot — so at
-   a confluence the closest channel's profile wins outright. Pixels with a negative ambient elevation
-   (ocean) are skipped. The carve reads and writes the same buffer, so the two passes per tile compound.
-2. **Per-pixel bed residual** (`HydrologyProfileCarver.carve`/`carveAtPixel`/`carvePrefetched` →
-   `HydrologyProfile.computeForUnit`), invoked from `PopulateNoiseStep` during chunk fill and written into
-   `Types.RIVER_DIFFERENCE`. `computeForUnit` fades `RosgenProfile.riverAreaDelta` (the per-type bed
-   trench, computed within the bed half-width from `ChannelGeometry.depthForWidth`) in over an elliptical
-   footprint around the contributing unit, at full strength from `HydrologyTuning.MAX_ECCENTRICITY`
-   outward. `HydrologyProfilePainter` reads the resulting `RIVER_DIFFERENCE` to place riverUnit water.
+   padded tile buffer it stabs an R-tree built over the units it was handed and collects **every** unit
+   whose influence circle actually contains the pixel, not just the nearest. Each contributing unit
+   supplies `HydrologyProfile.shellElevation(unit, radialDist, curElev)` — for a `RiverUnit`,
+   `RosgenProfile` delegates this to `riverInfluenceElevation`: a lerp holding the unit's reference
+   elevation out to `floodPlainLength` and released back to the buffer's current value at
+   `riverInfluence` — and the pixel is overwritten with the distance-weighted **average** across all of
+   them. There is no nearest-wins rule and no pristine ambient snapshot, so at a confluence overlapping
+   units blend rather than one profile winning outright. Pixels with a negative ambient elevation (ocean)
+   are skipped. The carve reads and writes the same buffer, so the two passes per tile compound.
+2. **Per-pixel bed residual** (`HydrologyProfileCarver.carveAtPixel` / `prefetchChunk` +
+   `carvePrefetched`), invoked from `PopulateNoiseStep` during chunk fill and written into
+   `Types.RIVER_DIFFERENCE`. `carvePrefetched` resolves every influencing unit into one of the
+   `ZoneCategory` zones via `HydrologyProfile.categoryAt`/`zoneWeight` (priority order `WATERFALL` >
+   `BED` > `LAKE_BED` > `FLOODPLAIN` > `INFLUENCE`), averages contributions **within** the
+   highest-priority non-empty zone but switches hard **between** zones — two rivers sharing a floodplain
+   blend, a bed crossing it cuts through instead. Each unit contributes through its own
+   `carveFineGrained(pt, elevAtPixel)`, implemented per feature type (`RiverUnit`, `WaterfallUnit`,
+   `OxbowLakeUnit`, `SourceUnit`, `DeltaUnit`, `AbandonedRiverUnit`); `RiverUnit`'s fades
+   `RosgenProfile.riverAreaDelta` (the per-type bed trench, computed within the bed half-width from
+   `ChannelGeometry.depthForWidth`) in over an elliptical footprint around the unit, at full strength from
+   `HydrologyTuning.MAX_ECCENTRICITY` outward. `HydrologyProfilePainter` reads the resulting
+   `RIVER_DIFFERENCE` to place riverUnit water.
 
 `HydrologyTuning.MAX_LOCAL_WIDTH` is retained but unread by live code, not even through the
 `FractalTerrainConfig` facade re-export.
@@ -163,7 +172,7 @@ directly under `noise/`). `Vector2`/`Vector3` live in `math/`.
 
 ## Provider graph
 
-`GenerationContext`'s constructor (`GenerationContext.java:58-89`) wires the per-world graph in one
+`GenerationContext`'s constructor (`GenerationContext.java:51-82`) wires the per-world graph in one
 fixed order — later providers may reach earlier ones (through the adapter) during their own tile
 compute, so this order is load-bearing:
 
@@ -192,7 +201,7 @@ of the `global → local → relief → biome` ordering constraint.
 
 **Safe publication.** `FractalTerrainInstance` holds the current context behind a
 `private static volatile CompletableFuture<GenerationContext> context`
-(`FractalTerrainInstance.java:45`). `init()` calls `context.complete(new GenerationContext(...))` only
+(`FractalTerrainInstance.java:40`). `init()` calls `context.complete(new GenerationContext(...))` only
 after the constructor has fully run; every getter goes through `current()` → `context.get()`, which has
 a happens-before edge with that `complete()` — so a worker thread can never observe a
 partially-constructed or null-then-swapped context. `close()` resets `context` to a fresh incomplete
@@ -252,22 +261,24 @@ property-sourced fields for exactly this reason; `DISABLE_3D_VISUALIZER` is read
 (not per block), so its runtime cost is negligible.
 
 **Logging.** `debug/Debug.java`'s `Debug.getLogger(Class<?> clazz)` is the *intended* logging entry
-point: `LoggerFactory.getLogger("fractal_terrain/" + clazz.getName())` (`Debug.java:35-37`). It is not
-the actual convention — the split is roughly even, 18 files using `Debug.getLogger` against 19 calling
-`LoggerFactory.getLogger` directly (`ModConfig`, `ChannelElevationAssigner`, `LocalDrainageTracer`,
-`LocalRiverProvider`, `ImmutableRTree`, `PipelineModels`, most `debug/tests/` harnesses, …; `Debug.java`
-itself is excluded from that count, since the facade is implemented on top of `LoggerFactory`). M-002
-migrated files opportunistically rather than exhaustively. Always check a class's own logger initializer
-rather than assuming the facade; new code should prefer `Debug.getLogger`.
+point: `LoggerFactory.getLogger("fractal_terrain/" + clazz.getName())` (`Debug.java:35-36`). It is not
+the actual convention — the split favors bypassing the facade, 18 files using `Debug.getLogger` (mostly
+via its static import) against 22 calling `LoggerFactory.getLogger` directly (`ModConfig`,
+`ChannelElevationAssigner`, `LocalDrainageTracer`, `LocalRiverProvider`, `ImmutableRTree`,
+`PipelineModels`, `ReachRosgenClassifier`, most `debug/tests/` harnesses, …; `Debug.java` itself is
+excluded from that count, since the facade is implemented on top of `LoggerFactory`). M-002 migrated
+files opportunistically rather than exhaustively, and files added since (e.g. the Rosgen/ONNX-asset
+classes) mostly did not adopt the facade either. Always check a class's own logger initializer rather
+than assuming the facade; new code should prefer `Debug.getLogger`.
 
 ## The three MUST-fixes
 
 **MUST-1 — `PipelineSession` (reload race).** `ml/pipeline/PipelineSession.java` is an immutable
 `record(long seed, SyntheticMapFactory syntheticMapFactory, float[] tau)`. `WorldPipeline` holds it
-behind one `private volatile PipelineSession session` (`WorldPipeline.java:51`); every stage reads it
+behind one `private volatile PipelineSession session` (`WorldPipeline.java:41`); every stage reads it
 via a `Supplier<PipelineSession>` bound to `currentSession()`, snapshotting once per tile/batch instead
 of reading `seed`/`syntheticMapFactory`/`tau` as three independent fields. `updateInstance` builds a
-whole new session and assigns it in one write (`WorldPipeline.java:105-113`), so no worker can ever
+whole new session and assigns it in one write (`WorldPipeline.java:95-103`), so no worker can ever
 observe a torn `(seed, map, tau)` triple. Regression: `src/test/java/.../ml/pipeline/PipelineSessionReloadRaceTest.java`
 — a headless proxy (no real `SyntheticMapFactory`, since that needs ONNX assets) that drives the same
 single-volatile-swap mechanism with a writer thread reloading and four reader threads asserting
@@ -276,7 +287,7 @@ single-volatile-swap mechanism with a writer thread reloading and four reader th
 **MUST-2 — model load moved into `init()`.** `PipelineModels.load()` (`ml/models/PipelineModels.java:33`)
 starts loading on a background daemon thread and returns immediately; `awaitLoad()` blocks on a
 `CountDownLatch` until loaded or failed. Neither runs from a static initializer — `FractalTerrainInstance
-.initPipeline()` (`FractalTerrainInstance.java:53-60`) calls `PipelineModels.load()` +
+.initPipeline()` (`FractalTerrainInstance.java:43-50`) calls `PipelineModels.load()` +
 `PipelineModels.awaitLoad()` explicitly, so a load failure (e.g. missing datapack/model assets) surfaces
 as a normal `IllegalStateException` from `init()` instead of an `ExceptionInInitializerError` that would
 permanently poison the class with `NoClassDefFoundError` on every subsequent reference.
@@ -295,7 +306,7 @@ against accidental misuse of the tensor API, not as an enforced immutability bou
 `copyRange` *does* allocate (`Arrays.copyOfRange`).
 `storage/Storage.java` is the only caller of `freeze()`: both `persistAndRecord` (fresh compute) and
 `loadInto` (disk reload) freeze *before* the entry is published into `CACHE` via
-`CompletableFuture.complete` (`Storage.java:325`, `:339`) — freeze happens-before publication because it
+`CompletableFuture.complete` (`Storage.java:297`, `:287`) — freeze happens-before publication because it
 runs on the same thread, before the key is observably completed to any other thread.
 
 ## Current debug state
@@ -315,10 +326,10 @@ files — flipping them back means editing source.
 
 | Frame | Unit | Defined / grounded in |
 | ----- | ---- | ---------------------- |
-| **block-px** | 1 Minecraft world block | Chunk/column generation code (`world/gen/`); `BiomeProvider` derives tile origins as `tileX << 9` (`BiomeProvider.java:283`). |
-| **tile** | 512×512 block-px (= 512×512 native-px) unit that keys nearly every per-tile cache (`Storage`/`NonIntersectingInfiniteTensor`) | `HydrologyTileGeometry.GRID = 512`, `PAD = 1`, `PADDED = 514` (`HydrologyTileGeometry.java:22-24`); `tileX = blockX >> 9` (inverse of the shift above). `GlobalRiverProvider` is the one exception — its own tile cache is addressed directly in coarse-px (see below), a separate grid from the 512-native-px relief/local-riverUnit/biome tile grid. |
+| **block-px** | 1 Minecraft world block | Chunk/column generation code (`world/gen/`); `BiomeProvider` derives tile origins as `tileX << 9` (`BiomeProvider.java:256`). |
+| **tile** | 512×512 block-px (= 512×512 native-px) unit that keys nearly every per-tile cache (`Storage`/`NonIntersectingInfiniteTensor`) | `HydrologyTileGeometry.GRID = 512`, `PAD = 1`, `PADDED = 514` (`HydrologyTileGeometry.java:16-18`); `tileX = blockX >> 9` (inverse of the shift above). `GlobalRiverProvider` is the one exception — its own tile cache is addressed directly in coarse-px (see below), a separate grid from the 512-native-px relief/local-riverUnit/biome tile grid. |
 | **native** | 1 native px, the decoder/relief pixel resolution; 1:1 with block-px inside a tile | `TensorLayout` fixes the axis order `CH=0/X=1/Z=2` (`TensorLayout.java:16-19`) for every ONNX-facing tensor in this frame; `DecoderChannels.INNER = 512` / `relief/ReliefProvider`'s `INNER = 512` size the relief tile in native px. |
-| **coarse** | 1 coarse unit = 256 native px | `HydrologyTileGeometry.COARSE_PX = 256` (`HydrologyTileGeometry.java:25`); `WorldPipeline.getCoarseSlice`'s javadoc: "Coordinates are in coarse index units (1 unit = 256 native pixels)" (`WorldPipeline.java:131-133`). `GlobalRiverProvider` caches its own tiles in this frame directly (`getArrow(cx, cz)` etc., 64×64-coarse-px tiles); `GlobalNetworkBuilder` bridges the two frames by mapping a 512-native-px relief tile `(tileX, tileZ)` onto its 2×2 owned coarse cells `(tileX*2 + a, tileZ*2 + b)` (`GlobalNetworkBuilder.java:55-58`, `:91-95`). |
+| **coarse** | 1 coarse unit = 256 native px | `HydrologyTileGeometry.COARSE_PX = 256` (`HydrologyTileGeometry.java:19`); `GlobalRiverProvider` caches its own tiles in this frame directly (`getArrow(cx, cz)` etc., 64×64-coarse-px tiles); `GlobalNetworkBuilder` bridges the two frames by mapping a 512-native-px relief tile `(tileX, tileZ)` onto its 2×2 owned coarse cells `(tileX*2 + a, tileZ*2 + b)` (`GlobalNetworkBuilder.java:58-59`, `:94-95`). No current source javadoc spells out the "1 unit = 256 native pixels" definition in prose; `COARSE_PX` is the only normative source. |
 
 ## Invariants (do not violate)
 
@@ -326,15 +337,15 @@ files — flipping them back means editing source.
   splits (M-009..M-012); do not reintroduce shared mutable static state that bypasses `PipelineSession`
   or `GenerationContext`.
 - **Build order `global → local → relief → biome`** is fixed in `GenerationContext`'s constructor
-  (`GenerationContext.java:61-67`) and mirrored by the fallback chain each provider uses when no test
+  (`GenerationContext.java:55-60`) and mirrored by the fallback chain each provider uses when no test
   override is set (`LocalRiverProvider` → `GlobalRiverProvider`, `ReliefProvider`/`BiomeProvider` →
   `LocalRiverProvider`). Reordering it changes which providers can legally depend on which.
 - **ONNX tensor-layout invariants are fixed.** `CH=0/X=1/Z=2` and the per-stage channel counts in
   `TensorLayout.java` (`DECODER_CHANNELS=8`, `RELIEF_CHANNELS=7`, `BIOME_CHANNELS=6`,
-  `GLOBAL_RIVER_CHANNELS=3`) are the model I/O contract — any stage boundary must preserve them exactly.
+  `GLOBAL_RIVER_CHANNELS=4`) are the model I/O contract — any stage boundary must preserve them exactly.
 - **`Storage`/`InfiniteTensor` lock-ordering and CAS single-flight are deliberate.** Reads are lock-free;
   the only lock (`evictionLock`) guards eviction bookkeeping and is never touched by readers
-  (`Storage.java:33-37`). Compute/load claims use an atomic `CACHE.putIfAbsent` (`claimForCompute`,
+  (`Storage.java:49`). Compute/load claims use an atomic `CACHE.putIfAbsent` (`claimForCompute`,
   `fetchEntry`) — losers block on the winner's future rather than recomputing. `LocalRiverProvider`'s
   dual-store build (units index + carved elevation from one `buildTile` call) depends on this claim API
   to cross-fill the second store without a duplicate compute — do not bypass it.
@@ -343,9 +354,10 @@ files — flipping them back means editing source.
   freeze does **not** guard the `public final data` array — this invariant is a convention the compiler
   will not enforce for you.
 - **The hydrology carve is order-dependent.** `carveRiverShells` reads and writes one shared buffer and
-  applies only the nearest unit per pixel, so carve results depend on how many passes have run and on
-  which units were in the graph at the time. `buildTile` runs it twice by design. Adding, reordering or
-  deduplicating those passes changes terrain output — it is not a refactor-safe region.
+  averages every unit whose influence circle reaches a given pixel, so carve results depend on how many
+  passes have run and on which units were in the graph at the time. `buildTile` runs it twice by design.
+  Adding, reordering or deduplicating those passes changes terrain output — it is not a refactor-safe
+  region.
 - **`RiverNetwork`/`QuadTree` reuse is per-tile and single-threaded.** `GlobalNetworkBuilder` builds and
   returns a fresh `Meanders`/`RiverNetwork` purely from its parameters; `LocalDrainageTracer` then mutates
   that same network in place to attach the local subgraph (`traceLocalNetwork` returns nothing) — both are
@@ -362,7 +374,7 @@ files — flipping them back means editing source.
 writing, `gradle test` fails at `:compileTestJava`:
 
 ```
-SpatialIndexCorrectnessGoldenTest.java:51: error: cannot find symbol
+SpatialIndexCorrectnessGoldenTest.java:49: error: cannot find symbol
   symbol:   method maxNativeWidth()
   location: class FractalTerrainConfig
 ```

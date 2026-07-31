@@ -20,6 +20,27 @@ supplied once at construction, the tree is packed (euler-tour sort for the quadt
 bulk load for the R-tree), and there is no insert/remove path afterward. Because nothing ever mutates
 post-construction, both are safe to share across threads with no lock at all.
 
+## Known Issue: `ImmutableQuadTree` root-square alignment
+
+`findSection` assigns quadrants against an infinite tiling anchored at the origin:
+`floorMod(floor(coord / m), 2)` per axis. That rule is only consistent with recursive bisection if the
+root square is itself aligned to that tiling.
+
+It is not. The constructor sizes the root square from the point bounding box — lower corner minus a
+fixed 5-unit margin, side `max(width, height) + 10` — which lands at an arbitrary origin. The loop that
+used to snap the root to a power-of-two-aligned cell is commented out in the constructor.
+
+The consequence is that the build's quadrant sort and the query descent can disagree, and points are
+silently dropped from query results rather than an error being raised. `validate()` detects it: its
+point-inside-its-leaf-square check is what fails.
+
+Do not write a golden test capturing current output — that would freeze the broken behaviour. Known
+bugs get a `@Disabled` contract test asserting the intended behaviour instead.
+
+Two constructor comments still describe the disabled loop as if it ran (the non-finite-input rejection
+explains itself in terms of "poisons the alignment loop"). The input check is still worth keeping; only
+its stated rationale is stale.
+
 ## Invariants
 
 - **`QuadTree`'s read/write lock guards query concurrency, not construction sharing.** The lock lets

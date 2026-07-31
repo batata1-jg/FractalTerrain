@@ -33,38 +33,14 @@ public final class DebugConfig {
     // 3D visualizer (debug terrain projection — see Infinite3DVisualizer)
     // ──────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Whether the 3D visualizer replaces normal chunk fill. Checked once per chunk fill, not per block, so
-     * a runtime read costs nothing on the generation hot path.
-     */
+    /** Whether the 3D visualizer replaces normal chunk fill. */
     public static final boolean DISABLE_3D_VISUALIZER = true;
 
-    /**
-     * Drives the elevation each visualizer column is raised to ({@link Infinite3DVisualizer#debugElevController}).
-     * Sampled once per column inside the visualizer's per-block fill loop — genuinely hot, so this stays a
-     * compile-time constant rather than a property-sourced field. Available
-     * {@link Infinite3DVisualizer.DebugModes}:
-     * <ul>
-     *   <li>{@code RELIEF} — elevation after the carving step (carved+filled ch0 imported by ReliefProvider).</li>
-     *   <li>{@code DECODED} — elevation before the carving step (raw decoded terrain, {@code DecoderChannels}
-     *       {@code base[0]}), same vertical scale as {@code RELIEF} for direct before/after comparison.</li>
-     *   <li>{@code COARSE} — coarse-stage elevation channel.</li>
-     *   <li>{@code DIST_SHORE} — distance-to-shore field from the biome provider.</li>
-     * </ul>
-     */
+    /** Which field the visualizer raises columns to. Compile-time because it is read per column. */
     public static final Infinite3DVisualizer.DebugModes VIZ_H_CONTROL_MODE =
             Infinite3DVisualizer.DebugModes.POP_NOISE_RELIEF;
 
-    /**
-     * Drives the block painted at each visualizer position ({@link Infinite3DVisualizer#debugPaintController}).
-     * Sampled once per block inside the visualizer's per-block fill loop — genuinely hot, so this stays a
-     * compile-time constant rather than a property-sourced field. Available
-     * {@link Infinite3DVisualizer.DebugPaintModes}:
-     * <ul>
-     *   <li>{@code RIVER_NET} — global/local river + coast markers.</li>
-     *   <li>{@code PV} — peaks-and-valleys bands quantized from biome weirdness.</li>
-     * </ul>
-     */
+    /** Which field the visualizer colours by. Compile-time because it is read per block. */
     public static final Infinite3DVisualizer.DebugPaintModes VIZ_PAINT_CONTROL_MODE =
             Infinite3DVisualizer.DebugPaintModes.HYDRO_ZONES;
 

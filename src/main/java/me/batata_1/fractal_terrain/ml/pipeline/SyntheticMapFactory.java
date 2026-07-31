@@ -45,11 +45,8 @@ public final class SyntheticMapFactory {
     private static float cachedTempStdP99;
     private static boolean dataLoaded = false;
 
-    /**
-     * @param worldSeed 64-bit world seed (Python: seed & 0xFFFFFFFFFFFFFFFF). Per-channel seeds are
-     *     masked to the lower 31 bits ({@code & 0x7FFFFFFF}) to stay non-negative for
-     *     {@link FastNoiseLite}'s {@code int} seed constructor.
-     */
+    /** Per-channel seeds mask {@code worldSeed} to the lower 31 bits — {@link FastNoiseLite}'s seed
+     *  constructor takes a non-negative {@code int}. */
     public SyntheticMapFactory(long worldSeed) {
         loadDataIfNeeded();
         this.dataQuantiles = cachedDataQuantiles;
@@ -99,11 +96,8 @@ public final class SyntheticMapFactory {
         }
     }
 
-    /**
-     * Compute noise quantile table for a FastNoiseLite instance.
-     * Samples on a 1024x1024 grid over [0, 32768) at stride 32, matching Python's
-     * _compute_map_stats: x/y in arange(0, 32*1024, 32).
-     */
+    /** Builds the quantile table used to remap raw noise to WorldClim/ETOPO distributions. Sampling
+     *  grid must exactly mirror Python's {@code _compute_map_stats} for cross-implementation parity. */
     static float[] buildNoiseQuantiles(FastNoiseLite fnl, int nQuantiles, float eps) {
         float[] values = new float[1024 * 1024];
         int k = 0;
@@ -129,16 +123,8 @@ public final class SyntheticMapFactory {
         return q;
     }
 
-    /**
-     * Sample the synthetic map at world coordinates.
-     *
-     * @param x1 left world coord (j column in tile space)
-     * @param y1 top world coord (i row in tile space)
-     * @param x2 exclusive right
-     * @param y2 exclusive bottom
-     * @return float[5][H][W] where H = y2-y1, W = x2-x1
-     *         channels: [elev_sqrt, temp, temp_std, precip, precip_std]
-     */
+    /** Synthetic climate conditioning consumed by {@link CoarseStage}'s conditioning channels: output
+     *  channel order is [elev_sqrt, temp, temp_std, precip, precip_std]. */
     public float[][][] sample(int x1, int y1, int x2, int y2) {
         int H = y2 - y1;
         int W = x2 - x1;

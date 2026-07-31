@@ -1,18 +1,13 @@
 package me.batata_1.fractal_terrain.noise.strategy;
 
 /**
- * The {@code OpenSimplex2} noise-type strategy: 2D uses ordinary Simplex noise (per the original
- * FastNoiseLite comment, "2D OpenSimplex2 case uses the same algorithm as ordinary Simplex"), 3D uses
- * two offset rotated cube grids.
+ * The {@code OpenSimplex2} noise strategy: ordinary Simplex in 2D, two offset rotated cube grids in 3D.
  *
- * <p><b>Responsibility:</b> {@link #SingleSimplex} (2D) and {@link #SingleOpenSimplex2} (3D) - the
- * {@code NoiseType.OpenSimplex2} branch of {@code FastNoiseLite}'s noise dispatcher.
+ * <p>One of the interchangeable noise-type strategies {@code FastNoiseLite} dispatches to; extracted so the
+ * dispatcher stays readable and each variant can be read on its own.
  *
- * <p><b>Collaborators:</b> {@link NoiseTables} for the shared hash/gradient tables and interpolation
- * helpers; dispatched from {@code FastNoiseLite#GenNoiseSingle}.
- *
- * <p><b>Invariants:</b> mechanical extraction from the embedded FastNoiseLite 1.1.1 implementation -
- * every constant and evaluation order is unchanged; output is byte-identical to the pre-split code.
+ * <p><b>Do not "clean up" any constant or reorder any expression.</b> This is a mechanical extraction
+ * from FastNoiseLite 1.1.1 and must stay byte-identical — every world already generated depends on it.
  */
 public final class OpenSimplex2Strategy {
 

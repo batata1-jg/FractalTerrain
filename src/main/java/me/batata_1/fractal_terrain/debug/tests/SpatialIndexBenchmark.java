@@ -26,31 +26,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Query-throughput benchmark for the hydrology spatial indexes: builds one real
- * {@link LocalRiverProvider} unit tile (same boot path as {@link LocalRiverTest}), indexes the same
- * units in <b>both</b> structures — the production {@link ImmutableRTree} of influence circles and an
- * {@link ImmutableQuadTree} of unit-center points replicating the pre-R-tree query path — then
- * measures queries/second for uniformly random points over the 512×512 tile, pairing each legacy
- * query with its R-tree replacement:
+ * Queries/sec benchmark comparing the production {@link ImmutableRTree} against the legacy
+ * {@link ImmutableQuadTree}-based query path it replaced, over one real {@link LocalRiverProvider}
+ * unit tile — covering the influence query, the {@code insideChannel} existence test, and the
+ * provider-level query/carve calls.
  *
- * <ol>
- *   <li><b>influence query</b> — legacy: {@code getPointsInCircle(MAX_INFLUENCE_RADIUS)} + per-unit
- *       reach filter ({@code distSq ≤ riverInfluence(width)²}); R-tree: one
- *       {@link ImmutableRTree#queryContaining} stab;</li>
- *   <li><b>insideChannel existence test</b> — legacy: {@code anyPointInCircle} at
- *       {@code maxNativeWidth()/2}; R-tree: {@link ImmutableRTree#anyContaining}. Both filter through
- *       {@link HydrologicalUnit#channelContains} — {@code distSq ≤ (width/2)²} for a river reach, and
- *       {@code false} for the feature types with no wetted channel;</li>
- *   <li><b>provider level</b> — {@code LocalRiverProvider.queryInfluence} (cross-tile + re-stamping)
- *       and {@code HydrologyProfileCarver.carveAtPixel} (query + flat weighted merge), both now on the
- *       R-tree path.</li>
- * </ol>
- *
- * Before timing anything it cross-checks correctness: over {@value #CROSS_CHECK_POINTS} seeded random
- * points, the legacy path and the R-tree stab must return exactly the same unit sets (throws on the
- * first mismatch). Every measured call feeds a checksum that is logged at the end, so the JIT cannot
- * dead-code-eliminate the queries. Also dumps the tile's unit visualization + stats via
- * {@code Debug.units}. Run with {@code ./gradlew spatialIndexBenchmark}.
+ * <p>Cross-checks correctness against a brute-force scan before timing anything (throws on mismatch),
+ * since a benchmark of a broken index is worthless. Also dumps the tile's unit visualization. Run with
+ * {@code ./gradlew spatialIndexBenchmark}.
  */
 @TestOnly
 public class SpatialIndexBenchmark {
@@ -68,18 +51,11 @@ public class SpatialIndexBenchmark {
 
     private static final int CROSS_CHECK_POINTS = 10_000;
 
-    /**
-     * Provider-level query points stay this far from the tile border so the cross-tile span
-     * (MAX_INFLUENCE_RADIUS) never forces a neighbouring tile to build mid-benchmark (each build runs
-     * diffusion inference and would swamp the timings).
-     */
+    /** Keeps provider-level query points clear of MAX_INFLUENCE_RADIUS so a run never triggers a neighbour-tile build mid-timing. */
     private static final double PROVIDER_MARGIN = HydrologyTuning.MAX_INFLUENCE_RADIUS + 2.0;
 
-    /**
-     * Quadtree adapter for the legacy path: {@link HydrologicalUnit} no longer implements
-     * {@link SpatialIndexPoint} (it is an influence circle now), so the benchmark wraps each unit in a
-     * point record carrying the unit's center.
-     */
+    /** Quadtree adapter: {@link HydrologicalUnit} is an influence circle rather than a
+     *  {@link SpatialIndexPoint}, so the point-index side of the comparison wraps each unit's centre. */
     private record UnitPoint(HydrologicalUnit unit) implements SpatialIndexPoint {
         @Override
         public double[] getCoords() {
@@ -177,11 +153,8 @@ public class SpatialIndexBenchmark {
         LOG.info("SpatialIndexBenchmark done. See {}", DEBUG_PATH);
     }
 
-    /**
-     * The pre-R-tree influence query, replicated exactly: collect every unit-center point within
-     * {@code MAX_INFLUENCE_RADIUS}, then keep only those whose own {@code riverInfluence(width)} disc
-     * actually covers the query point. Returns the kept count.
-     */
+    /** The pre-R-tree influence query, replicated exactly: quadtree circle scan then per-unit
+     *  {@code riverInfluence(width)} filter — the baseline the R-tree replaces. */
     private static long legacyInfluenceQuery(
             ImmutableQuadTree<UnitPoint> unitQuadTree, double[] pt, List<UnitPoint> buffer) {
         buffer.clear();
@@ -197,16 +170,9 @@ public class SpatialIndexBenchmark {
         return keptCount;
     }
 
-    /**
-     * Correctness gate run before any timing, over {@link #CROSS_CHECK_POINTS} seeded random points drawn
-     * from the tile's world extent (the frame the index stores). Ground truth is a <b>brute-force linear
-     * scan</b> of every unit ({@code distSq ≤ riverInfluence(width)²}); the R-tree stab must match it
-     * exactly (throws on the first mismatch).
-     * The legacy quadtree path is checked against the same truth but only <b>warns</b> on deviation —
-     * {@code ImmutableQuadTree.findSection} tiles on a 0-anchored grid while node squares use an
-     * arbitrary origin, a known pre-existing boundary misclassification that can drop a few points, and
-     * it must not mask an R-tree bug (nor fail the benchmark for an old one).
-     */
+    /** Correctness gate before any timing: brute-force scan is ground truth; the R-tree must match
+     *  exactly (throws on mismatch), while the legacy quadtree only warns — {@code findSection}'s known
+     *  0-anchored-grid boundary bug can drop points and must not fail the benchmark for an old bug. */
     private static void crossCheckInfluenceQueries(
             List<HydrologicalUnit> allUnits,
             ImmutableQuadTree<UnitPoint> unitQuadTree,
@@ -270,11 +236,8 @@ public class SpatialIndexBenchmark {
         LOG.info("cross-check passed: R-tree stab matches brute force on {} points", CROSS_CHECK_POINTS);
     }
 
-    /**
-     * Deterministic uniform world-frame points spanning the benchmark tile — {@code [origin, origin+GRID)}
-     * per axis. One generator per benchmark. Used for the index-level benchmarks, which stab the tile's
-     * own R-tree directly; that index stores world coords, so its query points are world points too.
-     */
+    /** Deterministic uniform world-frame points spanning the tile — used by the index-level benchmarks,
+     *  which stab the tile's own R-tree directly in its native (world) coordinate frame. */
     private static PointSupplier worldTilePoints(long seed, double worldOriginX, double worldOriginZ) {
         final Random rng = new Random(seed);
         final double[] pt = new double[2];
@@ -303,11 +266,8 @@ public class SpatialIndexBenchmark {
         double[] next();
     }
 
-    /**
-     * Wall-clock benchmark: run {@code query} on fresh points for {@link #WARMUP_NANOS} (discarded), then
-     * for {@link #MEASURE_NANOS}, log queries/second, and return it (for the ratio summary). The per-call
-     * long results accumulate into a checksum that is logged too, so the JIT cannot eliminate the work.
-     */
+    /** Runs {@code query} for {@link #WARMUP_NANOS} then {@link #MEASURE_NANOS}, logging queries/sec.
+     *  Results feed a checksum so the JIT cannot dead-code-eliminate the timed calls. */
     private static double bench(String label, PointSupplier points, ToLongFunction<double[]> query) {
         long checksum = 0;
         final long warmupEnd = System.nanoTime() + WARMUP_NANOS;

@@ -24,21 +24,14 @@ import net.minecraft.world.level.storage.LevelResource;
 import org.slf4j.Logger;
 
 /**
- * The per-world generation context: the whole provider graph (relief, biome, hydrology, surface, noise,
- * caches) wired together in dependency order for one loaded server world.
+ * Per-world provider graph, wired in dependency order for one loaded server world.
  *
- * <p>This is the injectable seam the refactor introduces (keystone M-008). {@link FractalTerrainInstance}
- * is now a thin static adapter that holds the current context and delegates its getters here; over time
- * callers migrate from {@code FractalTerrainInstance.getX()} to holding a {@code GenerationContext} and
- * calling {@code ctx.getX()} directly, which is what makes the packages liftable.
+ * <p>Injectable seam from the singleton-to-DI refactor (M-008); {@link FractalTerrainInstance} holds
+ * this behind a future and forwards its old static getters here while callers migrate to holding a
+ * context directly.
  *
- * <p><b>Build order</b> mirrors the dependency graph and must be preserved: {@code global → local → relief
- * → biome} (each later provider may reach the earlier ones through the adapter during its own tile compute).
- *
- * <p><b>Safe publication.</b> Every field is {@code final}, and instances are published only through
- * {@link FractalTerrainInstance}'s {@code CompletableFuture<GenerationContext>} — a reader calling
- * {@code get()} has a happens-before edge with the {@code complete()} that stored the fully-constructed
- * context, so no worker can observe a partially-constructed or null-then-swapped graph.
+ * <p>Build order mirrors the dependency graph and must be preserved: {@code global → local → relief
+ * → biome}.
  */
 public final class GenerationContext {
 

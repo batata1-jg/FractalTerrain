@@ -3,44 +3,23 @@ package me.batata_1.fractal_terrain.hydrology.rosgen;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.features.RiverUnit;
 import me.batata_1.fractal_terrain.hydrology.features.RiverUnit.RosgenType;
-import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * The Rosgen Level-I decision key: a total, pure, deterministic function from measured reach metrics to
- * a stream type. No raster, no graph, no state — everything this class needs arrives in a
- * {@link ReachMetrics}.
+ * The Rosgen Level-I decision key: measured reach metrics in, stream type out, nothing else needed.
  *
- * <p>The key is ordered and first-match-wins, restructured from the published version so every test uses
- * a quantity this project can actually measure. Ordering is load-bearing:
+ * <p>Kept free of raster and graph so the classification rules can be read and tested on their own,
+ * apart from how the metrics were measured.
  *
- * <ol>
- *   <li><b>Slope first.</b> {@code Aa+} and {@code A} occupy slope bands no other type overlaps, and both
- *       are entrenched by definition in their landform, so testing entrenchment first would only add a
- *       way to get them wrong.</li>
- *   <li><b>Entrenchment second</b> — the only test separating the entrenched family ({@code F}, {@code G})
- *       from everything with a floodplain. Within that family W/D picks narrow-deep {@code G} (a gully)
- *       over wide-shallow {@code F} (an incised meandering river). {@code B}'s published slope band
- *       overlaps {@code G}'s exactly, so entrenchment — not slope — is what distinguishes them.</li>
- *   <li><b>{@code DA} before {@code D}.</b> Both want unconfined valleys, but anastomosing is far more
- *       specific: near base level, essentially flat, extremely wide flood-prone area. Testing it first
- *       stops braiding from stealing it.</li>
- *   <li><b>{@code E} vs {@code C} last</b>, on W/D alone — small meadow streams become {@code E}, trunk
- *       rivers {@code C}.</li>
- * </ol>
- *
- * <p>Level II (the substrate digit {@code 1}–{@code 6}) is out of scope and not recoverable: grain size
- * is a function of lithology, transport history and sediment supply, none of which are in an elevation
- * field.
+ * <p>First-match-wins and the order is load-bearing — slope, then entrenchment, then {@code DA} before
+ * {@code D}, then {@code E} vs {@code C}. See {@code README.md} for why. Level II (the substrate digit)
+ * is not recoverable from an elevation field and is out of scope.
  */
 public final class RosgenKey {
 
     private RosgenKey() {}
 
-    /**
-     * The Rosgen Level-I type for one reach. Total: every input, including a saturated
-     * ({@code +inf}) entrenchment ratio, returns a type.
-     */
+    /** The type for one reach. Total — even a saturated {@code +inf} entrenchment returns a type. */
     public static RosgenType classify(ReachMetrics m) {
         // Steep confined headwaters: slope alone decides.
         if (m.slope() >= HydrologyTuning.S_AA) return RiverUnit.RosgenType.Aa;
@@ -66,35 +45,15 @@ public final class RosgenKey {
         return m.widthDepth() < HydrologyTuning.WD_NARROW ? RiverUnit.RosgenType.E : RiverUnit.RosgenType.C;
     }
 
-    /**
-     * Slope above which braiding is plausible for a channel of the given native-px width. Braiding is not
-     * measurable here — there is no sediment-transport model, and nothing in an elevation field
-     * distinguishes a braided reach from a meandering one — so this gates where braiding would be
-     * plausible and accepts the outcome as authored.
-     */
+    /** Gates where braiding is plausible. Braiding is not measurable without a sediment-transport
+     *  model, so this is an authored style choice rather than an observation. */
     public static double braidThreshold(double width) {
         return HydrologyTuning.K_BRAID * Math.pow(width, HydrologyTuning.BRAID_WIDTH_EXPONENT);
     }
 
-    /**
-     * Rosgen's published tolerances (ER &plusmn;0.2, W/D &plusmn;2.0) applied as a dead band: when a
-     * reach's entrenchment ratio or width-to-depth ratio sits within tolerance of one of the thresholds
-     * the key compares it against, keep {@code previous} — the type of the neighbouring reach — instead of
-     * committing to {@code raw}.
-     *
-     * <p>The tolerances exist because the field metrics are noisy; a raster implementation is noisier
-     * still. Without the dead band, types flicker along a single river, and because
-     * {@link RosgenProfile} controls {@code floodPlainLength}
-     * and {@code riverInfluence}, a flicker becomes a visibly scalloped floodplain edge.
-     *
-     * <p><b>Scope: ER and W/D only.</b> The slope bands ({@code S_AA}, {@code S_A}, {@code S_DA}) and the
-     * braiding threshold are deliberately outside the dead band. Slope is a real property of the
-     * landform rather than a noisy transect measurement, and a reach genuinely crossing into the steep
-     * bands should change type there; suppressing that would smear {@code Aa+}/{@code A} headwaters into
-     * the reaches below them. Type variation driven by slope is intended behaviour, not flicker.
-     *
-     * @param previous the neighbouring reach's committed type, or {@code null} at a network leaf
-     */
+    /** Suppresses type flicker near a threshold by keeping the neighbouring reach's type. Exists
+     *  because a flickering type scallops the floodplain edge, which the profile derives from it.
+     *  Covers ER and W/D only — slope is real landform variation, not measurement noise. */
     public static RosgenType applyDeadBand(ReachMetrics m, RosgenType raw, @Nullable RosgenType previous) {
         return raw;
         //        if (previous == null || raw == previous) return raw;

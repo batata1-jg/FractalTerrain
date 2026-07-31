@@ -9,7 +9,6 @@ import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
-import me.batata_1.fractal_terrain.hydrology.profile.ZoneCategory;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
@@ -19,72 +18,36 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * A single sample of a hydrological feature — a river reach, a waterfall, an oxbow lake, the source
- * terminating a channel — and the queryable, persistable unit stored in
- * {@link me.batata_1.fractal_terrain.hydrology.LocalRiverProvider}'s tiled {@code ImmutableRTree}. Each
- * feature type is a {@code record} implementing this interface, carrying whatever state that type needs
- * and nothing more: {@link RiverUnit} has a channel normal, width and bank elevation, while a
- * {@link WaterfallUnit} or a {@link SourceUnit} currently has only a position.
+ * One sample of a hydrological feature, and the unit the whole carve pipeline queries against.
  *
- * <p>Every unit is indexed as an <b>influence circle</b> ({@link SpatialIndexCircle}): centre =
- * {@link #getCenter()}, radius = {@link #getRadius()} — so a point-stabbing query returns exactly the
- * units whose influence reaches the point. {@link #getCoords()} returns the same backing array with no
- * copy, so tree construction and every query point-scan pay no boxing.
+ * <p>Exists so heterogeneous feature types share one index and one persistence payload: every unit is
+ * indexed as an influence circle, and the type tag lets one {@code Storage} payload round-trip them all.
  *
- * <p>What a unit <em>does</em> to the terrain is split in two, and neither half is dispatched on the
- * concrete record type by the carve stages:
- *
- * <ul>
- *   <li>{@link #getProfile()} answers <em>where</em> and <em>how much</em> — which {@link ZoneCategory}
- *       the unit claims a point for, and with what weight. See {@link HydrologyProfile}.</li>
- *   <li>{@link #carveFineGrained} answers <em>what</em> — the unit's own cross-section, computed from
- *       state only that record has.</li>
- * </ul>
- *
- * <h2>Persistence</h2>
- *
- * <p>{@link Persistable} is implemented once, here, as a type tag plus a body: {@link #serialize()}
- * writes {@code getType().ordinal()} and appends whatever {@link #serializeUnit()} produced, and
- * {@link #deserialize} reads the tag back, looks up that feature's prototype in
- * {@link HydrologicalFeature}, and lets it rebuild the body via {@link #deserializeUnit}. So a record
- * never handles its own tag and a heterogeneous unit index round-trips through one {@code Storage}
- * payload type. A new feature type becomes persistable by implementing the two {@code …Unit} methods and
- * registering its prototype on its {@link HydrologicalFeature} constant.
- *
- * <p>Records compare array components by reference, so every implementation must override
- * {@link #equals} / {@link #hashCode} to compare {@code coord} contents — see
- * {@link UnitCodec#coordsEqual}.
+ * <p>Carve behavior is split so the carve stages never switch on the concrete record type: {@link
+ * #getProfile()} answers where and how much, {@link #carveFineGrained} answers what. Implementations
+ * must override {@code equals}/{@code hashCode} — see {@link UnitCodec#coordsEqual}.
  */
 public interface HydrologicalUnit extends SpatialIndexPoint, SpatialIndexCircle, Persistable<HydrologicalUnit> {
 
-    /**
-     * The prototype {@code Storage} probes once to decide the unit index is persistable, and the receiver
-     * every {@link #deserialize} call is made on. Any unit will do — {@link #deserialize} dispatches on
-     * the tag in the bytes, not on the receiver — so this is simply the most common type.
-     */
+    /** Probe {@code Storage} uses to decide the index is persistable; any unit type would serve. */
     HydrologicalUnit PROTOTYPE = RiverUnit.PROTOTYPE;
 
-    /**
-     * Placeholder influence radius (native px) for the feature types that carry only a position so far.
-     * Small on purpose: until such a type has a profile deriving a reach from real state, it should
-     * perturb barely more than the pixel it sits on rather than assert a radius nothing measured.
-     */
+    /** Deliberately small, so a feature with no profile yet barely perturbs the terrain. */
     double DEFAULT_RADIUS = 2.0;
+
     Logger LOG = LoggerFactory.getLogger(HydrologicalUnit.class);
 
     /** Which kind of feature this unit is; the tag {@link #serialize()} writes. */
     HydrologicalFeature getType();
 
     /**
-     * The kinds of hydrological feature, and the registry mapping each to the record implementing it.
+     * Feature kinds and the registry mapping each to its record.
      *
-     * <p>A constant's {@link #ordinal()} is the on-disk type tag written by
-     * {@link HydrologicalUnit#serialize()}, so <b>constants may only be appended</b> — reordering or
-     * removing one silently reinterprets every unit already on disk.
+     * <p><b>Append only.</b> A constant's ordinal is the on-disk type tag, so reordering or removing one
+     * silently reinterprets every unit already cached.
      *
-     * <p>A constant with no record yet is registered with a {@code null} prototype: it can be stamped on
-     * geometry and carried through the pipeline, but {@link #prototype()} throws rather than guessing a
-     * type, so an attempt to persist it fails loudly at the one place that can name what is missing.
+     * <p>A {@code null} prototype means the type can flow through the pipeline but not be persisted;
+     * {@link #prototype()} throws rather than guessing, failing where the gap can be named.
      */
     enum HydrologicalFeature {
         RIVER(() -> RiverUnit.PROTOTYPE) {
@@ -96,7 +59,7 @@ public interface HydrologicalUnit extends SpatialIndexPoint, SpatialIndexCircle,
                 for (int i = 0; i < ch.numPts(); i++) {
                     final double width = ch.widthAt(i);
                     final RosgenProfile profile = RosgenProfile.of(types[i]);
-                    final double[] coords = VectorOps.sub(ch.spline.sample(i),offset);
+                    final double[] coords = VectorOps.sub(ch.spline.sample(i), offset);
                     out.add(new RiverUnit(
                             coords,
                             profile.riverInfluence(width),
@@ -119,7 +82,7 @@ public interface HydrologicalUnit extends SpatialIndexPoint, SpatialIndexCircle,
             @Override
             public void addUnits(double[] offset, List<HydrologicalUnit> units, Object... args) {
                 Endpoint endpoint = (Endpoint) args[0];
-                units.add(new SourceUnit(VectorOps.sub(endpoint.coord,offset)));
+                units.add(new SourceUnit(VectorOps.sub(endpoint.coord, offset)));
             }
         },
         WATERFALL(() -> WaterfallUnit.PROTOTYPE) {
@@ -134,11 +97,7 @@ public interface HydrologicalUnit extends SpatialIndexPoint, SpatialIndexCircle,
         /** {@code values()} without the defensive copy; indexed by the on-disk type tag. */
         private static final HydrologicalFeature[] VALUES = values();
 
-        /**
-         * Indirected through a {@link Supplier} because the constants name records that themselves
-         * implement the enclosing interface: a direct instance would have to exist before this enum
-         * finishes initialising.
-         */
+        /** A supplier, because a direct instance would need to exist before this enum initialises. */
         private final @Nullable Supplier<HydrologicalUnit> prototypeSupplier;
 
         HydrologicalFeature(@Nullable Supplier<HydrologicalUnit> prototypeSupplier) {
@@ -174,11 +133,8 @@ public interface HydrologicalUnit extends SpatialIndexPoint, SpatialIndexCircle,
     /** The profile deciding this unit's carve zones and shell pull. */
     HydrologyProfile getProfile();
 
-    /**
-     * This unit's own cross-section at {@code pt} (relief-pixel frame), applied to the elevation already
-     * carved there. Returning {@code elevAtPixel} unchanged means "no detail of my own" — the unit then
-     * still blends its ambient elevation into whatever zone it claimed.
-     */
+    /** The unit's own cross-section, layered onto what the shell carve already cut. Returning
+     *  {@code elevAtPixel} unchanged means the unit adds no detail of its own. */
     double carveFineGrained(double[] pt, double elevAtPixel);
 
     @Override
@@ -188,11 +144,7 @@ public interface HydrologicalUnit extends SpatialIndexPoint, SpatialIndexCircle,
 
     double[] coord();
 
-    /**
-     * Whether a query point at squared distance {@code distSqFromCentre} from this unit's centre lies
-     * inside the feature's water span. Only features with a wetted channel can answer yes; the default is
-     * no, so a feature type opts in by overriding.
-     */
+    /** Whether the point is inside open water. Defaults to no, so a wetted type opts in. */
     default boolean channelContains(double distSqFromCentre) {
         return false;
     }

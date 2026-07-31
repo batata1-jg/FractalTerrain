@@ -17,16 +17,13 @@ import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
 import org.junit.jupiter.api.Test;
 
 /**
- * Headless correctness gate for the hydrology spatial indexes, split out of the CORRECTNESS portion of
- * {@code debug.tests.SpatialIndexBenchmark} (M-004) — the wall-clock throughput benchmark itself stays
- * in that class as a manual harness.
+ * Headless correctness gate for the hydrology spatial indexes, split out of the correctness portion of
+ * {@code debug.tests.SpatialIndexBenchmark} (whose wall-clock throughput benchmark stays there).
  *
- * <p>{@code SpatialIndexBenchmark} builds its unit set from a real {@code LocalRiverProvider} tile,
- * which reads elevation via {@code GlobalRiverProvider} off {@code FractalTerrainInstance.pipeline} —
- * the ONNX diffusion pipeline (~1 GB weights + GPU). That is not headless/CI-runnable, so this test
- * exercises the same cross-check ({@link ImmutableRTree} stab vs. a brute-force linear scan) over a
- * synthetic, seeded {@link HydrologicalUnit} set instead: the index structures' correctness is a
- * property of the shapes they are given, independent of whether those shapes came from real terrain.
+ * <p>The benchmark builds its unit set from a real tile via the ONNX diffusion pipeline, not
+ * headless/CI-runnable. This test exercises the same cross-check ({@link ImmutableRTree} stab vs.
+ * brute-force scan) over a synthetic, seeded {@link HydrologicalUnit} set: correctness is a property
+ * of the shapes given, independent of their origin.
  */
 class SpatialIndexCorrectnessGoldenTest {
 
@@ -56,13 +53,8 @@ class SpatialIndexCorrectnessGoldenTest {
         return units;
     }
 
-    /**
-     * Brute-force vs. R-tree stab over {@link #CROSS_CHECK_POINTS} seeded points (throws via the
-     * assertion on the first mismatch, mirroring {@code SpatialIndexBenchmark}'s
-     * {@code crossCheckInfluenceQueries}), plus a hit-count checksum: a change to the reach/width
-     * formula that keeps the R-tree and brute force internally consistent with each other (so the
-     * per-point assertion alone would not catch it) still moves the checksum.
-     */
+    /** Brute-force vs. R-tree stab over seeded points, plus a hit-count checksum: catches a reach/width
+     *  formula change that keeps both structures internally consistent but shifts what they agree on. */
     private static long crossCheckAndChecksum(List<HydrologicalUnit> units) {
         final ImmutableRTree<HydrologicalUnit> unitRTree = new ImmutableRTree<>(units, null);
 
@@ -94,10 +86,8 @@ class SpatialIndexCorrectnessGoldenTest {
         return checksum;
     }
 
-    /** The legacy {@link ImmutableQuadTree} path, retained to confirm it still builds/queries over the
-     *  synthetic set (mirrors {@code SpatialIndexBenchmark}'s legacy path; not asserted against brute
-     *  force here — it carries a known {@code findSection} boundary misclassification, documented on
-     *  the benchmark). */
+    /** Legacy {@link ImmutableQuadTree} path, exercised only to confirm it still builds/queries here; not
+     *  asserted against brute force since it carries a known {@code findSection} boundary bug. */
     private static ImmutableQuadTree<UnitPoint> buildLegacyQuadTree(List<HydrologicalUnit> units) {
         final List<UnitPoint> unitPoints = new ArrayList<>(units.size());
         for (final HydrologicalUnit unit : units) unitPoints.add(new UnitPoint(unit));
@@ -112,12 +102,8 @@ class SpatialIndexCorrectnessGoldenTest {
         assertEquals(GOLDEN_CHECKSUM, checksum, "hit-set-size checksum drifted from the captured golden");
     }
 
-    /**
-     * Determinism pre-check (M-004 step 3, run before the golden fixture above was frozen): the
-     * synthetic unit generation, tree build, and cross-check all derive from fixed {@link Random} seeds
-     * and touch no other state, so 5 independent runs are expected to be — and were confirmed —
-     * bit-identical; no canonicalization or tolerance was needed.
-     */
+    /** Confirms unit generation, tree build and cross-check derive from the seeds alone: 5 runs are
+     *  checked bit-identical, catching hidden nondeterminism the golden checksum alone would miss. */
     @Test
     void correctnessCheckIsDeterministicAcrossRuns() {
         Long first = null;

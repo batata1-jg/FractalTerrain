@@ -6,29 +6,20 @@ import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.math.Interpolation;
 
 /**
- * The raster side of Rosgen classification: measures along-channel slope and the entrenchment ratio for
- * one reach.
+ * The raster side of Rosgen classification: measures slope and entrenchment for one reach.
  *
- * <p><b>The elevation field must be the raw decoded terrain, never a carved buffer.</b>
- * {@code HydrologyProfileCarver.carveRiverShells} <em>creates</em> the floodplain and writes in place;
- * measuring entrenchment on its output measures {@code FLOODPLAIN_BASE} and
- * {@code FLOODPLAIN_WIDTH_FACTOR} — the carve's own tuning constants — instead of the terrain.
+ * <p><b>The elevation field must be raw decoded terrain, never a carved buffer.</b> The carve creates
+ * the floodplain, so measuring on its output measures the carve's own tuning constants.
  *
- * <p>Cost note: a transect walks perpendicular to the channel, so consecutive samples stride a whole
- * row ({@code gridSize} floats) and get no spatial locality — each sample is close to a cache miss.
- * Callers must therefore transect once per <em>reach</em>, not once per spline point;
- * {@link ReachRosgenClassifier} is responsible for that and the step scales with width to keep the step
- * count roughly constant.
+ * <p>A transect strides across rows and gets no cache locality, so callers must transect once per reach
+ * rather than per spline point — {@link ReachRosgenClassifier} owns that.
  */
 public final class ReachMetricsSampler {
 
     private final float[] elev;
     private final int gridSize;
 
-    /**
-     * @param elev     raw decoded elevation, {@code gridSize²}, row-major {@code x * gridSize + z}
-     * @param gridSize side of the (padded) square field
-     */
+    /** @param elev raw decoded elevation — never a carved buffer; see the class doc */
     public ReachMetricsSampler(float[] elev, int gridSize) {
         if (elev.length != gridSize * gridSize) {
             throw new IllegalArgumentException("elev length " + elev.length + " != gridSize² " + (gridSize * gridSize));
@@ -37,14 +28,8 @@ public final class ReachMetricsSampler {
         this.gridSize = gridSize;
     }
 
-    /**
-     * Along-channel bed slope over {@code [fromIndex, toIndex]}: elevation drop divided by the arc length
-     * spanning those points, floored at {@code 0}.
-     *
-     * <p>{@code ChannelElevationAssigner} propagates beds monotone non-increasing downstream, so an
-     * uphill reach means degenerate geometry rather than real terrain; flooring at zero keeps such a
-     * reach out of the {@code Aa+}/{@code A} branches rather than producing a nonsense negative slope.
-     */
+    /** Bed slope over a reach, floored at 0. Beds are monotone non-increasing downstream, so an uphill
+     *  reach means degenerate geometry, and flooring keeps it out of the steep type branches. */
     public double slope(List<double[]> pts, double arcLength, int fromIndex, int toIndex) {
         if (arcLength <= 0.0) return 0.0;
         final double drop = elevAt(pts.get(fromIndex)) - elevAt(pts.get(toIndex));
@@ -55,25 +40,9 @@ public final class ReachMetricsSampler {
         return Interpolation.sampleBilinear(elev, sample[0], sample[1], gridSize);
     }
 
-    /**
-     * Entrenchment ratio at one point: flood-prone width divided by bankfull width, where the flood-prone
-     * width is measured at a stage of twice the maximum bankfull depth above the bed.
-     *
-     * <p>The field method transcribed to a raster. From the point, step outward along {@code ±normal}
-     * until the sampled elevation exceeds the flood-prone stage; the two half-widths sum to the
-     * flood-prone width. When <em>both</em> sides reach the walk bound without exceeding the stage the
-     * result is {@code +inf} — the correct semantic for a broad flat valley (the slightly-entrenched
-     * branch), not a failure. The bound is {@code ER_WALK_WIDTHS · width} per side, which resolves every
-     * threshold the key tests. The step scales with width but is capped so each side always takes at
-     * least {@code ER_MIN_STEPS_PER_SIDE} samples — otherwise a walk narrower than one step (a reach at
-     * the {@link HydrologyTuning#MIN_WIDTH} clamp floor) samples nothing and reports {@code +inf}
-     * unconditionally.
-     *
-     * @param point   reach centre in the network frame
-     * @param normal  unit normal to the centreline at {@code point}
-     * @param bedElev bed elevation at {@code point}
-     * @param width   bankfull width, native px
-     */
+    /** Entrenchment ratio: the field method transcribed to a raster. A saturating transect returns
+     *  {@code +inf}, which is the correct reading for a broad flat valley rather than a failure.
+     *  Walk bound and step floor are tuned in {@code config/README.md}. */
     public double entrenchmentRatio(double[] point, double[] normal, double bedElev, double width) {
         final double bankfullWidth = Math.max(width, HydrologyTuning.MIN_WIDTH);
         final double depth = HydrologyTuning.DEPTH_MAX_FACTOR * ChannelGeometry.depthForWidth(bankfullWidth);
@@ -93,10 +62,7 @@ public final class ReachMetricsSampler {
         return (positiveWidth + negativeWidth) / (bankfullWidth + HydrologyTuning.ENTRENTMENT_RATIO_BIAS);
     }
 
-    /**
-     * Distance from {@code point} along {@code side · normal} at which elevation first exceeds
-     * {@code maxFloodProneAreaHeight}, or {@code +inf} when the walk reaches {@code maxFloodPlainWidth} without doing so.
-     */
+    /** One side of the entrenchment transect; {@code +inf} when the walk never clears the stage. */
     private double halfWidth(
             double[] point,
             double[] normal,

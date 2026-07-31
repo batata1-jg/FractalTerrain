@@ -32,56 +32,26 @@ public final class ChannelGeometry {
         return Math.max(0.5, Math.pow(width / DEPTH_WIDTH_SCALE, 1.0 / DEPTH_WIDTH_EXP));
     }
 
-    /**
-     * Native-px width at which the width-to-depth ratio crosses {@code 12} — Rosgen's boundary between
-     * the narrow-deep types ({@code E G A}) and the wide-shallow ones ({@code C F B}). The single
-     * calibration knob for the {@code E}&harr;{@code C} and {@code G}&harr;{@code F} splits: lower it and
-     * rivers start looking wide and shallow sooner. First-cut, untuned value pending visual calibration
-     * via {@code localRiverTest}.
-     */
+    /** The one knob calibrating narrow-deep against wide-shallow Rosgen types. Uncalibrated. */
     public static final double W_REF = 4.0;
 
     /** W/D at {@link #W_REF} — Rosgen's narrow-deep / wide-shallow boundary. */
     private static final double WD_AT_REF = 12.0;
 
-    /**
-     * Exponent of the width-to-depth law. Hydraulic geometry gives {@code W/D ∝ DA^0.139}
-     * (Bieger et al. 2015, nationwide); this project's width law is {@code W = 0.4·√flow}, i.e.
-     * {@code W ∝ DA^0.50}, so {@code W/D ∝ W^(0.139/0.50)}. Applying a nationwide drainage-area exponent
-     * to this project's synthetic width law is itself an unvalidated cross-domain analogy — first-cut,
-     * untuned value pending visual calibration via {@code localRiverTest}.
-     */
+    /** Exponent of the width-to-depth law; an unvalidated analogy from Bieger et al. 2015. */
     private static final double WD_EXPONENT = 0.278;
 
-    /**
-     * Dimensionless width-to-depth ratio for a channel of the given native-px width:
-     * {@code 12 · (width / W_REF)^0.278}, monotone non-decreasing on {@code [0, ∞)} and strictly
-     * increasing above {@link #MIN_RATIO_WIDTH}, calibrated so {@code W_REF} maps to {@code 12}. Used by
-     * the Rosgen classifier to pick narrow-deep types over wide-shallow ones.
-     *
-     * <p><b>Deliberately not derived from {@link #depthForWidth}.</b> That law is floored at {@code 1.0}
-     * across the whole representable width range ({@code [0.2, 16]} px; the expression only exceeds 1
-     * above {@link #DEPTH_WIDTH_SCALE} px), so {@code width / depthForWidth(width)} degenerates to
-     * {@code width} — which would put the {@code W/D = 12} boundary at 12 px against a 16 px cap and
-     * classify nearly every channel as narrow-deep. {@code depthForWidth} additionally feeds the meander
-     * migration rate, so it is not safe to re-floor.
-     */
+    /** Prescribes the width-to-depth ratio the Rosgen classifier compares against {@code WD_NARROW}.
+     *  Deliberately not derived from {@link #depthForWidth}, whose 1.0 floor would degenerate the ratio
+     *  to plain width and classify nearly everything narrow-deep — see {@code config/README.md}. */
     public static double widthDepthRatio(double width) {
         return WD_AT_REF * Math.pow(Math.max(width, MIN_RATIO_WIDTH) / W_REF, WD_EXPONENT);
     }
 
-    /**
-     * Floor guarding {@link #widthDepthRatio} against non-positive results: keeps the ratio strictly
-     * positive at {@code width == 0} (a bare {@code pow} would return exactly {@code 0}) and avoids
-     * {@code NaN} for negative width, since {@code Math.pow} with a negative base and fractional exponent
-     * is {@code NaN} and nothing upstream guarantees a non-negative argument to this public method.
-     */
+    /** Floor keeping {@link #widthDepthRatio} positive and NaN-free against unchecked negative width. */
     private static final double MIN_RATIO_WIDTH = 0.05;
 
-    /**
-     * Whether two channels of widths {@code widthA} / {@code widthB} whose centrelines are {@code distance}
-     * apart overlap — i.e. their bed half-widths meet. Used by the meander crossing/merge detection.
-     */
+    /** Bed-overlap test driving meander crossing and merge detection. */
     public static boolean channelsOverlap(double distance, double widthA, double widthB) {
         return distance <= bedHalfWidth(widthA) + bedHalfWidth(widthB);
     }

@@ -8,27 +8,20 @@ import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import org.junit.jupiter.api.Test;
 
 /**
- * Headless golden gate for the deterministic {@link GlobalRiverProvider} network build (M-004), split out
- * of the pipeline-coupled {@code debug.tests.GlobalRiverTest} manual harness (which stays as a PNG dumper).
+ * Headless golden gate for the deterministic {@link GlobalRiverProvider} network build, split out of the
+ * pipeline-coupled {@code debug.tests.GlobalRiverTest} harness (kept as a PNG dumper).
  *
- * <p>{@code GlobalRiverTest} sources its per-tile elevation from {@code FractalTerrainInstance.pipeline}
- * — the ONNX diffusion model (~1 GB weights + GPU), which is not headless/CI-runnable. But the whole
- * per-tile river computation (threshold → border ramp → sink fill → D4 steepest-descent drainage → per-
- * source walk → flow-width → downstream-monotone bed elevation → packed result tile) is a pure function
- * of the padded elevation grid, the single pipeline-sourced input. This test exercises that exact
- * production path (via {@link GlobalRiverProvider#computeTileForTest}) over a synthetic, seeded elevation
- * field instead: the network math's correctness is a property of the heightmap it is given, independent of
- * whether that heightmap came from real terrain.
+ * <p>{@code GlobalRiverTest} sources elevation from the ONNX diffusion pipeline, not headless/CI-runnable.
+ * The whole per-tile computation is a pure function of the padded elevation grid, so this test drives the
+ * exact production path ({@link GlobalRiverProvider#computeTileForTest}) over a synthetic, seeded field:
+ * correctness is a property of the heightmap given, independent of its origin.
  */
 class GlobalRiverGoldenTest {
 
     private static final int SIDE = GlobalRiverProvider.paddedSideForTest();
 
-    /**
-     * Deterministic synthetic heightmap: a below-sea base plus a handful of seeded Gaussian ridges, so the
-     * field has ridge seeds (elevation ≥ the source threshold), interior valleys, and coastline (elevation
-     * ≤ 0) — enough structure to drive sources → descent → coast/border outlets through every stage.
-     */
+    /** Synthetic heightmap: sea-level base plus seeded Gaussian ridges, giving ridge sources, valleys and
+     *  coastline enough to exercise every stage from sources to coast/border outlets. */
     private static float[] syntheticElevation(long seed) {
         final Random rng = new Random(seed);
         final int bumps = 10;
@@ -92,12 +85,8 @@ class GlobalRiverGoldenTest {
                 GOLDEN_CHECKSUM, tileChecksum(tile), "global-river tile checksum drifted from the captured golden");
     }
 
-    /**
-     * Determinism pre-check (M-004 step 3, run before the golden above was frozen): the synthetic
-     * heightmap, the network build, and the packing all derive from a fixed seed and touch no other state,
-     * so 5 independent runs are expected to be — and were confirmed — bit-identical; no canonicalization or
-     * tolerance was needed.
-     */
+    /** Confirms the synthetic heightmap, network build and packing derive from the seed alone: 5 runs
+     *  are checked bit-identical, catching any hidden nondeterminism the golden checksum alone would miss. */
     @Test
     void globalNetworkIsDeterministicAcrossRuns() {
         Long first = null;
@@ -108,12 +97,6 @@ class GlobalRiverGoldenTest {
         }
     }
 
-    /**
-     * Captured by running {@link #globalNetworkMatchesGolden} once and logging it. Re-baselined in Phase 2:
-     * the global tile gained a 4th channel (raw flow accumulation), so the whole-tile checksum changes;
-     * channels 0-2 (arrows / width / bed elevation) are byte-for-byte unchanged (their computation is
-     * untouched — only an additive flow channel was written), and {@code assertHasRivers} confirms the tile
-     * still contains rivers, so this is a re-baseline over confirmed-sane output.
-     */
+    /** Captured checksum from {@link #globalNetworkMatchesGolden}; covers arrows/width/bed/flow channels. */
     private static final long GOLDEN_CHECKSUM = 2603768671405312821L;
 }

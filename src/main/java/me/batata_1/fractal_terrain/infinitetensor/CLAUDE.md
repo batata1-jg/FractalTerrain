@@ -6,6 +6,7 @@ Tiled "infinite" tensor abstraction over `Storage`: windowed compute and slice a
 
 | File                              | What                                                                    | When to read                                             |
 | --------------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------- |
+| `README.md` | Windowed-tile architecture, slice assembly, freeze/publication invariants | Slicing or accumulating windowed tensors, changing window geometry |
 | `InfiniteTensor.java`             | Abstract base: shape, output window, per-tile/batched compute function  | Adding an infinite-tensor type, window iteration         |
 | `AdditiveInfiniteTensor.java`     | Overlapping-window tensor; slices are summed on accumulation            | Diffusion tensors with overlapping tiles                 |
 | `NonIntersectingInfiniteTensor.java` | Non-overlapping-window tensor over `Storage`; recoverable miss recompute | Per-tile caches with disjoint windows                 |

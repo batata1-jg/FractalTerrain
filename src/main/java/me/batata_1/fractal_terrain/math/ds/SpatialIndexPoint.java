@@ -1,25 +1,19 @@
 package me.batata_1.fractal_terrain.math.ds;
 
-import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * A point stored in a point-based spatial index ({@link QuadTree}, {@link ImmutableQuadTree}). The
- * only thing an implementation must provide is its coordinate array via {@link #getCoords()};
- * everything else (axis access, rank, comparison) is derived by default.
+ * A point stored in a point-based spatial index.
  *
- * <p>Implementations are typically {@code record}s that carry extra payload alongside the
- * coordinates (e.g. {@link Channel.ChannelPt},
- * {@link CoordPoint}). A point that must be persisted additionally implements
- * {@link me.batata_1.fractal_terrain.storage.Persistable}; that responsibility is left to the
- * implementation, not this interface.
+ * <p>Kept to a single required method so payload-carrying records can be indexed directly, without a
+ * wrapper allocation per point. Everything else is derived by default.
+ *
+ * <p>Persistence is deliberately not part of this contract — a point that needs it implements
+ * {@link me.batata_1.fractal_terrain.storage.Persistable} separately.
  */
 public interface SpatialIndexPoint extends Comparable<SpatialIndexPoint> {
 
-    /**
-     * The point's coordinates. May return the backing array for performance — callers must treat it
-     * as read-only.
-     */
+    /** The point's coordinates. May be the backing array; callers must treat it as read-only. */
     double[] getCoords();
 
     default double get(int axis) {

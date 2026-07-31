@@ -5,54 +5,32 @@ import java.util.Arrays;
 import java.util.Objects;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
-import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 
 /**
- * A single river channel (edge) in the {@link RiverNetwork}. As of Phase 2 a channel stores a per-point
- * <b>flow</b> array ({@link #flow}, aligned to {@link #spline}'s points and <b>never null</b>) rather than a
- * width scalar; all width is <b>derived</b> from flow through {@link HydrologyTuning#widthFromFlow} —
- * {@link #widthAt(int)} per point, {@link #intakeWidth()} at the upstream end (lowest flow), and
- * {@link #dischargeWidth()} at the downstream end (highest flow). Flow is additive at confluences (the
- * network's {@code accumulateAndCorrectFlow} populates it), so downstream widths grow naturally.
+ * One directed edge of the {@link RiverNetwork}: a spline plus the per-point flow and bed elevation
+ * carried along it.
+ *
+ * <p>Width is derived from {@link #flow}, never stored. Flow is additive at confluences, so a trunk
+ * widens downstream on its own and no separate width-propagation pass is needed.
  */
 public class Channel {
 
     public final int channelId;
     public QuinticHermiteSpline spline;
 
-    /**
-     * Per-spline-point flow (aligned to {@link #spline} points, <b>never null</b>). Width is derived from
-     * it via {@link HydrologyTuning#widthFromFlow}. Maintained index-aligned to the spline through the two
-     * length-changing paths {@link #reSample} (linear {@link #flowAt} blend) and {@link #keepOnly} (verbatim
-     * slice); no other path mutates the point list.
-     */
+    /** Per-point flow, the quantity every channel width is derived from. Never null. */
     public double[] flow;
 
-    /**
-     * Directed-edge endpoints in the {@link Meanders} river-network graph: spline index 0 sits on
-     * {@code startNodeId} (upstream), the last index on {@code endNodeId} (downstream); flow goes
-     * 0 -> last. {@code -1} means the channel is not part of a graph (e.g. LocalRiverProvider's
-     * direct use), so those callers are unaffected.
-     */
+    /** Graph endpoints, upstream then downstream; {@code -1} for a channel used outside any graph. */
     public int startNodeId = -1, endNodeId = -1;
 
-    /**
-     * Per-spline-point bed elevation (native-px scale), aligned to {@link #spline} points. Filled once per
-     * tile by {@code ChannelElevationAssigner.assign}, which runs a single pass over the whole unified
-     * network — global and local channels alike — after local insertion; {@code null} until assigned.
-     * {@link #reSample} keeps this array index-aligned to the spline's resampled points. Read directly by
-     * {@code carveRiver} and by {@link RiverNetwork#collectUnits}, which emits it as each unit's elevation
-     * without deriving or re-sampling it from decoded terrain.
-     */
+    /** Per-point bed elevation, filled by {@code ChannelElevationAssigner}; null until then. */
     public double[] bedElevations;
 
-    /**
-     * Flow-taking constructor (the canonical construction path). {@code flow} must align to {@code pts}
-     * (one entry per point); it is stored verbatim as {@link #flow}. Width is derived on demand.
-     */
+    /** The canonical construction path. {@code flow} must carry one entry per point. */
     public Channel(ArrayList<double[]> pts, double[] flow, int channelId) {
         if (flow.length != pts.size()) {
             throw new IllegalArgumentException("flow length " + flow.length + " != point count " + pts.size());
@@ -82,11 +60,7 @@ public class Channel {
         return ChannelGeometry.depthForWidth(dischargeWidth());
     }
 
-    /**
-     * Flow at arc-length parameter {@code t}: a linear blend of {@code flow[floor(t)]} and
-     * {@code flow[floor(t)+1]} at {@code u = t - floor(t)}, {@code floor(t)} clamped to the valid segment
-     * range — mirroring {@link #bedElev(double)} but <b>unconditional</b> ({@link #flow} is never null).
-     */
+    /** Flow between points, so resampling can interpolate rather than snap to the nearest point. */
     public double flowAt(double t) {
         final int id = Math.clamp((int) Math.floor(t), 0, flow.length - 2);
         final double u = t - id;
@@ -144,12 +118,8 @@ public class Channel {
         this.bedElevations = newBedElevations;
     }
 
-    /**
-     * Bed elevation at arc-length parameter {@code t}: a linear blend of {@code bedElevations[floor(t)]}
-     * and {@code bedElevations[floor(t)+1]} at {@code u = t - floor(t)}, with {@code floor(t)} clamped to
-     * the valid segment range, mirroring {@link QuinticHermiteSpline#sample}'s segment indexing.
-     * {@link #bedElevations} must be non-null.
-     */
+    /** Bed elevation between points, the {@link #flowAt} counterpart used by the carve.
+     *  Requires {@link #bedElevations} to have been assigned. */
     public double bedElev(double t) {
         final int id = Math.clamp((int) Math.floor(t), 0, bedElevations.length - 2);
         final double u = t - id;

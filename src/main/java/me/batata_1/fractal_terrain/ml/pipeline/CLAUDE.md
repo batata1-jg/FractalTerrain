@@ -6,6 +6,7 @@ Diffusion inference: `WorldPipeline` orchestrates four extracted stage collabora
 
 | File                          | What                                                                | When to read                                                    |
 | ----------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `README.md` | Stage sequencing, conditioning contracts, session lifetime decisions | Changing a diffusion stage, session reload, or stage I/O shapes |
 | `WorldPipeline.java`          | Orchestrator; owns the `volatile PipelineSession`, coarse-slice API | Pipeline entry, session swap on reload, coarse tensor access    |
 | `CoarseStage.java`            | 20-step DPM-Solver++ → coarse climate/elevation tensor              | Coarse diffusion; needs manual `pipelineTest` on change         |
 | `LatentStage.java`            | 2 flow-matching steps → latent tensor                               | Latent stage math; manual `pipelineTest` on change              |

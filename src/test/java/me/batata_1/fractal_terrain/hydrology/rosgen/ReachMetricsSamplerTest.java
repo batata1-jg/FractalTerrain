@@ -14,10 +14,7 @@ class ReachMetricsSamplerTest {
 
     private static final int SIDE = 128;
 
-    /**
-     * A symmetric V-shaped valley running along the z axis, floor at x = SIDE/2, elevation rising
-     * {@code gradient} per px of horizontal distance from the floor.
-     */
+    /** Symmetric V-valley along z, giving a known entrenchment ratio to measure against. */
     private static float[] vValley(double gradient) {
         final float[] elev = new float[SIDE * SIDE];
         for (int x = 0; x < SIDE; x++) {

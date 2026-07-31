@@ -21,14 +21,8 @@ public final class DecoderChannels {
 
     private DecoderChannels() {}
 
-    /**
-     * Fetch a {@code pad}-haloed decoder slice for tile {@code (tileX, tileZ)} and weight-normalize it
-     * into {@link #BASE_CHANNELS} channels at padded resolution {@code (512 + 2*pad)} per side. Decoder
-     * channel 0 is the blend weight; channels 1..7 are divided by it (guarded) and shifted down by one,
-     * so {@code base[c-1] = decoder[c] / weight}.
-     *
-     * @return {@code base[c][paddedIndex]} for {@code c} in {@code 0..BASE_CHANNELS-1}.
-     */
+    /** The pipeline's entry into hydrology: a haloed, weight-normalized decoder slice.
+     *  Normalizing here means no downstream stage has to know about the blend weight. */
     public static float[][] decode(int tileX, int tileZ, int pad) {
         final int padded = INNER + 2 * pad;
         final FloatTensor slice = pipeline.getDecoderSlice(

@@ -37,22 +37,8 @@ class ReachRosgenClassifierTest {
         return new RiverNetwork(SIDE, nodes, edges, false, 0, 2.0);
     }
 
-    /**
-     * A two-confluence chain: {@code A} (main headwater) and {@code T1} (a small tributary) join at
-     * junction {@code J1} into {@code B}, which then joins tributary {@code T2} at junction {@code J2}
-     * into {@code C}, which reaches the drain. {@code RiverNetwork.update} numbers channels by ascending
-     * atomic-node id, and {@code buildFromSpecs} assigns atomic ids to node specs in list order before any
-     * edge's interior points, so with the node specs listed source-to-drain the channel ids come out
-     * {@code A=0, T1=1, B=2, T2=3, C=4} -- every non-drain-adjacent channel (A, T1, B, T2) holds a lower id
-     * than the channel immediately downstream of it. Only {@code C} is drain-adjacent.
-     *
-     * <p>This is the layout that made {@code orderDownstreamFirst}'s old sequencing wrong: the drain seed
-     * frontier held only {@code C}, and the unreached-channel pass then enqueued every other channel by id
-     * ({@code A, T1, B, T2}) before the BFS drained, so {@code A} and {@code T1} were emitted before
-     * {@code B} -- the channel they actually flow into -- even though {@code C} (seeded first) happened to
-     * come out ahead of everything. A single confluence directly on the drain does not expose this: only a
-     * confluence at least one hop upstream of the drain does.
-     */
+    /** Two confluences chained, the layout that exposes wrong downstream-first sequencing.
+     *  A single confluence directly on the drain does not — the second one must sit a hop upstream. */
     private static RiverNetwork chainedConfluenceNetwork() {
         final List<RiverNetwork.NodeSpec> nodes = List.of(
                 new RiverNetwork.NodeSpec(50.0, 150.0, Endpoint.Type.SOURCE), // 0: A's source
@@ -177,11 +163,8 @@ class ReachRosgenClassifierTest {
         }
     }
 
-    /**
-     * Row-major {@code x*SIDE+z} elevation field: a valley wall exists only when {@code (x/pinchPeriod)}
-     * is even, at {@code |z-256| >= narrowHalfWidth}. In the alternating "open" bands the field is flat at
-     * 0 everywhere, so a transect there never exceeds any plausible flood-prone stage and saturates.
-     */
+    /** Alternating confined and open valley bands, so consecutive reaches straddle an ER threshold and
+     *  the dead band has something to suppress. */
     private static float[] alternatingValleyField(int pinchPeriod, double narrowHalfWidth, float wallHeight) {
         final float[] elev = new float[SIDE * SIDE];
         for (int x = 0; x < SIDE; x++) {

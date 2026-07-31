@@ -4,19 +4,13 @@ import me.batata_1.fractal_terrain.math.Vector2;
 import me.batata_1.fractal_terrain.math.Vector3;
 
 /**
- * The {@code BasicGrid} domain-warp strategy: warps a coordinate by bilinearly/trilinearly
- * interpolating hashed lattice random-vectors, then scaling by the warp amplitude.
+ * The {@code BasicGrid} domain-warp strategy: warps a coordinate by interpolating hashed lattice random-vectors.
  *
- * <p><b>Responsibility:</b> both overloads of {@link #SingleDomainWarpBasicGrid} - the
- * {@code DomainWarpType.BasicGrid} branch of {@code FastNoiseLite}'s domain-warp dispatcher
- * ({@code DoSingleDomainWarp}). Mutates the passed {@code coord} in place, matching the original API.
+ * <p>One of the interchangeable domain-warp strategies {@code FastNoiseLite} dispatches to; extracted so the
+ * dispatcher stays readable and each variant can be read on its own.
  *
- * <p><b>Collaborators:</b> {@link NoiseTables} for the shared hash/random-vector tables and Hermite
- * interpolation; {@link me.batata_1.fractal_terrain.math.Vector2} /
- * {@link me.batata_1.fractal_terrain.math.Vector3} for the mutable warp accumulator.
- *
- * <p><b>Invariants:</b> mechanical extraction from the embedded FastNoiseLite 1.1.1 implementation -
- * every constant and evaluation order is unchanged; output is byte-identical to the pre-split code.
+ * <p><b>Do not "clean up" any constant or reorder any expression.</b> This is a mechanical extraction
+ * from FastNoiseLite 1.1.1 and must stay byte-identical — every world already generated depends on it.
  */
 public final class BasicGridWarpStrategy {
 

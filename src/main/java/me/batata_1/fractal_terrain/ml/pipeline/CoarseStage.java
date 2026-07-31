@@ -11,19 +11,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Responsibility: runs the 20-step DPM-Solver++ coarse diffusion model over (7, {@value #TILE_SIZE},
- * {@value #TILE_SIZE}) output tiles (native pixel space, {@code CH=0/X=1/Z=2}), producing the
- * {@code base_coarse_map} {@link AdditiveInfiniteTensor}: 6 denormalized channels weighted by a linear
- * blend window plus the window itself as channel 6.
+ * The coarse diffusion stage, first of three. Runs 20-step DPM-Solver++ over native-pixel tiles to
+ * produce {@code base_coarse_map}, the low-resolution elevation/climate tensor every later stage
+ * conditions on.
  *
- * <p>Collaborators: the {@code coarseModel} ONNX model; {@link GaussianNoisePatch} for seed-derived
- * conditioning/init noise; {@link EDMScheduler} for the diffusion schedule and step update; the current
- * {@link PipelineSession} (seed, synthetic map) obtained once per tile via {@code sessionSupplier}.
- *
- * <p>Invariants: output tensor is (7, S, S) with {@code CH=0/X=1/Z=2}; the tile-compute reads the session
- * snapshot exactly once per tile (MUST-1 — see {@link PipelineSession}); {@code coarseInputScratch} is a
- * per-thread reusable buffer, fully overwritten on every use, safe to reuse across steps/tiles on the
- * same worker thread.
+ * <p>Reads {@code coarseModel}, seed-derived noise from {@link GaussianNoisePatch}, and the current
+ * {@link PipelineSession} snapshot exactly once per tile (MUST-1) — the synthetic map and noise must
+ * come from the same reload generation.
  */
 final class CoarseStage {
 
@@ -51,11 +45,7 @@ final class CoarseStage {
     private final Supplier<PipelineSession> sessionSupplier;
     private final long cacheLimitBytes;
 
-    /**
-     * Per-thread reusable coarse model input (11 channels). Fully overwritten on every use, so it is
-     * safe to reuse across the 20 diffusion steps of a tile and across tiles on the same worker
-     * thread — replacing a 180 KB allocation per step (~3.6 MB/tile of pure churn).
-     */
+    /** Reused across a tile's 20 diffusion steps to avoid ~3.6 MB/tile of per-step allocation churn. */
     private final ThreadLocal<float[]> coarseInputScratch =
             ThreadLocal.withInitial(() -> new float[11 * TILE_SIZE * TILE_SIZE]);
 

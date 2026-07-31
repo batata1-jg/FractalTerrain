@@ -6,6 +6,7 @@ Logging facade (`Debug.getLogger`) plus PNG/TIFF visualizers and manual `main()`
 
 | File                          | What                                                                | When to read                                          |
 | ----------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------- |
+| `README.md` | Logging facade design, visualizer modes, why harnesses live in `tests/` | Adding a visualizer or harness, understanding debug-flag placement |
 | `Debug.java`                  | `getLogger(Class)` logging facade + debug entry points              | Setting up a logger, debug hooks                      |
 | `Infinite3DVisualizer.java`   | 3D visualization of infinite-tensor/generation output               | Visualizing generated volumes                         |
 | `InstanceStageDumper.java`    | Dumps per-stage pipeline output for a loaded instance               | Dumping pipeline stage tensors                        |

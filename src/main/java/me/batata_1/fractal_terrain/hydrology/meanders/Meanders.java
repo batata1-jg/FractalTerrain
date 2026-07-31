@@ -49,16 +49,7 @@ public final class Meanders {
     private final float[] gradX;
     private final float[] gradZ;
 
-    /**
-     * Raw decoded elevation ({@code gridSize²}, row-major {@code x * gridSize + z} — the same layout and
-     * frame as {@link #gradX}/{@link #gradZ}), used to classify Rosgen types in {@link #collectUnits}.
-     * {@code null} when the simulation was constructed without one, in which case {@code collectUnits}
-     * refuses to run rather than classifying against zeros.
-     *
-     * <p>Must be a snapshot taken <b>before</b> any carve: {@code HydrologyProfileCarver.carveRiverShells}
-     * writes in place and compounds across calls, so a carved buffer would report the carve's own
-     * floodplain constants as though they were terrain.
-     */
+    /** Pre-carve elevation the Rosgen classifier measures against; null makes {@link #collectUnits} refuse. */
     private final float[] elev;
 
     private final RiverNetwork network;
@@ -75,10 +66,7 @@ public final class Meanders {
         this(gridSize, gradX, gradZ, null, nodeSpecs, edgeSpecs, false, 0);
     }
 
-    /**
-     * The production construction path: the 5-argument form plus the raw elevation raster
-     * {@link #collectUnits} classifies against. Builds a network that keeps no history.
-     */
+    /** The production construction path; builds a network that keeps no history. */
     public Meanders(
             int gridSize,
             float[] gradX,
@@ -208,10 +196,7 @@ public final class Meanders {
         return migRates;
     }
 
-    /**
-     * Migrates points to new locations using the Ikeda-Parker-Sawai meandering model. The first/last
-     * points (graph node endpoints) are pinned so source/drain/junction coordinates stay locked.
-     */
+    /** Meander migration (Ikeda-Parker-Sawai). Endpoints stay pinned so graph node coordinates hold. */
     public void migrateMeanders(Channel ch) {
         final double[] migrationRates = computeMigrationRates(ch);
         final int pointCount = ch.spline.points().size();
@@ -232,10 +217,7 @@ public final class Meanders {
         ch.spline = QuinticHermiteSpline.createCatmullRom(migratedPoints);
     }
 
-    /**
-     * Pushes each interior point toward the valley (down the terrain gradient) within a maximum
-     * migration rate per step.
-     */
+    /** Pulls the channel toward the valley floor, so relaxed rivers follow the decoded terrain. */
     public void migrateLowerGrad(Channel ch) {
         final int pointCount = ch.spline.points().size();
         ArrayList<double[]> migratedPoints = new ArrayList<>(pointCount);
@@ -256,26 +238,12 @@ public final class Meanders {
         ch.spline = QuinticHermiteSpline.createCatmullRom(migratedPoints);
     }
 
-    /**
-     * Cap on {@link #borderDamping}'s margin, as a fraction of the grid side -- so a wide native-rescaled
-     * global trunk's {@code MARGIN_INFLUENCE_FACTOR * width} margin cannot exceed the grid and hard-zero
-     * the whole damping field, leaving no interior for the channel to relax into.
-     *
-     * <p>First-cut value, untuned: it engages across most of the width range and under-damps wide trunks
-     * near the grid center. Pending the M-006 visual/relaxation validation pass (see
-     * {@code plan-river-carve.md} "Deferred / open follow-ups").
-     */
+    /** Caps the damping margin so a wide trunk cannot zero the whole field. Uncalibrated; under-damps near centre. */
     private static final double MAX_MARGIN_FRACTION = 0.4;
 
-    /**
-     * Multiplier in {@code [0, 1]} that fades a migration vector to zero as a point nears the grid border,
-     * so interior points never wander into the margin band. The band is
-     * {@code HydrologyTuning.MARGIN_INFLUENCE_FACTOR × width} wide, so wider channels are confined further from the edge — keeping their whole carve band
-     * inside the grid. An inner padding of the same {@code margin} width sits flush against the border where
-     * damping is hard-zero (the channel never migrates there); beyond it the multiplier ramps from 0 to 1
-     * over another {@code margin}. Channel endpoints (sources/drains/junctions) are pinned by the callers, so
-     * only they are allowed to sit near the border.
-     */
+    /** Fades migration to zero near the grid border, keeping a channel's whole carve band inside the
+     *  grid. Wider channels are confined further in. Endpoints are pinned by callers, so only they may
+     *  sit near the border. */
     private double borderDamping(double x, double z, double width) {
         final double margin = Math.min(HydrologyTuning.MARGIN_INFLUENCE_FACTOR * width, MAX_MARGIN_FRACTION * gridSize);
         if (margin <= 0) return 1.0;
@@ -338,15 +306,9 @@ public final class Meanders {
         return network.getNode(id);
     }
 
-    /**
-     * The network's {@link HydrologicalUnit}s with a Rosgen type on every one.
-     *
-     * <p>Classification lives here rather than in {@link RiverNetwork} because this is the only object
-     * holding both the graph and the raster the classifier needs, and it must happen inside unit
-     * collection: the type selects the unit's {@code RosgenProfile}, which sets
-     * {@code riverInfluence} — the unit's own R-tree membership radius — so the type has to exist before
-     * {@code carveRiverShells} builds its index over these units.
-     */
+    /** The network's units, each carrying a Rosgen type. Classification happens here because this is
+     *  the only object holding both the graph and the raster, and because the type sets the unit's
+     *  influence radius — which must exist before anything indexes these units. */
     public List<HydrologicalUnit> collectUnits(double offsetX, double offsetZ) {
         if (elev == null) {
             throw new IllegalStateException("collectUnits needs the raw elevation raster; construct Meanders with it");

@@ -18,20 +18,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Segments every channel into reaches, measures each reach, and runs the Rosgen key over the whole graph
- * in downstream-first order so the dead band carries across junctions.
+ * Runs the Rosgen key over the whole graph, segmenting channels into reaches and measuring each.
  *
- * <p><b>Why the graph order matters.</b> {@code RiverNetwork.update} splits a trunk river into a separate
- * {@link Channel} at every confluence. Applying the dead band per channel would reset it at every
- * junction, so a trunk could change type at each confluence for no terrain reason — the scalloped
- * floodplain edge the dead band exists to prevent, reproduced at every junction in the world. Walking
- * from drains upstream lets each channel's downstream-most reach inherit its downstream neighbour's
- * upstream-most type.
+ * <p>Walks downstream-first so the dead band carries across junctions. {@code RiverNetwork.update} splits
+ * a trunk at every confluence, so a per-channel walk would reset the band at each one and scallop the
+ * floodplain edge the band exists to prevent.
  *
- * <p><b>Why per reach, not per point.</b> A transect walks across the channel and gets no cache locality,
- * and {@code collectUnits} resamples at a spacing that floors at 0.5 px — a detailed tile emits tens of
- * thousands of points. One transect per reach (Rosgen's own ~20-channel-width definition) is three orders
- * of magnitude cheaper and is what the classification scheme actually specifies.
+ * <p>Classifies per reach, not per point: transects are cache-hostile and a detailed tile emits tens of
+ * thousands of points, while Rosgen's own reach definition is ~20 channel widths.
  */
 public final class ReachRosgenClassifier implements ChannelTyper {
 
@@ -39,10 +33,7 @@ public final class ReachRosgenClassifier implements ChannelTyper {
     private final ReachMetricsSampler sampler;
     private final Map<Integer, RosgenType[]> typesByChannelId = new HashMap<>();
 
-    /**
-     * @param elev <b>raw</b> decoded elevation, {@code gridSize²} — never a carved buffer
-     * @param gridSize side of the (padded) square field
-     */
+    /** @param elev <b>raw</b> decoded elevation — never a carved buffer */
     public ReachRosgenClassifier(float[] elev, int gridSize) {
         this.sampler = new ReachMetricsSampler(elev, gridSize);
     }
@@ -64,32 +55,9 @@ public final class ReachRosgenClassifier implements ChannelTyper {
         return classifyChannel(channel, null);
     }
 
-    /**
-     * Channels ordered so that every channel appears after the channel it flows into: a BFS from the
-     * drains upstream over the single-outflow in-tree, emitted in poll order.
-     *
-     * <p>No reversal is needed or wanted. Seeding the frontier with the DRAIN-adjacent channels and
-     * expanding through {@code startNode.incoming} visits a channel before anything feeding it, which is
-     * already the ordering contract. Reversing would invert it and break {@link #seedFor}, which reads the
-     * downstream neighbour's committed types out of {@code typesByChannelId} and therefore requires that
-     * neighbour to have been classified first.
-     *
-     * <p>The drain-rooted BFS is run to exhaustion via {@link #drainFrontier} before any dangling channel
-     * is considered, and each injected dangling channel is itself expanded via {@link #drainFrontier}
-     * before the next one is considered, so the walk is deterministic rather than dumping the remainder
-     * into the order in raw id order.
-     *
-     * <p><b>This does not make every dangling component fully downstream-first.</b> The component root
-     * injected is whichever unseen channel has the lowest id, not necessarily the component's outlet; since
-     * channel ids run low-to-high upstream-to-downstream, a pruned-tail component such as
-     * {@code X(5)->Y(6)->Z(7)} (no drain reachable from any of them) is emitted {@code X, Y, Z} —
-     * upstream-first, the wrong direction for that component. {@link #seedFor} then returns {@code null}
-     * for {@code X} and {@code Y}, which {@link RosgenKey#applyDeadBand} handles by committing the raw
-     * type rather than crashing, so the dead band simply resets at those boundaries instead of carrying
-     * through them. Chasing the true outlet would mean following {@code getNode(endNodeId).outgoing} to
-     * the component root with a cycle guard (a dangling component's single-outflow chain has no drain to
-     * stop at); not worth it for a case that only arises in pruned components.
-     */
+    /** Orders channels so each comes after the one it flows into, which {@link #seedFor} requires.
+     *  Dangling components with no reachable drain are rooted at their lowest id rather than their true
+     *  outlet, so the dead band resets at those boundaries — see {@code README.md}. */
     private static List<Channel> orderDownstreamFirst(RiverNetwork network) {
         final List<Channel> order = new ArrayList<>();
         final ArrayDeque<Channel> frontier = new ArrayDeque<>();
@@ -120,16 +88,8 @@ public final class ReachRosgenClassifier implements ChannelTyper {
         return order;
     }
 
-    /**
-     * Polls {@code frontier} to exhaustion: each polled channel is appended to {@code order}, then every
-     * channel feeding its start node that has not yet been seen is enqueued. A channel therefore always
-     * lands in {@code order} after every channel already in {@code frontier} when it was polled, and
-     * before anything feeding it. Called once for the drain-rooted seed and once more per dangling channel
-     * injected by {@link #orderDownstreamFirst}; within a run rooted at an actual outlet (any drain-seeded
-     * channel, or a dangling channel that happens to be its component's outlet) this puts every channel
-     * after the channel it flows into. See {@link #orderDownstreamFirst} for the case where the injected
-     * root is not the component's outlet.
-     */
+    /** Drains one BFS frontier to exhaustion. Run per root rather than once overall, so an injected
+     *  dangling root cannot interleave with the drain-rooted walk. */
     private static void drainFrontier(
             RiverNetwork network, ArrayDeque<Channel> frontier, Map<Integer, Boolean> seen, List<Channel> order) {
         while (!frontier.isEmpty()) {
@@ -144,10 +104,7 @@ public final class ReachRosgenClassifier implements ChannelTyper {
         }
     }
 
-    /**
-     * The type the downstream neighbour committed at its upstream end, or {@code null} when this channel
-     * flows straight into a drain.
-     */
+    /** The downstream neighbour's committed type, or null at a drain; the dead band's carry-in. */
     private RosgenType seedFor(Channel ch, RiverNetwork network) {
         final Endpoint end = network.getNode(ch.endNodeId);
         if (end == null || end.outgoing == -1) return null;
@@ -155,11 +112,8 @@ public final class ReachRosgenClassifier implements ChannelTyper {
         return (downstream == null || downstream.length == 0) ? null : downstream[0];
     }
 
-    /**
-     * One type per spline point. Reaches are cut at {@code min(REACH_WIDTHS · width, REACH_MAX_PX)} of
-     * arc length, measured at the reach midpoint, and walked downstream-to-upstream so the dead band
-     * flows the same direction as the graph walk.
-     */
+    /** One type per spline point, walked downstream-to-upstream so the dead band flows the same
+     *  direction as the graph walk. */
     private RosgenType[] classifyChannel(Channel ch, RosgenType seed) {
         final int n = ch.numPts();
         final RosgenType[] types = new RosgenType[n];

@@ -9,39 +9,27 @@ import java.util.Set;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 
 /**
- * Turns a binary mask into a list of smooth splines tracing its <em>border</em> (the contour
- * between {@code true} and {@code false} regions) via the marching-squares algorithm.
+ * Traces a binary mask's border into smooth splines — the outline counterpart to
+ * {@link Skeletonizer}'s medial axis.
  *
- * <p>This is the contour-tracing counterpart to {@link Skeletonizer}: it exposes the
- * same public shape ({@link #trace(boolean[][])} returning resampled {@link QuinticHermiteSpline}s,
- * plus a static core), but instead of thinning the region to its medial axis it walks the cell-edge
- * crossings of the region boundary. Use it when a filled mask should be represented by its outline
- * (e.g. valley regions) rather than its skeleton.
+ * <p>Deliberately mirrors {@link Skeletonizer}'s public shape, so a caller can swap outline for
+ * skeleton without restructuring. Use this when a filled region is best described by its edge, such
+ * as a coastline.
  *
- * <p>Output spline points are in the SAME coordinate frame as the input mask (mask-relative,
- * {@code (row, col)}, with crossings landing on half-integer edge midpoints); callers add any
- * tile/pad origin themselves.
+ * <p>Output points are mask-relative; callers add any tile or pad origin themselves.
  */
 public class MarchingSquares {
 
     private final int minPolylineLength;
     private final double resampleSpacing;
 
-    /**
-     * @param minPolylineLength contours with fewer points than this are discarded before fitting.
-     * @param resampleSpacing arc-length spacing used to resample each fitted spline.
-     */
+    /** @param minPolylineLength discards contours too short to fit meaningfully */
     public MarchingSquares(int minPolylineLength, double resampleSpacing) {
         this.minPolylineLength = minPolylineLength;
         this.resampleSpacing = resampleSpacing;
     }
 
-    /**
-     * Trace {@code mask}'s border into contours, then fit + resample each long-enough contour into a
-     * {@link QuinticHermiteSpline}. The per-contour body mirrors {@code Skeletonizer.trace}: build a
-     * Catmull-Rom fit, then arc-length resample at {@link #resampleSpacing}, returning the resampled
-     * spline. Degenerate splines (e.g. runaway resampling) are skipped. Points are mask-relative.
-     */
+    /** Border contours as fitted splines. Degenerate results are skipped rather than returned. */
     public List<QuinticHermiteSpline> trace(boolean[][] mask) {
         final List<List<double[]>> contours = traceContours(mask);
         final List<QuinticHermiteSpline> splines = new ArrayList<>();
@@ -58,15 +46,8 @@ public class MarchingSquares {
         return splines;
     }
 
-    /**
-     * Rasterize the region <em>border</em> of {@code mask} into a boolean mask of the same shape.
-     * A pixel is a border pixel iff it is {@code true} in {@code mask} and lies in at least one 2×2
-     * window that straddles the contour (i.e. the window mixes {@code true} and {@code false}). This
-     * is the cell-rasterized counterpart to {@link #traceContours} — instead of half-integer edge
-     * crossings it returns the actual filled-region cells that sit on the boundary. Used by the
-     * global-river pass to derive a coast mask (the low-elevation cells touching the coastline) from
-     * a low-elevation region mask. Returns a fresh array; input untouched.
-     */
+    /** Border as filled cells rather than edge crossings — what the global-river pass needs to derive
+     *  a coast mask it can index by pixel. */
     public static boolean[][] borderMask(boolean[][] mask) {
         final int height = mask.length;
         final boolean[][] border = new boolean[height][];
@@ -98,14 +79,8 @@ public class MarchingSquares {
     // Marching-squares core
     // -------------------------------------------------------------------------
 
-    /**
-     * Walk the cell-edge crossings of {@code mask} into ordered boundary polylines. Each 2×2 cell
-     * emits 0/1/2 DIRECTED segments between edge midpoints (oriented so the filled region stays on a
-     * consistent side); segments are then chained {@code from → to} so points come out in true path
-     * order along the boundary (not raster order). Closed contours repeat their start point at the
-     * end so a downstream Catmull-Rom fit closes cleanly. Points are mask-relative fractional
-     * {@code (row, col)} at half-integer edge midpoints.
-     */
+    /** Boundary polylines in true path order, not raster order, so a spline fit follows the contour.
+     *  Closed contours repeat their start point so the fit closes cleanly. */
     public static List<List<double[]>> traceContours(boolean[][] mask) {
         final int height = mask.length;
         if (height < 2) return new ArrayList<>();

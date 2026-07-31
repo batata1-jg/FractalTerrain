@@ -11,14 +11,13 @@ import org.jetbrains.annotations.TestOnly;
 
 /**
  * Fans out each provider's {@code debugStages(tileX, tileZ)} to PNG dumps under a common root, one
- * subdirectory per provider ({@code global_river/}, {@code local_river/}, {@code relief/}). The
- * per-stage rendering mirrors the standalone {@code GlobalRiverTest}/{@code LocalRiverTest} harnesses,
- * so the live {@code FractalTerrainInstance} can dump the same imagery without standing up a harness.
+ * subdirectory per provider ({@code global_river/}, {@code local_river/}, {@code relief/}). Lets the
+ * live {@code FractalTerrainInstance} dump the same imagery the standalone {@code GlobalRiverTest}/
+ * {@code LocalRiverTest} harnesses produce, without needing a harness.
  *
- * <p>The {@code (tileX, tileZ)} pair is forwarded verbatim to each provider; note each interprets it in
- * its own tile grid — {@code GlobalRiverProvider} in 64-coarse-px tiles, {@code ReliefProvider} and
- * {@code LocalRiverProvider} in 512-px relief tiles — so the three subdirectories need not depict the
- * exact same patch of world.
+ * <p>The same {@code (tileX, tileZ)} pair is forwarded to every provider, but each interprets it in its
+ * own tile grid ({@code GlobalRiverProvider}: 64-coarse-px; relief/local: 512-px) — the three
+ * subdirectories need not depict the same patch of world.
  */
 @TestOnly
 public final class InstanceStageDumper {

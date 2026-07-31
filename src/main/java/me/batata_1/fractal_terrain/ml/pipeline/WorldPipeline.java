@@ -12,18 +12,13 @@ import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import org.jetbrains.annotations.TestOnly;
 
 /**
- * Java port of terrain_diffusion/inference/world_pipeline.py WorldPipeline.
+ * Java port of {@code terrain_diffusion/inference/world_pipeline.py WorldPipeline}. Orchestrates the
+ * three diffusion stages plus climate derivation, each extracted into its own collaborator:
+ * {@link CoarseStage}, {@link LatentStage}, {@link DecoderStage}, {@link ClimateProvider}.
  *
- * <p>Orchestrates the three diffusion stages plus climate derivation, each extracted into its own
- * collaborator: {@link CoarseStage} (20-step DPM-Solver++), {@link LatentStage} (2 flow-matching
- * steps), {@link DecoderStage} (1 flow-matching step + fuzed post-processing), and
- * {@link ClimateProvider} (windowed lapse-rate regression over the coarse tensor). All pixel
- * coordinates are native-resolution space, {@code CH=0/X=1/Z=2}.
- *
- * <p>This class owns the reload-scoped {@link PipelineSession} (MUST-1) and the model lifecycle; each
- * stage reads the current session once per tile/batch via a {@code Supplier<PipelineSession>} bound to
- * {@link #currentSession()}, so a reload cannot tear a multi-field read regardless of which stage is
- * reading it.
+ * <p>Owns the reload-scoped {@link PipelineSession} (MUST-1) and the model lifecycle; each stage reads
+ * the session once per tile/batch via a supplier bound to {@link #currentSession()}, so a reload cannot
+ * tear a multi-field read no matter which stage is reading.
  */
 public final class WorldPipeline implements AutoCloseable {
 
@@ -42,12 +37,7 @@ public final class WorldPipeline implements AutoCloseable {
     private final OnnxModel fuzedModel;
     private final boolean ownModels;
 
-    /**
-     * The reload-scoped inputs {@code (seed, syntheticMapFactory, tau)} bundled behind one volatile
-     * reference (MUST-1). {@link #updateInstance} swaps a whole new immutable {@link PipelineSession};
-     * every tile closure (via each stage's session supplier) snapshots this once so a reload cannot tear
-     * the multi-field read. See {@link PipelineSession}.
-     */
+    /** Reload-scoped {@code (seed, map, tau)} triple (MUST-1); see {@link PipelineSession}. */
     private volatile PipelineSession session;
 
     private final long cacheLimitBytes = 50L * 1024 * 1024;
@@ -127,20 +117,14 @@ public final class WorldPipeline implements AutoCloseable {
         return session.seed();
     }
 
-    /**
-     * Returns a coarse tensor slice with shape [7, ci1-ci0, cj1-cj0].
-     * Coordinates are in coarse index units (1 unit = 256 native pixels).
-     * Channel 6 is the blend weight; channels 0–5 are weighted sums.
-     */
+    /** Coarse tensor accessor for biome classification, global riverUnit tracing and relief gradients.
+     *  Channel 6 is the blend weight; channels 0-5 are weight-multiplied sums that must be divided by it. */
     public FloatTensor getCoarseSlice(int ci0, int cj0, int ci1, int cj1) {
         return coarse.getSlice(new int[] {0, ci0, cj0}, new int[] {7, ci1, cj1});
     }
 
-    /**
-     * Returns a decoder (residual) tensor slice with shape [DECODER_CHANNELS, i1-i0, j1-j0].
-     * Coordinates are in native pixel units. Mirrors {@link #getCoarseSlice}: callers pass explicit
-     * pixel bounds so they can request a padded/halo crop rather than an exact 512×512 tile.
-     */
+    /** Residual tensor accessor for {@code relief.DecoderChannels}. Callers pass explicit pixel bounds
+     *  (not tile-aligned) so they can request a padded halo crop. */
     public FloatTensor getDecoderSlice(int i0, int j0, int i1, int j1) {
         return residual.getSlice(new int[] {0, i0, j0}, new int[] {DECODER_CHANNELS, i1, j1});
     }

@@ -25,15 +25,9 @@ public class PopulateNoiseStep {
         this.settings = settings;
     }
 
-    /**
-     * Second-pass ELEVATION override, indexed {@code localX * 16 + localZ}. For every column, reads the
-     * tile-carved shell elevation ({@code baseElev}) out of the {@link Types#ELEVATION} heightmap, prefetches
-     * the hydrological units that could influence the chunk once, then refines each column with
-     * {@link HydrologyProfileCarver#carvePrefetched} to get {@code refinedElev} — the per-pixel bed-residual
-     * trench cut into the shell. The delta ({@code refinedElev - baseElev}) is written to
-     * {@link Types#RIVER_DIFFERENCE}, and {@link Types#ELEVATION} is overwritten with
-     * {@code Math.max(bottom, refinedElev) + seaLevel - 1}.
-     */
+    /** Cuts the river bed into the tile-carved shell, the last elevation pass before blocks are
+     *  placed. The shell-to-bed delta lands in {@link Types#RIVER_DIFFERENCE}, which is what the
+     *  water fill later reads. */
     public void updateToFinalElev(ChunkPos chunkPos, FractalTerrainHeightmap heightmap) {
         final int seaLevel = settings.seaLevel();
         final int bottom = settings.noiseSettings().minY();

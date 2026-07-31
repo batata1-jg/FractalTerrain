@@ -5,9 +5,12 @@ for the two carve stages and the bed-depth limitation.
 
 ## Files
 
-| File                          | What                                                                                                                                                  | When to read                                                              |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `HydrologyProfileCarver.java` | Two carve stages: static `carveRiverShells` (tile-level shell, nearest-unit, in-place) + per-pixel bed-residual carve (`carve`/`carveAtPixel`/`carvePrefetched`) | Carving the valley/floodplain shell, chunk-time carve entry points        |
-| `RosgenProfile.java`          | Cross-channel profile by Rosgen type: shell elevation lerp, bed residual, floodplain/influence extents. Only type `A` overrides anything                | Shell/bed elevation laws, floodplain and influence radii, per-type tuning |
-| `HydrologyProfile.java`       | `computeForUnit`: per-unit bed-residual delta, faded in over an elliptical footprint around the unit                                                   | Per-pixel bed cross-section math, the elliptical fade weight             |
-| `HydrologyProfilePainter.java`| Water-top and channel-membership queries for chunk fill. Fills from the `RIVER_DIFFERENCE` heightmap the bed stage writes                              | Painting riverUnit surfaces/banks during chunk fill                          |
+| File                          | What                                                                                          | When to read                                                              |
+| ----------------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `README.md`                   | The two carve stages, zone resolution, bed-depth limitation                                   | Onboarding to carving, changing stage responsibilities                     |
+| `HydrologyProfileCarver.java` | Both carve stages: the tile-level shell carve and the per-pixel bed refinement                | Carving the valley shell, chunk-time carve entry points, zone merging      |
+| `HydrologyProfile.java`       | The extension point: zone radii, zone selection, zone weight, shell elevation                 | Adding a feature type's carve behaviour, per-zone weighting                |
+| `RosgenProfile.java`          | Per-Rosgen-type profile: shell lerp, bed residual, floodplain and influence extents. Only `A` overrides anything | Shell/bed elevation laws, floodplain and influence radii, per-type tuning |
+| `DefaultProfile.java`         | The all-defaults profile a feature type uses before it has one of its own                     | Adding a feature type that has no cross-section yet                        |
+| `ZoneCategory.java`           | The carve zones in descending priority order; decides which feature wins where they overlap   | Adding a zone, retuning which feature outranks which                       |
+| `HydrologyProfilePainter.java`| Water-top and channel-membership queries for chunk fill                                       | Painting river surfaces during chunk fill                                  |

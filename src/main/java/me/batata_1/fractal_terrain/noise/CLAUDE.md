@@ -6,6 +6,7 @@ Noise samplers: `FastNoiseLite` dispatcher over per-type strategies, plus `Porta
 
 | File                            | What                                                                   | When to read                                    |
 | ------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------- |
+| `README.md` | Strategy-split rationale and the byte-identical FastNoiseLite constraint | Adding a noise type, before touching any constant or table |
 | `FastNoiseLite.java`            | Dispatcher over noise-type strategies in `strategy/`                   | Selecting a noise type, adding a strategy        |
 | `NoiseSampler.java`             | Abstract sampler base with seeded init registry                        | Adding a sampler, seed initialization           |
 | `OctaveSimplexNoiseSampler.java`| Multi-octave simplex noise                                             | Fractal simplex noise                           |

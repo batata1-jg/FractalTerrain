@@ -77,11 +77,8 @@ public final class EDMScheduler {
         return (float) Math.atan(sigma / SIGMA_DATA);
     }
 
-    /**
-     * Convert raw model output to x0_pred (denoised) using the EDM precondition_outputs formula.
-     * c_skip = sigma_data^2 / (sigma^2 + sigma_data^2)
-     * c_out  = sigma * sigma_data / sqrt(sigma^2 + sigma_data^2)
-     */
+    /** EDM output preconditioning: converts raw model output to the denoised x0 prediction consumed by
+     *  {@link #step}. */
     public static float[] preconditionOutputs(float[] sample, float[] modelOut, float sigma) {
         float sd2 = SIGMA_DATA * SIGMA_DATA;
         float sig2 = sigma * sigma;
@@ -94,13 +91,7 @@ public final class EDMScheduler {
         return x0;
     }
 
-    /**
-     * Run one DPM-Solver++ step. Returns prev_sample.
-     *
-     * @param modelOut raw model output for current step
-     * @param sample   current noisy sample
-     * @return denoised sample at previous (lower) sigma
-     */
+    /** One DPM-Solver++ update step, called once per coarse-diffusion iteration in {@link CoarseStage}. */
     public float[] step(float[] modelOut, float[] sample) {
         float sigmaS = sigmas[stepIndex];
         float sigmaT = sigmas[stepIndex + 1];
@@ -125,15 +116,7 @@ public final class EDMScheduler {
         return prevSample;
     }
 
-    /**
-     * DPM-Solver++ first-order update.
-     * Python uses _sigma_to_alpha_sigma_t returning (alpha=1, sigma_t=sigma) — no VP conversion.
-     * lambda = log(alpha) - log(sigma) = -log(sigma)
-     * h = lambda_t - lambda_s = log(sigma_s / sigma_t)
-     * exp(-h) = sigma_t / sigma_s
-     * x_t = (sigma_t/sigma_s)*sample - (exp(-h) - 1)*D0
-     *      = (sigma_t/sigma_s)*sample - (sigma_t/sigma_s - 1)*D0
-     */
+    /** DPM-Solver++ first-order update; matches the Python reference's alpha=1 (no VP) convention. */
     private static float[] firstOrderUpdate(float[] x0Pred, float[] sample, float sigmaS, float sigmaT) {
         float ratio = sigmaT / sigmaS; // exp(-h) = sigma_t / sigma_s
         float[] xt = new float[sample.length];
@@ -143,13 +126,8 @@ public final class EDMScheduler {
         return xt;
     }
 
-    /**
-     * DPM-Solver++ second-order midpoint.
-     * Python: alpha_t = 1, lambda = -log(sigma)
-     * h = lambda_t - lambda_s0, h0 = lambda_s0 - lambda_s1, r0 = h0/h
-     * D0 = m0, D1 = (m0 - m1) / r0
-     * x_t = (sigma_t/sigma_s0)*sample - (exp(-h)-1)*D0 - 0.5*(exp(-h)-1)*D1
-     */
+    /** DPM-Solver++ second-order midpoint update; matches the Python reference's alpha=1 (no VP)
+     *  convention, used once enough prior model outputs are cached. */
     private static float[] secondOrderUpdate(
             float[] m1, float[] m0, float[] sample, float sigmaS0, float sigmaT, float sigmaS1) {
         double lT = -Math.log(sigmaT);

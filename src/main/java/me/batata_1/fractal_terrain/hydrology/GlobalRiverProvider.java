@@ -16,7 +16,6 @@ import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.math.MarchingSquares;
-import me.batata_1.fractal_terrain.math.Skeletonizer;
 import me.batata_1.fractal_terrain.storage.TileKey;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -24,43 +23,14 @@ import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 
 /**
- * Builds the large-scale ("global") river network off the coarse elevation map, one 64×64 coarse-px
- * tile at a time. Each tile is emitted as a {@code [GLOBAL_RIVER_CHANNELS=4, 64, 64]}
- * {@link FloatTensor} (cache-only, since the backing {@link NonIntersectingInfiniteTensor} is built
- * with a {@code null} path in production):
+ * Builds the large-scale river network off the coarse elevation map, upstream of everything in
+ * {@link LocalRiverProvider}.
  *
- * <ul>
- *   <li><b>channel 0</b> — a packed arrow bitfield per pixel (see the bit layout below), stored as a
- *       float (integers below 2^24 are represented exactly).
- *   <li><b>channel 1</b> — the river width at that pixel (0 on non-river pixels).
- *   <li><b>channel 2</b> — the river-bed elevation (native-px scale), forced monotonically
- *       non-increasing downstream; consumed by {@code ReliefProvider.carveRiver}.
- *   <li><b>channel 3</b> — the raw flow accumulation ({@code widthFromFlow(flow) == width} on river
- *       pixels); carried by {@code GlobalNetworkBuilder} into edge specs so the local network derives
- *       width from flow without a lossy {@code widthFromFlow} inversion. See {@link #getFlow}.
- * </ul>
+ * <p>Works in the coarse-pixel frame so a river's course is decided at continental scale before any
+ * tile-local detail exists; the local provider attaches its drainage-derived network onto this skeleton.
  *
- * <p>Arrow bitfield (channel 0), using the neighbour ordering of {@link Drainage}. Routing
- * is <b>D4</b> (cardinal neighbours only): drainage uses
- * {@link Drainage#computeDrainageDirectionCardinal}, so only the cardinal direction bits
- * (4..7) are ever set and every river cell has a single edge-aligned exit. Only the <b>downstream</b>
- * (outgoing) direction is stored — upstream/tributary arrows are derived on demand by scanning a pixel's
- * neighbours (see {@link #ingoingMask(int, int)}), which stays consistent across tile borders and
- * naturally represents the multiple upstream branches at a confluence:
- * <pre>
- *   bits  0..7 : outgoing direction mask — which neighbour the river leaves TOWARD (only 4..7 set under D4)
- *   bit   8    : source — this pixel is a ridge seed (river origin)
- *   bit   9    : coast  — this pixel is a river terminus on the coastline
- *   bit   10   : sink   — (legacy) no longer set; depression filling removed interior sinks
- * </pre>
- *
- * <p>Per-tile pipeline: padded coarse elevation → threshold (upper/lower masks on the RAW elevation)
- * → isolate (an elevation ramp toward non-ocean tile borders, then a depression fill, on a descent-gradient
- * copy only) → ridge mask ({@link Skeletonizer#thin}) + coast mask ({@link MarchingSquares#borderMask}) →
- * per-source steepest-descent D4 walk recording outgoing bits until a coast pixel or border outlet → width
- * from a flow-accumulation proxy → packed result tile. Thresholding before the ramp keeps the coast
- * classification anchored to real elevation; the ramp confines flow inward across land borders while the
- * depression fill guarantees every interior cell drains to an outlet (the ocean borders, left unramped).
+ * <p>Publishes four channels per tile — arrows, width, bed elevation, raw flow — kept separate so the
+ * local network can re-derive width without inverting the width law. See {@code README.md} for layout.
  */
 public class GlobalRiverProvider {
 
@@ -83,8 +53,7 @@ public class GlobalRiverProvider {
 
     // ---- Geometry -----------------------------------------------------------
     private static final int TILE_SIZE = 64;
-    /** Halo so border pixels have neighbours for the gradient descent; equals the ramp width
-     *  ({@link HydrologyTuning#RAMP_WIDTH}). */
+    /** Halo giving border pixels neighbours for the gradient descent. */
     private static final int PAD = HydrologyTuning.RAMP_WIDTH;
 
     private static final int PADDED_SIDE = TILE_SIZE + 2 * PAD;
@@ -113,21 +82,12 @@ public class GlobalRiverProvider {
         return riverTiles.getValue(new int[] {1, cx, cz});
     }
 
-    /**
-     * Raw flow-accumulation at global coarse-px {@code (cx, cz)} (channel 3). {@link #getWidth} equals
-     * {@code widthFromFlow(getFlow(cx, cz))} on river pixels; {@code GlobalNetworkBuilder} carries this
-     * flow (not the derived width) into its {@code EdgeSpec}s so the local network can build width from
-     * flow without a lossy {@code widthFromFlow} inversion.
-     */
+    /** Raw flow, published alongside width so the local network never has to invert the width law. */
     public float getFlow(int cx, int cz) {
         return riverTiles.getValue(new int[] {3, cx, cz});
     }
 
-    /**
-     * River-bed elevation at global coarse-px {@code (cx, cz)}, in native-px scale: the original
-     * coarse elevation made monotonically non-increasing downstream along the arrow network. Consumed
-     * by {@code ReliefProvider.carveRiver} as the target bed to carve toward.
-     */
+    /** The target bed {@code ReliefProvider.carveRiver} carves toward, forced non-increasing downstream. */
     public float getElevation(int cx, int cz) {
         return riverTiles.getValue(new int[] {2, cx, cz});
     }
@@ -136,14 +96,8 @@ public class GlobalRiverProvider {
         return (arrow >>> OUTGOING_SHIFT) & 0xFF;
     }
 
-    /**
-     * Upstream (ingoing) direction mask at global coarse-px {@code (cx, cz)}, derived by scanning the
-     * four cardinal neighbours: a river arrives FROM direction {@code d} when the neighbour in that
-     * direction drains back toward this pixel (its outgoing mask has the opposite-direction bit set).
-     * Deriving upstream this way — rather than storing it — stays consistent across tile borders and
-     * represents every tributary at a confluence (a pixel can have multiple upstream arrows). Only the
-     * cardinal directions (4..7) are scanned since drainage is D4.
-     */
+    /** Upstream arrows, derived by scanning neighbours rather than stored — that is what keeps them
+     *  consistent across tile borders and lets a confluence carry several tributaries. */
     public int ingoingMask(int cx, int cz) {
         int mask = 0;
         for (int d = 4; d < 8; d++) {
@@ -178,10 +132,7 @@ public class GlobalRiverProvider {
         return computeTile(key.get(X), key.get(Z), null);
     }
 
-    /**
-     * Full per-tile compute. When {@code stages != null} every intermediate artifact is recorded for
-     * the debug harness (zero allocation / recording overhead when {@code null}).
-     */
+    /** Full per-tile compute; {@code stages} is a debug sink, null in production. */
     private FloatTensor computeTile(int tx, int tz, @Nullable Stages stages) {
         final int tileOriginCx = tx * TILE_SIZE;
         final int tileOriginCz = tz * TILE_SIZE;
@@ -192,13 +143,8 @@ public class GlobalRiverProvider {
         return computeTileFromElevation(elevation, tileOriginCx, tileOriginCz, stages);
     }
 
-    /**
-     * The deterministic per-tile pipeline (steps 2–7) over an already-materialized padded elevation
-     * field — the single pipeline-sourced input {@link #computeTile} fetches via {@link #paddedElevation}.
-     * Factored out so the network build is exercisable headlessly (see {@code GlobalRiverGoldenTest}) over
-     * a synthetic seeded elevation grid of length {@code PADDED_SIDE*PADDED_SIDE}, without the ~1 GB ONNX
-     * diffusion pipeline. Production {@link #computeTile} delegates here unchanged, so behavior is identical.
-     */
+    /** The tile pipeline minus its one pipeline-sourced input, split out so goldens can drive it over a
+     *  synthetic elevation grid without loading the ONNX model. */
     private FloatTensor computeTileFromElevation(
             float[] elevation, int tileOriginCx, int tileOriginCz, @Nullable Stages stages) {
         // 2. threshold on the RAW elevation (so the coast stays anchored to true elevation).
@@ -310,14 +256,8 @@ public class GlobalRiverProvider {
         return tile;
     }
 
-    /**
-     * Follow the steepest-descent field from ridge seed {@code (startPi, startPj)} pixel-by-pixel.
-     * At each step the exited pixel gets its <b>outgoing</b> bit set (upstream arrows are not stored;
-     * they are derived later by scanning neighbours). The seed is flagged {@code source} and a terminal
-     * coast pixel is flagged {@code coast}. Bits accumulate (OR) so converging tributaries share pixels.
-     * Sink filling on the descent elevation guarantees a downhill neighbour exists until a border outlet
-     * is reached, so a {@code -1} direction simply ends the walk.
-     */
+    /** Traces one river from its ridge seed to the coast or a border outlet.
+     *  Arrow bits accumulate, which is how converging tributaries come to share pixels. */
     private void walkFromSource(
             int startPi, int startPj, int[] drainageDirection, int[] arrows, @Nullable List<List<int[]>> descentPaths) {
         arrows[startPi * PADDED_SIDE + startPj] |= SOURCE_BIT;
@@ -363,14 +303,8 @@ public class GlobalRiverProvider {
         return elevation;
     }
 
-    /**
-     * Return a copy of {@code elevation} with a ramp added that rises toward the padded-grid border:
-     * border pixels gain {@link #RAMP_HEIGHT}, decaying linearly to 0 at {@link HydrologyTuning#RAMP_WIDTH}
-     * pixels inward. This pushes steepest-descent flow inward so rivers terminate within the tile rather
-     * than spilling across its borders. <b>Ocean pixels ({@code elevation < 0}) are left untouched</b>: the
-     * ocean is already a natural border, so flow is allowed to exit the tile through it. The central
-     * 64×64 region is left untouched (real elevation).
-     */
+    /** Pushes flow inward so rivers terminate inside the tile instead of spilling across its borders.
+     *  Ocean pixels are left alone — the ocean is already a natural outlet. */
     private float[] applyBorderRamp(float[] elevation) {
         final float[] ramped = elevation.clone();
         for (int pi = 0; pi < PADDED_SIDE; pi++) {
@@ -391,15 +325,9 @@ public class GlobalRiverProvider {
     /** Divisor in the coarse→native elevation scale map ({@code nativeElev = coarseElev² / SCALE}). */
     private static final float ELEV_NATIVE_SCALE = 5f;
 
-    /**
-     * Per-pixel river-bed elevation in native-px scale. Each pixel starts at its original coarse
-     * elevation mapped to native scale ({@code clamp(e,0,∞)² / ELEV_NATIVE_SCALE} — below-sea pixels
-     * clamp to 0 so they don't read as high terrain), then a topological (Kahn) downstream pass over
-     * the outgoing-arrow graph forces the value monotonically non-increasing:
-     * {@code riverElev[down] = min(riverElev[down], riverElev[up])}. The arrow graph (not the raw
-     * drainage field) is used because it includes the {@code marchToCoast} reroute segments. Cells in
-     * a cycle (not expected) simply keep their initial value.
-     */
+    /** Forces the bed monotonically non-increasing downstream, so a carved river never runs uphill.
+     *  Walks the arrow graph rather than the raw drainage field, because only the arrows include the
+     *  {@code marchToCoast} reroute segments. */
     private float[] computeRiverElevation(int[] arrows, float[] originalElevation) {
         final int n = PADDED_SIDE * PADDED_SIDE;
         final float[] riverElev = new float[n];
@@ -460,11 +388,7 @@ public class GlobalRiverProvider {
         return PADDED_SIDE;
     }
 
-    /**
-     * Headless seam for {@code GlobalRiverGoldenTest}: run the deterministic tile pipeline over a supplied
-     * padded elevation grid ({@code paddedSideForTest()²} floats) with no pipeline dependency, and return
-     * the packed {@code [GLOBAL_RIVER_CHANNELS,64,64]} result tile. Delegates to the exact production path.
-     */
+    /** Headless seam for {@code GlobalRiverGoldenTest}; delegates to the production path. */
     @TestOnly
     public FloatTensor computeTileForTest(float[] paddedElevation) {
         return computeTileFromElevation(paddedElevation, 0, 0, null);

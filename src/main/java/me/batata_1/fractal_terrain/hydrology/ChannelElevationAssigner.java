@@ -13,36 +13,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Bed-elevation assignment for a relaxed {@link RiverNetwork}, in three phases:
+ * Gives every channel point a bed elevation, so the carve has a target to cut toward.
  *
- * <ol>
- *   <li>Seed every {@code SOURCE}/{@code DRAIN} node's elevation from the boundary map (missing entries
- *       default to {@code 0.0}).</li>
- *   <li>Propagate junction elevations leaves→drains in Kahn order: each channel walks its spline points
- *       taking a running terrain sample clamped into {@code [drainElev, previousPoint]}, and a junction
- *       adopts the minimum arriving elevation once all its incoming channels have reported.</li>
- *   <li>Recompute every channel's per-point bed: a terrain sample floored at the channel's end elevation,
- *       blended toward that end elevation by the along-channel fraction, then forced monotone
- *       non-increasing against the previous point.</li>
- * </ol>
+ * <p>Network-agnostic by design: {@code LocalRiverProvider.buildTile} runs it twice per tile, once on
+ * the global-only graph and again on the unified one, and it must behave identically both times.
  *
- * <p>Operates on whatever network and boundary map it is given and assumes nothing about the network
- * being global-only.  invokes it <b>twice</b> per tile — once on the
- * global-only graph and again after the local network is attached.
- *
- * <p>Collaborators: {@link HydrologyTileGeometry#sampleBilinear} (padded-frame terrain sampling);
- * consumes and mutates the {@link RiverNetwork} handed to it (writes {@link Endpoint#elevation} and
- * {@link Channel#bedElevations}).
- *
- * <p>Invariants: purely functional over its parameters — no shared mutable state across tiles. Phase 2
- * floors each path at the bed of the terminal {@code DRAIN} it ultimately flows into (not the local
- * coarse cell), so a whole source→junction→drain path descends to a single path-consistent minimum; the
- * drain bed of every node is resolved once up front by {@link #resolveDrainElevations} rather than
- * re-scanned per junction.
- *
- * <p>Phase 2 throws {@link IllegalArgumentException} on a missing start node, a {@code NaN} start
- * elevation, or a node whose drain elevation is unresolvable — i.e. broken topology fails loudly here
- * rather than silently producing {@code NaN} beds.
+ * <p>Each path is floored at the bed of the terminal DRAIN it reaches rather than at the local coarse
+ * cell, so a whole source→junction→drain path descends to one consistent minimum. Broken topology
+ * throws here rather than silently yielding NaN beds downstream.
  */
 final class ChannelElevationAssigner {
 
@@ -118,13 +96,8 @@ final class ChannelElevationAssigner {
         }
     }
 
-    /**
-     * For every node, the bed elevation of the unique downstream {@code DRAIN} it ultimately flows into.
-     * The network is a single-outflow dendritic in-tree, so following {@link Endpoint#outgoing} edges from
-     * any node reaches exactly one drain. Each downstream walk memoizes every node it touches (including
-     * the drain itself), so the whole network is resolved in O(nodes) total instead of re-walking per
-     * junction. Unreachable nodes (broken topology) map to {@code NaN}.
-     */
+    /** Resolves every node's terminal drain up front, so the elevation pass never re-walks downstream
+     *  per junction. Unreachable nodes map to NaN, which the caller treats as broken topology. */
     private static Map<Integer, Double> resolveDrainElevations(RiverNetwork network) {
         final Map<Integer, Double> drainElevByNodeId = new HashMap<>();
         final ArrayDeque<Integer> pathToDrain = new ArrayDeque<>();

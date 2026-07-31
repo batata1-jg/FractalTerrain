@@ -8,38 +8,22 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-
+import me.batata_1.fractal_terrain.hydrology.network.AtomicView;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork.EdgeSpec;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork.NodeSpec;
-import me.batata_1.fractal_terrain.hydrology.network.AtomicView;
 import org.junit.jupiter.api.Test;
 
 /**
- * Round-trip golden for the canonical&harr;atomic seam ({@link RiverNetwork#viewAtomic()} /
- * {@link RiverNetwork#accumulateAndCorrectFlow} / {@link RiverNetwork#update}). Nothing in production calls
- * the seam yet; this test is the seam gate.
+ * The gate on {@link RiverNetwork}'s canonical/atomic seam, asserting a round trip changes nothing.
  *
- * <p>As of Phase 2 the seam round trip also derives and folds back per-point <b>flow</b>: {@code viewAtomic}
- * carries each node's {@code ownFlow}/{@code anchorFlow}, {@code accumulateAndCorrectFlow} derives the
- * per-node flow (reverse-topological accumulation + drain clamp + near-drain lerp), and {@code update}
- * writes it into each {@link Channel#flow}. The full round trip
- * {@code av = viewAtomic(); accumulateAndCorrectFlow(av); update(av)} is therefore <b>idempotent</b>: a
- * freshly constructed network carries its construction-time flow, so the test first canonicalizes with one
- * round trip, captures the signature, then round-trips again and asserts bit-identical output — proving
- * points, topology <b>and</b> flow all round-trip.
+ * <p>Round-trips twice and compares: the first canonicalizes, the second must be bit-identical, which
+ * proves points, topology and flow all survive.
  *
- * <p>The fixture is a genuine JUNCTION confluence in the <i>canonical</i> view — two SOURCE&rarr;JUNCTION
- * edges plus one JUNCTION&rarr;DRAIN edge — because the round-trip signature alone does not exercise
- * {@link RiverNetwork#update}'s load-bearing rule (preserve SOURCE/DRAIN canonical ids, re-assign only
- * JUNCTION-equivalents). Dedicated assertions check that rule directly.
- *
- * <p><b>The signature is bit-exact.</b> Points reproduce exactly across the round trip and flow is derived
- * deterministically, so the checksum is an exact {@code doubleToLongBits} combine over every spline point
- * <b>and</b> every per-point flow value, accumulated with commutative long arithmetic (order-independent,
- * exact mod 2^64) — sharp to a single ULP yet tolerant of {@code update()}'s channel-id reshuffle.
+ * <p>The fixture is a real confluence because the signature alone does not exercise {@code update}'s
+ * load-bearing id rule — preserve SOURCE/DRAIN, re-assign JUNCTIONs — which separate assertions check.
  */
 class RiverNetworkSeamGoldenTest {
 
@@ -55,12 +39,7 @@ class RiverNetworkSeamGoldenTest {
     private static final double[] JUNCTION = {250.0, 256.0};
     private static final double[] DRAIN = {250.0, 400.0};
 
-    /**
-     * A canonical network with one real confluence: {@code sourceA -> junction}, {@code sourceB ->
-     * junction}, {@code junction -> drain}. The junction is a JUNCTION endpoint of in-degree 2, out-degree
-     * 1 — an in-degree&ge;2 structural node in the atomic view. The {@code EdgeSpec} 4th field is now a
-     * flow value (not a width); the exact numbers are arbitrary — the seam derives flow from them.
-     */
+    /** A network with one real confluence, so the seam's junction-id rule is actually exercised. */
     private static RiverNetwork confluenceNetwork() {
         final List<NodeSpec> nodeSpecs = List.of(
                 new NodeSpec(SOURCE_A[0], SOURCE_A[1], Endpoint.Type.SOURCE), // 0
@@ -199,13 +178,8 @@ class RiverNetworkSeamGoldenTest {
         assertTrue(confluence, "fixture is missing a JUNCTION confluence (degree >= 3)");
     }
 
-    /**
-     * Bit-exact, order-independent signature over points + gross topology + per-point flow: channel/node/
-     * point counts plus a commutative checksum over every channel's spline points and flow values via
-     * {@link Double#doubleToLongBits}. Long accumulation is exact and associative/commutative (mod 2^64),
-     * so the checksum is invariant to visitation order — tolerating {@code update()}'s channel-id reshuffle
-     * — yet sharp to a single ULP: any coordinate or flow change fails the gate.
-     */
+    /** Signature sharp to one ULP yet invariant to visitation order, so {@code update}'s channel-id
+     *  reshuffle does not trip the gate while any real coordinate change does. */
     private static String signature(RiverNetwork net) {
         long checksum = 0L;
         int totalPoints = 0;

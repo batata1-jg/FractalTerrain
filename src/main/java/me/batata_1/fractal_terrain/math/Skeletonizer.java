@@ -23,20 +23,13 @@ public class Skeletonizer {
     private final int minPolylineLength;
     private final double resampleSpacing;
 
-    /**
-     * @param minPolylineLength polylines with fewer points than this are discarded before fitting.
-     * @param resampleSpacing arc-length spacing used to resample each fitted spline.
-     */
+    /** @param minPolylineLength discards polylines too short to fit meaningfully */
     public Skeletonizer(int minPolylineLength, double resampleSpacing) {
         this.minPolylineLength = minPolylineLength;
         this.resampleSpacing = resampleSpacing;
     }
 
-    /**
-     * Thin {@code mask}, trace its skeleton into polylines, and fit + resample each long-enough
-     * polyline into a {@link QuinticHermiteSpline}. Degenerate splines (e.g. runaway resampling)
-     * are skipped. Points are mask-relative.
-     */
+    /** Medial-axis splines for a mask. Degenerate results are skipped rather than returned. */
     public List<QuinticHermiteSpline> trace(boolean[][] mask) {
         final boolean[][] skeleton = zhangSuen(mask);
         final List<List<int[]>> polylines = tracePolylines(skeleton);
@@ -61,11 +54,8 @@ public class Skeletonizer {
     // Zhang–Suen thinning
     // -------------------------------------------------------------------------
 
-    /**
-     * Thin {@code mask} to a 1-pixel-wide skeleton mask, without any polyline tracing or spline
-     * fitting. This is the raw Zhang–Suen result — callers (e.g. the global-river ridge pass) want
-     * the skeleton mask directly rather than fitted splines. Returns a fresh array; input untouched.
-     */
+    /** Raw Zhang-Suen skeleton, for callers such as the global-river ridge pass that want the mask
+     *  itself rather than fitted splines. */
     public static boolean[][] thin(boolean[][] mask) {
         return zhangSuen(mask);
     }
@@ -152,10 +142,7 @@ public class Skeletonizer {
     // Polyline tracing
     // -------------------------------------------------------------------------
 
-    /**
-     * Convert a 1-pixel skeleton into polylines. Endpoints/junctions (8-neighbour count != 2) seed
-     * walks along degree-2 chains; any remaining unvisited degree-2 pixels form closed loops.
-     */
+    /** Skeleton mask to polylines; leftover degree-2 pixels become closed loops. */
     public static List<List<int[]>> tracePolylines(boolean[][] skeleton) {
         final int height = skeleton.length;
         final int width = skeleton[0].length;

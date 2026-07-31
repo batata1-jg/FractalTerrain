@@ -5,15 +5,11 @@ import java.util.Arrays;
 /**
  * Immutable integer-tuple key for {@link Storage} tiles.
  *
- * <p>Replaces the former {@code List<Integer>} keys, which boxed every coordinate and allocated an
- * {@code ArrayList} on <em>every</em> cache access (e.g. ~24 lookups per generated block). A
- * {@code TileKey} is a single object wrapping one {@code int[]} plus a precomputed hash — no
- * per-element boxing.
+ * <p>Exists to keep cache lookups allocation-free: the boxed {@code List<Integer>} keys it replaced
+ * allocated on every access, and there are roughly two dozen lookups per generated block.
  *
- * <p>The backing array is defensively copied on construction, so callers may hand in (and keep
- * mutating) a reused scratch array — this is what makes the non-cloning window iteration in
- * {@code InfiniteTensor#iterateWindows} safe. {@code final} fields give safe publication when used
- * as a {@link java.util.concurrent.ConcurrentHashMap} key across threads.
+ * <p>The backing array is copied on construction, which is what lets callers pass a reused scratch
+ * array — {@code InfiniteTensor#iterateWindows} depends on that.
  */
 public final class TileKey {
 

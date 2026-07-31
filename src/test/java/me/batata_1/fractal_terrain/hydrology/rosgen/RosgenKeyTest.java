@@ -119,20 +119,25 @@ class RosgenKeyTest {
         // ER 2.25 is within the published +/-0.2 of the 2.2 boundary, so a B neighbour holds.
         final ReachMetrics onBoundary = new ReachMetrics(0.001, 2.25, 20.0, 2.0, 80.0);
         assertEquals(RiverUnit.RosgenType.C, RosgenKey.classify(onBoundary));
-        assertEquals(RiverUnit.RosgenType.B, RosgenKey.applyDeadBand(onBoundary, RiverUnit.RosgenType.C, RiverUnit.RosgenType.B));
+        assertEquals(
+                RiverUnit.RosgenType.B,
+                RosgenKey.applyDeadBand(onBoundary, RiverUnit.RosgenType.C, RiverUnit.RosgenType.B));
     }
 
     @Test
     void deadBandKeepsTheUpstreamTypeWhenWidthDepthSitsOnAThreshold() {
         final ReachMetrics onBoundary = new ReachMetrics(0.001, 6.0, 13.0, 2.0, 80.0);
         assertEquals(RiverUnit.RosgenType.C, RosgenKey.classify(onBoundary));
-        assertEquals(RiverUnit.RosgenType.E, RosgenKey.applyDeadBand(onBoundary, RiverUnit.RosgenType.C, RiverUnit.RosgenType.E));
+        assertEquals(
+                RiverUnit.RosgenType.E,
+                RosgenKey.applyDeadBand(onBoundary, RiverUnit.RosgenType.C, RiverUnit.RosgenType.E));
     }
 
     @Test
     void deadBandDoesNotSuppressAChangeFarFromAnyThreshold() {
         final ReachMetrics clear = new ReachMetrics(0.001, 6.0, 20.0, 2.0, 80.0);
-        assertEquals(RiverUnit.RosgenType.C, RosgenKey.applyDeadBand(clear, RiverUnit.RosgenType.C, RiverUnit.RosgenType.E));
+        assertEquals(
+                RiverUnit.RosgenType.C, RosgenKey.applyDeadBand(clear, RiverUnit.RosgenType.C, RiverUnit.RosgenType.E));
     }
 
     @Test

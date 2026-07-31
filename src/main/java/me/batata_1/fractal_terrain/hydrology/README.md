@@ -80,10 +80,12 @@ units out of the tile-level shell — both `carveRiverShells` calls are unfilter
   through `claimForCompute`/`fulfillClaim`; do not compute one store's tile independently of the other.
 - **`FloatTensor` obtained from `carved` is frozen once cached** — never mutate a tensor read via
   `getCarvedElev`; take a `slice`/`copyRange` first if a mutable copy is needed.
-- **The hydrology carve is order-dependent.** `carveRiverShells` reads and writes one shared buffer and
-  keeps only the nearest unit per pixel, so results depend on how many carve passes have run and which
-  units existed in the graph at the time. `buildTile` runs it twice by design (see Architecture) — adding,
-  reordering, or deduplicating those passes changes terrain output.
+- **The hydrology carve is pass-order-dependent.** `carveRiverShells` reads and writes one shared
+  buffer, so results depend on how many carve passes have run and which units existed in the graph at
+  the time. Within a single pass it is order-independent: every unit reaching a pixel is blended into
+  one distance-weighted average, from a `curElev` sampled before the unit loop. `buildTile` runs it
+  twice by design (see Architecture) — adding, reordering, or deduplicating those passes changes
+  terrain output.
 - **The per-tile `RiverNetwork`/`Meanders` graph is per-tile, single-threaded.** See
   `meanders/README.md` for the full contract; `GlobalNetworkBuilder` and `LocalDrainageTracer` both
   document (and rely on) it.
