@@ -54,7 +54,18 @@ public class HydrologyUnitVisualizer {
      * dropped, so girths of near-border units still show their in-tile part.
      */
     public void see(List<HydrologicalUnit> units, String name, int gridSize, int upscale) {
-        render(units, name, gridSize, upscale, HydrologyUnitVisualizer::colorFor);
+        see(units, name, gridSize, upscale, 0, 0);
+    }
+
+    /**
+     * {@link #see(List, String, int, int)} for units carrying <b>world</b> relief-pixel coords — the frame
+     * {@code LocalRiverProvider}'s published unit index uses. {@code (originX, originZ)} is the world
+     * coordinate the canvas's {@code (0,0)} corner sits at (a tile's {@code tileX·GRID}), subtracted from
+     * each unit before it is drawn. Pass {@code (0, 0)} for units already in the canvas frame.
+     */
+    public void see(
+            List<HydrologicalUnit> units, String name, int gridSize, int upscale, double originX, double originZ) {
+        render(units, name, gridSize, upscale, originX, originZ, HydrologyUnitVisualizer::colorFor);
     }
 
     /**
@@ -95,19 +106,28 @@ public class HydrologyUnitVisualizer {
      * segmentation or the dead band is not working.
      */
     public void seeByRosgenType(List<HydrologicalUnit> units, String name, int gridSize, int upscale) {
-        render(units, name, gridSize, upscale, HydrologyUnitVisualizer::rosgenColor);
+        seeByRosgenType(units, name, gridSize, upscale, 0, 0);
+    }
+
+    /** {@link #seeByRosgenType(List, String, int, int)} with the world→canvas origin of {@link #see}. */
+    public void seeByRosgenType(
+            List<HydrologicalUnit> units, String name, int gridSize, int upscale, double originX, double originZ) {
+        render(units, name, gridSize, upscale, originX, originZ, HydrologyUnitVisualizer::rosgenColor);
     }
 
     /**
      * Render {@code units} with {@code palette} deciding each unit's colour. Both passes — the
      * translucent girth disc and the solid centre point — read the same colour, so a unit's disc and its
-     * point never disagree.
+     * point never disagree. Each unit's coords are shifted by {@code -(originX, originZ)} into the canvas
+     * frame first.
      */
     private void render(
             List<HydrologicalUnit> units,
             String name,
             int gridSize,
             int upscale,
+            double originX,
+            double originZ,
             Function<HydrologicalUnit, Color> palette) {
         if (gridSize <= 0 || upscale <= 0)
             throw new IllegalArgumentException("gridSize and upscale must be > 0, got " + gridSize + ", " + upscale);
@@ -117,8 +137,8 @@ public class HydrologyUnitVisualizer {
         // Pass 1 — width girths: translucent filled disc of radius width/2 (tile px) per unit.
         for (final HydrologicalUnit unit : units) {
             final int rgb = palette.apply(unit).getRGB();
-            final double centerX = unit.coord()[0] * upscale;
-            final double centerZ = unit.coord()[1] * upscale;
+            final double centerX = (unit.coord()[0] - originX) * upscale;
+            final double centerZ = (unit.coord()[1] - originZ) * upscale;
             final double radius = unit.width() * 0.5 * upscale;
             blendDisc(image, centerX, centerZ, radius, rgb);
         }
@@ -127,8 +147,8 @@ public class HydrologyUnitVisualizer {
         final int pointHalf = Math.max(1, upscale / 2) / 2; // point square side = max(1, upscale/2)
         for (final HydrologicalUnit unit : units) {
             final int rgb = palette.apply(unit).getRGB();
-            final int px = (int) Math.round(unit.coord()[0] * upscale);
-            final int pz = (int) Math.round(unit.coord()[1] * upscale);
+            final int px = (int) Math.round((unit.coord()[0] - originX) * upscale);
+            final int pz = (int) Math.round((unit.coord()[1] - originZ) * upscale);
             for (int x = px - pointHalf; x <= px + pointHalf; x++) {
                 for (int z = pz - pointHalf; z <= pz + pointHalf; z++) {
                     if (x >= 0 && x < side && z >= 0 && z < side) image.setRGB(x, z, rgb);

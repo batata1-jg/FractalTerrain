@@ -139,6 +139,10 @@ public class LocalRiverTest {
      * Render the tile's built {@code HydrologicalUnit} R-tree (type-colored points, id shades, width
      * girths — see {@link me.batata_1.fractal_terrain.debug.HydrologyUnitVisualizer}) and log its stats.
      * Reads the index {@code debugStages} captured, so the tile is not rebuilt.
+     *
+     * <p>Those units carry world relief-pixel coords (unlike every raster in {@code Stages}), so the
+     * tile's world origin is handed to the renderer to bring them back onto this tile's canvas —
+     * otherwise every tile but {@code (0,0)} would render blank.
      */
     private static void dumpUnitTree(LocalRiverProvider.Stages stages, int tx, int tz, String prefix) {
         if (stages.unitTree == null) {
@@ -149,8 +153,10 @@ public class LocalRiverTest {
         Debug.units.debugPath = DEBUG_PATH;
         try {
             final List<HydrologicalUnit> units = stages.unitTree.getAllEntries();
-            Debug.units.see(units, prefix + "06_units", GRID, 4);
-            Debug.units.seeByRosgenType(units, prefix + "07_rosgen", GRID, 4);
+            final double worldOriginX = tx * (double) GRID;
+            final double worldOriginZ = tz * (double) GRID;
+            Debug.units.see(units, prefix + "06_units", GRID, 4, worldOriginX, worldOriginZ);
+            Debug.units.seeByRosgenType(units, prefix + "07_rosgen", GRID, 4, worldOriginX, worldOriginZ);
             Debug.units.logStats(units, "tile (" + tx + "," + tz + ")");
         } catch (RuntimeException e) {
             LOG.warn("tile ({},{}): unit-tree dump failed ({})", tx, tz, e.toString(), e);

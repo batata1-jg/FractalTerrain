@@ -61,6 +61,13 @@ import org.slf4j.LoggerFactory;
  * graph, to give the drainage trace a carved valley to route through, and again on the unified graph
  * after the local network is attached. See {@link #buildTile} for the exact ordering.
  *
+ * <p><b>Coordinate frames.</b> Everything inside {@link #buildTile} works in the <em>padded tile</em>
+ * frame — pixel indices into a {@code PADDED × PADDED} buffer. The unit index published out of it is the
+ * one exception: its coords are stamped in the <em>world</em> relief-pixel frame, so the query API
+ * ({@link #queryInfluence}, {@link #anyInfluencingUnit}) is frame-free and a hit from a neighbouring tile
+ * needs no translation to sit alongside one from this tile. The carved-elevation tile stays tile-local
+ * (it is a raster, addressed by pixel index).
+ *
  * <p><b>Invariants:</b> {@link #units}/{@link #carved} (a {@link NonIntersectingSpatialIndex} /
  * {@link NonIntersectingInfiniteTensor} pair) are reused per-tile and single-threaded per key — the
  * {@code pending} single-flight map and the storage claim API are what let one {@link #buildTile} call
@@ -83,9 +90,12 @@ public class LocalRiverProvider {
     public LocalRiverProvider(String path) {
         // The one-unit prototype index keeps Storage's serializability probe exercising unit
         // serialization, so the store stays disk-backed (mirrors the old seeded prototype tree).
+        // _v2: unit coords are now persisted in the WORLD relief-pixel frame (see buildTile). A v1 tile
+        // on disk holds tile-local coords and would be silently misread as world coords, so the store
+        // name is bumped rather than the format version -- old tiles are simply never loaded again.
         units = new NonIntersectingSpatialIndex<>(
                 path,
-                "local_river_units",
+                "local_river_units_v2",
                 new int[] {GRID, GRID},
                 new ImmutableRTree<>(List.of(), HydrologicalUnit.PROTOTYPE),
                 key -> key != null ? buildUnitsTile(key) : null);
@@ -189,8 +199,9 @@ public class LocalRiverProvider {
      *       {@code JUNCTION} instead).</li>
      *   <li>Seed the boundary map with those local {@code SOURCE}/{@code DRAIN} nodes, then run
      *       {@code assign} a second time over the now-unified graph.</li>
-     *   <li>Collect every unit (global + local, one shared feature-id counter) into the R-tree, run the
-     *       shell carve a second time, and crop the padded buffer to {@code GRID × GRID}.</li>
+     *   <li>Collect every unit (global + local, one shared feature-id counter) into the R-tree — stamped
+     *       into the world relief-pixel frame, see the class javadoc — run the shell carve a second time,
+     *       and crop the padded buffer to {@code GRID × GRID}.</li>
      *   <li>Every {@code collectUnits} call goes through {@link Meanders}, so each classifies the units it
      *       emits with a Rosgen type. All three agree because they classify against the same pre-carve
      *       elevation snapshot {@link GlobalNetworkBuilder} took, not the buffer the carve mutates. The
@@ -256,8 +267,20 @@ public class LocalRiverProvider {
         HydrologyProfileCarver.carveRiverShells(
                 carvedElevation, sim.collectUnits(0, 0, 0, new int[] {0}).toArray(new HydrologicalUnit[0]), PADDED);
 
+        // The indexed units are stamped in the WORLD relief-pixel frame. collectUnits subtracts the
+        // offset it is given, so (PAD - tileOrigin) drops the halo pad and adds the tile's world origin
+        // in one step. The origin matches what the store's TensorWindow hands forEachTileWithin
+        // (stride = GRID, offset = 0), which is what makes the query path frame-free.
+        //
+        // Paid once per unit per tile build instead of once per hit per query, and it keeps the bed-noise
+        // seed (River.carveFineGrained hashes the unit's own coords) absolute rather than repeating with
+        // a GRID-px period. The two carveRiverShells collects (offset 0) deliberately stay in the padded
+        // tile frame: they index against a PADDED x PADDED buffer addressed by pixel index.
+        final int tileOriginX = tileX * GRID;
+        final int tileOriginZ = tileZ * GRID;
         final int[] nextFeatureId = {0};
-        final List<HydrologicalUnit> unitPoints = sim.collectUnits(0, PAD, PAD, nextFeatureId);
+        final List<HydrologicalUnit> unitPoints =
+                sim.collectUnits(0, PAD - tileOriginX, PAD - tileOriginZ, nextFeatureId);
         final ImmutableRTree<HydrologicalUnit> unitIndex = new ImmutableRTree<>(unitPoints, HydrologicalUnit.PROTOTYPE);
 
         final FloatTensor carvedTile = cropToTile(carvedElevation);
@@ -298,57 +321,46 @@ public class LocalRiverProvider {
 
     /**
      * Early-exit existence test over the unit index: true iff some unit whose influence circle contains
-     * {@code pt} (relief-pixel frame) passes {@code test}. Candidates come from the per-tile R-tree
+     * {@code pt} (world relief-pixel frame) passes {@code test}. Candidates come from the per-tile R-tree
      * stabbing query; {@code tileVisitRadius} only sizes the cross-tile window and must upper-bound the
      * distance of any unit the test can accept. Spans tile borders like {@link #queryInfluence} but
-     * allocates no result list and stops at the first accepted unit. The test runs in the tile-local
-     * frame; distances are translation-invariant, so the {@code distSqToQueryPoint} it receives equals
-     * the world-frame squared distance.
+     * allocates no result list and stops at the first accepted unit. Stored coords are already
+     * world-frame, so every tile is stabbed with {@code pt} itself and the {@code distSqToQueryPoint}
+     * the test receives is the world-frame squared distance.
      */
     public boolean anyInfluencingUnit(double[] pt, double tileVisitRadius, InfluencingUnitTest test) {
-        final double[] tileLocalPoint = new double[2];
-        final Predicate<HydrologicalUnit> tileLocalAcceptanceTest = unit -> {
-            final double deltaX = unit.coord()[0] - tileLocalPoint[0];
-            final double deltaZ = unit.coord()[1] - tileLocalPoint[1];
+        final Predicate<HydrologicalUnit> acceptanceTest = unit -> {
+            final double deltaX = unit.coord()[0] - pt[0];
+            final double deltaZ = unit.coord()[1] - pt[1];
             return test.test(unit, deltaX * deltaX + deltaZ * deltaZ);
         };
-        return units.forEachTileWithin(pt, tileVisitRadius, (tileOriginX, tileOriginZ, tileIndex) -> {
-            tileLocalPoint[0] = pt[0] - tileOriginX;
-            tileLocalPoint[1] = pt[1] - tileOriginZ;
-            return tileIndex.anyContaining(tileLocalPoint, tileLocalAcceptanceTest);
-        });
+        return units.forEachTileWithin(
+                pt,
+                tileVisitRadius,
+                (tileOriginX, tileOriginZ, tileIndex) -> tileIndex.anyContaining(pt, acceptanceTest));
     }
 
     /**
-     * Gather every hydrological unit whose feature influences {@code pt} (a point in the relief-pixel
-     * frame), re-stamped into world coords and returned as a flat array in <b>unspecified order</b> —
-     * consumed by {@link HydrologyProfileCarver}'s flat
-     * distance-weighted merge (every unit contributes; no per-feature grouping).
+     * Gather every hydrological unit whose feature influences {@code pt} (a point in the world
+     * relief-pixel frame) and return them as a flat array in <b>unspecified order</b> — consumed by
+     * {@link HydrologyProfileCarver}'s flat distance-weighted merge (every unit contributes; no
+     * per-feature grouping).
      *
      * <p>A unit is kept when {@code pt} lies within that unit's own influence circle
      * ({@link HydrologicalUnit#getRadius()} = {@link FractalTerrainConfig#riverInfluence
      * riverInfluence(width)}), optionally inflated by {@code extraRadius} (used by the per-chunk
      * prefetch so one query serves every block of a chunk) — exactly what the per-tile R-tree stabbing
      * query returns, so no per-unit reach re-test is needed. The query spans tile borders (a river
-     * within influence may live in a neighbouring tile); stored coords are tile-local, so each hit is
-     * re-stamped into the common world frame by adding its owning tile's origin.
+     * within influence may live in a neighbouring tile); every tile's index already stores world coords
+     * ({@link #buildTile}), so each tile is stabbed with {@code pt} itself and the hits from all of them
+     * accumulate straight into one list — no per-hit re-stamping, no copy, and the returned units are
+     * the indexed instances, which callers must treat as read-only.
      */
     public HydrologicalUnit[] queryInfluence(double[] pt, double extraRadius) {
         final List<HydrologicalUnit> influencingUnits = new ArrayList<>(64);
-        final List<HydrologicalUnit> tileLocalHits = new ArrayList<>(64); // reused across tiles; cleared per tile
-        final double[] tileLocalPoint = new double[2];
         units.forEachTileWithin(
                 pt, HydrologyTuning.MAX_INFLUENCE_RADIUS + extraRadius, (tileOriginX, tileOriginZ, tileIndex) -> {
-                    tileLocalPoint[0] = pt[0] - tileOriginX;
-                    tileLocalPoint[1] = pt[1] - tileOriginZ;
-                    tileLocalHits.clear();
-                    tileIndex.queryContaining(tileLocalPoint, extraRadius, tileLocalHits);
-                    for (final HydrologicalUnit unit : tileLocalHits) {
-                        final HydrologicalUnit unitClone = unit.clone();
-                        unitClone.coord()[0] = unitClone.coord()[0] + tileOriginX;
-                        unitClone.coord()[1] = unitClone.coord()[1] + tileOriginZ;
-                        influencingUnits.add(unitClone);
-                    }
+                    tileIndex.queryContaining(pt, extraRadius, influencingUnits);
                     return false;
                 });
         return influencingUnits.toArray(new HydrologicalUnit[0]);
@@ -367,6 +379,9 @@ public class LocalRiverProvider {
      * The built {@link ImmutableRTree} of {@link HydrologicalUnit} influence circles for tile
      * {@code (tileX, tileZ)} (triggers {@link #buildTile} on a cache miss). For debug rendering
      * ({@code Debug.units.see}) and the spatial-index benchmark harness.
+     *
+     * <p>Its units carry <b>world</b> relief-pixel coords, so a direct stab takes a world point and a
+     * renderer wanting a tile-local canvas must subtract {@code (tileX·GRID, tileZ·GRID)}.
      */
     @TestOnly
     public ImmutableRTree<HydrologicalUnit> getUnitTree(int tileX, int tileZ) {
@@ -402,6 +417,11 @@ public class LocalRiverProvider {
         /** The single unified per-tile graph (global and local channels together). */
         public RiverNetwork network;
 
+        /**
+         * The published unit index. Alone among these fields it is in the <b>world</b> relief-pixel frame
+         * (see the class javadoc) — the rasters above are all tile-local — so rendering it on a tile-sized
+         * canvas means subtracting {@code (tileX·GRID, tileZ·GRID)} first.
+         */
         public ImmutableRTree<HydrologicalUnit> unitTree;
     }
 }

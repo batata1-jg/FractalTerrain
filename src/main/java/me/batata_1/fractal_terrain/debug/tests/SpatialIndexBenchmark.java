@@ -103,32 +103,38 @@ public class SpatialIndexBenchmark {
         final List<HydrologicalUnit> allUnits = unitRTree.getAllEntries();
         LOG.info("unit tile built: {} units", unitRTree.numEntries());
 
-        // The legacy structure over the same units: a point quadtree + the per-unit reach re-test.
-        final List<UnitPoint> unitPoints = new ArrayList<>(allUnits.size());
-        for (final HydrologicalUnit unit : allUnits) unitPoints.add(new UnitPoint(unit));
-        final ImmutableQuadTree<UnitPoint> unitQuadTree =
-                new ImmutableQuadTree<>(new double[] {-16, -16}, new double[] {GRID + 16, GRID + 16}, unitPoints);
-
-        // Snapshot for the human: the same imagery LocalRiverTest dumps.
-        Debug.units.see(allUnits, "benchmark_units_tx" + TILE_X + "_tz" + TILE_Z, GRID, 4);
-        Debug.units.logStats(allUnits, "tile (" + TILE_X + "," + TILE_Z + ")");
-
-        crossCheckInfluenceQueries(allUnits, unitQuadTree, unitRTree);
-
-        final double membershipRadius = HydrologyTuning.maxNativeWidth() / 2.0;
-        // World-pixel origin of the benchmark tile (provider-level queries take world coords).
+        // World-pixel origin of the benchmark tile. The provider indexes units in the WORLD frame, so
+        // this is not just for the provider-level benchmarks below: EVERY structure and query point here
+        // lives in that frame, including the index-level ones that used to be tile-local.
         final double worldOriginX = TILE_X * (double) GRID;
         final double worldOriginZ = TILE_Z * (double) GRID;
+
+        // The legacy structure over the same units: a point quadtree + the per-unit reach re-test. Its
+        // bounds must span the tile's WORLD extent, or every unit falls outside the root square.
+        final List<UnitPoint> unitPoints = new ArrayList<>(allUnits.size());
+        for (final HydrologicalUnit unit : allUnits) unitPoints.add(new UnitPoint(unit));
+        final ImmutableQuadTree<UnitPoint> unitQuadTree = new ImmutableQuadTree<>(
+                new double[] {worldOriginX - 16, worldOriginZ - 16},
+                new double[] {worldOriginX + GRID + 16, worldOriginZ + GRID + 16},
+                unitPoints);
+
+        // Snapshot for the human: the same imagery LocalRiverTest dumps (world coords → tile canvas).
+        Debug.units.see(allUnits, "benchmark_units_tx" + TILE_X + "_tz" + TILE_Z, GRID, 4, worldOriginX, worldOriginZ);
+        Debug.units.logStats(allUnits, "tile (" + TILE_X + "," + TILE_Z + ")");
+
+        crossCheckInfluenceQueries(allUnits, unitQuadTree, unitRTree, worldOriginX, worldOriginZ);
+
+        final double membershipRadius = HydrologyTuning.maxNativeWidth() / 2.0;
 
         // ---- influence query: legacy quadtree+filter vs one R-tree stab -------------------------
         final List<UnitPoint> legacyQueryBuffer = new ArrayList<>(256);
         final double legacyInfluenceOpsPerSec = bench(
                 "quadtree influence query (circle r=" + HydrologyTuning.MAX_INFLUENCE_RADIUS + " + reach filter)",
-                tileLocalPoints(1),
+                worldTilePoints(1, worldOriginX, worldOriginZ),
                 pt -> legacyInfluenceQuery(unitQuadTree, pt, legacyQueryBuffer));
         final List<HydrologicalUnit> stabQueryBuffer = new ArrayList<>(256);
-        final double rtreeInfluenceOpsPerSec =
-                bench("rtree influence query (queryContaining stab)", tileLocalPoints(1), pt -> {
+        final double rtreeInfluenceOpsPerSec = bench(
+                "rtree influence query (queryContaining stab)", worldTilePoints(1, worldOriginX, worldOriginZ), pt -> {
                     stabQueryBuffer.clear();
                     return unitRTree.queryContaining(pt, stabQueryBuffer).size();
                 });
@@ -136,7 +142,7 @@ public class SpatialIndexBenchmark {
         // ---- insideChannel existence test: legacy anyPointInCircle vs R-tree anyContaining ------
         final double legacyMembershipOpsPerSec = bench(
                 "quadtree anyPointInCircle r=" + membershipRadius + " (insideChannel test)",
-                tileLocalPoints(2),
+                worldTilePoints(2, worldOriginX, worldOriginZ),
                 pt -> unitQuadTree.anyPointInCircle(
                                 pt,
                                 membershipRadius,
@@ -147,7 +153,7 @@ public class SpatialIndexBenchmark {
                         : 0);
         final double rtreeMembershipOpsPerSec = bench(
                 "rtree anyContaining (insideChannel test)",
-                tileLocalPoints(2),
+                worldTilePoints(2, worldOriginX, worldOriginZ),
                 pt -> unitRTree.anyContaining(pt, unit -> {
                             final double deltaX = unit.coord()[0] - pt[0];
                             final double deltaZ = unit.coord()[1] - pt[1];
@@ -194,9 +200,10 @@ public class SpatialIndexBenchmark {
     }
 
     /**
-     * Correctness gate run before any timing, over {@link #CROSS_CHECK_POINTS} seeded random tile-local
-     * points. Ground truth is a <b>brute-force linear scan</b> of every unit ({@code distSq ≤
-     * riverInfluence(width)²}); the R-tree stab must match it exactly (throws on the first mismatch).
+     * Correctness gate run before any timing, over {@link #CROSS_CHECK_POINTS} seeded random points drawn
+     * from the tile's world extent (the frame the index stores). Ground truth is a <b>brute-force linear
+     * scan</b> of every unit ({@code distSq ≤ riverInfluence(width)²}); the R-tree stab must match it
+     * exactly (throws on the first mismatch).
      * The legacy quadtree path is checked against the same truth but only <b>warns</b> on deviation —
      * {@code ImmutableQuadTree.findSection} tiles on a 0-anchored grid while node squares use an
      * arbitrary origin, a known pre-existing boundary misclassification that can drop a few points, and
@@ -205,15 +212,17 @@ public class SpatialIndexBenchmark {
     private static void crossCheckInfluenceQueries(
             List<HydrologicalUnit> allUnits,
             ImmutableQuadTree<UnitPoint> unitQuadTree,
-            ImmutableRTree<HydrologicalUnit> unitRTree) {
+            ImmutableRTree<HydrologicalUnit> unitRTree,
+            double worldOriginX,
+            double worldOriginZ) {
         final Random rng = new Random(42);
         final double[] pt = new double[2];
         final List<UnitPoint> legacyBuffer = new ArrayList<>(256);
         final List<HydrologicalUnit> stabBuffer = new ArrayList<>(256);
         int quadTreeDeviations = 0;
         for (int i = 0; i < CROSS_CHECK_POINTS; i++) {
-            pt[0] = rng.nextDouble() * GRID;
-            pt[1] = rng.nextDouble() * GRID;
+            pt[0] = worldOriginX + rng.nextDouble() * GRID;
+            pt[1] = worldOriginZ + rng.nextDouble() * GRID;
 
             final Set<HydrologicalUnit> bruteForceHits = new HashSet<>();
             for (final HydrologicalUnit unit : allUnits) {
@@ -263,13 +272,17 @@ public class SpatialIndexBenchmark {
         LOG.info("cross-check passed: R-tree stab matches brute force on {} points", CROSS_CHECK_POINTS);
     }
 
-    /** Deterministic uniform points in the tile-local frame [0, GRID)². One generator per benchmark. */
-    private static PointSupplier tileLocalPoints(long seed) {
+    /**
+     * Deterministic uniform world-frame points spanning the benchmark tile — {@code [origin, origin+GRID)}
+     * per axis. One generator per benchmark. Used for the index-level benchmarks, which stab the tile's
+     * own R-tree directly; that index stores world coords, so its query points are world points too.
+     */
+    private static PointSupplier worldTilePoints(long seed, double worldOriginX, double worldOriginZ) {
         final Random rng = new Random(seed);
         final double[] pt = new double[2];
         return () -> {
-            pt[0] = rng.nextDouble() * GRID;
-            pt[1] = rng.nextDouble() * GRID;
+            pt[0] = worldOriginX + rng.nextDouble() * GRID;
+            pt[1] = worldOriginZ + rng.nextDouble() * GRID;
             return pt;
         };
     }
