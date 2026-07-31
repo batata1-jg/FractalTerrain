@@ -41,7 +41,7 @@ seed ──► WorldPipeline (JVM-lifetime, me/batata_1/fractal_terrain/ml/pipel
            ▼
    GenerationContext build order:  global → local → relief → biome
            │
-           ├─ GlobalRiverProvider   (hydrology/)  — coarse-px river network per 64×64-coarse tile
+           ├─ GlobalRiverProvider   (hydrology/)  — coarse-px riverUnit network per 64×64-coarse tile
            ├─ LocalRiverProvider    (hydrology/)  — 512-native-px carved elevation + hydrological-unit index
            │     ├─ GlobalNetworkBuilder    — traces/relaxes the global network inside a tile
            │     ├─ LocalDrainageTracer      — local network off the drainage field, attached in place onto that SAME graph
@@ -111,7 +111,7 @@ Two carve stages exist and both are live:
    `Types.RIVER_DIFFERENCE`. `computeForUnit` fades `RosgenProfile.riverAreaDelta` (the per-type bed
    trench, computed within the bed half-width from `ChannelGeometry.depthForWidth`) in over an elliptical
    footprint around the contributing unit, at full strength from `HydrologyTuning.MAX_ECCENTRICITY`
-   outward. `HydrologyProfilePainter` reads the resulting `RIVER_DIFFERENCE` to place river water.
+   outward. `HydrologyProfilePainter` reads the resulting `RIVER_DIFFERENCE` to place riverUnit water.
 
 `HydrologyTuning.MAX_LOCAL_WIDTH` is retained but unread by live code, not even through the
 `FractalTerrainConfig` facade re-export.
@@ -316,7 +316,7 @@ files — flipping them back means editing source.
 | Frame | Unit | Defined / grounded in |
 | ----- | ---- | ---------------------- |
 | **block-px** | 1 Minecraft world block | Chunk/column generation code (`world/gen/`); `BiomeProvider` derives tile origins as `tileX << 9` (`BiomeProvider.java:283`). |
-| **tile** | 512×512 block-px (= 512×512 native-px) unit that keys nearly every per-tile cache (`Storage`/`NonIntersectingInfiniteTensor`) | `HydrologyTileGeometry.GRID = 512`, `PAD = 1`, `PADDED = 514` (`HydrologyTileGeometry.java:22-24`); `tileX = blockX >> 9` (inverse of the shift above). `GlobalRiverProvider` is the one exception — its own tile cache is addressed directly in coarse-px (see below), a separate grid from the 512-native-px relief/local-river/biome tile grid. |
+| **tile** | 512×512 block-px (= 512×512 native-px) unit that keys nearly every per-tile cache (`Storage`/`NonIntersectingInfiniteTensor`) | `HydrologyTileGeometry.GRID = 512`, `PAD = 1`, `PADDED = 514` (`HydrologyTileGeometry.java:22-24`); `tileX = blockX >> 9` (inverse of the shift above). `GlobalRiverProvider` is the one exception — its own tile cache is addressed directly in coarse-px (see below), a separate grid from the 512-native-px relief/local-riverUnit/biome tile grid. |
 | **native** | 1 native px, the decoder/relief pixel resolution; 1:1 with block-px inside a tile | `TensorLayout` fixes the axis order `CH=0/X=1/Z=2` (`TensorLayout.java:16-19`) for every ONNX-facing tensor in this frame; `DecoderChannels.INNER = 512` / `relief/ReliefProvider`'s `INNER = 512` size the relief tile in native px. |
 | **coarse** | 1 coarse unit = 256 native px | `HydrologyTileGeometry.COARSE_PX = 256` (`HydrologyTileGeometry.java:25`); `WorldPipeline.getCoarseSlice`'s javadoc: "Coordinates are in coarse index units (1 unit = 256 native pixels)" (`WorldPipeline.java:131-133`). `GlobalRiverProvider` caches its own tiles in this frame directly (`getArrow(cx, cz)` etc., 64×64-coarse-px tiles); `GlobalNetworkBuilder` bridges the two frames by mapping a 512-native-px relief tile `(tileX, tileZ)` onto its 2×2 owned coarse cells `(tileX*2 + a, tileZ*2 + b)` (`GlobalNetworkBuilder.java:55-58`, `:91-95`). |
 

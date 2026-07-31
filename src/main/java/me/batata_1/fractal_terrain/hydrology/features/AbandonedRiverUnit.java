@@ -2,19 +2,18 @@ package me.batata_1.fractal_terrain.hydrology.features;
 
 import me.batata_1.fractal_terrain.hydrology.profile.DefaultProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
-import me.batata_1.fractal_terrain.hydrology.profile.ZoneCategory;
 
 /**
- * A meander loop cut off from its channel and left as standing water.
+ * A former channel the river has since migrated out of — a dry trace the terrain still remembers.
  *
- * <p><b>Skeleton.</b> Only the position exists so far — no water level, no loop geometry, no age — so it
- * carves nothing of its own and blends as a plain {@link DefaultProfile} influence disc.
- * {@link ZoneCategory#LAKE_BED} is reserved below {@link ZoneCategory#BED} for it, so a channel still
- * running through the loop will keep governing the cross-section once this record grows a real profile.
+ * <p><b>Skeleton.</b> Only the position exists so far — no width, no normal, no record of how long ago
+ * it was abandoned — so it carves nothing of its own and blends as a plain {@link DefaultProfile}
+ * influence disc. It will most likely end up claiming a shallow, aged variant of the river zones rather
+ * than one of its own.
  */
-public record OxbowLake(double[] coord) implements HydrologicalUnit {
+public record AbandonedRiverUnit(double[] coord) implements HydrologicalUnit {
 
-    static final OxbowLake PROTOTYPE = new OxbowLake(new double[] {0.0, 0.0});
+    static final AbandonedRiverUnit PROTOTYPE = new AbandonedRiverUnit(new double[] {0.0, 0.0});
 
     @Override
     public double[] getCoords() {
@@ -28,7 +27,7 @@ public record OxbowLake(double[] coord) implements HydrologicalUnit {
 
     @Override
     public HydrologicalFeature getType() {
-        return HydrologicalFeature.OXBOW_LAKE;
+        return HydrologicalFeature.ABANDONED_RIVER;
     }
 
     @Override
@@ -53,7 +52,7 @@ public record OxbowLake(double[] coord) implements HydrologicalUnit {
 
     @Override
     public HydrologicalUnit deserializeUnit(byte[] rawBytes) {
-        return new OxbowLake(UnitCodec.readCoord(rawBytes));
+        return new AbandonedRiverUnit(UnitCodec.readCoord(rawBytes));
     }
 
     @Override

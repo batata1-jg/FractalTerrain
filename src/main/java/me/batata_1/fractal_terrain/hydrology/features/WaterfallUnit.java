@@ -2,18 +2,20 @@ package me.batata_1.fractal_terrain.hydrology.features;
 
 import me.batata_1.fractal_terrain.hydrology.profile.DefaultProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
+import me.batata_1.fractal_terrain.hydrology.profile.ZoneCategory;
 
 /**
- * The head of a channel — the spring or seep a river starts at.
+ * A vertical drop in a channel: the lip and the plunge below it.
  *
- * <p><b>Skeleton.</b> Only the position exists so far — no discharge, no headwater bowl geometry — so it
- * carves nothing of its own and blends as a plain {@link DefaultProfile} influence disc. Note this is a
- * point of the river it heads, not an independent feature: the network still stamps
- * {@link HydrologicalFeature#SOURCE} on the first point of a channel that begins at a source node.
+ * <p><b>Skeleton.</b> Only the position exists so far — no drop height, no plunge-pool geometry, no
+ * upstream/downstream channel link — so it carves nothing of its own and blends as a plain
+ * {@link DefaultProfile} influence disc. {@link ZoneCategory#WATERFALL} is already reserved above
+ * {@link ZoneCategory#BED} for it, so once this record grows a profile that claims that zone the drop
+ * will win over the channel bed running into it with no change on the carve side.
  */
-public record Source(double[] coord) implements HydrologicalUnit {
+public record WaterfallUnit(double[] coord) implements HydrologicalUnit {
 
-    static final Source PROTOTYPE = new Source(new double[] {0.0, 0.0});
+    static final WaterfallUnit PROTOTYPE = new WaterfallUnit(new double[] {0.0, 0.0});
 
     @Override
     public double[] getCoords() {
@@ -32,7 +34,7 @@ public record Source(double[] coord) implements HydrologicalUnit {
 
     @Override
     public HydrologicalFeature getType() {
-        return HydrologicalFeature.SOURCE;
+        return HydrologicalFeature.WATERFALL;
     }
 
     @Override
@@ -57,7 +59,7 @@ public record Source(double[] coord) implements HydrologicalUnit {
 
     @Override
     public HydrologicalUnit deserializeUnit(byte[] rawBytes) {
-        return new Source(UnitCodec.readCoord(rawBytes));
+        return new WaterfallUnit(UnitCodec.readCoord(rawBytes));
     }
 
     @Override

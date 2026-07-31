@@ -46,7 +46,7 @@ Rosgen type's `bedDelta` override reshapes that same width-derived depth across 
 cross-section (e.g. `C`'s asymmetric `smoothMax` shelf, `D`'s noise-perturbed braid), but none of them
 measure an actual terrain cross-section to carve against — the trench is the same shape and depth
 wherever a reach's width is the same, independent of what terrain it cuts through. Treat any visual
-"the river doesn't look like it's cutting into this hillside" result as expected behavior of this
+"the riverUnit doesn't look like it's cutting into this hillside" result as expected behavior of this
 design, not a bug in a specific `RosgenProfile` constant.
 
 **Only `RosgenProfile.A` overrides everything a type needs.** `B`, `C`, `D`, `E`, `F`, `G`, `Aa` each

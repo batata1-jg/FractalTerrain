@@ -140,7 +140,7 @@ Please help expand and improve it. The talk page may contain suggestions.
           - `mountains`
           - `mushroom`
           - `ocean`
-          - `river`
+          - `riverUnit`
           - `stone_beach`
           - `swamp`
           - `taiga`
@@ -148,7 +148,7 @@ Please help expand and improve it. The talk page may contain suggestions.
         - [String] generate\_for\_climates: Controls where the biome initially attempts to generate, a climate zone (`medium`, `warm`, `lukewarm`, `cold`, or `frozen`), and the weight relative to other biomes in that climate zone. Note that `lukewarm` can only be used for oceans; as climate zones are placed differently here. It is not possible to control rare climate zones or edge transformations.
         - [NBT List / JSON Array][String] hills\_transformation: The identifier of the biome to replace it in hills areas. This can either be one string, or a list of array pairs, containing the identifier and the weight, to randomly select from multiple biomes.
         - [NBT List / JSON Array][String] mutate\_transformation: The identifier of the biome to replace it in mutated areas.
-        - [NBT List / JSON Array][String] river\_transformation: The identifier of the biome to replace it at river noise.
+        - [NBT List / JSON Array][String] riverUnit\_transformation: The identifier of the biome to replace it at riverUnit noise.
         - [NBT List / JSON Array][String] shore\_transformation: The identifier of the biome to replace it at the border of oceans.
       - [NBT Compound / JSON Object] minecraft:replace\_biomes: Allows this biome to replace parts of one or more vanilla biomes.
         - [NBT List / JSON Array] replacements: The list of replacements

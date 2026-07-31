@@ -14,8 +14,8 @@ import java.util.function.Function;
 import javax.imageio.ImageIO;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit.HydrologicalFeature;
-import me.batata_1.fractal_terrain.hydrology.features.River;
-import me.batata_1.fractal_terrain.hydrology.features.River.RosgenType;
+import me.batata_1.fractal_terrain.hydrology.features.RiverUnit;
+import me.batata_1.fractal_terrain.hydrology.features.RiverUnit.RosgenType;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndex;
 
 /**
@@ -25,13 +25,13 @@ import me.batata_1.fractal_terrain.math.ds.SpatialIndex;
  * dependency, so it works from the standalone harnesses.
  *
  * <p><b>Reading the image:</b> each {@link HydrologicalFeature} type has its own base hue (RIVER =
- * blue, ABANDONED_RIVER = orange, OXBOW_LAKE = magenta, SOURCE = green, DRAIN = red); different feature {@code id}s of the same
- * type get different brightness shades (golden-ratio hash, so consecutive ids are clearly distinct).
- * Every unit first paints its <em>width girth</em> — a translucent filled disc of radius
- * {@code width/2} (in tile px, scaled by {@code upscale}) — then its centre point in the full-strength
+ * blue, ABANDONED_RIVER = orange, OXBOW_LAKE = magenta, SOURCE = green, DELTA = red). A {@link RiverUnit}
+ * unit first paints its <em>width girth</em> — a translucent filled disc of radius {@code width/2} (in
+ * tile px, scaled by {@code upscale}) — and then every unit paints its centre point in the full-strength
  * color, so channel centrelines stay visible on top of the girth tubes. Correct widths appear as
  * continuous tubes: the producers resample at {@code dx ≤ width/2}, so consecutive discs must overlap —
- * gaps or sudden girth jumps indicate a width/taper bug.
+ * gaps or sudden girth jumps indicate a width/taper bug. The other feature types carry only a position,
+ * so they show as bare points with no girth.
  */
 public class HydrologyUnitVisualizer {
 
@@ -90,13 +90,14 @@ public class HydrologyUnitVisualizer {
     private static final Color UNCLASSIFIED = new Color(0xFFFFFF);
 
     /**
-     * Colour for a unit's Rosgen type. A {@code null} type renders white rather than as {@code A}:
-     * downstream code coalesces {@code null} to {@code A}, but this dump exists to show what was
-     * actually measured, and white against the palette makes an unexpected run of unclassified reaches
-     * obvious instead of hiding it inside the {@code A} count.
+     * Colour for a unit's Rosgen type. Anything that is not a classified {@link RiverUnit} renders white
+     * rather than as {@code A}: downstream code coalesces {@code null} to {@code A}, but this dump exists
+     * to show what was actually measured, and white against the palette makes an unexpected run of
+     * unclassified reaches obvious instead of hiding it inside the {@code A} count.
      */
     private static Color rosgenColor(HydrologicalUnit unit) {
-        return unit.getType() != HydrologicalFeature.RIVER ? UNCLASSIFIED : ROSGEN_PALETTE[((River) unit).rosgenType().ordinal()];
+        if (!(unit instanceof RiverUnit riverUnit) || riverUnit.rosgenType() == null) return UNCLASSIFIED;
+        return ROSGEN_PALETTE[riverUnit.rosgenType().ordinal()];
     }
 
     /**
@@ -134,14 +135,14 @@ public class HydrologyUnitVisualizer {
         final int side = gridSize * upscale;
         final BufferedImage image = new BufferedImage(side, side, BufferedImage.TYPE_INT_RGB);
 
-        // Pass 1 — width girths: translucent filled disc of radius width/2 (tile px) per unit.
+        // Pass 1 — width girths: translucent filled disc of radius width/2 (tile px). Only a River has a
+        // width; the position-only feature types contribute their centre point in pass 2 and nothing here.
         for (final HydrologicalUnit unit : units) {
-            if(unit.getType()!=HydrologicalFeature.RIVER) continue;
-            River  river = ((River) unit);
+            if (!(unit instanceof RiverUnit riverUnit)) continue;
             final int rgb = palette.apply(unit).getRGB();
             final double centerX = (unit.coord()[0] - originX) * upscale;
             final double centerZ = (unit.coord()[1] - originZ) * upscale;
-            final double radius = river.width() * 0.5 * upscale;
+            final double radius = riverUnit.width() * 0.5 * upscale;
             blendDisc(image, centerX, centerZ, radius, rgb);
         }
 
@@ -171,61 +172,49 @@ public class HydrologyUnitVisualizer {
     }
 
     /**
-     * Log summary statistics for {@code units}: total points, distinct feature ids, per-type feature/point
-     * counts, width min/mean/max, elevation min/max, and points-per-feature min/mean/max.
+     * Log summary statistics for {@code units}: total points, per-type point counts, and — over the
+     * {@link RiverUnit} units, the only ones carrying a cross-section — width min/mean/max and elevation
+     * min/max.
      */
     public void logStats(List<HydrologicalUnit> units, String label) {
         if (units.isEmpty()) {
             DEBUG_LOGGER.info("unit stats [{}]: empty", label);
             return;
         }
-        final Map<Integer, Integer> pointsPerFeature = new HashMap<>();
         final Map<HydrologicalFeature, Integer> pointsPerType = new HashMap<>();
-        final Map<HydrologicalFeature, Map<Integer, Boolean>> featuresPerType = new HashMap<>();
+        int riverCount = 0;
         double widthMin = Double.POSITIVE_INFINITY, widthMax = Double.NEGATIVE_INFINITY, widthSum = 0;
         double elevMin = Double.POSITIVE_INFINITY, elevMax = Double.NEGATIVE_INFINITY;
         for (final HydrologicalUnit unit : units) {
-            pointsPerFeature.merge(unit.id(), 1, Integer::sum);
-            pointsPerType.merge(unit.type(), 1, Integer::sum);
-            featuresPerType.computeIfAbsent(unit.type(), t -> new HashMap<>()).put(unit.id(), Boolean.TRUE);
-            widthMin = Math.min(widthMin, unit.width());
-            widthMax = Math.max(widthMax, unit.width());
-            widthSum += unit.width();
-            elevMin = Math.min(elevMin, unit.elevation());
-            elevMax = Math.max(elevMax, unit.elevation());
+            pointsPerType.merge(unit.getType(), 1, Integer::sum);
+            if (!(unit instanceof RiverUnit riverUnit)) continue;
+            riverCount++;
+            widthMin = Math.min(widthMin, riverUnit.width());
+            widthMax = Math.max(widthMax, riverUnit.width());
+            widthSum += riverUnit.width();
+            elevMin = Math.min(elevMin, riverUnit.elevation());
+            elevMax = Math.max(elevMax, riverUnit.elevation());
         }
-        int perFeatureMin = Integer.MAX_VALUE, perFeatureMax = 0;
-        for (final int n : pointsPerFeature.values()) {
-            perFeatureMin = Math.min(perFeatureMin, n);
-            perFeatureMax = Math.max(perFeatureMax, n);
-        }
-        DEBUG_LOGGER.info(
-                "unit stats [{}]: {} points across {} features; width min/mean/max = {}/{}/{}; elevation min/max = {}/{}; points-per-feature min/mean/max = {}/{}/{}",
-                label,
-                units.size(),
-                pointsPerFeature.size(),
-                widthMin,
-                widthSum / units.size(),
-                widthMax,
-                elevMin,
-                elevMax,
-                perFeatureMin,
-                (double) units.size() / pointsPerFeature.size(),
-                perFeatureMax);
-        for (final Map.Entry<HydrologicalFeature, Integer> e : pointsPerType.entrySet()) {
+        if (riverCount == 0) {
+            DEBUG_LOGGER.info("unit stats [{}]: {} points, none of them rivers", label, units.size());
+        } else {
             DEBUG_LOGGER.info(
-                    "unit stats [{}]:   {} -> {} features, {} points",
+                    "unit stats [{}]: {} points ({} river); width min/mean/max = {}/{}/{}; elevation min/max = {}/{}",
                     label,
-                    e.getKey(),
-                    featuresPerType.get(e.getKey()).size(),
-                    e.getValue());
+                    units.size(),
+                    riverCount,
+                    widthMin,
+                    widthSum / riverCount,
+                    widthMax,
+                    elevMin,
+                    elevMax);
+        }
+        for (final Map.Entry<HydrologicalFeature, Integer> e : pointsPerType.entrySet()) {
+            DEBUG_LOGGER.info("unit stats [{}]:   {} -> {} points", label, e.getKey(), e.getValue());
         }
     }
 
-    /**
-     * A unit's render color: base hue by {@link HydrologicalFeature} type, brightness varied per feature
-     * {@code id} via a golden-ratio hash so consecutive ids land far apart in [0.55, 1.0).
-     */
+    /** A unit's render color: one full-brightness hue per {@link HydrologicalFeature} type. */
     private static Color colorFor(HydrologicalUnit unit) {
         final float hue =
                 switch (unit.getType()) {

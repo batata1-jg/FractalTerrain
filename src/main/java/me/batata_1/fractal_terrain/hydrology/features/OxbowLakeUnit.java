@@ -2,18 +2,19 @@ package me.batata_1.fractal_terrain.hydrology.features;
 
 import me.batata_1.fractal_terrain.hydrology.profile.DefaultProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
+import me.batata_1.fractal_terrain.hydrology.profile.ZoneCategory;
 
 /**
- * A river mouth splaying into distributaries where it meets standing water.
+ * A meander loop cut off from its channel and left as standing water.
  *
- * <p><b>Skeleton.</b> Only the position exists so far — no distributary fan, no sediment lobe, no base
- * level — so it carves nothing of its own and blends as a plain {@link DefaultProfile} influence disc.
- * Distinct from {@link HydrologicalFeature#DRAIN}, which marks the topological end of a channel; a delta
- * is the depositional landform that may sit there.
+ * <p><b>Skeleton.</b> Only the position exists so far — no water level, no loop geometry, no age — so it
+ * carves nothing of its own and blends as a plain {@link DefaultProfile} influence disc.
+ * {@link ZoneCategory#LAKE_BED} is reserved below {@link ZoneCategory#BED} for it, so a channel still
+ * running through the loop will keep governing the cross-section once this record grows a real profile.
  */
-public record Delta(double[] coord) implements HydrologicalUnit {
+public record OxbowLakeUnit(double[] coord) implements HydrologicalUnit {
 
-    static final Delta PROTOTYPE = new Delta(new double[] {0.0, 0.0});
+    static final OxbowLakeUnit PROTOTYPE = new OxbowLakeUnit(new double[] {0.0, 0.0});
 
     @Override
     public double[] getCoords() {
@@ -27,7 +28,7 @@ public record Delta(double[] coord) implements HydrologicalUnit {
 
     @Override
     public HydrologicalFeature getType() {
-        return HydrologicalFeature.DELTA;
+        return HydrologicalFeature.OXBOW_LAKE;
     }
 
     @Override
@@ -52,7 +53,7 @@ public record Delta(double[] coord) implements HydrologicalUnit {
 
     @Override
     public HydrologicalUnit deserializeUnit(byte[] rawBytes) {
-        return new Delta(UnitCodec.readCoord(rawBytes));
+        return new OxbowLakeUnit(UnitCodec.readCoord(rawBytes));
     }
 
     @Override

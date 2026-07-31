@@ -107,7 +107,7 @@ River
 }
 ```
 
-A **river** is a common aquatic biome that cuts through most land biomes. Rivers can serve as borders between various other biomes, and usually lead to oceans, although they are also able to form loops.
+A **riverUnit** is a common aquatic biome that cuts through most land biomes. Rivers can serve as borders between various other biomes, and usually lead to oceans, although they are also able to form loops.
 
 ## Generation
 
@@ -115,17 +115,17 @@ Rivers generate in land whenever the PV values are on their lowest; in the deepe
 
 The shape of rivers is determined by the PV noise. They always twist around higher landmasses, sometimes they form loops that can be small enough to have no land inside.
 
-Rivers do not generate in swamps or mangrove swamps, but their water bodies are often connected. The depth and width of a river strongly depends on the surrounding terrain; near oceans they are mostly wide, with some islands and flooded land biomes, further inland they often dry up with barely any water. Around mountains or elevated terrain, rivers form deep fjords with tall cliffs, and they abruptly end when the continentalness reaches the highest value. Here, no rivers generate and the valleys consist of elevated land biomes.
+Rivers do not generate in swamps or mangrove swamps, but their water bodies are often connected. The depth and width of a riverUnit strongly depends on the surrounding terrain; near oceans they are mostly wide, with some islands and flooded land biomes, further inland they often dry up with barely any water. Around mountains or elevated terrain, rivers form deep fjords with tall cliffs, and they abruptly end when the continentalness reaches the highest value. Here, no rivers generate and the valleys consist of elevated land biomes.
 
 Rivers typically serve as a division between two different biomes, with one biome variant on one side, and a different variant on the other.
 
 ## Description
 
-A river biome on its own does not have many distinct features, most of its characteristics are created by the terrain generation or surrounding biomes. They are filled with still water up to the sea level, and the terrain below consists of default lakebed blocks, covered with seagrass. Specifically, it is separated into patches of dirt, clay, sand, and gravel.
+A riverUnit biome on its own does not have many distinct features, most of its characteristics are created by the terrain generation or surrounding biomes. They are filled with still water up to the sea level, and the terrain below consists of default lakebed blocks, covered with seagrass. Specifically, it is separated into patches of dirt, clay, sand, and gravel.
 
-When a river generates land, it is just covered by grass blocks with some patches of bushes. However, features from bordering biomes often leak into the river biome. This happens most notably with wooded badlands, where the grass allows many oak trees and leaf litter to generate. Due to the extended coastlines, firefly bushes and sugar cane are often found near rivers, although they are no more common than in other biomes.
+When a riverUnit generates land, it is just covered by grass blocks with some patches of bushes. However, features from bordering biomes often leak into the riverUnit biome. This happens most notably with wooded badlands, where the grass allows many oak trees and leaf litter to generate. Due to the extended coastlines, firefly bushes and sugar cane are often found near rivers, although they are no more common than in other biomes.
 
-No fully-passive mobs spawn within river biomes themselves, but they frequently wander into them from the surrounding biomes if they can spawn there. Drowned can spawn underwater, as can salmon and squid. In *Bedrock Edition*, no hostile mobs spawn above water.
+No fully-passive mobs spawn within riverUnit biomes themselves, but they frequently wander into them from the surrounding biomes if they can spawn there. Drowned can spawn underwater, as can salmon and squid. In *Bedrock Edition*, no hostile mobs spawn above water.
 
 ## Mobs
 
@@ -183,7 +183,7 @@ In ***Bedrock Edition***
 
 ### Music
 
-These music tracks when the player is underwater in a river:
+These music tracks when the player is underwater in a riverUnit:
 
 | Title | Preview | *Java Edition* | | *Bedrock Edition* | |
 | --- | --- | --- | --- | --- | --- |
@@ -192,7 +192,7 @@ These music tracks when the player is underwater in a river:
 | Dragon Fish |  | 1 | 33.33% | 1 | 33.33% |
 | Shuniji |  | 1 | 33.33% | 1 | 33.33% |
 
-These music tracks play while the player is not underwater in a river:
+These music tracks play while the player is not underwater in a riverUnit:
 
 | Title | Preview | *Java Edition* | | *Bedrock Edition* | |
 | --- | --- | --- | --- | --- | --- |
@@ -277,13 +277,13 @@ In Creative mode, the following tracks can play:
 
 | Name | Identifier | Translation key |
 | --- | --- | --- |
-| River | `river` | `biome.minecraft.river` |
+| River | `riverUnit` | `biome.minecraft.riverUnit` |
 
 *Bedrock Edition*:
 
 | Name | Identifier | Numeric ID |
 | --- | --- | --- |
-| [No displayed name] | `river` | `7` |
+| [No displayed name] | `riverUnit` | `7` |
 
 ## Achievements
 
@@ -309,20 +309,20 @@ Please expand the section to include this information. Further details may exist
 
 |  |  |  |  |  |  |  |  |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| [August 18, 2011](https://twitter.com/notch/status/104187327949176833) | | | | | | | Notch tweeted a screenshot of a river biome. |
+| [August 18, 2011](https://twitter.com/notch/status/104187327949176833) | | | | | | | Notch tweeted a screenshot of a riverUnit biome. |
 
 ### *Java Edition*
 
 | Java Edition Beta | | | | | | | |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1.8 | | | Pre-release | | | | Added rivers as a separate biome. Previously, river-like water bodies could generate as part of the terrain generation algorithm. |
+| 1.8 | | | Pre-release | | | | Added rivers as a separate biome. Previously, riverUnit-like water bodies could generate as part of the terrain generation algorithm. |
 | *Java Edition* | | | | | | | |
 | 1.7.2 | | | 13w36a | | | | River is now required for the new "Adventuring Time" achievement. |
 | 1.13 | | | 18w08b | | | | Added salmon, which spawn in rivers. |
 | 18w11a | | | | Added drowned, which spawn in rivers. |
 | 18w14a | | | | Seagrass now generates in rivers. |
 | 1.13.1 | | | 18w31a | | | | Squid now spawn only in oceans and rivers, making them slightly more common in rivers, as there are fewer places elsewhere for them to spawn. |
-| 1.18 | | | experimental snapshot 4 | | | | River biomes are less likely to form a steep, dry river gorge in mountainous terrain. Instead, they either carve a fjord through it, or they raise the terrain to form a valley. |
+| 1.18 | | | experimental snapshot 4 | | | | River biomes are less likely to form a steep, dry riverUnit gorge in mountainous terrain. Instead, they either carve a fjord through it, or they raise the terrain to form a valley. |
 | Rivers that go through swamps tend to be more shallow. |
 | experimental snapshot 5 | | | | Rivers are less likely to be super deep or get choked off in flat areas. |
 | Rivers tend to get shallow and merge with swamps instead of carving through them. |
@@ -335,7 +335,7 @@ Please expand the section to include this information. Further details may exist
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | v0.1.0 | | | | | | | Added biomes, including rivers. |
 | *Bedrock Edition* | | | | | | | |
-| 1.2.13 | | | beta 1.2.13.8 | | | | Added drowned, which spawn in river biomes. |
+| 1.2.13 | | | beta 1.2.13.8 | | | | Added drowned, which spawn in riverUnit biomes. |
 | 1.4.0 | | | beta 1.2.14.2 | | | | Added salmon, which spawn in rivers. |
 | Rivers now generate with seagrass. |
 | 1.13.0 | | | beta 1.13.0.9 | | | | Squid can now spawn in rivers. |
@@ -347,8 +347,8 @@ Issues relating to "River" are maintained on the bug tracker. Issues should be r
 
 ## Trivia
 
-- Rivers override canyons at or close to the surface level, causing the canyon to be abruptly cut off by a wall of stone. However, if the canyon is long enough, it may continue on the other side of the river.
-  - Canyons can generate underground in river biomes without being cut off.
+- Rivers override canyons at or close to the surface level, causing the canyon to be abruptly cut off by a wall of stone. However, if the canyon is long enough, it may continue on the other side of the riverUnit.
+  - Canyons can generate underground in riverUnit biomes without being cut off.
 
 ## Gallery
 
@@ -370,6 +370,6 @@ Issues relating to "River" are maintained on the bug tracker. Issues should be r
 
 ## External links
 
-- ["Around the Block: River"](https://www.minecraft.net/en-us/article/around-block--river) by Duncan Geere – Minecraft.net, October 22, 2020.
+- ["Around the Block: River"](https://www.minecraft.net/en-us/article/around-block--riverUnit) by Duncan Geere – Minecraft.net, October 22, 2020.
 
 ## Navigation

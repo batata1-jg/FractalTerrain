@@ -108,7 +108,7 @@ Wetland biomes are rivers, swamps and beaches. They have a large amount of water
 | Biome name | Description | Screenshot |
 | --- | --- | --- |
 | **River** | A biome that consists of water blocks that form an elongated, curving shape. Rivers cut through terrain or separate the main biomes. They attempt to join up with ocean biomes, but sometimes loop around to the same area of ocean. Rarely, they can have no connection to an ocean, instead forming a loop, or ending in a swamp or far inland.  On the landside, or rare occasions where rivers generate entirely dry, the grass has a dull aqua tone, and trace amounts of oak trees and firefly bushes tend to generate there. Rivers are also a reliable source of clay and sand. Drowned, squid, cod, and salmon spawn underwater. In *Bedrock Edition*, no other mobs can spawn through the spawn cycle, even common hostile mobs. |  |
-| **Frozen river** | A river with a layer of ice covering its surface, generating when a river goes through snowy biomes. Salmon spawn underwater while rabbits‌[*BE only*] and polar bears‌[*BE only*] spawn on the surface. At night and during thunderstorms, drowned can spawn below the ice with strays‌[*BE only*] and skeletons on the surface. In *Bedrock Edition*, no other hostile mobs can spawn here. |  |
+| **Frozen riverUnit** | A riverUnit with a layer of ice covering its surface, generating when a riverUnit goes through snowy biomes. Salmon spawn underwater while rabbits‌[*BE only*] and polar bears‌[*BE only*] spawn on the surface. At night and during thunderstorms, drowned can spawn below the ice with strays‌[*BE only*] and skeletons on the surface. In *Bedrock Edition*, no other hostile mobs can spawn here. |  |
 | **Swamp** | A biome characterized by a mix of flat areas around sea level, and shallow pools of green water with floating lily pads. Clay, sand, and dirt are commonly found at the bottom of these pools. Oak trees are covered with vines and can be found growing out from the water, and in *Bedrock Edition*, huge mushrooms also generate. Mushrooms, firefly bushes, dead bushes, and sugar canes are abundant, and blue orchids grow exclusively here. Frogs of the temperate variant can spawn here as well.  Swamp huts with a black cat and a witch generate exclusively in swamps, and fossils are rarely found underground. Slimes also spawn naturally at night and during thunderstorms, most commonly on full moons, and some skeletons are replaced by bogged. Green volumetric fog and underwater fog is much denser than in other biomes. |  |
 | **Mangrove swamp** | A warmer variant of the swamp, characterized by a dense foliage, featuring plenty of mangrove trees of varying heights. The floor is mainly composed of mud blocks with occasional grass patches. The grass has the same color as in the normal swamp but leaves and vines have a unique light green tint and the water is teal rather than gray. Warm frogs often spawn in this biome. Slimes also spawn naturally at night and during thunderstorms, most commonly on full moons, and some skeletons are replaced by bogged. Fossils generate underground, but swamp huts do not. |  |
 | **Beach** | Generated where oceans meet land biomes, beaches are primarily composed of sand. Buried treasures can be found under few blocks of sand, and an occasional shipwreck can also generate here. Passive mobs other than turtles do not spawn on beaches. |  |
@@ -664,7 +664,7 @@ In versions after 1.13 biomes use a numerical ID which is determined by the alph
 | Frozen Peaks | `frozen_peaks` |
 | Jagged Peaks | `jagged_peaks` |
 | Stony Peaks | `stony_peaks` |
-| River | `river` |
+| River | `riverUnit` |
 | Frozen River | `frozen_river` |
 | Beach | `beach` |
 | Snowy Beach | `snowy_beach` |
@@ -710,7 +710,7 @@ Each type of biome has its own **Resource Location / IDs**, shown in the followi
 | Deep Lukewarm Ocean | `deep_lukewarm_ocean` | 43 |
 | Warm Ocean | `warm_ocean` | 40 |
 | Deep Warm Ocean | `deep_warm_ocean` | 41 |
-| River | `river` | 7 |
+| River | `riverUnit` | 7 |
 | Frozen River | `frozen_river` | 11 |
 | Beach | `beach` | 16 |
 | Stony Shore | `stone_beach` | 25 |
@@ -821,16 +821,16 @@ See also: Biome/Before Beta 1.8 and Biome/Before 1.18
 | World saves remained unchanged, other than a change in the hue of the grass. If the player moves into ungenerated chunks, the new biomes would generate. |
 | Java Edition Beta | | | | | | | |
 | 1.6 | | | | | | | Added the Sky Dimension with its own biome. It could be viewed only through the use of modifications. |
-| 1.8 | | | [August 18, 2011](https://twitter.com/notch/status/104187327949176833) | | | | Notch tweeted a screenshot of a revamped river biome. |
+| 1.8 | | | [August 18, 2011](https://twitter.com/notch/status/104187327949176833) | | | | Notch tweeted a screenshot of a revamped riverUnit biome. |
 | [September 2, 2011](https://twitter.com/notch/status/109713550209060864) | | | | Notch teases a screenshot of the new desert biome. |
 | [September 3, 2011](https://twitter.com/notch/status/110053393850040320) | | | | Notch teases a screenshot of the new swamp biome. |
-| Pre-release | | | | Added extreme hills, river and ocean. |
+| Pre-release | | | | Added extreme hills, riverUnit and ocean. |
 | Biomes got an overhaul, removing some biomes, such as the tundra, and others replaced with nine fractal-based biomes that were a mix of the previous biomes and new biomes. See here for more details. |
 | *Java Edition* | | | | | | | |
 | 1.0.0 | | | [September 14, 2011](https://twitter.com/notch/status/113986669312622592) | | | | Notch mentions "snow biomes". |
 | [September 15, 2011](https://twitter.com/notch/status/114323919279886336) | | | | Notch teases a screenshot of the ice plains, which was then referred to as a "snow biome". |
 | Beta 1.9 Prerelease | | | | Re-added tundra as ice plains. |
-| Added ice mountains, frozen river, frozen ocean, mushroom island and mushroom island shore. |
+| Added ice mountains, frozen riverUnit, frozen ocean, mushroom island and mushroom island shore. |
 | Beta 1.9 Prerelease 4 | | | | Added the End. |
 | 1.1 | | | 12w01a | | | | Added the desert hills, wooded hills, taiga hills, mountain edge, and beach biomes. |
 | Smoothed color transitions between biomes – swampland grass, foliage and water smoothly transition into other biomes. |

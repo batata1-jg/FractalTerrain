@@ -33,7 +33,7 @@ import org.jetbrains.annotations.Nullable;
  * {@link RosgenType#A} so a typeless unit still carves. Because only {@code A} overrides any profile
  * method today, the choice is currently observable only as "A vs. not-A".
  */
-public record River(
+public record RiverUnit(
         double[] coord,
         double radius,
         RosgenType rosgenType,
@@ -42,7 +42,7 @@ public record River(
         double elevation)
         implements HydrologicalUnit {
 
-    static final River PROTOTYPE = new River(new double[] {0.0, 0.0}, 0, null, null, 0, 0);
+    static final RiverUnit PROTOTYPE = new RiverUnit(new double[] {0.0, 0.0}, 0, null, null, 0, 0);
 
     @Override
     public double[] getCoords() {
@@ -157,14 +157,14 @@ public record River(
         final double r = buf.getDouble();
         final double w = buf.getDouble();
         final double e = buf.getDouble();
-        return new River(coords, r, rosgen, normalVec, w, e);
+        return new RiverUnit(coords, r, rosgen, normalVec, w, e);
     }
 
     // Records compare array components by reference; these compare contents instead.
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof River other)) return false;
+        if (!(o instanceof RiverUnit other)) return false;
         return rosgenType == other.rosgenType
                 && Arrays.equals(coord, other.coord)
                 && Arrays.equals(normal, other.normal)

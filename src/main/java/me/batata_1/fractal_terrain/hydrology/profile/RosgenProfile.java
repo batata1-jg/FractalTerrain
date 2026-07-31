@@ -4,8 +4,8 @@ import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
-import me.batata_1.fractal_terrain.hydrology.features.River;
-import me.batata_1.fractal_terrain.hydrology.features.River.RosgenType;
+import me.batata_1.fractal_terrain.hydrology.features.RiverUnit;
+import me.batata_1.fractal_terrain.hydrology.features.RiverUnit.RosgenType;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
 import org.slf4j.Logger;
@@ -23,7 +23,7 @@ import org.slf4j.LoggerFactory;
  *       elevation: full pull inside {@link #floodPlainLength}, linearly released to no change at
  *       {@link #riverInfluence}.
  *   <li>{@link #riverAreaDelta} — the per-pixel bed TRENCH below the shell, within the bed half-width.
- *       Applied by {@link River#carveFineGrained}, which fades it in over an elliptical footprint around
+ *       Applied by {@link RiverUnit#carveFineGrained}, which fades it in over an elliptical footprint around
  *       the contributing unit rather than applying it raw.
  * </ul>
  *
@@ -220,15 +220,15 @@ public enum RosgenProfile implements HydrologyProfile {
      * carve reach identical to the circle the R-tree found it by.
      *
      * <p>Every zone this profile does not define — a waterfall's, a lake's — falls through to the
-     * interface default, as does any non-{@link River} unit that happens to be carrying a Rosgen profile.
+     * interface default, as does any non-{@link RiverUnit} unit that happens to be carrying a Rosgen profile.
      */
     @Override
     public double zoneRadius(HydrologicalUnit unit, ZoneCategory category) {
-        if (!(unit instanceof River river)) return HydrologyProfile.super.zoneRadius(unit, category);
+        if (!(unit instanceof RiverUnit riverUnit)) return HydrologyProfile.super.zoneRadius(unit, category);
         return switch (category) {
-            case BED -> ChannelGeometry.bedHalfWidth(river.width());
-            case FLOODPLAIN -> floodPlainLength(river.width());
-            case INFLUENCE -> river.getRadius();
+            case BED -> ChannelGeometry.bedHalfWidth(riverUnit.width());
+            case FLOODPLAIN -> floodPlainLength(riverUnit.width());
+            case INFLUENCE -> riverUnit.getRadius();
             default -> NO_ZONE;
         };
     }
@@ -236,8 +236,8 @@ public enum RosgenProfile implements HydrologyProfile {
     /** Delegates to {@link #riverInfluenceElevation} with the reach's width and bank elevation. */
     @Override
     public double shellElevation(HydrologicalUnit unit, double radialDist, double curElev) {
-        if (!(unit instanceof River river)) return curElev;
-        return riverInfluenceElevation(radialDist, river.width(), curElev, river.elevation());
+        if (!(unit instanceof RiverUnit riverUnit)) return curElev;
+        return riverInfluenceElevation(radialDist, riverUnit.width(), curElev, riverUnit.elevation());
     }
 
     // ---- Horizontal extents (type-dependent; shared placeholder law, override per constant) ----

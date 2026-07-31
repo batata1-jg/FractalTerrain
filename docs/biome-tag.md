@@ -245,7 +245,7 @@ Used in the `#has_structure/stronghold` tag.
   - `minecraft:old_growth_spruce_taiga`
   - `minecraft:pale_garden`
   - `minecraft:plains`
-  - `minecraft:river`
+  - `minecraft:riverUnit`
   - `minecraft:savanna`
   - `minecraft:savanna_plateau`
   - `minecraft:snowy_beach`
@@ -275,7 +275,7 @@ Used in the `#has_structure/mineshaft`, `#has_structure/ruined_portal_standard`,
 - [NBT List / JSON Array] #minecraft:is\_river *(2 values)*
 
   - `minecraft:frozen_river`
-  - `minecraft:river`
+  - `minecraft:riverUnit`
 
 ### is\_savanna
 
@@ -1020,7 +1020,7 @@ Trial chambers can generate in these biomes.
   - `minecraft:old_growth_spruce_taiga`
   - `minecraft:pale_garden`
   - `minecraft:plains`
-  - `minecraft:river`
+  - `minecraft:riverUnit`
   - `minecraft:savanna`
   - `minecraft:savanna_plateau`
   - `minecraft:snowy_beach`

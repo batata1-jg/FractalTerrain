@@ -4,25 +4,27 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.List;
 import java.util.function.Supplier;
-
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.ZoneCategory;
+import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
 import me.batata_1.fractal_terrain.storage.Persistable;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A single sample of a hydrological feature — a river reach, a waterfall, an oxbow lake, the source
  * terminating a channel — and the queryable, persistable unit stored in
  * {@link me.batata_1.fractal_terrain.hydrology.LocalRiverProvider}'s tiled {@code ImmutableRTree}. Each
  * feature type is a {@code record} implementing this interface, carrying whatever state that type needs
- * and nothing more: {@link River} has a channel normal, width and bank elevation, while a
- * {@link Waterfall} or a {@link Source} currently has only a position.
+ * and nothing more: {@link RiverUnit} has a channel normal, width and bank elevation, while a
+ * {@link WaterfallUnit} or a {@link SourceUnit} currently has only a position.
  *
  * <p>Every unit is indexed as an <b>influence circle</b> ({@link SpatialIndexCircle}): centre =
  * {@link #getCenter()}, radius = {@link #getRadius()} — so a point-stabbing query returns exactly the
@@ -60,7 +62,7 @@ public interface HydrologicalUnit extends SpatialIndexPoint, SpatialIndexCircle,
      * every {@link #deserialize} call is made on. Any unit will do — {@link #deserialize} dispatches on
      * the tag in the bytes, not on the receiver — so this is simply the most common type.
      */
-    HydrologicalUnit PROTOTYPE = River.PROTOTYPE;
+    HydrologicalUnit PROTOTYPE = RiverUnit.PROTOTYPE;
 
     /**
      * Placeholder influence radius (native px) for the feature types that carry only a position so far.
@@ -68,6 +70,7 @@ public interface HydrologicalUnit extends SpatialIndexPoint, SpatialIndexCircle,
      * perturb barely more than the pixel it sits on rather than assert a radius nothing measured.
      */
     double DEFAULT_RADIUS = 2.0;
+    Logger LOG = LoggerFactory.getLogger(HydrologicalUnit.class);
 
     /** Which kind of feature this unit is; the tag {@link #serialize()} writes. */
     HydrologicalFeature getType();
@@ -84,56 +87,48 @@ public interface HydrologicalUnit extends SpatialIndexPoint, SpatialIndexCircle,
      * type, so an attempt to persist it fails loudly at the one place that can name what is missing.
      */
     enum HydrologicalFeature {
-        RIVER(() -> River.PROTOTYPE) {
+        RIVER(() -> RiverUnit.PROTOTYPE) {
             @Override
-            public void addUnits(List<HydrologicalUnit> out, Object... args) {
+            public void addUnits(double[] offset, List<HydrologicalUnit> out, Object... args) {
                 ChannelTyper typer = (ChannelTyper) args[0];
                 Channel ch = (Channel) args[1];
-                River.RosgenType[] types = typer.typesFor(ch);
+                RiverUnit.RosgenType[] types = typer.typesFor(ch);
                 for (int i = 0; i < ch.numPts(); i++) {
                     final double width = ch.widthAt(i);
                     final RosgenProfile profile = RosgenProfile.of(types[i]);
-                    out.add(new River(
-                            ch.spline.sample(i),
+                    final double[] coords = VectorOps.sub(ch.spline.sample(i),offset);
+                    out.add(new RiverUnit(
+                            coords,
                             profile.riverInfluence(width),
                             types[i],
                             ch.spline.normal(i),
                             width,
-                            ch.bedElev(i)
-                    ));
+                            ch.bedElev(i)));
                 }
             }
         },
-        ABANDONED_RIVER(() -> AbandonedRiver.PROTOTYPE) {
+        ABANDONED_RIVER(() -> AbandonedRiverUnit.PROTOTYPE) {
             @Override
-            public void addUnits(List<HydrologicalUnit> units, Object... args) {
-
-            }
+            public void addUnits(double[] offset, List<HydrologicalUnit> units, Object... args) {}
         },
-        OXBOW_LAKE(() -> OxbowLake.PROTOTYPE) {
+        OXBOW_LAKE(() -> OxbowLakeUnit.PROTOTYPE) {
             @Override
-            public void addUnits(List<HydrologicalUnit> units, Object... args) {
-
-            }
+            public void addUnits(double[] offset, List<HydrologicalUnit> units, Object... args) {}
         },
-        SOURCE(() -> Source.PROTOTYPE) {
+        SOURCE(() -> SourceUnit.PROTOTYPE) {
             @Override
-            public void addUnits(List<HydrologicalUnit> units, Object... args) {
+            public void addUnits(double[] offset, List<HydrologicalUnit> units, Object... args) {
                 Endpoint endpoint = (Endpoint) args[0];
-                units.add(new Source(endpoint.coord));
+                units.add(new SourceUnit(VectorOps.sub(endpoint.coord,offset)));
             }
         },
-        WATERFALL(() -> Waterfall.PROTOTYPE) {
+        WATERFALL(() -> WaterfallUnit.PROTOTYPE) {
             @Override
-            public void addUnits(List<HydrologicalUnit> units, Object... args) {
-
-            }
+            public void addUnits(double[] offset, List<HydrologicalUnit> units, Object... args) {}
         },
-        DELTA(() -> Delta.PROTOTYPE) {
+        DELTA(() -> DeltaUnit.PROTOTYPE) {
             @Override
-            public void addUnits(List<HydrologicalUnit> units, Object... args) {
-
-            }
+            public void addUnits(double[] offset, List<HydrologicalUnit> units, Object... args) {}
         };
 
         /** {@code values()} without the defensive copy; indexed by the on-disk type tag. */
@@ -166,8 +161,7 @@ public interface HydrologicalUnit extends SpatialIndexPoint, SpatialIndexCircle,
             return prototypeSupplier.get();
         }
 
-        public abstract void addUnits(List<HydrologicalUnit> units, Object...  args);
-
+        public abstract void addUnits(double[] offset, List<HydrologicalUnit> units, Object... args);
     }
 
     // Records compare array components by reference; these compare contents instead.

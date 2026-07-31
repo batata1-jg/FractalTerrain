@@ -71,7 +71,7 @@ Note that the temperature parameter is not the same as the temperature property 
 
 **Erosion** is used to decide between flat and mountainous terrain. When erosion is high the landscape is generally flat, and where erosion is low the landscape is hilly. Areas with low erosion also tend to generate meadows, snowy slopes, stony peaks, jagged peaks, and frozen peaks. Erosion values are divided into 7 levels. The corresponding ranges from level 0 to level 6 are: -1.0~-0.78, -0.78~-0.375, -0.375~-0.2225, -0.2225~0.05, 0.05~0.45, 0.45~0.55, 0.55~1.0.
 
-**Weirdness** (also known as **ridges**) affects whether to generate a biome variant or not, as well as whether or not terrain generates shattered. If the weirdness value is greater than 0, the generated biome becomes weirder. For example, weirdness could cause a jungle biome to become a bamboo jungle instead, or could cause a taiga to generate with more shattered terrain akin to a windswept savanna. A biome and its variant often do not appear on the same bank of a river.
+**Weirdness** (also known as **ridges**) affects whether to generate a biome variant or not, as well as whether or not terrain generates shattered. If the weirdness value is greater than 0, the generated biome becomes weirder. For example, weirdness could cause a jungle biome to become a bamboo jungle instead, or could cause a taiga to generate with more shattered terrain akin to a windswept savanna. A biome and its variant often do not appear on the same bank of a riverUnit.
 
 The **PV** (**peaks and valleys**, aka. **ridges folded**) value is calculated through the formula 1−|(3|weirdness|)−2|.
 
@@ -508,10 +508,10 @@ The following table gives the placement parameters for each structure set, as th
 | Taiga Village | 1 | Taiga |
 | Woodland Mansions | 80 | 20 | 100% | Woodland Mansion | 1 | Dark Forest,Pale Garden |
 
-1. Also requires surrounding to be river and ocean biomes only.
+1. Also requires surrounding to be riverUnit and ocean biomes only.
 2. Can't be placed within 10 chunks of any placement position of the "Villages" structure set.
 3. Strongholds are placed using concentric rings, see Stronghold#Generation.
-4. The placement position is biased toward most land biomes, away from river and ocean biomes.​[*more information needed*]
+4. The placement position is biased toward most land biomes, away from riverUnit and ocean biomes.​[*more information needed*]
 
 ## Features
 

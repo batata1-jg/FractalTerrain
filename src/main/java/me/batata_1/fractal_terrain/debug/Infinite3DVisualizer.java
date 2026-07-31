@@ -8,7 +8,7 @@ import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
-import me.batata_1.fractal_terrain.hydrology.features.River;
+import me.batata_1.fractal_terrain.hydrology.features.RiverUnit;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import me.batata_1.fractal_terrain.relief.DecoderChannels;
@@ -173,7 +173,7 @@ public class Infinite3DVisualizer {
     private static final BlockState BLENDING_ZONE = Blocks.LIGHT_GRAY_CONCRETE.defaultBlockState();
 
     /**
-     * Bed-zone block per {@link River.RosgenType}, indexed by {@link Enum#ordinal()}. The enum
+     * Bed-zone block per {@link RiverUnit.RosgenType}, indexed by {@link Enum#ordinal()}. The enum
      * order is frozen by unit serialization, so this mapping cannot drift.
      */
     private static final BlockState[] BED_ZONE_BY_ROSGEN = {
@@ -231,16 +231,15 @@ public class Infinite3DVisualizer {
             final double radialDist = Math.hypot(du, dv);
             if (radialDist >= unit.getRadius()) continue; // outside this unit's influence circle
 
-            if (unit.getType() != HydrologicalUnit.HydrologicalFeature.RIVER)
-                return NOT_RIVER;
-            River river = ((River) unit);
-            final River.RosgenType type = river.rosgenType();
+            if (!(unit instanceof RiverUnit riverUnit)) return NOT_RIVER;
+            // An unclassified reach paints as A, matching how the carve coalesces a null type.
+            final RiverUnit.RosgenType type = riverUnit.rosgenType() == null ? RiverUnit.RosgenType.A : riverUnit.rosgenType();
 
             // Bed is the deepest possible zone: no later unit can beat it, so paint and stop.
-            if (radialDist <= ChannelGeometry.bedHalfWidth(river.width())) return BED_ZONE_BY_ROSGEN[type.ordinal()];
+            if (radialDist <= ChannelGeometry.bedHalfWidth(riverUnit.width())) return BED_ZONE_BY_ROSGEN[type.ordinal()];
 
             final RosgenProfile profile = RosgenProfile.of(type);
-            if (radialDist <= profile.floodPlainLength(river.width())) {
+            if (radialDist <= profile.floodPlainLength(riverUnit.width())) {
                 deepest = FLOODPLAIN_ZONE;
             } else if (deepest == DEFAULT) {
                 deepest = BLENDING_ZONE;

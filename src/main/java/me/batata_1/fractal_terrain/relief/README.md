@@ -22,7 +22,7 @@ directly.
 channel 0. If the decoder-slice decode itself lived as instance state on `ReliefProvider`, and
 `LocalRiverProvider` needed that same decode (it does, for tracing and carving), `LocalRiverProvider`
 would have to depend back on `ReliefProvider` — creating a two-way instance dependency between the two
-providers on top of the one-way `relief → local river` data dependency the build order already has.
+providers on top of the one-way `relief → local riverUnit` data dependency the build order already has.
 Factoring the decode into a stateless static helper both providers call directly sidesteps that: neither
 provider instance depends on the other's instance, only on the shared pipeline and (for `ReliefProvider`)
 on `LocalRiverProvider`'s carved-elevation output.

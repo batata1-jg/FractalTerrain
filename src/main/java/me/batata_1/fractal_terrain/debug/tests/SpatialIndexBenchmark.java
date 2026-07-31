@@ -38,8 +38,9 @@ import org.slf4j.LoggerFactory;
  *       reach filter ({@code distSq ≤ riverInfluence(width)²}); R-tree: one
  *       {@link ImmutableRTree#queryContaining} stab;</li>
  *   <li><b>insideChannel existence test</b> — legacy: {@code anyPointInCircle} at
- *       {@code maxNativeWidth()/2}; R-tree: {@link ImmutableRTree#anyContaining} with the
- *       {@code width/2} filter;</li>
+ *       {@code maxNativeWidth()/2}; R-tree: {@link ImmutableRTree#anyContaining}. Both filter through
+ *       {@link HydrologicalUnit#channelContains} — {@code distSq ≤ (width/2)²} for a river reach, and
+ *       {@code false} for the feature types with no wetted channel;</li>
  *   <li><b>provider level</b> — {@code LocalRiverProvider.queryInfluence} (cross-tile + re-stamping)
  *       and {@code HydrologyProfileCarver.carveAtPixel} (query + flat weighted merge), both now on the
  *       R-tree path.</li>
@@ -143,12 +144,9 @@ public class SpatialIndexBenchmark {
         final double legacyMembershipOpsPerSec = bench(
                 "quadtree anyPointInCircle r=" + membershipRadius + " (insideChannel test)",
                 worldTilePoints(2, worldOriginX, worldOriginZ),
-                pt -> unitQuadTree.anyPointInCircle(
-                                pt,
-                                membershipRadius,
-                                (unitPoint, distSq) -> distSq
-                                        <= (unitPoint.unit().width() * 0.5)
-                                                * (unitPoint.unit().width() * 0.5))
+                pt -> unitQuadTree.anyPointInCircle(pt, membershipRadius, (unitPoint, distSq) -> unitPoint
+                                .unit()
+                                .channelContains(distSq))
                         ? 1
                         : 0);
         final double rtreeMembershipOpsPerSec = bench(
@@ -157,7 +155,7 @@ public class SpatialIndexBenchmark {
                 pt -> unitRTree.anyContaining(pt, unit -> {
                             final double deltaX = unit.coord()[0] - pt[0];
                             final double deltaZ = unit.coord()[1] - pt[1];
-                            return deltaX * deltaX + deltaZ * deltaZ <= (unit.width() * 0.5) * (unit.width() * 0.5);
+                            return unit.channelContains(deltaX * deltaX + deltaZ * deltaZ);
                         })
                         ? 1
                         : 0);

@@ -307,7 +307,7 @@ Ordering rationale, in the order the tests fire:
    add a way to get them wrong.
 2. **ER second**, because it is the only test that separates the entrenched family (`F`, `G`) from
    everything with a floodplain. Within that family, W/D — i.e. catchment size — picks narrow-deep `G`
-   (a gully) over wide-shallow `F` (an incised meandering river). Note `B`'s published slope band
+   (a gully) over wide-shallow `F` (an incised meandering riverUnit). Note `B`'s published slope band
    (0.02–0.039) overlaps `G`'s exactly; ER, not slope, is what distinguishes them.
 3. **`DA` (anastomosing) before `D` (braided)**, because both want unconfined valleys and the
    anastomosing case is far more specific: near base level, essentially flat, extremely wide flood-prone
@@ -332,7 +332,7 @@ adopt `Q_bf ∝ DA` (reasonable for a synthetic world with uniform runoff), the 
 
 Rosgen's own tolerances (ER ±0.2, W/D ±2.0) exist because the metrics are noisy. A raster
 implementation is noisier still. If you classify per-node with hard thresholds you get types flickering
-along a single river, and since `RosgenProfile` controls `floodPlainLength` and `riverInfluence`, a
+along a single riverUnit, and since `RosgenProfile` controls `floodPlainLength` and `riverInfluence`, a
 flicker becomes a visible scalloped floodplain edge.
 
 Two mitigations, both cheap:
@@ -486,7 +486,7 @@ put on the output.
   careful expert applications of competing schemes, a fifth of reaches disagree. Do not over-engineer
   precision that the underlying system does not have.
 
-For this project the practical reading is: Rosgen Level I is a good **vocabulary of river shapes** with
+For this project the practical reading is: Rosgen Level I is a good **vocabulary of riverUnit shapes** with
 published, quantitative, DEM-tractable boundaries. It is not a physical model, and the generated result
 should be judged on whether it looks right, not on whether it would survive a geomorphologist's field
 audit.

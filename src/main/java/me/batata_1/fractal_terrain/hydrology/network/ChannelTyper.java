@@ -1,6 +1,6 @@
 package me.batata_1.fractal_terrain.hydrology.network;
 
-import me.batata_1.fractal_terrain.hydrology.features.River.RosgenType;
+import me.batata_1.fractal_terrain.hydrology.features.RiverUnit.RosgenType;
 
 /**
  * Assigns a Rosgen type to every spline point of every channel. Declared here rather than beside its

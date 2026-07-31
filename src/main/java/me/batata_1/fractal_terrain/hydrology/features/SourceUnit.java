@@ -4,16 +4,16 @@ import me.batata_1.fractal_terrain.hydrology.profile.DefaultProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
 
 /**
- * A former channel the river has since migrated out of — a dry trace the terrain still remembers.
+ * The head of a channel — the spring or seep a river starts at.
  *
- * <p><b>Skeleton.</b> Only the position exists so far — no width, no normal, no record of how long ago
- * it was abandoned — so it carves nothing of its own and blends as a plain {@link DefaultProfile}
- * influence disc. It will most likely end up claiming a shallow, aged variant of the river zones rather
- * than one of its own.
+ * <p><b>Skeleton.</b> Only the position exists so far — no discharge, no headwater bowl geometry — so it
+ * carves nothing of its own and blends as a plain {@link DefaultProfile} influence disc. Note this is a
+ * point of the river it heads, not an independent feature: the network still stamps
+ * {@link HydrologicalFeature#SOURCE} on the first point of a channel that begins at a source node.
  */
-public record AbandonedRiver(double[] coord) implements HydrologicalUnit {
+public record SourceUnit(double[] coord) implements HydrologicalUnit {
 
-    static final AbandonedRiver PROTOTYPE = new AbandonedRiver(new double[] {0.0, 0.0});
+    static final SourceUnit PROTOTYPE = new SourceUnit(new double[] {0.0, 0.0});
 
     @Override
     public double[] getCoords() {
@@ -26,13 +26,13 @@ public record AbandonedRiver(double[] coord) implements HydrologicalUnit {
     }
 
     @Override
-    public HydrologicalFeature getType() {
-        return HydrologicalFeature.ABANDONED_RIVER;
+    public double getRadius() {
+        return DEFAULT_RADIUS;
     }
 
     @Override
-    public HydrologicalUnit atCoord(double[] newCoord) {
-        return new AbandonedRiver(newCoord);
+    public HydrologicalFeature getType() {
+        return HydrologicalFeature.SOURCE;
     }
 
     @Override
@@ -57,7 +57,7 @@ public record AbandonedRiver(double[] coord) implements HydrologicalUnit {
 
     @Override
     public HydrologicalUnit deserializeUnit(byte[] rawBytes) {
-        return new AbandonedRiver(UnitCodec.readCoord(rawBytes));
+        return new SourceUnit(UnitCodec.readCoord(rawBytes));
     }
 
     @Override

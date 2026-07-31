@@ -2,8 +2,8 @@
 
 ## Overview
 
-`LocalRiverProvider` is the per-tile river pipeline: from the decoded terrain and the global (coarse)
-river network it produces, per 512x512 relief tile, two artifacts from a single `buildTile` pass — a
+`LocalRiverProvider` is the per-tile riverUnit pipeline: from the decoded terrain and the global (coarse)
+riverUnit network it produces, per 512x512 relief tile, two artifacts from a single `buildTile` pass — a
 spatial index of `HydrologicalUnit` influence circles (the queryable network geometry) and a carved,
 sink-filled elevation tensor. The two artifacts describe the same graph and are only cheap to produce
 together, which is why they are built and cached as a pair rather than as two independent providers.
@@ -64,7 +64,7 @@ sampling at the tile border throughout the pipeline.
 
 **Local attach by proximity, not terrain shape.** The local trace joins to the global network purely by
 spatial proximity (`HydrologyTuning.LOCAL_ATTACH_RADIUS`), read from a point index built fresh over the
-graph's channels each call — not from a per-pixel "is this a global river" boolean mask. This is why
+graph's channels each call — not from a per-pixel "is this a global riverUnit" boolean mask. This is why
 drainage can be computed once, up front, on the globally-carved elevation, rather than being recomputed
 after each local segment attaches.
 

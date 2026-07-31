@@ -66,7 +66,7 @@ Floating islands and overhangs are common when the erosion is high, but not at i
 
 ### Sea level
 
-Air on altitude Y=62 and lower is replaced by water. This occurs mostly in river and ocean biomes – areas in the terrain generation with low continentalness or peaks and valleys – and can form massive, deep water bodies. The sea level can also create lakes in land biomes, or fill deep craters.
+Air on altitude Y=62 and lower is replaced by water. This occurs mostly in riverUnit and ocean biomes – areas in the terrain generation with low continentalness or peaks and valleys – and can form massive, deep water bodies. The sea level can also create lakes in land biomes, or fill deep craters.
 
 Below Y=-55, all air is replaced by lava, forming a similar "lava level". This mostly applies to caves, as the terrain rarely reaches such depths.
 
@@ -299,7 +299,7 @@ Please update this section to reflect recent updates or newly available informat
 | v1.2.6 | | | | | | | Added small lakes and rare lava pools, both on the surface and randomly in caves. |
 | Java Edition Beta | | | | | | | |
 | 1.8 | | | Pre-release | | | | Added huge mushrooms. |
-| Added river biomes and vast oceans. |
+| Added riverUnit biomes and vast oceans. |
 | Sand and gravel beaches removed due to the changes in the terrain generation algorithm. |
 | *Java Edition* | | | | | | | |
 | 1.0.0 | | | Beta 1.9 Prerelease 4 | | | | Added the End and End-related main island generated structures, including the End island, the obsidian platform, the End spikes and the exit portal. |

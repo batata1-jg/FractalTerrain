@@ -21,8 +21,8 @@ import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit.HydrologicalFeature;
-import me.batata_1.fractal_terrain.hydrology.features.River;
-import me.batata_1.fractal_terrain.hydrology.features.River.RosgenType;
+import me.batata_1.fractal_terrain.hydrology.features.RiverUnit;
+import me.batata_1.fractal_terrain.hydrology.features.RiverUnit.RosgenType;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import org.jetbrains.annotations.Nullable;
@@ -793,7 +793,7 @@ public final class RiverNetwork {
 
     /**
      * {@link #collectUnits(double, double, IntPredicate, ChannelTyper)} over every channel, untyped: every
-     * emitted {@link River}'s {@link River#rosgenType() rosgenType} is {@code null}, which every consumer
+     * emitted {@link RiverUnit}'s {@link RiverUnit#rosgenType() rosgenType} is {@code null}, which every consumer
      * coalesces to {@link RosgenType#A}.
      */
     public List<HydrologicalUnit> collectUnits(double offsetX, double offsetZ) {
@@ -808,7 +808,7 @@ public final class RiverNetwork {
     public List<HydrologicalUnit> collectUnits(
             double offsetX, double offsetZ, IntPredicate channelIdFilter, @Nullable ChannelTyper typer) {
         final List<HydrologicalUnit> units = new ArrayList<>();
-
+        final double[] offset = new double[]{offsetX, offsetZ};
         // Phase 1: resample every emitting channel. Types depend on neighbouring channels, so every
         // channel must hold its final geometry before any of them is classified.
         final List<Channel> emitting = new ArrayList<>();
@@ -830,18 +830,18 @@ public final class RiverNetwork {
         // Phase 2: one classification pass over the whole graph.
         if (typer != null) typer.prepare(this);
 
-        for(Endpoint en : nodes.values()) {
-            if(en.type == Endpoint.Type.SOURCE) HydrologicalFeature.SOURCE.addUnits(units, en);
-            //this is wrong, not all drains are deltas
-            if(en.type == Endpoint.Type.DRAIN) HydrologicalFeature.DELTA.addUnits(units, en);
+        for (Endpoint en : nodes.values()) {
+            if (en.type == Endpoint.Type.SOURCE) HydrologicalFeature.SOURCE.addUnits(offset, units, en);
+            // this is wrong, not all drains are deltas
+            if (en.type == Endpoint.Type.DRAIN) HydrologicalFeature.DELTA.addUnits(offset, units, en);
         }
 
         for (Channel ch : emitting) {
-            HydrologicalFeature.RIVER.addUnits(units,typer,ch);
+            HydrologicalFeature.RIVER.addUnits(offset, units, typer, ch);
         }
 
         for (RemovedPath rp : removedPaths) {
-            HydrologicalFeature.ABANDONED_RIVER.addUnits(units,rp);
+            HydrologicalFeature.ABANDONED_RIVER.addUnits(offset, units, rp);
         }
         return units;
     }
