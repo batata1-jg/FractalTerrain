@@ -42,7 +42,8 @@ import org.jetbrains.annotations.NotNull;
  * {@link RosgenType#A} at every such site, so a typeless unit still carves. Because only {@code A}
  * overrides any profile method today, the choice is currently observable only as "A vs. not-A".
  */
-public record HydrologicalUnit(
+
+public interface HydrologicalUnit(
         HydrologicalFeature type,
         RosgenType rosgenType,
         double[] coord,
@@ -50,11 +51,10 @@ public record HydrologicalUnit(
         double width,
         double elevation,
         int time,
-        int id)
-        implements SpatialIndexPoint, SpatialIndexCircle, Persistable<HydrologicalUnit> {
+        int id) extends SpatialIndexPoint , SpatialIndexCircle, Persistable<HydrologicalUnit> {
 
     /** Dummy unit that makes the unit index serializable (probed once by Storage). */
-    public static final HydrologicalUnit PROTOTYPE =
+    HydrologicalUnit PROTOTYPE =
             new HydrologicalUnit(HydrologicalFeature.RIVER, null, new double[] {0.0, 0.0}, null, 0, 0, 0, 0);
 
     /** {@link SpatialIndexPoint} coordinate accessor — same backing array as {@link #getCenter()}, no copy. */
