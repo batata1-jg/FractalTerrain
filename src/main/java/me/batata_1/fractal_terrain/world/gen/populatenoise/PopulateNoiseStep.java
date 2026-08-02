@@ -4,7 +4,12 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
+import me.batata_1.fractal_terrain.hydrology.features.RiverUnit;
+import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver;
+import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
+import me.batata_1.fractal_terrain.hydrology.profile.ZoneCategory;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
 import net.minecraft.world.level.ChunkPos;
@@ -12,6 +17,8 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import org.slf4j.Logger;
+
+import java.util.Arrays;
 
 public class PopulateNoiseStep {
 
@@ -31,8 +38,10 @@ public class PopulateNoiseStep {
     public void fineGrainedUnitPass(ChunkPos chunkPos, FractalTerrainHeightmap heightmap) {
         final int seaLevel = settings.seaLevel();
         final int bottom = settings.noiseSettings().minY();
-        final float[] interpolatedElevs = heightmap.get(Types.ELEVATION);
-        final float[] riverDifference = heightmap.get(Types.RIVER_DIFFERENCE);
+        final float[] interpolatedElevs = (float[]) heightmap.get(Types.ELEVATION);
+        final float[] riverDifference = (float[]) heightmap.get(Types.RIVER_DIFFERENCE);
+        final HydrologicalUnit.HydrologicalFeature[] riverType = (HydrologicalUnit.HydrologicalFeature[]) heightmap.get(Types.RIVER_TYPE);
+        final float[] waterElev = (float[]) heightmap.get(Types.WATER_HEIGHT);
         final HydrologyProfileCarver carver = FractalTerrainInstance.getHydrologyCarver();
         final int startX = chunkPos.getMinBlockX();
         final int startZ = chunkPos.getMinBlockZ();
@@ -45,18 +54,61 @@ public class PopulateNoiseStep {
         final double chunkRadiusPx = (8.0 * Math.sqrt(2.0)) / scale;
         final HydrologyProfileCarver.PrefetchedUnits chunkUnits =
                 carver.prefetchChunk(chunkCenterPixelX, chunkCenterPixelZ, chunkRadiusPx);
+        final HydrologicalUnit[] units = chunkUnits.units();
         final double[] mutablePt = new double[2];
+
+
+        float refinedElev = 0;
+        final double[] zoneSums = new double[ZoneCategory.COUNT];
+        final double[] zoneWeights = new double[ZoneCategory.COUNT];
+        double nearestDist;
+        HydrologicalUnit nearestUnit;
         for (int dx = 0; dx < 16; dx++) {
             for (int dz = 0; dz < 16; dz++) {
                 final int pos = (dx << 4) + dz;
                 final float baseElev = interpolatedElevs[pos];
                 mutablePt[0] = (startX + dx) / scale;
                 mutablePt[1] = (startZ + dz) / scale;
-                final float refinedElev = chunkUnits.units().length == 0
-                        ? baseElev
-                        : carver.carvePrefetched(chunkUnits, mutablePt, baseElev);
-                riverDifference[pos] = refinedElev - baseElev; // trench vs. shell, not vs. original terrain
+                Arrays.fill(zoneSums, 0);
+                Arrays.fill(zoneWeights, 0);
+                nearestDist = 1e9;
+                nearestUnit = null;
+                for (final HydrologicalUnit unit : units) {
+                    final double[] unitCoord = unit.coord();
+                    final double radialDist = Math.hypot(mutablePt[0] - unitCoord[0], mutablePt[1] - unitCoord[1]);
+                    final HydrologyProfile profile = unit.getProfile();
+                    if(unit.influence() < radialDist) continue; // out of this unit's reach
+                    final ZoneCategory zone = profile.categoryAt(unit, radialDist);
+                    if (zone == null) continue;
+                    final double weight = profile.zoneWeight(unit, zone, radialDist);
+                    if (weight <= 0) continue;
+                    if(radialDist < nearestDist) {
+                        nearestDist = radialDist;
+                        nearestUnit = unit;
+                    }
+                    final int slot = zone.ordinal();
+                    zoneSums[slot] += weight * unit.carveFineGrained(mutablePt, baseElev);
+                    zoneWeights[slot] += weight;
+                }
+                boolean intersects = false;
+                for (final ZoneCategory zone : ZoneCategory.BY_PRIORITY) {
+                    final int slot = zone.ordinal();
+                    if (zoneWeights[slot] > 1e-6) {
+                        refinedElev = (float) (zoneSums[slot] / zoneWeights[slot]);
+                        intersects = true;
+                        break;
+                    }
+                }
+                if(!intersects) refinedElev = baseElev;
+                riverDifference[pos] = refinedElev - baseElev;
                 interpolatedElevs[pos] = Math.max(bottom, refinedElev) + seaLevel - 1;
+                if(nearestUnit instanceof RiverUnit river) {
+                    if(nearestDist > (river.width() / 2) + 0.25) continue;
+                    riverType[pos] = river.getType();
+                    waterElev[pos] = (float) (nearestUnit.waterLine() + Math.max(bottom, river.elevation()) + seaLevel - 1);
+                } else {
+                    riverType[pos] = null;
+                }
             }
         }
     }

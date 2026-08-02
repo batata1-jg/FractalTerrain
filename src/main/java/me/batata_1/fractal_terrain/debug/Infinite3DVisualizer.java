@@ -46,7 +46,7 @@ public class Infinite3DVisualizer {
             public int sample(int x, int z) {
                 final FractalTerrainHeightmap heightmaps =
                         FractalTerrainInstance.getHeightmapCache().getOrCompute(new ChunkPos(x >> 4, z >> 4));
-                final float[] reliefBaseHeight = heightmaps.get(FractalTerrainHeightmap.Types.ELEVATION);
+                final float[] reliefBaseHeight = (float[]) heightmaps.get(FractalTerrainHeightmap.Types.ELEVATION);
                 return (int) reliefBaseHeight[(x & 15) * 16 + (z & 15)];
             }
         },

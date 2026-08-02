@@ -156,17 +156,17 @@ public class LocalRiverProvider {
         final RiverNetwork network = sim.getNetwork();
         final Map<Integer, Double> boundaryElev = new HashMap<>(globalResult.boundaryElevByNodeIdx());
 
-        final float[] carvedElevation = base[0];
-        ChannelElevationAssigner.assign(network, boundaryElev, carvedElevation);
+        final float[] carvedElevationGlobal = base[0].clone();
+        ChannelElevationAssigner.assign(network, boundaryElev, carvedElevationGlobal);
         LOG.debug("finished first assign() pass");
         HydrologyProfileCarver.carveRiverShells(
-                carvedElevation, sim.collectUnits(0, 0).toArray(new HydrologicalUnit[0]), PADDED);
+                carvedElevationGlobal, sim.collectUnits(0, 0).toArray(new HydrologicalUnit[0]), PADDED);
 
         // 2. sink-fill + drainage on the RAW decoded elevation (not yet carved): the local trace no
         //    longer needs a pre-carved valley to route toward the global network -- LOCAL_ATTACH_RADIUS
         //    proximity (not terrain shape) is what joins locals to the graph -- so drainage can be
         //    computed once, up front, and fed straight into the trace.
-        final float[] filled = Drainage.fillSinks(carvedElevation, PADDED, HydrologyTuning.FILL_PADDING);
+        final float[] filled = Drainage.fillSinks(carvedElevationGlobal, PADDED, HydrologyTuning.FILL_PADDING);
         final float[] uniformWeight = new float[PADDED * PADDED];
         Arrays.fill(uniformWeight, 1f);
         final int[] drainagePadded = Drainage.computeDrainageDirection(filled, uniformWeight, PADDED);
@@ -177,7 +177,7 @@ public class LocalRiverProvider {
         //    to an ABANDONED_RIVER when its DFS branch reaches no drain). update() re-assigns every channel
         //    id but preserves SOURCE/DRAIN node ids, so the boundary map below keys on node type, not the
         //    old (now churn-broken) before/after channel-id snapshot.
-        LocalDrainageTracer.traceLocalNetwork(drainagePadded, carvedElevation, base[4], network, stages);
+        LocalDrainageTracer.traceLocalNetwork(drainagePadded, carvedElevationGlobal, base[4], network, stages);
 
         // 4. augment the boundary map with every SOURCE/DRAIN node not already seeded — the local ridge
         //    SOURCEs and coast DRAINs the trace minted (decoded terrain at the node, floored at 0), so the
@@ -185,12 +185,13 @@ public class LocalRiverProvider {
         for (Endpoint node : network.getNodes()) {
             if (node.type != Endpoint.Type.SOURCE && node.type != Endpoint.Type.DRAIN) continue;
             boundaryElev.putIfAbsent(
-                    node.id, Math.max(0, sampleBilinear(carvedElevation, node.coord[0], node.coord[1])));
+                    node.id, Math.max(0, sampleBilinear(carvedElevationGlobal, node.coord[0], node.coord[1])));
         }
 
         // 5. ONE bed-elevation assignment over the whole unified graph.
-        ChannelElevationAssigner.assign(network, boundaryElev, carvedElevation);
+        ChannelElevationAssigner.assign(network, boundaryElev, carvedElevationGlobal);
         LOG.debug("finished second assign() pass");
+        final float[] carvedElevation = base[0];
         HydrologyProfileCarver.carveRiverShells(
                 carvedElevation, sim.collectUnits(0, 0).toArray(new HydrologicalUnit[0]), PADDED);
 

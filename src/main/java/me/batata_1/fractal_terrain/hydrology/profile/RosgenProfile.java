@@ -33,7 +33,7 @@ public enum RosgenProfile implements HydrologyProfile {
         }
 
         @Override
-        protected double bedDelta(long seed, double signedPerpDist, double depth) {
+        protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
             return -depth * (1 - Math.abs(signedPerpDist));
         }
     },
@@ -50,12 +50,12 @@ public enum RosgenProfile implements HydrologyProfile {
         }
 
         @Override
-        protected double bedDelta(long seed, double signedPerpDist, double depth) {
+        protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
             return -depth * (1 - Math.abs(signedPerpDist));
         }
 
         @Override
-        protected double floodPlainDelta(long seed, double signedPerpDist, double width, double floodPlainLength) {
+        protected double floodPlainDelta(long seed, double signedPerpDist, double width, double floodPlainLength, double curvature) {
             return 2 * (1 - Math.abs(signedPerpDist));
         }
     },
@@ -71,12 +71,12 @@ public enum RosgenProfile implements HydrologyProfile {
         }
 
         @Override
-        protected double bedDelta(long seed, double signedPerpDist, double depth) {
-            return Math.min(-1, 0.25 * super.bedDelta(seed, signedPerpDist, depth));
+        protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
+            return Math.min(-1, 0.25 * super.bedDelta(seed, signedPerpDist, depth, curvature));
         }
 
         @Override
-        protected double floodPlainDelta(long seed, double signedPerpDist, double width, double floodPlainLength) {
+        protected double floodPlainDelta(long seed, double signedPerpDist, double width, double floodPlainLength, double curvature) {
             return 1 - Math.abs(signedPerpDist);
         }
     },
@@ -97,9 +97,16 @@ public enum RosgenProfile implements HydrologyProfile {
         }
 
         @Override
-        protected double bedDelta(long seed, double signedPerpDist, double depth) {
-            return 0.6 * depth * smoothMax(Math.exp(-7 * (signedPerpDist + 1)) - 1, (signedPerpDist - 1) * 0.6, 0.001);
+        protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
+            double sign = Math.signum(curvature);
+            return 0.6 * depth * smoothMax(Math.exp(-7 * (sign*signedPerpDist + 1)) - 1, (sign*signedPerpDist - 1) * 0.6, 0.001) - 3;
         }
+
+        @Override
+        protected double floodPlainDelta(long seed, double signedPerpDist, double width, double floodPlainLength, double curvature) {
+            return -3 * (1 - Math.abs(signedPerpDist));
+        }
+
     },
     D {
 
@@ -121,7 +128,7 @@ public enum RosgenProfile implements HydrologyProfile {
         }
 
         @Override
-        protected double bedDelta(long seed, double signedPerpDist, double depth) {
+        protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
             return -3 * Math.abs(noiseSampler.sample(1.0 / seed, signedPerpDist));
         }
     },
@@ -140,14 +147,14 @@ public enum RosgenProfile implements HydrologyProfile {
         }
 
         @Override
-        protected double bedDelta(long seed, double signedPerpDist, double depth) {
-            return Math.min(-1, 0.5 * super.bedDelta(seed, signedPerpDist, depth));
+        protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
+            return Math.min(-1, 0.5 * super.bedDelta(seed, signedPerpDist, depth, curvature)) - 3;
         }
 
-        @Override
-        protected double floodPlainDelta(long seed, double signedPerpDist, double width, double floodPlainLength) {
-            return 3 * (1 - Math.abs(signedPerpDist));
-        }
+//        @Override
+//        protected double floodPlainDelta(long seed, double signedPerpDist, double width, double floodPlainLength) {
+//            return 3 * (1 - Math.abs(signedPerpDist));
+//        }
 
         @Override
         protected double valleyShapeCarve(double dist) {
@@ -170,7 +177,7 @@ public enum RosgenProfile implements HydrologyProfile {
         }
 
         @Override
-        protected double bedDelta(long seed, double signedPerpDist, double depth) {
+        protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
             return -Math.min(1, 0.5 * depth * Math.pow(1 - signedPerpDist * signedPerpDist, 0.16));
         }
     },
@@ -255,7 +262,7 @@ public enum RosgenProfile implements HydrologyProfile {
     // ---- Bed (per-pixel residual trench, cut below the already-carved shell) ----
 
     /** The raw bed trench, before {@link RiverUnit#carveFineGrained} fades it over its footprint. */
-    public double riverAreaDelta(long randSeed, double signedPerpDist, double alongDist, double width) {
+    public double riverAreaDelta(long randSeed, double signedPerpDist, double alongDist, double width, double curvature) {
         final double floodPlainLen = floodPlainLength(width);
         if (Math.hypot(signedPerpDist, alongDist) > floodPlainLen) return 0;
         final double marginLen = width / 2;
@@ -265,7 +272,7 @@ public enum RosgenProfile implements HydrologyProfile {
             return bedDelta(
                     randSeed,
                     signedPerpDist / marginLen,
-                    FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depthForWidth(width));
+                    FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depthForWidth(width) , curvature);
         }
         return floodPlainDelta(
                 randSeed,
@@ -273,17 +280,18 @@ public enum RosgenProfile implements HydrologyProfile {
                         ? ((signedPerpDist - marginLen) / (floodPlainLen - marginLen))
                         : ((marginLen + signedPerpDist) / (marginLen - floodPlainLen)),
                 width,
-                floodPlainLen);
+                floodPlainLen,
+                curvature);
     }
 
     // range [-1,0] -> [-floodPlainLen,-marginLen] ;
     // range [0,1] -> [marginLen,floodPlainLen] ;
-    protected double floodPlainDelta(long seed, double signedPerpDist, double width, double floodPlainLength) {
+    protected double floodPlainDelta(long seed, double signedPerpDist, double width, double floodPlainLength, double curvature) {
         return 0;
     }
 
     // should be between the range -1 and 1
-    protected double bedDelta(long seed, double signedPerpDist, double depth) {
+    protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
         return -Math.min(1, depth * Math.sqrt(1 - signedPerpDist * signedPerpDist));
     }
 
@@ -301,4 +309,5 @@ public enum RosgenProfile implements HydrologyProfile {
             case G -> G;
         };
     }
+
 }

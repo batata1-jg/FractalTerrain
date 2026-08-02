@@ -112,14 +112,15 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
 
     private ChunkAccess doFill(final ChunkAccess chunk) {
         final ChunkPos chunkPos = chunk.getPos();
-        final PopulateNoiseStep rockFiller = FractalTerrainInstance.getPopulateNoiseStep();
+        final PopulateNoiseStep baseTerrainPlacer = FractalTerrainInstance.getPopulateNoiseStep();
         final int startingX = chunkPos.getMinBlockX();
         final int startingZ = chunkPos.getMinBlockZ();
         final int seaLevel = settings.value().seaLevel();
         final int bottom = settings.value().noiseSettings().minY();
         final FractalTerrainHeightmap heightmaps =
                 FractalTerrainInstance.getHeightmapCache().getOrCompute(chunkPos);
-        final float[] reliefBaseHeight = heightmaps.get(FractalTerrainHeightmap.Types.ELEVATION);
+        final float[] reliefBaseHeight = (float[]) heightmaps.get(FractalTerrainHeightmap.Types.ELEVATION);
+        final float[] waterLineHeight = (float[]) heightmaps.get(FractalTerrainHeightmap.Types.WATER_HEIGHT);
         final Heightmap oceanHeightmap = chunk.getOrCreateHeightmapUnprimed(Heightmap.Types.OCEAN_FLOOR_WG);
         final Heightmap surfaceHeightmap = chunk.getOrCreateHeightmapUnprimed(Heightmap.Types.WORLD_SURFACE_WG);
         final BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
@@ -128,11 +129,12 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
                 final int xx = startingX + dx;
                 final int zz = startingZ + dz;
                 final int reliefHeight = (int) reliefBaseHeight[(dx << 4) + dz];
+                final int  waterHeight = (int) waterLineHeight[(dx << 4) + dz]; //water height no ocean;
                 // Fill water up to sea level, or higher if the ELEVATION heightmap value exceeds it.
                 // PopulateNoiseStep#fineGrainedUnitPass currently writes a flat per-chunk placeholder into
                 // ELEVATION (the hydrology bed-carve call is commented out there), so reliefHeight here
                 // does not yet reflect real per-block relief or a carved river channel.
-                final int aboveWaterHeight = Math.max(reliefHeight, seaLevel);
+                final int aboveWaterHeight = Math.max(reliefHeight,Math.max(seaLevel,waterHeight));
                 mutable.set(xx, bottom, zz);
                 BlockState state;
                 for (int y = bottom; y <= aboveWaterHeight; y++) {
@@ -141,7 +143,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
                     if (reliefHeight < y) {
                         state = WATER;
                     } else {
-                        state = rockFiller.fillRocks(xx, y, zz);
+                        state = baseTerrainPlacer.fillRocks(xx, y, zz);
                     }
 
                     chunk.setBlockState(mutable, state, false);
@@ -175,7 +177,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
                 for (int y = bottom; y <= surfaceH; y++) {
                     mutable.setY(y);
                     state = DEFAUT;
-                    if (surfaceH - y < 5) {
+                    if (surfaceH - y < 1) {
                         state = FractalTerrainInstance.getInfinite3DVisualizer().debugPaintController(xx, y, zz);
                     }
 

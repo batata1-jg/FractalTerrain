@@ -4,7 +4,9 @@ import java.util.Arrays;
 import java.util.List;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
+import me.batata_1.fractal_terrain.hydrology.features.RiverUnit;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
+import org.jetbrains.annotations.TestOnly;
 
 /**
  * The elevation side of the hydrology profile — where rivers actually cut the terrain.
@@ -90,6 +92,7 @@ public final class HydrologyProfileCarver {
      *  unit has a bed to distinguish. Compounds across calls on the same buffer, which
      *  {@code buildTile} relies on when it carves twice per tile. */
     public static void carveRiverShells(float[] elevation, HydrologicalUnit[] units, int paddedSize) {
+ //       carveRiverShellsNearest(elevation, units, paddedSize);
         if (units.length == 0) return;
         final ImmutableRTree<HydrologicalUnit> index =
                 new ImmutableRTree<>(Arrays.asList(units), HydrologicalUnit.PROTOTYPE);
@@ -123,4 +126,41 @@ public final class HydrologyProfileCarver {
             }
         }
     }
+
+    @TestOnly
+    public static void carveRiverShellsNearest(float[] elevation, HydrologicalUnit[] units, int paddedSize) {
+        if (units.length == 0) return;
+        final ImmutableRTree<HydrologicalUnit> index =
+                new ImmutableRTree<>(Arrays.asList(units), HydrologicalUnit.PROTOTYPE);
+
+        for (int pi = 0; pi < paddedSize; pi++) {
+            for (int pj = 0; pj < paddedSize; pj++) {
+                final int idx = pi * paddedSize + pj;
+                final float ambient = elevation[idx];
+                if (ambient < 0) continue;
+                final double[] pixel = {pi, pj};
+                final List<HydrologicalUnit> nearby = index.queryContaining(pixel);
+                if (nearby.isEmpty()) continue;
+
+                HydrologicalUnit nearest = null;
+                double nearestDist = Double.MAX_VALUE;
+                for (final HydrologicalUnit unit : nearby) {
+                    final double[] coord = unit.getCenter();
+                    final double dx = pixel[0] - coord[0];
+                    final double dz = pixel[1] - coord[1];
+                    final double radialDist = Math.hypot(dx, dz);
+                    final double influenceRadius = unit.getRadius();
+                    if (radialDist >= influenceRadius) continue; // outside this unit's influence
+                    if( radialDist < nearestDist && unit instanceof RiverUnit river) {
+                        nearestDist = radialDist;
+                        nearest = river;
+                    }
+                }
+
+                if(nearest == null) continue;
+                elevation[idx] = (float) nearest.getProfile().shellElevation(nearest,nearestDist,elevation[idx]);
+            }
+        }
+    }
+
 }

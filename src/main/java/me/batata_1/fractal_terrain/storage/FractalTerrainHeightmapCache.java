@@ -39,7 +39,7 @@ public final class FractalTerrainHeightmapCache {
     }
 
     private FractalTerrainHeightmap compute(ChunkPos pos) {
-        final float[][] data = new float[Types.values().length][];
+        final Object[] data = new Object[Types.values().length];
         for (Types t : Types.values()) data[t.ordinal()] = t.creator().apply(pos);
         final FractalTerrainHeightmap heightmap = new FractalTerrainHeightmap(data);
         // Second pass: the ELEVATION channel was filled with the raw interpolated relief elevation only.

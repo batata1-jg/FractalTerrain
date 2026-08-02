@@ -5,6 +5,7 @@ import static me.batata_1.fractal_terrain.FractalTerrainInstance.getReliefProvid
 
 import java.util.function.Function;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import net.minecraft.world.level.ChunkPos;
 
@@ -16,8 +17,12 @@ import net.minecraft.world.level.ChunkPos;
  *
  * <p>{@link Types#ELEVATION} is only raw here — a second pass recomputes it from the full channel set
  * once every other heightmap is filled, since the final shaping needs them all.
+ *
+ * <p>The payload slot is {@code Object} so channels are not locked to {@code float[]}: a channel may
+ * later carry a different element type, or a non-array structure entirely. Each {@link Types} constant
+ * owns the interpretation of its own slot via {@link Types#get(Object, int, int)}.
  */
-public record FractalTerrainHeightmap(float[][] data) {
+public record FractalTerrainHeightmap(Object[] data) {
 
     /**
      * The heightmap kinds. Each carries its per-pixel source channel (a {@code Function<int[], Float>}
@@ -44,7 +49,11 @@ public record FractalTerrainHeightmap(float[][] data) {
         // Special (like ELEVATION): zero-filled here, then populated by the second pass
         // (PopulateNoiseStep#fineGrainedUnitPass) as carve(x,z) − pre-carve elevation. Negative where the
         // river carved below the original terrain; the surface painter places water there.
-        RIVER_DIFFERENCE(pos -> new float[1 << 8]);
+        RIVER_DIFFERENCE(pos -> new float[1 << 8]),
+        RIVER_TYPE(pos -> new HydrologicalUnit.HydrologicalFeature[1 << 8]) {
+
+        },
+        WATER_HEIGHT(pos -> new float[1 << 8]),;
 
         private static float[] fillBilinear(ChunkPos chunkPos, Function<int[], Float> f) {
             final float[] heights = new float[1 << 8];
@@ -86,23 +95,35 @@ public record FractalTerrainHeightmap(float[][] data) {
             return heights;
         }
 
-        private final Function<ChunkPos, float[]> creator;
+        private final Function<ChunkPos, Object> creator;
 
-        Types(Function<ChunkPos, float[]> creator) {
+        Types(Function<ChunkPos, Object> creator) {
             this.creator = creator;
         }
 
-        /** Builds this heightmap's {@code float[256]} for chunk {@code key} (key = chunk coords). */
-        public Function<ChunkPos, float[]> creator() {
+        /** Builds this heightmap's payload for chunk {@code key} (key = chunk coords). */
+        public Function<ChunkPos, Object> creator() {
             return creator;
+        }
+
+        /**
+         * Reads one block out of this channel's payload.
+         *
+         * <p>The default reads the payload as the row-major {@code float[256]} the fill helpers
+         * produce; constants whose {@link #creator} returns something else override this instead of
+         * making callers know the payload type.
+         */
+        public float get(Object payload, int localX, int localZ) {
+            return ((float[]) payload)[localX * 16 + localZ];
         }
     }
 
     public float get(Types t, int localX, int localZ) {
-        return data[t.ordinal()][localX * 16 + localZ];
+        return t.get(data[t.ordinal()], localX, localZ);
     }
 
-    public float[] get(Types t) {
+    /** Raw payload for callers that fill or scan a whole chunk; only valid for {@code float[]} channels. */
+    public Object get(Types t) {
         return data[t.ordinal()];
     }
 }

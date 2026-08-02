@@ -40,6 +40,10 @@ public interface HydrologicalUnit extends SpatialIndexPoint, SpatialIndexCircle,
     /** Which kind of feature this unit is; the tag {@link #serialize()} writes. */
     HydrologicalFeature getType();
 
+    default float waterLine() {
+        return -1;
+    };
+
     /**
      * Feature kinds and the registry mapping each to its record.
      *
@@ -65,6 +69,7 @@ public interface HydrologicalUnit extends SpatialIndexPoint, SpatialIndexCircle,
                             profile.riverInfluence(width),
                             types[i],
                             ch.spline.normal(i),
+                            ch.spline.curvature(i),
                             width,
                             ch.bedElev(i)));
                 }
@@ -140,6 +145,10 @@ public interface HydrologicalUnit extends SpatialIndexPoint, SpatialIndexCircle,
     @Override
     default double getRadius() {
         return DEFAULT_RADIUS;
+    }
+
+    default double influence() {
+     return getRadius();
     }
 
     double[] coord();

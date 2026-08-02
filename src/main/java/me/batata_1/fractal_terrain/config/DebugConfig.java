@@ -34,11 +34,11 @@ public final class DebugConfig {
     // ──────────────────────────────────────────────────────────────────────────
 
     /** Whether the 3D visualizer replaces normal chunk fill. */
-    public static final boolean DISABLE_3D_VISUALIZER = true;
+    public static final boolean DISABLE_3D_VISUALIZER = false;
 
     /** Which field the visualizer raises columns to. Compile-time because it is read per column. */
     public static final Infinite3DVisualizer.DebugModes VIZ_H_CONTROL_MODE =
-            Infinite3DVisualizer.DebugModes.POP_NOISE_RELIEF;
+            Infinite3DVisualizer.DebugModes.RELIEF;
 
     /** Which field the visualizer colours by. Compile-time because it is read per block. */
     public static final Infinite3DVisualizer.DebugPaintModes VIZ_PAINT_CONTROL_MODE =

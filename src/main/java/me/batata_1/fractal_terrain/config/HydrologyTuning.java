@@ -70,7 +70,7 @@ public final class HydrologyTuning {
     // ──────────────────────────────────────────────────────────────────────────
 
     /** Floor on every river width, in native pixels. */
-    public static final double MIN_WIDTH = 0.4f;
+    public static final double MIN_WIDTH = 0.6f;
 
     /** Scale on {@code sqrt(flow)} shared by the global and local networks (see {@link #widthFromFlow}). */
     public static final double WIDTH_FLOW_SCALE = 0.4f;

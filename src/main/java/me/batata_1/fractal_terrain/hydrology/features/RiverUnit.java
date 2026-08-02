@@ -25,11 +25,12 @@ public record RiverUnit(
         double radius,
         RosgenType rosgenType,
         double @Nullable [] normal,
+        double curvature,
         double width,
         double elevation)
         implements HydrologicalUnit {
 
-    static final RiverUnit PROTOTYPE = new RiverUnit(new double[] {0.0, 0.0}, 0, null, null, 0, 0);
+    static final RiverUnit PROTOTYPE = new RiverUnit(new double[] {0.0, 0.0}, 0, null, null, 0,0, 0);
 
     @Override
     public double[] getCoords() {
@@ -59,6 +60,13 @@ public record RiverUnit(
     }
 
     @Override
+    public float waterLine() {
+        if(width <= 1.5 ) return -1;
+        if(width <= 2.5  ) return -2;
+        return -3;
+    }
+
+    @Override
     public HydrologyProfile getProfile() {
         return RosgenProfile.of(rosgenType == null ? RosgenType.A : rosgenType);
     }
@@ -84,7 +92,7 @@ public record RiverUnit(
         final double alongDist = Math.abs(nz * dx - nx * dz);
 
         final double uninterpolatedDelta =
-                profile.riverAreaDelta(Arrays.hashCode(coord), signedPerpDist, alongDist, width);
+                profile.riverAreaDelta(Arrays.hashCode(coord), signedPerpDist, alongDist, width, curvature);
 
         if (radiusSq - signedPerpDist * signedPerpDist < 1e-6) return elevAtPixel;
         final double eccentricity =
@@ -97,16 +105,17 @@ public record RiverUnit(
     @Override
     public long unitByteSize() {
         // rosgen tag + coord + normal + radius + width + elevation
-        return Integer.BYTES + UnitCodec.coordByteSize(coord) + UnitCodec.coordByteSize(normal) + 3L * Double.BYTES;
+        return Integer.BYTES + UnitCodec.coordByteSize(coord) + UnitCodec.coordByteSize(normal) + 4L * Double.BYTES;
     }
 
     @Override
     public byte[] serializeUnit() {
-        final ByteBuffer buf = ByteBuffer.allocate((int) byteSize()).order(ByteOrder.LITTLE_ENDIAN);
+        final ByteBuffer buf = ByteBuffer.allocate((int) unitByteSize()).order(ByteOrder.LITTLE_ENDIAN);
         // An unclassified reach stamps -1; every other value is a RosgenType ordinal.
         buf.putInt(rosgenType == null ? -1 : rosgenType.ordinal());
         UnitCodec.putCoord(buf, coord);
         UnitCodec.putCoord(buf, normal);
+        buf.putDouble(curvature);
         buf.putDouble(radius);
         buf.putDouble(width);
         buf.putDouble(elevation);
@@ -120,10 +129,11 @@ public record RiverUnit(
         final RosgenType rosgen = rosgenOrdinal < 0 ? null : RosgenType.values()[rosgenOrdinal];
         final double[] coords = UnitCodec.getCoord(buf);
         final double[] normalVec = UnitCodec.getCoord(buf);
+        final double curvature = buf.getDouble();
         final double r = buf.getDouble();
         final double w = buf.getDouble();
         final double e = buf.getDouble();
-        return new RiverUnit(coords, r, rosgen, normalVec, w, e);
+        return new RiverUnit(coords, r, rosgen, normalVec, curvature , w, e);
     }
 
     // Records compare array components by reference; these compare contents instead.
