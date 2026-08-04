@@ -27,7 +27,7 @@ public final class RosgenKey {
 
         // Entrenched: the valley pinches the channel.
         if (m.entrenchment() < HydrologyTuning.ER_ENTRENCHED) {
-            return m.widthDepth() < HydrologyTuning.WD_NARROW ? RiverUnit.RosgenType.G : RiverUnit.RosgenType.F;
+            return m.widthPerDepth() < HydrologyTuning.WD_NARROW ? RiverUnit.RosgenType.G : RiverUnit.RosgenType.F;
         }
 
         // Moderately entrenched.
@@ -42,7 +42,7 @@ public final class RosgenKey {
         if (m.width() > HydrologyTuning.BRAID_MIN_WIDTH && m.slope() > braidThreshold(m.width())) {
             return RiverUnit.RosgenType.D;
         }
-        return m.widthDepth() < HydrologyTuning.WD_NARROW ? RiverUnit.RosgenType.E : RiverUnit.RosgenType.C;
+        return m.widthPerDepth() < HydrologyTuning.WD_NARROW ? RiverUnit.RosgenType.E : RiverUnit.RosgenType.C;
     }
 
     /** Gates where braiding is plausible. Braiding is not measurable without a sediment-transport
@@ -63,7 +63,7 @@ public final class RosgenKey {
         // HydrologyTuning.ER_TOLERANCE)
         //                        || nearThreshold(m.entrenchment(), HydrologyTuning.ER_ANASTOMOSE,
         // HydrologyTuning.ER_TOLERANCE)
-        //                        || nearThreshold(m.widthDepth(), HydrologyTuning.WD_NARROW,
+        //                        || nearThreshold(m.widthPerDepth(), HydrologyTuning.WD_NARROW,
         // HydrologyTuning.WD_TOLERANCE);
         //        return onThreshold ? previous : raw;
     }

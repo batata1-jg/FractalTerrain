@@ -143,7 +143,7 @@ public final class HydrologyTuning {
     public static final double ER_ANASTOMOSE = 4.0;
 
     /** Splits narrow-deep ({@code E G}) from wide-shallow ({@code C F}); calibrate {@code W_REF}, not this. */
-    public static final double WD_NARROW = 12.0;
+    public static final double WD_NARROW = 6.0;
 
     /** Rosgen's published ER tolerance — the dead band that suppresses type flicker at a threshold. */
     public static final double ER_TOLERANCE = 0.2;
@@ -173,7 +173,7 @@ public final class HydrologyTuning {
     public static final double REACH_MAX_PX = 64.0;
 
     // bias towards lower ER, mostly affects streams with small widths.
-    public static final double ENTRENTMENT_RATIO_BIAS = 1;
+    public static final double ENTRENTMENT_RATIO_BIAS = 4;
 
     /** Entrenchment transect half-walk; never substitute {@link #MAX_INFLUENCE_RADIUS} — see README. */
     public static final double ER_WALK_WIDTHS = 5;

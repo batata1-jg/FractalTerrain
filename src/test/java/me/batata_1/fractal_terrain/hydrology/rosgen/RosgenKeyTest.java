@@ -22,7 +22,7 @@ class RosgenKeyTest {
         return new ReachMetrics(
                 slope == null ? m.slope() : slope,
                 er == null ? m.entrenchment() : er,
-                wd == null ? m.widthDepth() : wd,
+                wd == null ? m.widthPerDepth() : wd,
                 w == null ? m.width() : w,
                 z == null ? m.bedElev() : z);
     }

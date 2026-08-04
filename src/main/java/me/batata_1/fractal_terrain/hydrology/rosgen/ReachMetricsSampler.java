@@ -59,7 +59,7 @@ public final class ReachMetricsSampler {
 
         final double positiveWidth = Double.isInfinite(positive) ? maxFloodPlainWidth : positive;
         final double negativeWidth = Double.isInfinite(negative) ? maxFloodPlainWidth : negative;
-        return (positiveWidth + negativeWidth) / (bankfullWidth + HydrologyTuning.ENTRENTMENT_RATIO_BIAS);
+        return (positiveWidth + negativeWidth) / (Math.pow(bankfullWidth,0.5) + HydrologyTuning.ENTRENTMENT_RATIO_BIAS);
     }
 
     /** One side of the entrenchment transect; {@code +inf} when the walk never clears the stage. */

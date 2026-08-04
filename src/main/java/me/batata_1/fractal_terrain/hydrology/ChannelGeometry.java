@@ -35,9 +35,6 @@ public final class ChannelGeometry {
     /** The one knob calibrating narrow-deep against wide-shallow Rosgen types. Uncalibrated. */
     public static final double W_REF = 4.0;
 
-    /** W/D at {@link #W_REF} — Rosgen's narrow-deep / wide-shallow boundary. */
-    private static final double WD_AT_REF = 12.0;
-
     /** Exponent of the width-to-depth law; an unvalidated analogy from Bieger et al. 2015. */
     private static final double WD_EXPONENT = 0.278;
 
@@ -45,7 +42,7 @@ public final class ChannelGeometry {
      *  Deliberately not derived from {@link #depthForWidth}, whose 1.0 floor would degenerate the ratio
      *  to plain width and classify nearly everything narrow-deep — see {@code config/README.md}. */
     public static double widthDepthRatio(double width) {
-        return WD_AT_REF * Math.pow(Math.max(width, MIN_RATIO_WIDTH) / W_REF, WD_EXPONENT);
+        return Math.pow(Math.max(width, MIN_RATIO_WIDTH) / W_REF, WD_EXPONENT);
     }
 
     /** Floor keeping {@link #widthDepthRatio} positive and NaN-free against unchecked negative width. */
