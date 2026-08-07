@@ -105,7 +105,10 @@ public final class HydrologyProfileCarver {
                 final double[] pixel = {pi, pj};
                 final List<HydrologicalUnit> nearby = index.queryContaining(pixel);
                 if (nearby.isEmpty()) continue;
-              //  nearby.sort((HydrologicalUnit a,HydrologicalUnit b) -> a.getRadius() < b.getRadius())
+                nearby.sort((HydrologicalUnit a,HydrologicalUnit b) -> {
+                    if(a.getRadius() < b.getRadius()) return -1;
+                    return 1;
+                });
                 double curElev = elevation[idx];
                 for (final HydrologicalUnit unit : nearby) {
                     final double[] coord = unit.getCenter();
@@ -114,6 +117,7 @@ public final class HydrologyProfileCarver {
                     final double radialDist = Math.hypot(dx, dz);
                     final double influenceRadius = unit.getRadius();
                     if (radialDist >= influenceRadius) continue; // outside this unit's influence
+                    if(curElev <= unit.getProfile().shellElevation(unit, radialDist, elevation[idx])) continue;
                     curElev = unit.getProfile().shellElevation(unit, radialDist, curElev);
                 }
 

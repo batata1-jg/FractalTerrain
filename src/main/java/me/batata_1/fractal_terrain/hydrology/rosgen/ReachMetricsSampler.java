@@ -47,7 +47,8 @@ public final class ReachMetricsSampler {
         final double bankfullWidth = Math.max(width, HydrologyTuning.MIN_WIDTH);
         final double depth = HydrologyTuning.DEPTH_MAX_FACTOR * ChannelGeometry.depthForWidth(bankfullWidth);
         final double floodProneStage = bedElev + 2.0 * depth;
-        final double maxFloodPlainWidth = HydrologyTuning.ER_WALK_WIDTHS * bankfullWidth;
+        final double bankfullWidthFactor = Math.pow(bankfullWidth,0.05) + HydrologyTuning.ENTRENTMENT_RATIO_BIAS;
+        final double maxFloodPlainWidth = HydrologyTuning.ER_WALK_WIDTHS * bankfullWidthFactor;
         final double step = Math.clamp(
                 bankfullWidth * HydrologyTuning.ER_STEP_WIDTH_FRACTION,
                 HydrologyTuning.ER_STEP_MIN,
@@ -59,7 +60,7 @@ public final class ReachMetricsSampler {
 
         final double positiveWidth = Double.isInfinite(positive) ? maxFloodPlainWidth : positive;
         final double negativeWidth = Double.isInfinite(negative) ? maxFloodPlainWidth : negative;
-        return (positiveWidth + negativeWidth) / (Math.pow(bankfullWidth,0.5) + HydrologyTuning.ENTRENTMENT_RATIO_BIAS);
+        return (positiveWidth + negativeWidth) / bankfullWidthFactor;
     }
 
     /** One side of the entrenchment transect; {@code +inf} when the walk never clears the stage. */

@@ -29,8 +29,8 @@ import org.slf4j.LoggerFactory;
  * Standalone smoke test for {@link LocalRiverProvider} (the river-pipeline owner). Loads the models via
  * {@code FractalTerrainInstance.initPipeline()}, but constructs its own {@link GlobalRiverProvider} and
  * {@link LocalRiverProvider} directly rather than going through {@code FractalTerrainInstance}'s provider
- * accessors, and for a few tiles dumps PNGs of the flow accumulation, local river mask, carved elevation,
- * and traced channels under {@code <DEFAULT_DEBUG_PATH>/local_river/}. Run with
+ * accessors, and for a few tiles dumps PNGs of the flow accumulation, local river mask, first-pass and
+ * final carved elevation, and traced channels under {@code <DEFAULT_DEBUG_PATH>/local_river/}. Run with
  * {@code ./gradlew localRiverTest}.
  */
 @TestOnly
@@ -86,12 +86,13 @@ public class LocalRiverTest {
         }
         seeFloat(stages.flow, GRID + 2, GRID + 2, prefix + "01_flow");
         seeFloat(maskToFloat(stages.riverMask), GRID + 2, GRID + 2, prefix + "02_river_mask");
-        seeFloat(stages.carvedElevation, GRID, GRID, prefix + "03_carved_elev");
+        seeFloat(stages.elevationFirstPass, GRID, GRID, prefix + "03_elev_first_pass");
+        seeFloat(stages.carvedElevation, GRID, GRID, prefix + "04_carved_elev");
         // Both lists are channels of the SAME unified graph (see LocalRiverProvider.Stages), and the local
         // trace shifts its segments by +PAD into the padded graph frame on insertion (DL-005), so both
         // need the same PAD offset subtracted for tile-local pixel coords.
-        seeFloat(rasterizeChannels(stages.channels, PAD), GRID, GRID, prefix + "04_global_channels");
-        seeFloat(rasterizeChannels(stages.localChannels, PAD), GRID, GRID, prefix + "05_local_channels");
+        seeFloat(rasterizeChannels(stages.channels, PAD), GRID, GRID, prefix + "05_global_channels");
+        seeFloat(rasterizeChannels(stages.localChannels, PAD), GRID, GRID, prefix + "06_local_channels");
         LOG.info(
                 "tile ({},{}): {} global, {} local channels",
                 tx,
@@ -139,8 +140,8 @@ public class LocalRiverTest {
             final List<HydrologicalUnit> units = stages.unitTree.getAllEntries();
             final double worldOriginX = tx * (double) GRID;
             final double worldOriginZ = tz * (double) GRID;
-            Debug.units.see(units, prefix + "06_units", GRID, 4, worldOriginX, worldOriginZ);
-            Debug.units.seeByRosgenType(units, prefix + "07_rosgen", GRID, 4, worldOriginX, worldOriginZ);
+            Debug.units.see(units, prefix + "07_units", GRID, 4, worldOriginX, worldOriginZ);
+            Debug.units.seeByRosgenType(units, prefix + "08_rosgen", GRID, 4, worldOriginX, worldOriginZ);
             Debug.units.logStats(units, "tile (" + tx + "," + tz + ")");
         } catch (RuntimeException e) {
             LOG.warn("tile ({},{}): unit-tree dump failed ({})", tx, tz, e.toString(), e);

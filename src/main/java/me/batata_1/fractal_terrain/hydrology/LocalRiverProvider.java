@@ -161,6 +161,9 @@ public class LocalRiverProvider {
         LOG.debug("finished first assign() pass");
         HydrologyProfileCarver.carveRiverShells(
                 carvedElevationGlobal, sim.collectUnits(0, 0).toArray(new HydrologicalUnit[0]), PADDED);
+        // Snapshot here, not at the end: this buffer is the drainage input for the local trace below, so
+        // the harness needs it as it stood when step 2 read it.
+        if (stages != null) stages.elevationFirstPass = cropToTile(carvedElevationGlobal).data;
 
         // 2. sink-fill + drainage on the RAW decoded elevation (not yet carved): the local trace no
         //    longer needs a pre-carved valley to route toward the global network -- LOCAL_ATTACH_RADIUS
@@ -310,6 +313,9 @@ public class LocalRiverProvider {
         public float[] flow;
         public float[] rawElevation;
         public boolean[] riverMask;
+        /** Elevation after the global-only carve, before the local trace — the field drainage routes on. */
+        public float[] elevationFirstPass;
+
         public float[] carvedElevation;
         /** Every channel of {@link #network}. */
         public List<Channel> channels;

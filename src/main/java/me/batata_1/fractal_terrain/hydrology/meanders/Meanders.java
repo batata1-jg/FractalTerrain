@@ -226,8 +226,8 @@ public final class Meanders {
             final double[] gradient = sampleGradient(point[0], point[1]);
             final double[] displacementNormal = VectorOps.project(gradient, ch.spline.normal(i));
 
-            double dx = displacementNormal[0] * -1 + gradient[0] * -1;
-            double dz = displacementNormal[1] * -1 + gradient[1] * -1;
+            double dx = gradient[0] * -1;
+            double dz = gradient[1] * -1;
             final double magnitude = Math.sqrt(dx * dx + dz * dz);
             if (magnitude > MAX_MIGRATION) {
                 final double clampFactor = MAX_MIGRATION / magnitude;

@@ -86,14 +86,13 @@ public enum RosgenProfile implements HydrologyProfile {
 
         @Override
         public double floodPlainLength(double width) {
-            return 2 * maxHalfWidth * Math.sqrt(width / HydrologyTuning.MAX_WIDTH);
+            return 1.3*Math.pow(width, 1.1);
         }
 
         @Override
         public double riverInfluence(double width) {
             return Math.min(
-                    HydrologyTuning.MAX_INFLUENCE_RADIUS,
-                    4 * maxHalfWidth * Math.pow(floodPlainLength(width) / (2 * maxHalfWidth), 0.75));
+                    HydrologyTuning.MAX_INFLUENCE_RADIUS, 10*Math.pow(width, 0.575));
         }
 
         @Override
@@ -134,7 +133,7 @@ public enum RosgenProfile implements HydrologyProfile {
     },
     DA,
     E {
-        private static final double maxHalfWidth = HydrologyTuning.MAX_WIDTH / 2;
+        private static final double maxHalfWidth = HydrologyTuning.MAX_WIDTH / 3;
 
         @Override
         public double floodPlainLength(double width) {
@@ -148,13 +147,8 @@ public enum RosgenProfile implements HydrologyProfile {
 
         @Override
         protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
-            return Math.min(-1, 0.5 * super.bedDelta(seed, signedPerpDist, depth, curvature)) - 3;
+            return Math.min(-1, 0.5 * super.bedDelta(seed, signedPerpDist, depth, curvature));
         }
-
-//        @Override
-//        protected double floodPlainDelta(long seed, double signedPerpDist, double width, double floodPlainLength) {
-//            return 3 * (1 - Math.abs(signedPerpDist));
-//        }
 
         @Override
         protected double valleyShapeCarve(double dist) {
@@ -178,7 +172,7 @@ public enum RosgenProfile implements HydrologyProfile {
 
         @Override
         protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
-            return -Math.min(1, 0.5 * depth * Math.pow(1 - signedPerpDist * signedPerpDist, 0.16));
+            return -Math.min(1, 0.5 * depth * Math.pow(1 - signedPerpDist * signedPerpDist, 0.16)) - 3;
         }
     },
     G {

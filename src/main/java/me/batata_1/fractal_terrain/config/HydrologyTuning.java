@@ -40,7 +40,7 @@ public final class HydrologyTuning {
     /** Meander resample/migration step (native px); debug visualizers and tests reason about it too. */
     public static final double DX = 1.5;
     /** max per-step displacement for the valley-seeking migration. */
-    public static final double MAX_MIGRATION = HydrologyTuning.DX;
+    public static final double MAX_MIGRATION = HydrologyTuning.DX * 3;
 
     // ──────────────────────────────────────────────────────────────────────────
     // Flow accumulation (see Drainage.computeFlow)
@@ -134,16 +134,16 @@ public final class HydrologyTuning {
     public static final double S_DA = 0.005;
 
     /** Entrenchment ratio below which a reach is entrenched ({@code F}/{@code G}). Rosgen: 1.0–1.4. */
-    public static final double ER_ENTRENCHED = 1.4;
+    public static final double ER_ENTRENCHED = 1.6;
 
     /** Entrenchment ratio below which a reach is moderately entrenched ({@code B}). Rosgen: 1.41–2.2. */
-    public static final double ER_SLIGHT = 2.2;
+    public static final double ER_SLIGHT = 2.7;
 
     /** Entrenchment ratio above which the flood-prone area is wide enough for {@code DA}. */
     public static final double ER_ANASTOMOSE = 4.0;
 
     /** Splits narrow-deep ({@code E G}) from wide-shallow ({@code C F}); calibrate {@code W_REF}, not this. */
-    public static final double WD_NARROW = 6.0;
+    public static final double WD_NARROW = 1.0;
 
     /** Rosgen's published ER tolerance — the dead band that suppresses type flicker at a threshold. */
     public static final double ER_TOLERANCE = 0.2;
@@ -164,7 +164,7 @@ public final class HydrologyTuning {
     public static final double BRAID_WIDTH_EXPONENT = -0.88;
 
     /** Width floor for a braided {@code D} reach, set to keep {@code D} rare. Uncalibrated — see README. */
-    public static final double BRAID_MIN_WIDTH = 8.0;
+    public static final double BRAID_MIN_WIDTH = 4.0;
 
     /** Reach length as a multiple of bankfull width — Rosgen's own reach definition (20–30 widths). */
     public static final double REACH_WIDTHS = 20.0;
@@ -173,16 +173,16 @@ public final class HydrologyTuning {
     public static final double REACH_MAX_PX = 64.0;
 
     // bias towards lower ER, mostly affects streams with small widths.
-    public static final double ENTRENTMENT_RATIO_BIAS = 4;
+    public static final double ENTRENTMENT_RATIO_BIAS = 10;
 
     /** Entrenchment transect half-walk; never substitute {@link #MAX_INFLUENCE_RADIUS} — see README. */
-    public static final double ER_WALK_WIDTHS = 5;
+    public static final double ER_WALK_WIDTHS = 7;
 
     /** Transect step as a fraction of width, keeping the sample count roughly constant across widths. */
     public static final double ER_STEP_WIDTH_FRACTION = 0.125;
 
     /** Floor (native px) on the entrenchment transect step. */
-    public static final double ER_STEP_MIN = 0.5;
+    public static final double ER_STEP_MIN = 0.25;
 
     /** Sample-count floor, so a minimum-width reach still gets sampled instead of reading as unconfined. */
     public static final double ER_MIN_STEPS_PER_SIDE = 1.0;

@@ -62,7 +62,7 @@ public class HydrologyUnitVisualizer {
         new Color(0xFFD500), // C   meandering, broad floodplain
         new Color(0x38FF19), // D   braided
         new Color(0x318323), // DA  anastomosing
-        new Color(0x00FFFF), // E   narrow, deep, highly sinuous
+        new Color(0x00B2FF), // E   narrow, deep, highly sinuous
         new Color(0x0055FF), // F   entrenched meandering
         new Color(0x7B00FF), // G   entrenched gully
     };

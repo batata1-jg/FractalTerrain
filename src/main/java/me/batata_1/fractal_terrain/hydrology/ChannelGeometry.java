@@ -32,8 +32,8 @@ public final class ChannelGeometry {
         return Math.max(0.5, Math.pow(width / DEPTH_WIDTH_SCALE, 1.0 / DEPTH_WIDTH_EXP));
     }
 
-    /** The one knob calibrating narrow-deep against wide-shallow Rosgen types. Uncalibrated. */
-    public static final double W_REF = 4.0;
+    /** The one knob calibrating narrow-deep against wide-shallow Rosgen types. */
+    public static final double W_REF = 2.0;
 
     /** Exponent of the width-to-depth law; an unvalidated analogy from Bieger et al. 2015. */
     private static final double WD_EXPONENT = 0.278;
