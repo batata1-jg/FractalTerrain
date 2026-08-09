@@ -7,6 +7,7 @@ import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfilePainter;
 import me.batata_1.fractal_terrain.ml.pipeline.WorldPipeline;
+import me.batata_1.fractal_terrain.noise.NoiseSampler;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
 import me.batata_1.fractal_terrain.relief.ReliefProvider;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmapCache;
@@ -69,7 +70,7 @@ public final class GenerationContext {
         this.noiseConfig = RandomState.create(
                 chunkGenerator.getSettings().value(), dynamicRegistryManager.lookupOrThrow(Registries.NOISE), seed);
         pipeline.updateInstance(seed, worldPath + "/fractal_terrain");
-        OctaveSimplexNoiseSampler.init(seed);
+        NoiseSampler.init(seed);
 
         this.surfaceBuilder = new FractalTerrainSurfaceSystem(
                 this.noiseConfig,

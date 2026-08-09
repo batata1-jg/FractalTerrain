@@ -3,9 +3,9 @@ package me.batata_1.fractal_terrain.hydrology.profile;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
-import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
-import me.batata_1.fractal_terrain.hydrology.features.RiverUnit;
-import me.batata_1.fractal_terrain.hydrology.features.RiverUnit.RosgenType;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
+import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
+import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive.RosgenType;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,7 +16,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Authority for the cross-section's horizontal extents too, nested outward as influence >
  * floodplainLen > width/2; {@code HydrologyTuning} delegates radii to these. Floodplain/blend zones are
- * unions of per-unit discs, so spacing must stay {@code dx <= width/2} or the corridor scallops.
+ * unions of per-primitive discs, so spacing must stay {@code dx <= width/2} or the corridor scallops.
  *
  * <p><b>Only type A overrides anything today</b>; B, C and D inherit every default.
  */
@@ -45,7 +45,7 @@ public enum RosgenProfile implements HydrologyProfile {
         }
 
         @Override
-        protected double valleyShapeCarve(double dist) {
+        protected double valleyDelta(double dist) {
             return dist * 2;
         }
 
@@ -55,7 +55,8 @@ public enum RosgenProfile implements HydrologyProfile {
         }
 
         @Override
-        protected double floodPlainDelta(long seed, double signedPerpDist, double width, double floodPlainLength, double curvature) {
+        protected double floodPlainDelta(
+                long seed, double signedPerpDist, double width, double floodPlainLength, double curvature) {
             return 2 * (1 - Math.abs(signedPerpDist));
         }
     },
@@ -76,7 +77,8 @@ public enum RosgenProfile implements HydrologyProfile {
         }
 
         @Override
-        protected double floodPlainDelta(long seed, double signedPerpDist, double width, double floodPlainLength, double curvature) {
+        protected double floodPlainDelta(
+                long seed, double signedPerpDist, double width, double floodPlainLength, double curvature) {
             return 1 - Math.abs(signedPerpDist);
         }
     },
@@ -86,29 +88,34 @@ public enum RosgenProfile implements HydrologyProfile {
 
         @Override
         public double floodPlainLength(double width) {
-            return 1.3*Math.pow(width, 1.1);
+            return 1.3 * Math.pow(width, 1.1);
         }
 
         @Override
         public double riverInfluence(double width) {
-            return Math.min(
-                    HydrologyTuning.MAX_INFLUENCE_RADIUS, 10*Math.pow(width, 0.575));
+            return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, 10 * Math.pow(width, 0.575));
         }
 
         @Override
         protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
             double sign = Math.signum(curvature);
-            return 0.6 * depth * smoothMax(Math.exp(-7 * (sign*signedPerpDist + 1)) - 1, (sign*signedPerpDist - 1) * 0.6, 0.001) - 3;
+            return 0.6
+                            * depth
+                            * smoothMax(
+                                    Math.exp(-7 * (sign * signedPerpDist + 1)) - 1,
+                                    (sign * signedPerpDist - 1) * 0.6,
+                                    0.001)
+                    - 3;
         }
 
         @Override
-        protected double floodPlainDelta(long seed, double signedPerpDist, double width, double floodPlainLength, double curvature) {
+        protected double floodPlainDelta(
+                long seed, double signedPerpDist, double width, double floodPlainLength, double curvature) {
             return -3 * (1 - Math.abs(signedPerpDist));
         }
-
     },
     D {
-
+        //TODO:Usar fnl
         private static final OctaveSimplexNoiseSampler noiseSampler =
                 new OctaveSimplexNoiseSampler(0, 1, 1, 1, 1, 1, null, null);
 
@@ -128,7 +135,8 @@ public enum RosgenProfile implements HydrologyProfile {
 
         @Override
         protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
-            return -3 * Math.abs(noiseSampler.sample(1.0 / seed, signedPerpDist));
+           // return -3 * Math.abs(noiseSampler.sample(1.0 / seed, signedPerpDist));
+            return -3;
         }
     },
     DA,
@@ -151,7 +159,7 @@ public enum RosgenProfile implements HydrologyProfile {
         }
 
         @Override
-        protected double valleyShapeCarve(double dist) {
+        protected double valleyDelta(double dist) {
             return Math.pow(dist, 2.5);
         }
     },
@@ -183,30 +191,31 @@ public enum RosgenProfile implements HydrologyProfile {
 
         @Override
         public double riverInfluence(double width) {
-            return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, floodPlainLength(width) / HydrologyTuning.MIN_WIDTH);
+            return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, 2*width);
         }
     };
 
     // ---- Zone mapping (the HydrologyProfile contract, expressed over a River's width) ----
 
-    /** The nested river zones. INFLUENCE comes from the unit's index radius, not {@link #riverInfluence},
-     *  so carve reach stays identical to the circle the R-tree found the unit by. */
+    /** The nested river zones. INFLUENCE comes from the primitive's index radius, not {@link #riverInfluence},
+     *  so carve reach stays identical to the circle the R-tree found the primitive by. */
     @Override
-    public double zoneRadius(HydrologicalUnit unit, ZoneCategory category) {
-        if (!(unit instanceof RiverUnit riverUnit)) return HydrologyProfile.super.zoneRadius(unit, category);
+    public double zoneRadius(HydrologicalPrimitive primitive, ZoneCategory category) {
+        if (!(primitive instanceof RiverPrimitive riverPrimitive))
+            return HydrologyProfile.super.zoneRadius(primitive, category);
         return switch (category) {
-            case BED -> ChannelGeometry.bedHalfWidth(riverUnit.width());
-            case FLOODPLAIN -> floodPlainLength(riverUnit.width());
-            case INFLUENCE -> riverUnit.getRadius();
+            case BED -> ChannelGeometry.bedHalfWidth(riverPrimitive.width());
+            case FLOODPLAIN -> floodPlainLength(riverPrimitive.width());
+            case INFLUENCE -> riverPrimitive.getRadius();
             default -> NO_ZONE;
         };
     }
 
     /** Delegates to {@link #riverInfluenceElevation} with the reach's width and bank elevation. */
     @Override
-    public double shellElevation(HydrologicalUnit unit, double radialDist, double curElev) {
-        if (!(unit instanceof RiverUnit riverUnit)) return curElev;
-        return riverInfluenceElevation(radialDist, riverUnit.width(), curElev, riverUnit.elevation());
+    public double shellElevation(HydrologicalPrimitive primitive, double radialDist, double curElev) {
+        if (!(primitive instanceof RiverPrimitive riverPrimitive)) return curElev;
+        return riverInfluenceElevation(radialDist, riverPrimitive.width(), curElev, riverPrimitive.elevation());
     }
 
     // ---- Horizontal extents (type-dependent; shared placeholder law, override per constant) ----
@@ -225,62 +234,68 @@ public enum RosgenProfile implements HydrologyProfile {
         return width / 2;
     }
 
-    /** Outer reach of the river, and the unit's index radius. Calls the virtual
+    /** Outer reach of the river, and the primitive's index radius. Calls the virtual
      *  {@link #floodPlainLength}, so overriding only the floodplain still yields consistent influence. */
     public double riverInfluence(double width) {
         return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, width * HydrologyTuning.INFLUENCE_BLEND_MULTIPLIER);
     }
 
     /** The river's valley pull: full inside the floodplain, released to nothing at the influence edge.
-     *  The carver blends this across every unit reaching a pixel, so a confluence gets both profiles. */
-    public double riverInfluenceElevation(double radialDist, double width, double curElev, double unitElev) {
+     *  The carver blends this across every primitive reaching a pixel, so a confluence gets both profiles. */
+    public double riverInfluenceElevation(double radialDist, double width, double curElev, double primitiveElev) {
         final double riverInfluence = riverInfluence(width);
         final double floodPlainLength = floodPlainLength(width);
-        if (radialDist < floodPlainLength) return unitElev;
+        if (radialDist < floodPlainLength) return primitiveElev;
         if (radialDist < riverInfluence) {
             final double t = (radialDist - floodPlainLength) / (riverInfluence - floodPlainLength);
             final double lambda = (1 - t) * 0.5;
-            final double influenceContribution = (1 - t) * unitElev + t * curElev;
+            final double influenceContribution = (1 - t) * primitiveElev + t * curElev;
             final double valleyContribution =
-                    smoothMin(curElev, unitElev + valleyShapeCarve(radialDist - floodPlainLength), lambda);
+                    smoothMin(curElev, primitiveElev + valleyDelta(radialDist - floodPlainLength), lambda);
             return smoothMax(valleyContribution, influenceContribution, lambda);
         }
         return curElev;
     }
 
     // always starts as 0 and gradually carve the valley shape.
-    protected double valleyShapeCarve(double v) {
+    protected double valleyDelta(double v) {
         return v;
     }
 
     // ---- Bed (per-pixel residual trench, cut below the already-carved shell) ----
 
-    /** The raw bed trench, before {@link RiverUnit#carveFineGrained} fades it over its footprint. */
-    public double riverAreaDelta(long randSeed, double signedPerpDist, double alongDist, double width, double curvature) {
+
+    /** The raw bed trench, before {@link RiverPrimitive#h} fades it over its footprint. */
+    public double delta(
+            long randSeed, double signedPerpDist, double width, double curvature) {
         final double floodPlainLen = floodPlainLength(width);
-        if (Math.hypot(signedPerpDist, alongDist) > floodPlainLen) return 0;
         final double marginLen = width / 2;
-        if (Math.abs(signedPerpDist) <= marginLen) {
-            // LOG.info("hallooo");
-            // return -10;
-            return bedDelta(
-                    randSeed,
-                    signedPerpDist / marginLen,
-                    FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depthForWidth(width) , curvature);
-        }
-        return floodPlainDelta(
-                randSeed,
-                signedPerpDist > 0
-                        ? ((signedPerpDist - marginLen) / (floodPlainLen - marginLen))
-                        : ((marginLen + signedPerpDist) / (marginLen - floodPlainLen)),
-                width,
-                floodPlainLen,
-                curvature);
+        final double perpDist = Math.abs(signedPerpDist);
+        final double bedContribution = bedDelta(
+            randSeed,
+            signedPerpDist / marginLen,
+            FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depthForWidth(width),
+            curvature
+        );
+        final double floodPlainContribution = floodPlainDelta(
+            randSeed,
+            signedPerpDist > 0
+                    ? ((signedPerpDist - marginLen) / (floodPlainLen - marginLen))
+                    : ((marginLen + signedPerpDist) / (marginLen - floodPlainLen)),
+            width,
+            floodPlainLen,
+            curvature
+        );
+        final double valleyContribution = valleyDelta(perpDist-floodPlainLen);
+        if(perpDist<=marginLen) return bedContribution;
+        if(perpDist<=floodPlainLen) return floodPlainContribution;
+        return valleyContribution;
     }
 
     // range [-1,0] -> [-floodPlainLen,-marginLen] ;
     // range [0,1] -> [marginLen,floodPlainLen] ;
-    protected double floodPlainDelta(long seed, double signedPerpDist, double width, double floodPlainLength, double curvature) {
+    protected double floodPlainDelta(
+            long seed, double signedPerpDist, double width, double floodPlainLength, double curvature) {
         return 0;
     }
 
@@ -289,7 +304,7 @@ public enum RosgenProfile implements HydrologyProfile {
         return -Math.min(1, depth * Math.sqrt(1 - signedPerpDist * signedPerpDist));
     }
 
-    /** The profile for a unit's Rosgen type. */
+    /** The profile for a primitive's Rosgen type. */
     public static RosgenProfile of(RosgenType type) {
         return switch (type) {
             case A -> A;
@@ -303,5 +318,4 @@ public enum RosgenProfile implements HydrologyProfile {
             case G -> G;
         };
     }
-
 }

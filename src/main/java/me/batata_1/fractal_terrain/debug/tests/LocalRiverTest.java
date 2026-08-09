@@ -12,7 +12,7 @@ import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.Drainage;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
-import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.meanders.*;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
@@ -45,11 +45,11 @@ public class LocalRiverTest {
     private static final int PAD = 1;
 
     /** Tiles (tx, tz) to render. */
-    private static final int[][] TILES = {//{-2, -2}
+    private static final int[][] TILES = { // {-2, -2}
         // {0, -1},
         //    {-1,-1}
         //   {-1,-1},{0,-1},{0,-2}
-                 {-1, -1}, {-1, -2}, {-2, -1} , {-2,-2}
+        {-1, -1}, {-1, -2}, {-2, -1}, {-2, -2}
     };
 
     public static void main(String[] args) {
@@ -102,7 +102,7 @@ public class LocalRiverTest {
         checkMonotonicElevations(stages.network, tx, tz);
         ReachMetricsSampler sampler = new ReachMetricsSampler(stages.rawElevation, GRID);
         dumpSlopeHistogram(stages.network, sampler);
-        dumpUnitTree(stages, tx, tz, prefix);
+        dumpPrimitiveTree(stages, tx, tz, prefix);
     }
 
     /** Along-channel slope percentiles: Rosgen's published slope bands are real-world values that this
@@ -127,26 +127,26 @@ public class LocalRiverTest {
         }
     }
 
-    /** Renders the tile's unit R-tree via {@link me.batata_1.fractal_terrain.debug.HydrologyUnitVisualizer}
+    /** Renders the tile's primitive R-tree via {@link me.batata_1.fractal_terrain.debug.HydrologyPrimitiveVisualizer}
      *  from the already-captured {@code debugStages} (no rebuild), shifting world coords onto this tile's canvas. */
-    private static void dumpUnitTree(LocalRiverProvider.Stages stages, int tx, int tz, String prefix) {
-        if (stages.unitTree == null) {
-            LOG.warn("tile ({},{}): no unit tree captured — skipping unit dump", tx, tz);
+    private static void dumpPrimitiveTree(LocalRiverProvider.Stages stages, int tx, int tz, String prefix) {
+        if (stages.primitiveTree == null) {
+            LOG.warn("tile ({},{}): no primitive tree captured — skipping primitive dump", tx, tz);
             return;
         }
-        final var savedPath = Debug.units.debugPath;
-        Debug.units.debugPath = DEBUG_PATH;
+        final var savedPath = Debug.primitives.debugPath;
+        Debug.primitives.debugPath = DEBUG_PATH;
         try {
-            final List<HydrologicalUnit> units = stages.unitTree.getAllEntries();
+            final List<HydrologicalPrimitive> primitives = stages.primitiveTree.getAllEntries();
             final double worldOriginX = tx * (double) GRID;
             final double worldOriginZ = tz * (double) GRID;
-            Debug.units.see(units, prefix + "07_units", GRID, 4, worldOriginX, worldOriginZ);
-            Debug.units.seeByRosgenType(units, prefix + "08_rosgen", GRID, 4, worldOriginX, worldOriginZ);
-            Debug.units.logStats(units, "tile (" + tx + "," + tz + ")");
+            Debug.primitives.see(primitives, prefix + "07_units", GRID, 4, worldOriginX, worldOriginZ);
+            Debug.primitives.seeByRosgenType(primitives, prefix + "08_rosgen", GRID, 4, worldOriginX, worldOriginZ);
+            Debug.primitives.logStats(primitives, "tile (" + tx + "," + tz + ")");
         } catch (RuntimeException e) {
-            LOG.warn("tile ({},{}): unit-tree dump failed ({})", tx, tz, e.toString(), e);
+            LOG.warn("tile ({},{}): primitive-tree dump failed ({})", tx, tz, e.toString(), e);
         } finally {
-            Debug.units.debugPath = savedPath;
+            Debug.primitives.debugPath = savedPath;
         }
     }
 

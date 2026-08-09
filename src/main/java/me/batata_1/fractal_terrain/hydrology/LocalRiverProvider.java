@@ -15,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
-import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
@@ -38,14 +38,14 @@ import org.slf4j.LoggerFactory;
  * {@link LocalDrainageTracer} and {@link ChannelElevationAssigner}.
  *
  * <p>Publishes two stores from a single {@link #buildTile} pass so they can never disagree: an index of
- * {@link HydrologicalUnit} influence circles answering point-stabbing queries, and carved elevation tiles
- * imported as ReliefProvider's elevation channel. Unit coords are stamped in the world relief-pixel
+ * {@link HydrologicalPrimitive} influence circles answering point-stabbing queries, and carved elevation tiles
+ * imported as ReliefProvider's elevation channel. Primitive coords are stamped in the world relief-pixel
  * frame so a hit from a neighbouring tile needs no translation; carved tiles stay tile-local.
  */
 public class LocalRiverProvider {
 
     private static final Logger LOG = LoggerFactory.getLogger(LocalRiverProvider.class);
-    private final NonIntersectingSpatialIndex<ImmutableRTree<HydrologicalUnit>> units;
+    private final NonIntersectingSpatialIndex<ImmutableRTree<HydrologicalPrimitive>> primitives;
     private final NonIntersectingInfiniteTensor carved;
     private final ConcurrentHashMap<TileKey, TileResult> pending = new ConcurrentHashMap<>();
 
@@ -54,20 +54,20 @@ public class LocalRiverProvider {
     private @Nullable GlobalRiverProvider globalRiverOverride;
 
     /** Both per-tile artifacts produced by one {@link #buildTile}. */
-    private record TileResult(ImmutableRTree<HydrologicalUnit> units, FloatTensor carved) {}
+    private record TileResult(ImmutableRTree<HydrologicalPrimitive> primitives, FloatTensor carved) {}
 
     public LocalRiverProvider(String path) {
-        // The one-unit prototype index keeps Storage's serializability probe exercising unit
+        // The one-primitive prototype index keeps Storage's serializability probe exercising primitive
         // serialization, so the store stays disk-backed (mirrors the old seeded prototype tree).
-        // _v2: unit coords are now persisted in the WORLD relief-pixel frame (see buildTile). A v1 tile
+        // _v2: primitive coords are now persisted in the WORLD relief-pixel frame (see buildTile). A v1 tile
         // on disk holds tile-local coords and would be silently misread as world coords, so the store
         // name is bumped rather than the format version -- old tiles are simply never loaded again.
-        units = new NonIntersectingSpatialIndex<>(
+        primitives = new NonIntersectingSpatialIndex<>(
                 path,
                 "local_river_units_v2",
                 new int[] {GRID, GRID},
-                new ImmutableRTree<>(List.of(), HydrologicalUnit.PROTOTYPE),
-                key -> key != null ? buildUnitsTile(key) : null);
+                new ImmutableRTree<>(List.of(), HydrologicalPrimitive.PROTOTYPE),
+                key -> key != null ? buildPrimitivesTile(key) : null);
         carved = new NonIntersectingInfiniteTensor(
                 path, "local_carved_elev_v2", new int[] {1, GRID, GRID}, this::buildCarvedTile);
     }
@@ -96,9 +96,9 @@ public class LocalRiverProvider {
         return (globalRiverOverride != null) ? globalRiverOverride : FractalTerrainInstance.getGlobalRiverProvider();
     }
 
-    /** Clears both per-tile caches (the unit tree and the carved-elevation tensor). */
+    /** Clears both per-tile caches (the primitive tree and the carved-elevation tensor). */
     public void clearCaches() {
-        units.clear();
+        primitives.clear();
         carved.clear();
         pending.clear();
     }
@@ -116,7 +116,7 @@ public class LocalRiverProvider {
         return pending.computeIfAbsent(new TileKey(new int[] {tileX, tileZ}), k -> buildTile(tileX, tileZ, null));
     }
 
-    private ImmutableRTree<HydrologicalUnit> buildUnitsTile(TileKey key) {
+    private ImmutableRTree<HydrologicalPrimitive> buildPrimitivesTile(TileKey key) {
         final int tileX = key.get(0);
         final int tileZ = key.get(1);
         final TileResult result = buildOnce(tileX, tileZ);
@@ -124,16 +124,17 @@ public class LocalRiverProvider {
         final CompletableFuture<FloatTensor> claim = carved.claimForCompute(carvedKey);
         if (claim != null) carved.fulfillClaim(carvedKey, claim, result.carved());
         pending.remove(new TileKey(new int[] {tileX, tileZ}));
-        return result.units();
+        return result.primitives();
     }
 
     private FloatTensor buildCarvedTile(TileKey key) {
         final int tileX = key.get(1);
         final int tileZ = key.get(2);
         final TileResult result = buildOnce(tileX, tileZ);
-        final int[] unitsKey = {tileX, tileZ};
-        final CompletableFuture<ImmutableRTree<HydrologicalUnit>> claim = units.claimForCompute(unitsKey);
-        if (claim != null) units.fulfillClaim(unitsKey, claim, result.units());
+        final int[] primitivesKey = {tileX, tileZ};
+        final CompletableFuture<ImmutableRTree<HydrologicalPrimitive>> claim =
+                primitives.claimForCompute(primitivesKey);
+        if (claim != null) primitives.fulfillClaim(primitivesKey, claim, result.primitives());
         pending.remove(new TileKey(new int[] {tileX, tileZ}));
         return result.carved();
     }
@@ -160,7 +161,7 @@ public class LocalRiverProvider {
         ChannelElevationAssigner.assign(network, boundaryElev, carvedElevationGlobal);
         LOG.debug("finished first assign() pass");
         HydrologyProfileCarver.carveRiverShells(
-                carvedElevationGlobal, sim.collectUnits(0, 0).toArray(new HydrologicalUnit[0]), PADDED);
+                carvedElevationGlobal, sim.collectPrimitives(0, 0).toArray(new HydrologicalPrimitive[0]), PADDED);
         // Snapshot here, not at the end: this buffer is the drainage input for the local trace below, so
         // the harness needs it as it stood when step 2 read it.
         if (stages != null) stages.elevationFirstPass = cropToTile(carvedElevationGlobal).data;
@@ -193,26 +194,23 @@ public class LocalRiverProvider {
 
         // 5. ONE bed-elevation assignment over the whole unified graph.
         ChannelElevationAssigner.assign(network, boundaryElev, carvedElevationGlobal);
-        LOG.debug("finished second assign() pass");
-        final float[] carvedElevation = base[0];
-        HydrologyProfileCarver.carveRiverShells(
-                carvedElevation, sim.collectUnits(0, 0).toArray(new HydrologicalUnit[0]), PADDED);
 
-        // The indexed units are stamped in the WORLD relief-pixel frame. collectUnits subtracts the
+        // The indexed primitives are stamped in the WORLD relief-pixel frame. collectPrimitives subtracts the
         // offset it is given, so (PAD - tileOrigin) drops the halo pad and adds the tile's world origin
         // in one step. The origin matches what the store's TensorWindow hands forEachTileWithin
         // (stride = GRID, offset = 0), which is what makes the query path frame-free.
         //
-        // Paid once per unit per tile build instead of once per hit per query, and it keeps the bed-noise
-        // seed (River.carveFineGrained hashes the unit's own coords) absolute rather than repeating with
+        // Paid once per primitive per tile build instead of once per hit per query, and it keeps the bed-noise
+        // seed (River.h hashes the primitive's own coords) absolute rather than repeating with
         // a GRID-px period. The two carveRiverShells collects (offset 0) deliberately stay in the padded
         // tile frame: they index against a PADDED x PADDED buffer addressed by pixel index.
         final int tileOriginX = tileX * GRID;
         final int tileOriginZ = tileZ * GRID;
-        final List<HydrologicalUnit> unitPoints = sim.collectUnits(PAD - tileOriginX, PAD - tileOriginZ);
-        final ImmutableRTree<HydrologicalUnit> unitIndex = new ImmutableRTree<>(unitPoints, HydrologicalUnit.PROTOTYPE);
+        final List<HydrologicalPrimitive> primitivePoints = sim.collectPrimitives(PAD - tileOriginX, PAD - tileOriginZ);
+        final ImmutableRTree<HydrologicalPrimitive> primitiveIndex =
+                new ImmutableRTree<>(primitivePoints, HydrologicalPrimitive.PROTOTYPE);
 
-        final FloatTensor carvedTile = cropToTile(carvedElevation);
+        final FloatTensor carvedTile = cropToTile(base[0]);
 
         if (stages != null) {
             // The local/global channel-id split no longer survives the collision pass (update() re-assigns
@@ -223,9 +221,9 @@ public class LocalRiverProvider {
             stages.rawElevation = cropToTile(base[0].clone()).data;
             stages.carvedElevation = carvedTile.copyRange(0, carvedTile.getSize());
             stages.network = network;
-            stages.unitTree = unitIndex;
+            stages.primitiveTree = primitiveIndex;
         }
-        return new TileResult(unitIndex, carvedTile);
+        return new TileResult(primitiveIndex, carvedTile);
     }
 
     private FloatTensor cropToTile(float[] padded) {
@@ -242,42 +240,42 @@ public class LocalRiverProvider {
     // Query API
     // -------------------------------------------------------------------------
 
-    /** Per-unit acceptance test; receives the squared distance to the query point (frame-invariant). */
+    /** Per-primitive acceptance test; receives the squared distance to the query point (frame-invariant). */
     @FunctionalInterface
-    public interface InfluencingUnitTest {
-        boolean test(HydrologicalUnit unit, double distSqToQueryPoint);
+    public interface InfluencingPrimitiveTest {
+        boolean test(HydrologicalPrimitive primitive, double distSqToQueryPoint);
     }
 
     /** Existence-only counterpart to {@link #queryInfluence}, for callers that just need a yes/no and
      *  should not pay for a result list. {@code tileVisitRadius} sizes the cross-tile window and must
-     *  upper-bound the distance of any unit {@code test} can accept. */
-    public boolean anyInfluencingUnit(double[] pt, double tileVisitRadius, InfluencingUnitTest test) {
-        final Predicate<HydrologicalUnit> acceptanceTest = unit -> {
-            final double deltaX = unit.coord()[0] - pt[0];
-            final double deltaZ = unit.coord()[1] - pt[1];
-            return test.test(unit, deltaX * deltaX + deltaZ * deltaZ);
+     *  upper-bound the distance of any primitive {@code test} can accept. */
+    public boolean anyInfluencingPrimitive(double[] pt, double tileVisitRadius, InfluencingPrimitiveTest test) {
+        final Predicate<HydrologicalPrimitive> acceptanceTest = primitive -> {
+            final double deltaX = primitive.coord()[0] - pt[0];
+            final double deltaZ = primitive.coord()[1] - pt[1];
+            return test.test(primitive, deltaX * deltaX + deltaZ * deltaZ);
         };
-        return units.forEachTileWithin(
+        return primitives.forEachTileWithin(
                 pt,
                 tileVisitRadius,
                 (tileOriginX, tileOriginZ, tileIndex) -> tileIndex.anyContaining(pt, acceptanceTest));
     }
 
-    /** Every unit influencing {@code pt}, unordered — feeds {@link HydrologyProfileCarver}'s flat
+    /** Every primitive influencing {@code pt}, unordered — feeds {@link HydrologyProfileCarver}'s flat
      *  distance-weighted merge. {@code extraRadius} inflates the circles so the per-chunk prefetch can
      *  serve a whole chunk from one query. Returns indexed instances; callers must not mutate them. */
-    public HydrologicalUnit[] queryInfluence(double[] pt, double extraRadius) {
-        final List<HydrologicalUnit> influencingUnits = new ArrayList<>(64);
-        units.forEachTileWithin(
+    public HydrologicalPrimitive[] queryInfluence(double[] pt, double extraRadius) {
+        final List<HydrologicalPrimitive> influencingPrimitives = new ArrayList<>(64);
+        primitives.forEachTileWithin(
                 pt, HydrologyTuning.MAX_INFLUENCE_RADIUS + extraRadius, (tileOriginX, tileOriginZ, tileIndex) -> {
-                    tileIndex.queryContaining(pt, extraRadius, influencingUnits);
+                    tileIndex.queryContaining(pt, extraRadius, influencingPrimitives);
                     return false;
                 });
-        return influencingUnits.toArray(new HydrologicalUnit[0]);
+        return influencingPrimitives.toArray(new HydrologicalPrimitive[0]);
     }
 
     /** {@link #queryInfluence(double[], double)} with no extra radius (single-point queries). */
-    public HydrologicalUnit[] queryInfluence(double[] pt) {
+    public HydrologicalPrimitive[] queryInfluence(double[] pt) {
         return queryInfluence(pt, 0.0);
     }
 
@@ -285,12 +283,12 @@ public class LocalRiverProvider {
     // Debug access
     // -------------------------------------------------------------------------
 
-    /** Raw index access for debug rendering ({@code Debug.units.see}) and the spatial-index benchmark.
-     *  Units carry world relief-pixel coords, so a tile-local renderer must subtract
+    /** Raw index access for debug rendering ({@code Debug.primitives.see}) and the spatial-index benchmark.
+     *  Primitives carry world relief-pixel coords, so a tile-local renderer must subtract
      *  {@code (tileX·GRID, tileZ·GRID)}. */
     @TestOnly
-    public ImmutableRTree<HydrologicalUnit> getUnitTree(int tileX, int tileZ) {
-        return units.getEntry(new int[] {tileX, tileZ});
+    public ImmutableRTree<HydrologicalPrimitive> getPrimitiveTree(int tileX, int tileZ) {
+        return primitives.getEntry(new int[] {tileX, tileZ});
     }
 
     @TestOnly
@@ -325,6 +323,6 @@ public class LocalRiverProvider {
         public RiverNetwork network;
 
         /** World-framed, unlike the tile-local rasters above; subtract the tile origin to render it. */
-        public ImmutableRTree<HydrologicalUnit> unitTree;
+        public ImmutableRTree<HydrologicalPrimitive> primitiveTree;
     }
 }

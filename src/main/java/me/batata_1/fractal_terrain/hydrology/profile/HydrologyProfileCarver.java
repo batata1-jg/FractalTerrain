@@ -3,8 +3,8 @@ package me.batata_1.fractal_terrain.hydrology.profile;
 import java.util.Arrays;
 import java.util.List;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
-import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
-import me.batata_1.fractal_terrain.hydrology.features.RiverUnit;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
+import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 import org.jetbrains.annotations.TestOnly;
 
@@ -30,107 +30,100 @@ public final class HydrologyProfileCarver {
     // -------------------------------------------------------------------------
 
     /**
-     * A chunk's influencing units, gathered once (see {@link #queryUnits}) so the per-block merge never
-     * re-queries the spatial index. Produced by {@link #prefetchChunk} / {@link #queryUnits} and consumed
+     * A chunk's influencing primitives, gathered once (see {@link #queryPrimitives}) so the per-block merge never
+     * re-queries the spatial index. Produced by {@link #prefetchChunk} / {@link #queryPrimitives} and consumed
      * by {@link #carvePrefetched}.
      */
-    public record PrefetchedUnits(HydrologicalUnit[] units) {}
+    public record PrefetchedPrimitives(HydrologicalPrimitive[] primitives) {}
 
     /** Single-point carve; {@link #prefetchChunk} is the path for anything hot. */
     public float carveAtPixel(double[] pt, double shellElevAtPixel) {
-        final PrefetchedUnits prefetched = queryUnits(pt, 0.0);
+        final PrefetchedPrimitives prefetched = queryPrimitives(pt, 0.0);
         return carvePrefetched(prefetched, pt, shellElevAtPixel);
     }
 
     /** Amortizes the influence query across a whole chunk — one tree query per chunk rather than one
      *  per block. Feed the result to {@link #carvePrefetched}. */
-    public PrefetchedUnits prefetchChunk(double centerPixelX, double centerPixelZ, double chunkRadiusPx) {
-        return queryUnits(new double[] {centerPixelX, centerPixelZ}, chunkRadiusPx);
+    public PrefetchedPrimitives prefetchChunk(double centerPixelX, double centerPixelZ, double chunkRadiusPx) {
+        return queryPrimitives(new double[] {centerPixelX, centerPixelZ}, chunkRadiusPx);
     }
 
-    /** Query the units influencing {@code pt} (relief-pixel frame, inflated by {@code extraRadius}). */
-    private PrefetchedUnits queryUnits(double[] pt, double extraRadius) {
-        return new PrefetchedUnits(localRiver.queryInfluence(pt, extraRadius));
+    /** Query the primitives influencing {@code pt} (relief-pixel frame, inflated by {@code extraRadius}). */
+    private PrefetchedPrimitives queryPrimitives(double[] pt, double extraRadius) {
+        return new PrefetchedPrimitives(localRiver.queryInfluence(pt, extraRadius));
     }
 
-    /** Merges every influencing unit into one elevation, resolved through the {@link ZoneCategory}
+    /** Merges every influencing primitive into one elevation, resolved through the {@link ZoneCategory}
      *  hierarchy. Averages within a zone but switches hard between zones, deliberately: two rivers
      *  sharing a floodplain should blend, a bed crossing it should cut through. */
-    public float carvePrefetched(PrefetchedUnits prefetched, double[] pt, double elevAtPixel) {
-        final HydrologicalUnit[] units = prefetched.units();
-        final double[] zoneSums = new double[ZoneCategory.COUNT];
-        final double[] zoneWeights = new double[ZoneCategory.COUNT];
+    public float carvePrefetched(PrefetchedPrimitives prefetched, double[] pt, double elevAtPixel) {
+        final HydrologicalPrimitive[] primitives = prefetched.primitives();
 
-        for (final HydrologicalUnit unit : units) {
-            final double[] unitCoord = unit.getCenter();
-            final double radialDist = Math.hypot(pt[0] - unitCoord[0], pt[1] - unitCoord[1]);
-            final HydrologyProfile profile = unit.getProfile();
-            final ZoneCategory zone = profile.categoryAt(unit, radialDist);
-            if (zone == null) continue; // out of this unit's reach
-            final double weight = profile.zoneWeight(unit, zone, radialDist);
-            if (weight <= 0) continue;
-            final int slot = zone.ordinal();
-            zoneSums[slot] += weight * unit.carveFineGrained(pt, elevAtPixel);
-            zoneWeights[slot] += weight;
+        double weight = 0;
+        double weightedElev = 0;
+        for (final HydrologicalPrimitive primitive : primitives) {
+            final double w = primitive.w(pt);
+            if (!(primitive instanceof RiverPrimitive)) continue;
+            weightedElev += w * primitive.h(pt);
+            weight += w;
         }
-
-        for (final ZoneCategory zone : ZoneCategory.BY_PRIORITY) {
-            final int slot = zone.ordinal();
-            if (zoneWeights[slot] > 1e-6) return (float) (zoneSums[slot] / zoneWeights[slot]);
-        }
-        return (float) elevAtPixel;
+        if(weight <= 1e-6) return (float) elevAtPixel;
+        return (float) (weightedElev / weight);
     }
 
     // -------------------------------------------------------------------------
     // Tile-level shell pre-carve (moved from LocalRiverProvider)
     // -------------------------------------------------------------------------
 
-    /** Slack around the tile grid for the unit index bounds (units may overshoot the pad). */
+    /** Slack around the tile grid for the primitive index bounds (primitives may overshoot the pad). */
     private static final double CARVE_INDEX_SLACK = 64.0;
 
     /** Carves the valley shell in place. Does not zone — the shell is one broad pull, applied before any
-     *  unit has a bed to distinguish. Compounds across calls on the same buffer, which
+     *  primitive has a bed to distinguish. Compounds across calls on the same buffer, which
      *  {@code buildTile} relies on when it carves twice per tile. */
-    public static void carveRiverShells(float[] elevation, HydrologicalUnit[] units, int paddedSize) {
- //       carveRiverShellsNearest(elevation, units, paddedSize);
-        if (units.length == 0) return;
-        final ImmutableRTree<HydrologicalUnit> index =
-                new ImmutableRTree<>(Arrays.asList(units), HydrologicalUnit.PROTOTYPE);
+    public static void carveRiverShells(float[] elevation, HydrologicalPrimitive[] primitives, int paddedSize) {
+        //       carveRiverShellsNearest(elevation, primitives, paddedSize);
+        if (primitives.length == 0) return;
+        final ImmutableRTree<HydrologicalPrimitive> index =
+                new ImmutableRTree<>(Arrays.asList(primitives), HydrologicalPrimitive.PROTOTYPE);
 
+        double weight = 0;
+        double weightedElev = 0;
         for (int pi = 0; pi < paddedSize; pi++) {
             for (int pj = 0; pj < paddedSize; pj++) {
                 final int idx = pi * paddedSize + pj;
                 final float ambient = elevation[idx];
                 if (ambient < 0) continue;
                 final double[] pixel = {pi, pj};
-                final List<HydrologicalUnit> nearby = index.queryContaining(pixel);
+                final List<HydrologicalPrimitive> nearby = index.queryContaining(pixel);
                 if (nearby.isEmpty()) continue;
-                nearby.sort((HydrologicalUnit a,HydrologicalUnit b) -> {
-                    if(a.getRadius() < b.getRadius()) return -1;
-                    return 1;
-                });
-                double curElev = elevation[idx];
-                for (final HydrologicalUnit unit : nearby) {
-                    final double[] coord = unit.getCenter();
+                weight = 0;
+                weightedElev = 0;
+                for (final HydrologicalPrimitive primitive : nearby) {
+                    final double[] coord = primitive.getCenter();
                     final double dx = pixel[0] - coord[0];
                     final double dz = pixel[1] - coord[1];
                     final double radialDist = Math.hypot(dx, dz);
-                    final double influenceRadius = unit.getRadius();
-                    if (radialDist >= influenceRadius) continue; // outside this unit's influence
-                    if(curElev <= unit.getProfile().shellElevation(unit, radialDist, elevation[idx])) continue;
-                    curElev = unit.getProfile().shellElevation(unit, radialDist, curElev);
+                    final double influenceRadius = primitive.getRadius();
+                    if (radialDist >= influenceRadius) continue;
+                    if( primitive instanceof RiverPrimitive river) {
+                        final double deltaWeight = river.w(pixel);
+                        weight += deltaWeight;
+                        weightedElev += deltaWeight * river.h(pixel);
+                    }
                 }
-
-                elevation[idx] = (float) curElev;
+                if(weight <= 1e-6) continue;
+//                final double elev = weightedElev / weight;
+                elevation[idx] = (float) ( weightedElev /weight);
             }
         }
     }
 
     @TestOnly
-    public static void carveRiverShellsNearest(float[] elevation, HydrologicalUnit[] units, int paddedSize) {
-        if (units.length == 0) return;
-        final ImmutableRTree<HydrologicalUnit> index =
-                new ImmutableRTree<>(Arrays.asList(units), HydrologicalUnit.PROTOTYPE);
+    public static void carveRiverShellsNearest(float[] elevation, HydrologicalPrimitive[] primitives, int paddedSize) {
+        if (primitives.length == 0) return;
+        final ImmutableRTree<HydrologicalPrimitive> index =
+                new ImmutableRTree<>(Arrays.asList(primitives), HydrologicalPrimitive.PROTOTYPE);
 
         for (int pi = 0; pi < paddedSize; pi++) {
             for (int pj = 0; pj < paddedSize; pj++) {
@@ -138,28 +131,27 @@ public final class HydrologyProfileCarver {
                 final float ambient = elevation[idx];
                 if (ambient < 0) continue;
                 final double[] pixel = {pi, pj};
-                final List<HydrologicalUnit> nearby = index.queryContaining(pixel);
+                final List<HydrologicalPrimitive> nearby = index.queryContaining(pixel);
                 if (nearby.isEmpty()) continue;
 
-                HydrologicalUnit nearest = null;
+                HydrologicalPrimitive nearest = null;
                 double nearestDist = Double.MAX_VALUE;
-                for (final HydrologicalUnit unit : nearby) {
-                    final double[] coord = unit.getCenter();
+                for (final HydrologicalPrimitive primitive : nearby) {
+                    final double[] coord = primitive.getCenter();
                     final double dx = pixel[0] - coord[0];
                     final double dz = pixel[1] - coord[1];
                     final double radialDist = Math.hypot(dx, dz);
-                    final double influenceRadius = unit.getRadius();
-                    if (radialDist >= influenceRadius) continue; // outside this unit's influence
-                    if( radialDist < nearestDist && unit instanceof RiverUnit river) {
+                    final double influenceRadius = primitive.getRadius();
+                    if (radialDist >= influenceRadius) continue; // outside this primitive's influence
+                    if (radialDist < nearestDist && primitive instanceof RiverPrimitive river) {
                         nearestDist = radialDist;
                         nearest = river;
                     }
                 }
 
-                if(nearest == null) continue;
-                elevation[idx] = (float) nearest.getProfile().shellElevation(nearest,nearestDist,elevation[idx]);
+                if (nearest == null) continue;
+                elevation[idx] = (float) nearest.getProfile().shellElevation(nearest, nearestDist, elevation[idx]);
             }
         }
     }
-
 }

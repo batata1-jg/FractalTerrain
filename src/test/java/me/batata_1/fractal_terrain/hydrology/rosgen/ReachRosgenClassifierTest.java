@@ -10,7 +10,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
-import me.batata_1.fractal_terrain.hydrology.features.RiverUnit.RosgenType;
+import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive.RosgenType;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
@@ -116,9 +116,9 @@ class ReachRosgenClassifierTest {
     }
 
     @Test
-    void typesAreConstantWithinAReachSoAdjacentUnitsRarelyDisagree() {
+    void typesAreConstantWithinAReachSoAdjacentPrimitivesRarelyDisagree() {
         // Rosgen types a reach, not a point. Adjacent points inside one reach must share a type, so
-        // the floodplain edge cannot scallop at unit spacing.
+        // the floodplain edge cannot scallop at primitive spacing.
         //
         // The fixture must be adversarial to be worth anything: a flat, wall-less elevation field makes
         // every transect saturate to the same +inf entrenchment everywhere, so it would pass even with
@@ -194,7 +194,7 @@ class ReachRosgenClassifierTest {
 
     @Test
     void reclassifyingAfterAResampleIsDeterministic() {
-        // The production sequence, which the idempotency test above does not reach: collectUnits runs
+        // The production sequence, which the idempotency test above does not reach: collectPrimitives runs
         // three times per tile and reSamples every channel before each classification pass.
         // QuinticHermiteSpline.reSampleWithTs refits a fresh Catmull-Rom through the resampled points
         // each time, so resampling an already-resampled spline is not obviously a fixed point. If it
@@ -248,7 +248,7 @@ class ReachRosgenClassifierTest {
         }
     }
 
-    /** Resamples at the spacing {@code collectUnits} uses, so the test walks the production path. */
+    /** Resamples at the spacing {@code collectPrimitives} uses, so the test walks the production path. */
     private static void resampleAll(RiverNetwork net) {
         for (Channel ch : net.getChannels()) {
             if (ch.isResampleable()) ch.reSample(Math.max(ch.intakeWidth() / 2.0, 0.5));

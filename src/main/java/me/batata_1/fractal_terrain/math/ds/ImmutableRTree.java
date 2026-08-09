@@ -14,7 +14,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Build-once, query-many R-tree over extended shapes — the shape-storing sibling of
- * {@link ImmutableQuadTree}, and what backs the hydrology unit index.
+ * {@link ImmutableQuadTree}, and what backs the hydrology primitive index.
  *
  * <p>Exists because the quadtree answers region-collect queries over points, while the carve needs
  * the inverse: given a pixel, which influence circles reach it — a stabbing query.

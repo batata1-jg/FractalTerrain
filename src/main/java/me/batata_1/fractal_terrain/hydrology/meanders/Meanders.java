@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.function.Consumer;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
-import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
@@ -49,7 +49,7 @@ public final class Meanders {
     private final float[] gradX;
     private final float[] gradZ;
 
-    /** Pre-carve elevation the Rosgen classifier measures against; null makes {@link #collectUnits} refuse. */
+    /** Pre-carve elevation the Rosgen classifier measures against; null makes {@link #collectPrimitives} refuse. */
     private final float[] elev;
 
     private final RiverNetwork network;
@@ -311,13 +311,14 @@ public final class Meanders {
         return network.getNode(id);
     }
 
-    /** The network's units, each carrying a Rosgen type. Classification happens here because this is
-     *  the only object holding both the graph and the raster, and because the type sets the unit's
-     *  influence radius — which must exist before anything indexes these units. */
-    public List<HydrologicalUnit> collectUnits(double offsetX, double offsetZ) {
+    /** The network's primitives, each carrying a Rosgen type. Classification happens here because this is
+     *  the only object holding both the graph and the raster, and because the type sets the primitive's
+     *  influence radius — which must exist before anything indexes these primitives. */
+    public List<HydrologicalPrimitive> collectPrimitives(double offsetX, double offsetZ) {
         if (elev == null) {
-            throw new IllegalStateException("collectUnits needs the raw elevation raster; construct Meanders with it");
+            throw new IllegalStateException(
+                    "collectPrimitives needs the raw elevation raster; construct Meanders with it");
         }
-        return network.collectUnits(offsetX, offsetZ, new ReachRosgenClassifier(elev, gridSize));
+        return network.collectPrimitives(offsetX, offsetZ, new ReachRosgenClassifier(elev, gridSize));
     }
 }

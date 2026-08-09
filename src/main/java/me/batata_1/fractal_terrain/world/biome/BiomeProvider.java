@@ -4,12 +4,15 @@ import static me.batata_1.fractal_terrain.FractalTerrainConfig.*;
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 
 import java.util.List;
+
+import com.google.common.base.Function;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.math.Interpolation;
+import me.batata_1.fractal_terrain.storage.TileKey;
 import net.minecraft.util.KeyDispatchDataCodec;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.biome.Climate;
@@ -142,37 +145,7 @@ public class BiomeProvider {
 
     public BiomeProvider(String path) {
         final_tiles = new NonIntersectingInfiniteTensor(
-                path, "final_biome_tiles", new int[] {TILE_CHANNELS, 512, 512}, key -> {
-                    int x = key.get(X);
-                    int z = key.get(Z);
-                    FloatTensor reliefTensor = FractalTerrainInstance.getReliefProvider()
-                            .getInfiniteTensor()
-                            .getEntry(key);
-
-                    final float[] elev = reliefTensor.copyRange(0, 1 << 18);
-                    final float[] grad = reliefTensor.copyRange(4 << 18, 5 << 18);
-                    final float[] lowFreqGrad = reliefTensor.copyRange(5 << 18, 6 << 18);
-                    final float[] res = reliefTensor.copyRange(6 << 18, 7 << 18);
-                    final float[] vegPdf = new float[TILE_PIXELS];
-                    final float[] climate = pipeline.getClimate(x, z, elev);
-                    final int[] coarseDistShore = computeCoarseDistShore(x, z);
-                    // While the visualizer runs, also capture the per-pixel dist-to-shore for the debug channel.
-                    final float[] distShoreDebug = DEBUG_DSHORE_CHANNEL_ON ? new float[TILE_PIXELS] : null;
-                    final float[] biomeVariables = ClimateVariableTransform.transform(
-                            x, z, elev, grad, lowFreqGrad, climate, res, vegPdf, coarseDistShore, distShoreDebug);
-
-                    // Channel layout: [0..4] biome params, [5] river-humidity PDF (reserved, unused by the
-                    // sampler), [6] debug dist-to-shore (only while the visualizer runs).
-                    final float[] entries = new float[TILE_CHANNELS * TILE_PIXELS];
-                    System.arraycopy(biomeVariables, 0, entries, 0, PARAM_CHANNELS * TILE_PIXELS);
-                    System.arraycopy(vegPdf, 0, entries, PARAM_CHANNELS * TILE_PIXELS, TILE_PIXELS);
-                    if (distShoreDebug != null) {
-                        System.arraycopy(distShoreDebug, 0, entries, DEBUG_DSHORE_CHANNEL * TILE_PIXELS, TILE_PIXELS);
-                    }
-                    // FloatTensor t = new FloatTensor(entries, new int[] {TILE_CHANNELS, 512, 512});
-                    //  ;; Debug.seeTile(t, x, z, "final_biomes");
-                    return new FloatTensor(entries, new int[] {TILE_CHANNELS, 512, 512});
-                });
+                path, "final_biome_tiles", new int[] {TILE_CHANNELS, 512, 512}, buildTile ());
         // Vanilla Climate.Sampler order: temperature, humidity, continentalness, erosion, depth, weirdness.
         // Each channel produces its own density via its creator (DEPTH's is the vertical y-gradient).
         final float scale = 1;
@@ -191,6 +164,40 @@ public class BiomeProvider {
             mutablePos[CH] = BiomeChannels.WEIRDNESS.channel;
             return final_tiles.getValue(mutablePos);
         });
+    }
+
+    private static @NotNull Function<TileKey, FloatTensor> buildTile() {
+        return key -> {
+            int x = key.get(X);
+            int z = key.get(Z);
+            FloatTensor reliefTensor = FractalTerrainInstance.getReliefProvider()
+                    .getInfiniteTensor()
+                    .getEntry(key);
+
+            final float[] elev = reliefTensor.copyRange(0, 1 << 18);
+            final float[] grad = reliefTensor.copyRange(4 << 18, 5 << 18);
+            final float[] lowFreqGrad = reliefTensor.copyRange(5 << 18, 6 << 18);
+            final float[] res = reliefTensor.copyRange(6 << 18, 7 << 18);
+            final float[] vegPdf = new float[TILE_PIXELS];
+            final float[] climate = pipeline.getClimate(x, z, elev);
+            final int[] coarseDistShore = computeCoarseDistShore(x, z);
+            // While the visualizer runs, also capture the per-pixel dist-to-shore for the debug channel.
+            final float[] distShoreDebug = DEBUG_DSHORE_CHANNEL_ON ? new float[TILE_PIXELS] : null;
+            final float[] biomeVariables = ClimateVariableTransform.transform(
+                    x, z, elev, grad, lowFreqGrad, climate, res, vegPdf, coarseDistShore, distShoreDebug);
+
+            // Channel layout: [0..4] biome params, [5] river-humidity PDF (reserved, unused by the
+            // sampler), [6] debug dist-to-shore (only while the visualizer runs).
+            final float[] entries = new float[TILE_CHANNELS * TILE_PIXELS];
+            System.arraycopy(biomeVariables, 0, entries, 0, PARAM_CHANNELS * TILE_PIXELS);
+            System.arraycopy(vegPdf, 0, entries, PARAM_CHANNELS * TILE_PIXELS, TILE_PIXELS);
+            if (distShoreDebug != null) {
+                System.arraycopy(distShoreDebug, 0, entries, DEBUG_DSHORE_CHANNEL * TILE_PIXELS, TILE_PIXELS);
+            }
+            // FloatTensor t = new FloatTensor(entries, new int[] {TILE_CHANNELS, 512, 512});
+            //  ;; Debug.seeTile(t, x, z, "final_biomes");
+            return new FloatTensor(entries, new int[]{TILE_CHANNELS, 512, 512});
+        };
     }
 
     // -------------------------------------------------------------------------

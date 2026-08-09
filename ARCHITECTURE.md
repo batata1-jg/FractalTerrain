@@ -41,8 +41,8 @@ seed ──► WorldPipeline (JVM-lifetime, me/batata_1/fractal_terrain/ml/pipel
            ▼
    GenerationContext build order:  global → local → relief → biome
            │
-           ├─ GlobalRiverProvider   (hydrology/)  — coarse-px riverUnit network per 64×64-coarse tile
-           ├─ LocalRiverProvider    (hydrology/)  — 512-native-px carved elevation + hydrological-unit index
+           ├─ GlobalRiverProvider   (hydrology/)  — coarse-px riverPrimitive network per 64×64-coarse tile
+           ├─ LocalRiverProvider    (hydrology/)  — 512-native-px carved elevation + hydrological-primitive index
            │     ├─ GlobalNetworkBuilder    — traces/relaxes the global network inside a tile
            │     ├─ LocalDrainageTracer      — local network off the drainage field, attached in place onto that SAME graph
            │     └─ ChannelElevationAssigner — ONE bed-elevation propagation pass over the unified global+local graph
@@ -71,7 +71,7 @@ model-specific constants (means/stds, latent compression, native resolution) fro
 `world_pipeline_config.json` so a model swap needs no recompile.
 
 **Hydrology split** (`hydrology/`): `LocalRiverProvider.java` is a thin orchestrator over a dual-store
-cache (an `ImmutableRTree<HydrologicalUnit>` spatial index + a carved-elevation `FloatTensor`, filled by
+cache (an `ImmutableRTree<HydrologicalPrimitive>` spatial index + a carved-elevation `FloatTensor`, filled by
 one `buildTile` call). `buildTile` builds ONE per-tile `RiverNetwork` graph: `GlobalNetworkBuilder.java`
 traces/relaxes the global (Meanders) subgraph and returns it together with the boundary-elevation map it
 accumulated; `LocalDrainageTracer.java` then traces the drainage-derived local network and attaches
@@ -80,7 +80,7 @@ atomic seam: `RiverNetwork.viewAtomic()` yields an `AtomicView` in which every i
 first-class node, the tracer appends `SOURCE`/interior/`DRAIN` nodes and directed edges to it, and
 `RiverNetwork.manageCollisions(step, view)` orients, captures and prunes that view before folding it back
 into the canonical graph. `ChannelElevationAssigner.java` then runs ONE `assign` pass over
-the now-unified graph, and `RiverNetwork.collectUnits` runs ONE pass emitting every hydrological unit —
+the now-unified graph, and `RiverNetwork.collectPrimitives` runs ONE pass emitting every hydrological primitive —
 global and local, one shared feature-id counter — by resampling geometry and reading each channel's
 assigned `Channel.bedElevations` (oxbows/abandoned paths fall back to a decoded-terrain sampler, since
 they carry no `bedElevations`). There is no per-pixel global boolean mask anywhere in this path:
@@ -90,7 +90,7 @@ graph's channels each call. `HydrologyTileGeometry.java` centralizes the shared 
 (`GRID=512`, `PAD=1`, `PADDED=514`, `COARSE_PX=256`) all three depend on. `Drainage.java` (sink-fill,
 D8/D4 drainage direction, flow accumulation, and the `Drainage.FlowGraph` routing topology both the flow
 accumulator and the local trace walk) and `ChannelGeometry.java` are lower-level shared helpers. The `hydrology/profile/` subpackage (`HydrologyProfileCarver`, `HydrologyProfilePainter`,
-`HydrologyProfile`, `RosgenProfile`) turns the hydrological-unit index into carve/paint operations
+`HydrologyProfile`, `RosgenProfile`) turns the hydrological-primitive index into carve/paint operations
 consumed by `world/gen/`. `GlobalRiverProvider.java` is independent of `LocalRiverProvider` and caches
 its own 64×64-coarse-px tiles directly (coarse-px addressed, not the 512-native-px tile grid — see
 Coordinate frames).
@@ -99,28 +99,28 @@ Coordinate frames).
 Two carve stages exist and both are live:
 
 1. **Tile-level shell carve** (`HydrologyProfileCarver.carveRiverShells`, static). For each pixel of the
-   padded tile buffer it stabs an R-tree built over the units it was handed and collects **every** unit
-   whose influence circle actually contains the pixel, not just the nearest. Each contributing unit
-   supplies `HydrologyProfile.shellElevation(unit, radialDist, curElev)` — for a `RiverUnit`,
-   `RosgenProfile` delegates this to `riverInfluenceElevation`: a lerp holding the unit's reference
+   padded tile buffer it stabs an R-tree built over the primitives it was handed and collects **every** primitive
+   whose influence circle actually contains the pixel, not just the nearest. Each contributing primitive
+   supplies `HydrologyProfile.shellElevation(primitive, radialDist, curElev)` — for a `RiverPrimitive`,
+   `RosgenProfile` delegates this to `riverInfluenceElevation`: a lerp holding the primitive's reference
    elevation out to `floodPlainLength` and released back to the buffer's current value at
    `riverInfluence` — and the pixel is overwritten with the distance-weighted **average** across all of
    them. There is no nearest-wins rule and no pristine ambient snapshot, so at a confluence overlapping
-   units blend rather than one profile winning outright. Pixels with a negative ambient elevation (ocean)
+   primitives blend rather than one profile winning outright. Pixels with a negative ambient elevation (ocean)
    are skipped. The carve reads and writes the same buffer, so the two passes per tile compound.
 2. **Per-pixel bed residual** (`HydrologyProfileCarver.carveAtPixel` / `prefetchChunk` +
    `carvePrefetched`), invoked from `PopulateNoiseStep` during chunk fill and written into
-   `Types.RIVER_DIFFERENCE`. `carvePrefetched` resolves every influencing unit into one of the
+   `Types.RIVER_DIFFERENCE`. `carvePrefetched` resolves every influencing primitive into one of the
    `ZoneCategory` zones via `HydrologyProfile.categoryAt`/`zoneWeight` (priority order `WATERFALL` >
    `BED` > `LAKE_BED` > `FLOODPLAIN` > `INFLUENCE`), averages contributions **within** the
    highest-priority non-empty zone but switches hard **between** zones — two rivers sharing a floodplain
-   blend, a bed crossing it cuts through instead. Each unit contributes through its own
-   `carveFineGrained(pt, elevAtPixel)`, implemented per feature type (`RiverUnit`, `WaterfallUnit`,
-   `OxbowLakeUnit`, `SourceUnit`, `DeltaUnit`, `AbandonedRiverUnit`); `RiverUnit`'s fades
+   blend, a bed crossing it cuts through instead. Each primitive contributes through its own
+   `h(pt, elevAtPixel)`, implemented per feature type (`RiverPrimitive`, `WaterfallPrimitive`,
+   `OxbowLakePrimitive`, `SourcePrimitive`, `DeltaPrimitive`, `AbandonedRiverPrimitive`); `RiverPrimitive`'s fades
    `RosgenProfile.riverAreaDelta` (the per-type bed trench, computed within the bed half-width from
-   `ChannelGeometry.depthForWidth`) in over an elliptical footprint around the unit, at full strength from
+   `ChannelGeometry.depthForWidth`) in over an elliptical footprint around the primitive, at full strength from
    `HydrologyTuning.MAX_ECCENTRICITY` outward. `HydrologyProfilePainter` reads the resulting
-   `RIVER_DIFFERENCE` to place riverUnit water.
+   `RIVER_DIFFERENCE` to place riverPrimitive water.
 
 `HydrologyTuning.MAX_LOCAL_WIDTH` is retained but unread by live code, not even through the
 `FractalTerrainConfig` facade re-export.
@@ -140,14 +140,14 @@ Two carve stages exist and both are live:
    orients the view, captures crossings and prunes every branch that reaches no drain.
 5. Augment the boundary map with those local `SOURCE`/`DRAIN` nodes → a second
    `ChannelElevationAssigner.assign` over the now-unified graph.
-6. `RiverNetwork.collectUnits` emitting every unit (global and local, one shared feature-id counter,
+6. `RiverNetwork.collectPrimitives` emitting every primitive (global and local, one shared feature-id counter,
    reading each channel's assigned `Channel.bedElevations`; oxbows/abandoned paths carry no
    `bedElevations` and fall back to a decoded-terrain sample) → a second `carveRiverShells` → crop to the
    512×512 tile.
 
-Both carve passes collect units **unfiltered**. The first is global-only purely by timing — the local
+Both carve passes collect primitives **unfiltered**. The first is global-only purely by timing — the local
 network does not exist yet — while the second, running after the local trace, carves local shells too.
-`RiverNetwork.collectUnits` has a channel-id-filtering overload that would restrict the carve to global
+`RiverNetwork.collectPrimitives` has a channel-id-filtering overload that would restrict the carve to global
 channels, but **nothing calls it**. This matters because local networks are traced with no coarse halo,
 so a local shell can be truncated at this tile's `PAD=1` border and seam against its neighbour; global
 floodplains use the 2×2-cell halo and are unaffected.
@@ -327,7 +327,7 @@ files — flipping them back means editing source.
 | Frame | Unit | Defined / grounded in |
 | ----- | ---- | ---------------------- |
 | **block-px** | 1 Minecraft world block | Chunk/column generation code (`world/gen/`); `BiomeProvider` derives tile origins as `tileX << 9` (`BiomeProvider.java:256`). |
-| **tile** | 512×512 block-px (= 512×512 native-px) unit that keys nearly every per-tile cache (`Storage`/`NonIntersectingInfiniteTensor`) | `HydrologyTileGeometry.GRID = 512`, `PAD = 1`, `PADDED = 514` (`HydrologyTileGeometry.java:16-18`); `tileX = blockX >> 9` (inverse of the shift above). `GlobalRiverProvider` is the one exception — its own tile cache is addressed directly in coarse-px (see below), a separate grid from the 512-native-px relief/local-riverUnit/biome tile grid. |
+| **tile** | 512×512 block-px (= 512×512 native-px) unit that keys nearly every per-tile cache (`Storage`/`NonIntersectingInfiniteTensor`) | `HydrologyTileGeometry.GRID = 512`, `PAD = 1`, `PADDED = 514` (`HydrologyTileGeometry.java:16-18`); `tileX = blockX >> 9` (inverse of the shift above). `GlobalRiverProvider` is the one exception — its own tile cache is addressed directly in coarse-px (see below), a separate grid from the 512-native-px relief/local-riverPrimitive/biome tile grid. |
 | **native** | 1 native px, the decoder/relief pixel resolution; 1:1 with block-px inside a tile | `TensorLayout` fixes the axis order `CH=0/X=1/Z=2` (`TensorLayout.java:16-19`) for every ONNX-facing tensor in this frame; `DecoderChannels.INNER = 512` / `relief/ReliefProvider`'s `INNER = 512` size the relief tile in native px. |
 | **coarse** | 1 coarse unit = 256 native px | `HydrologyTileGeometry.COARSE_PX = 256` (`HydrologyTileGeometry.java:19`); `GlobalRiverProvider` caches its own tiles in this frame directly (`getArrow(cx, cz)` etc., 64×64-coarse-px tiles); `GlobalNetworkBuilder` bridges the two frames by mapping a 512-native-px relief tile `(tileX, tileZ)` onto its 2×2 owned coarse cells `(tileX*2 + a, tileZ*2 + b)` (`GlobalNetworkBuilder.java:58-59`, `:94-95`). No current source javadoc spells out the "1 unit = 256 native pixels" definition in prose; `COARSE_PX` is the only normative source. |
 
@@ -347,15 +347,15 @@ files — flipping them back means editing source.
   the only lock (`evictionLock`) guards eviction bookkeeping and is never touched by readers
   (`Storage.java:49`). Compute/load claims use an atomic `CACHE.putIfAbsent` (`claimForCompute`,
   `fetchEntry`) — losers block on the winner's future rather than recomputing. `LocalRiverProvider`'s
-  dual-store build (units index + carved elevation from one `buildTile` call) depends on this claim API
+  dual-store build (primitives index + carved elevation from one `buildTile` call) depends on this claim API
   to cross-fill the second store without a duplicate compute — do not bypass it.
 - **`FloatTensor` is frozen once cached** — see MUST-3. Never mutate a tensor obtained from a `Storage`
   cache; if you need a mutable copy, use `slice`/`copyRange`, which allocate a fresh tensor. Note the
   freeze does **not** guard the `public final data` array — this invariant is a convention the compiler
   will not enforce for you.
 - **The hydrology carve is order-dependent.** `carveRiverShells` reads and writes one shared buffer and
-  averages every unit whose influence circle reaches a given pixel, so carve results depend on how many
-  passes have run and on which units were in the graph at the time. `buildTile` runs it twice by design.
+  averages every primitive whose influence circle reaches a given pixel, so carve results depend on how many
+  passes have run and on which primitives were in the graph at the time. `buildTile` runs it twice by design.
   Adding, reordering or deduplicating those passes changes terrain output — it is not a refactor-safe
   region.
 - **`RiverNetwork`/`QuadTree` reuse is per-tile and single-threaded.** `GlobalNetworkBuilder` builds and
@@ -391,7 +391,7 @@ record, not current state.
 | `hydrology/LocalRiverGoldenTest.java` | `LocalRiverProvider`'s local-network trace via `traceLocalNetworkForTest` | **4 of 4 failing — `ArrayIndexOutOfBoundsException: Index 262144 out of bounds for length 262144`** |
 | `hydrology/meanders/MeandersGoldenTest.java` | `Meanders`/`RiverNetwork` collision semantics + a migration golden | 7 methods (6 active, 1 `@Disabled`) — 2 of 6 active failing |
 | `hydrology/meanders/RiverNetworkSeamGoldenTest.java` | The canonical↔atomic seam round trip (`viewAtomic`/`accumulateAndCorrectFlow`/`update`) | 4 passing |
-| `hydrology/SpatialIndexCorrectnessGoldenTest.java` | R-tree query correctness against brute force over a synthetic unit set | 1 of 2 failing — hit-set-size checksum mismatch |
+| `hydrology/SpatialIndexCorrectnessGoldenTest.java` | R-tree query correctness against brute force over a synthetic primitive set | 1 of 2 failing — hit-set-size checksum mismatch |
 | `ml/pipeline/PipelineSessionReloadRaceTest.java` | MUST-1 — the reload-race regression (see above) | 1 passing |
 | `hydrology/ChannelGeometryTest.java` | Channel cross-section geometry laws (width/depth ratio, width-depth exponent) | 5 methods — added after last doc sync (Rosgen commits); no pre-breakage baseline recorded here |
 | `hydrology/rosgen/RosgenKeyTest.java` | `RosgenKey`'s Level-I decision key — table-driven exact input/output pairs, one case per type plus ordering cases | 17 methods — added after last doc sync; no pre-breakage baseline recorded here |

@@ -11,9 +11,9 @@ import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
  * point of the river it heads, not an independent feature: the network still stamps
  * {@link HydrologicalFeature#SOURCE} on the first point of a channel that begins at a source node.
  */
-public record SourceUnit(double[] coord) implements HydrologicalUnit {
+public record SourcePrimitive(double[] coord) implements HydrologicalPrimitive {
 
-    static final SourceUnit PROTOTYPE = new SourceUnit(new double[] {0.0, 0.0});
+    static final SourcePrimitive PROTOTYPE = new SourcePrimitive(new double[] {0.0, 0.0});
 
     @Override
     public double[] getCoords() {
@@ -41,32 +41,27 @@ public record SourceUnit(double[] coord) implements HydrologicalUnit {
     }
 
     @Override
-    public double carveFineGrained(double[] pt, double elevAtPixel) {
-        return elevAtPixel;
+    public long primitiveByteSize() {
+        return PrimitiveCodec.coordByteSize(coord);
     }
 
     @Override
-    public long unitByteSize() {
-        return UnitCodec.coordByteSize(coord);
+    public byte[] serializePrimitive() {
+        return PrimitiveCodec.writeCoord(coord);
     }
 
     @Override
-    public byte[] serializeUnit() {
-        return UnitCodec.writeCoord(coord);
-    }
-
-    @Override
-    public HydrologicalUnit deserializeUnit(byte[] rawBytes) {
-        return new SourceUnit(UnitCodec.readCoord(rawBytes));
+    public HydrologicalPrimitive deserializePrimitive(byte[] rawBytes) {
+        return new SourcePrimitive(PrimitiveCodec.readCoord(rawBytes));
     }
 
     @Override
     public boolean equals(Object o) {
-        return UnitCodec.coordsEqual(this, o, coord);
+        return PrimitiveCodec.coordsEqual(this, o, coord);
     }
 
     @Override
     public int hashCode() {
-        return UnitCodec.coordsHash(coord);
+        return PrimitiveCodec.coordsHash(coord);
     }
 }

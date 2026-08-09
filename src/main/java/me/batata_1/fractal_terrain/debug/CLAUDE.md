@@ -12,8 +12,8 @@ Logging facade (`Debug.getLogger`) plus PNG/TIFF visualizers and manual `main()`
 | `InstanceStageDumper.java`    | Dumps per-stage pipeline output for a loaded instance               | Dumping pipeline stage tensors                        |
 | `TensorVisualizer.java`       | Renders a `FloatTensor`/infinite tensor to an image                 | Visualizing tensor channels                           |
 | `NoiseVisualizer.java`        | Renders noise-sampler output to an image                            | Debugging noise samplers                              |
-| `RiverNetworkVisualizer.java` | Renders a riverUnit network to an image                                 | Debugging riverUnit topology                              |
-| `HydrologyUnitVisualizer.java`| Renders the hydrological-unit index to an image                     | Debugging the units spatial index                     |
+| `RiverNetworkVisualizer.java` | Renders a riverPrimitive network to an image                                 | Debugging riverPrimitive topology                              |
+| `HydrologyPrimitiveVisualizer.java`| Renders the hydrological-primitive index to an image                     | Debugging the primitives spatial index                     |
 | `SplineVisualizer.java`       | Renders splines to an image                                         | Debugging spline fitting                              |
 | `MemoryProfiler.java`         | Heap/memory sampling helper                                         | Profiling memory during generation                    |
 | `TiffConverter.java`          | Converts dumps to/from TIFF                                         | Reading/writing TIFF debug output                     |

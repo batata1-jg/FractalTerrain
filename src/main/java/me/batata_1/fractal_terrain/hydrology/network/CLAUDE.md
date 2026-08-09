@@ -8,7 +8,7 @@ canonical↔atomic seam.
 | File                  | What                                                                                   | When to read                                                            |
 | --------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | `README.md`           | The canonical↔atomic seam, `update` id rules, stream capture, planarization, invariants | Mutating the graph, debugging lost ids or flow, before changing the seam |
-| `RiverNetwork.java`   | The graph: channels, nodes, the view seam, stream capture, `collectUnits`               | Graph topology, `update` id rules, collision handling, emitting units    |
+| `RiverNetwork.java`   | The graph: channels, nodes, the view seam, stream capture, `collectPrimitives`               | Graph topology, `update` id rules, collision handling, emitting primitives    |
 | `AtomicView.java`     | Node-per-spline-point adjacency, plus flow accumulation and edge planarization          | Per-point algorithms, flow derivation, crossing-edge resolution          |
 | `Channel.java`        | One directed edge: spline points, per-point flow and bed elevation                      | Channel geometry, resampling, flow/bed interpolation                     |
 | `Endpoint.java`       | A graph vertex; SOURCE / JUNCTION / DRAIN and the single-outflow rule                   | Node types, boundary flow seeding, the K1 invariant                      |

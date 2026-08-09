@@ -28,7 +28,7 @@ from the slope histogram `localRiverTest` dumps before judging any other thresho
 | Constant | Too small | Too large |
 | --- | --- | --- |
 | `LOCAL_ATTACH_RADIUS` | Parallel double rivers — the local walk runs alongside the global channel instead of joining it | Local detail truncated; interior tributaries excluded well before they would naturally reach the global channel |
-| `MAX_ECCENTRICITY` | Full-strength delta widens along the channel; at the limit it applies unfaded over the whole floodplain disc | Full strength confined to the unit's own cross-section line; everything else fades |
+| `MAX_ECCENTRICITY` | Full-strength delta widens along the channel; at the limit it applies unfaded over the whole floodplain disc | Full strength confined to the primitive's own cross-section line; everything else fades |
 | `BRAID_MIN_WIDTH` / `K_BRAID` | Braiding becomes common | Braiding never appears |
 | `ER_MIN_STEPS_PER_SIDE` | A reach at the `MIN_WIDTH` floor has a walk shorter than one step, samples nothing, and reports as unconfined | Step shrinks below useful resolution |
 

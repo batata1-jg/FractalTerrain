@@ -1,5 +1,8 @@
 package me.batata_1.fractal_terrain.noise;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
@@ -7,6 +10,7 @@ import java.util.Set;
 public abstract class NoiseSampler {
 
     protected static final Set<NoiseSampler> INIT_SET = Collections.synchronizedSet(new HashSet<>());
+    private static final Logger LOG = LoggerFactory.getLogger(NoiseSampler.class);
     protected final long seedOffset;
 
     protected NoiseSampler(long seedOffset) {

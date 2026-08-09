@@ -5,15 +5,15 @@ import java.nio.ByteOrder;
 import java.util.Arrays;
 
 /**
- * Shared byte-level plumbing for {@link HydrologicalUnit} records — the pieces every feature type
+ * Shared byte-level plumbing for {@link HydrologicalPrimitive} records — the pieces every feature type
  * repeats, factored out so a position-only record is a handful of one-line overrides.
  *
  * <p>All layouts are little-endian and length-prefixed, matching the format
- * {@link HydrologicalUnit#serialize()} wraps with a type tag. Nothing here writes or reads that tag.
+ * {@link HydrologicalPrimitive#serialize()} wraps with a type tag. Nothing here writes or reads that tag.
  */
-final class UnitCodec {
+final class PrimitiveCodec {
 
-    private UnitCodec() {}
+    private PrimitiveCodec() {}
 
     /** Marks a {@code null} array where a length would otherwise be. */
     static final int NULL_LENGTH = -1;
@@ -23,7 +23,7 @@ final class UnitCodec {
         return Integer.BYTES + (long) (coord == null ? 0 : coord.length) * Double.BYTES;
     }
 
-    /** Serialized form of a position-only unit: its length-prefixed coordinate array and nothing else. */
+    /** Serialized form of a position-only primitive: its length-prefixed coordinate array and nothing else. */
     static byte[] writeCoord(double[] coord) {
         final ByteBuffer buf = ByteBuffer.allocate((int) coordByteSize(coord)).order(ByteOrder.LITTLE_ENDIAN);
         putCoord(buf, coord);
@@ -54,12 +54,12 @@ final class UnitCodec {
         return coord;
     }
 
-    /** Content equality for a position-only unit. Exists because records compare {@code double[]} by
-     *  reference, which would make every unit unequal to its own reloaded copy. */
-    static boolean coordsEqual(HydrologicalUnit self, Object other, double[] coord) {
+    /** Content equality for a position-only primitive. Exists because records compare {@code double[]} by
+     *  reference, which would make every primitive unequal to its own reloaded copy. */
+    static boolean coordsEqual(HydrologicalPrimitive self, Object other, double[] coord) {
         if (self == other) return true;
         if (other == null || self.getClass() != other.getClass()) return false;
-        return Arrays.equals(coord, ((HydrologicalUnit) other).getCoords());
+        return Arrays.equals(coord, ((HydrologicalPrimitive) other).getCoords());
     }
 
     /** The {@link #coordsEqual} counterpart: a hash over the coordinate contents. */

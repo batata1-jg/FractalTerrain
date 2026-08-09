@@ -8,4 +8,4 @@ The graph itself lives in `../network/`.
 | File                | What                                                                        | When to read                                                  |
 | ------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | `README.md`         | Per-tile single-threaded contract, relaxation ordering                      | Changing relaxation or reusing a simulation across tiles       |
-| `Meanders.java`     | Relaxes network geometry into meanders; owns the pre-carve elevation snapshot and `collectUnits` | Meander migration, border damping, unit emission, `meandersTest` |
+| `Meanders.java`     | Relaxes network geometry into meanders; owns the pre-carve elevation snapshot and `collectPrimitives` | Meander migration, border damping, primitive emission, `meandersTest` |

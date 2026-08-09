@@ -2,7 +2,7 @@ package me.batata_1.fractal_terrain.hydrology.rosgen;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import me.batata_1.fractal_terrain.hydrology.features.RiverUnit;
+import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -30,27 +30,27 @@ class RosgenKeyTest {
     @Test
     void steepestSlopeGivesAaRegardlessOfEverythingElse() {
         // Slope is tested first: a very steep reach is Aa+ even with a broad floodplain.
-        assertEquals(RiverUnit.RosgenType.Aa, RosgenKey.classify(with(baseC(), 0.20, 8.0, 30.0, null, null)));
+        assertEquals(RiverPrimitive.RosgenType.Aa, RosgenKey.classify(with(baseC(), 0.20, 8.0, 30.0, null, null)));
     }
 
     @Test
     void steepSlopeGivesA() {
-        assertEquals(RiverUnit.RosgenType.A, RosgenKey.classify(with(baseC(), 0.06, 8.0, 30.0, null, null)));
+        assertEquals(RiverPrimitive.RosgenType.A, RosgenKey.classify(with(baseC(), 0.06, 8.0, 30.0, null, null)));
     }
 
     @Test
     void entrenchedAndNarrowGivesG() {
-        assertEquals(RiverUnit.RosgenType.G, RosgenKey.classify(with(baseC(), 0.03, 1.2, 8.0, null, null)));
+        assertEquals(RiverPrimitive.RosgenType.G, RosgenKey.classify(with(baseC(), 0.03, 1.2, 8.0, null, null)));
     }
 
     @Test
     void entrenchedAndWideGivesF() {
-        assertEquals(RiverUnit.RosgenType.F, RosgenKey.classify(with(baseC(), 0.03, 1.2, 20.0, null, null)));
+        assertEquals(RiverPrimitive.RosgenType.F, RosgenKey.classify(with(baseC(), 0.03, 1.2, 20.0, null, null)));
     }
 
     @Test
     void moderatelyEntrenchedGivesB() {
-        assertEquals(RiverUnit.RosgenType.B, RosgenKey.classify(with(baseC(), 0.03, 1.8, 20.0, null, null)));
+        assertEquals(RiverPrimitive.RosgenType.B, RosgenKey.classify(with(baseC(), 0.03, 1.8, 20.0, null, null)));
     }
 
     @Test
@@ -59,13 +59,13 @@ class RosgenKeyTest {
         // discriminator. Same slope and W/D, different ER, different type.
         final ReachMetrics g = with(baseC(), 0.03, 1.2, 8.0, null, null);
         final ReachMetrics b = with(baseC(), 0.03, 1.8, 8.0, null, null);
-        assertEquals(RiverUnit.RosgenType.G, RosgenKey.classify(g));
-        assertEquals(RiverUnit.RosgenType.B, RosgenKey.classify(b));
+        assertEquals(RiverPrimitive.RosgenType.G, RosgenKey.classify(g));
+        assertEquals(RiverPrimitive.RosgenType.B, RosgenKey.classify(b));
     }
 
     @Test
     void nearBaseLevelFlatAndVeryWideFloodProneGivesDA() {
-        assertEquals(RiverUnit.RosgenType.DA, RosgenKey.classify(with(baseC(), 0.001, 6.0, 20.0, 10.0, 2.0)));
+        assertEquals(RiverPrimitive.RosgenType.DA, RosgenKey.classify(with(baseC(), 0.001, 6.0, 20.0, 10.0, 2.0)));
     }
 
     @Test
@@ -77,7 +77,7 @@ class RosgenKeyTest {
         final double width = 12.0;
         final double slope = RosgenKey.braidThreshold(width) * 2.0;
         final ReachMetrics both = new ReachMetrics(slope, 6.0, 20.0, width, 2.0);
-        assertEquals(RiverUnit.RosgenType.DA, RosgenKey.classify(both));
+        assertEquals(RiverPrimitive.RosgenType.DA, RosgenKey.classify(both));
     }
 
     @Test
@@ -85,24 +85,24 @@ class RosgenKeyTest {
         final double width = 12.0;
         final double slope = RosgenKey.braidThreshold(width) * 2.0;
         // High above sea level, so the DA gate is shut.
-        assertEquals(RiverUnit.RosgenType.D, RosgenKey.classify(new ReachMetrics(slope, 6.0, 20.0, width, 80.0)));
+        assertEquals(RiverPrimitive.RosgenType.D, RosgenKey.classify(new ReachMetrics(slope, 6.0, 20.0, width, 80.0)));
     }
 
     @Test
     void narrowChannelAboveTheBraidThresholdIsNotD() {
         final double width = 2.0;
         final double slope = RosgenKey.braidThreshold(width) * 2.0;
-        assertEquals(RiverUnit.RosgenType.E, RosgenKey.classify(new ReachMetrics(slope, 6.0, 8.0, width, 80.0)));
+        assertEquals(RiverPrimitive.RosgenType.E, RosgenKey.classify(new ReachMetrics(slope, 6.0, 8.0, width, 80.0)));
     }
 
     @Test
     void slightlyEntrenchedAndNarrowGivesE() {
-        assertEquals(RiverUnit.RosgenType.E, RosgenKey.classify(new ReachMetrics(0.001, 6.0, 8.0, 2.0, 80.0)));
+        assertEquals(RiverPrimitive.RosgenType.E, RosgenKey.classify(new ReachMetrics(0.001, 6.0, 8.0, 2.0, 80.0)));
     }
 
     @Test
     void slightlyEntrenchedAndWideGivesC() {
-        assertEquals(RiverUnit.RosgenType.C, RosgenKey.classify(new ReachMetrics(0.001, 6.0, 20.0, 2.0, 80.0)));
+        assertEquals(RiverPrimitive.RosgenType.C, RosgenKey.classify(new ReachMetrics(0.001, 6.0, 20.0, 2.0, 80.0)));
     }
 
     @Test
@@ -110,7 +110,7 @@ class RosgenKeyTest {
         // A transect that never exceeds the flood-prone stage reports ER = +inf. That is the correct
         // semantic (a broad flat valley), not a failure, and must not throw or fall through.
         assertEquals(
-                RiverUnit.RosgenType.C,
+                RiverPrimitive.RosgenType.C,
                 RosgenKey.classify(new ReachMetrics(0.001, Double.POSITIVE_INFINITY, 20.0, 2.0, 80.0)));
     }
 
@@ -118,31 +118,33 @@ class RosgenKeyTest {
     void deadBandKeepsTheUpstreamTypeWhenEntrenchmentSitsOnAThreshold() {
         // ER 2.25 is within the published +/-0.2 of the 2.2 boundary, so a B neighbour holds.
         final ReachMetrics onBoundary = new ReachMetrics(0.001, 2.25, 20.0, 2.0, 80.0);
-        assertEquals(RiverUnit.RosgenType.C, RosgenKey.classify(onBoundary));
+        assertEquals(RiverPrimitive.RosgenType.C, RosgenKey.classify(onBoundary));
         assertEquals(
-                RiverUnit.RosgenType.B,
-                RosgenKey.applyDeadBand(onBoundary, RiverUnit.RosgenType.C, RiverUnit.RosgenType.B));
+                RiverPrimitive.RosgenType.B,
+                RosgenKey.applyDeadBand(onBoundary, RiverPrimitive.RosgenType.C, RiverPrimitive.RosgenType.B));
     }
 
     @Test
     void deadBandKeepsTheUpstreamTypeWhenWidthDepthSitsOnAThreshold() {
         final ReachMetrics onBoundary = new ReachMetrics(0.001, 6.0, 13.0, 2.0, 80.0);
-        assertEquals(RiverUnit.RosgenType.C, RosgenKey.classify(onBoundary));
+        assertEquals(RiverPrimitive.RosgenType.C, RosgenKey.classify(onBoundary));
         assertEquals(
-                RiverUnit.RosgenType.E,
-                RosgenKey.applyDeadBand(onBoundary, RiverUnit.RosgenType.C, RiverUnit.RosgenType.E));
+                RiverPrimitive.RosgenType.E,
+                RosgenKey.applyDeadBand(onBoundary, RiverPrimitive.RosgenType.C, RiverPrimitive.RosgenType.E));
     }
 
     @Test
     void deadBandDoesNotSuppressAChangeFarFromAnyThreshold() {
         final ReachMetrics clear = new ReachMetrics(0.001, 6.0, 20.0, 2.0, 80.0);
         assertEquals(
-                RiverUnit.RosgenType.C, RosgenKey.applyDeadBand(clear, RiverUnit.RosgenType.C, RiverUnit.RosgenType.E));
+                RiverPrimitive.RosgenType.C,
+                RosgenKey.applyDeadBand(clear, RiverPrimitive.RosgenType.C, RiverPrimitive.RosgenType.E));
     }
 
     @Test
     void deadBandPassesThroughWhenThereIsNoUpstreamNeighbour() {
         final ReachMetrics onBoundary = new ReachMetrics(0.001, 2.25, 20.0, 2.0, 80.0);
-        assertEquals(RiverUnit.RosgenType.C, RosgenKey.applyDeadBand(onBoundary, RiverUnit.RosgenType.C, null));
+        assertEquals(
+                RiverPrimitive.RosgenType.C, RosgenKey.applyDeadBand(onBoundary, RiverPrimitive.RosgenType.C, null));
     }
 }

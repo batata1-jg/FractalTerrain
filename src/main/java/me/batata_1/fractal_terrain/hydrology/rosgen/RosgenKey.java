@@ -1,8 +1,8 @@
 package me.batata_1.fractal_terrain.hydrology.rosgen;
 
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
-import me.batata_1.fractal_terrain.hydrology.features.RiverUnit;
-import me.batata_1.fractal_terrain.hydrology.features.RiverUnit.RosgenType;
+import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
+import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive.RosgenType;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -22,27 +22,31 @@ public final class RosgenKey {
     /** The type for one reach. Total — even a saturated {@code +inf} entrenchment returns a type. */
     public static RosgenType classify(ReachMetrics m) {
         // Steep confined headwaters: slope alone decides.
-        if (m.slope() >= HydrologyTuning.S_AA) return RiverUnit.RosgenType.Aa;
-        if (m.slope() >= HydrologyTuning.S_A) return RiverUnit.RosgenType.A;
+        if (m.slope() >= HydrologyTuning.S_AA) return RiverPrimitive.RosgenType.Aa;
+        if (m.slope() >= HydrologyTuning.S_A) return RiverPrimitive.RosgenType.A;
 
         // Entrenched: the valley pinches the channel.
         if (m.entrenchment() < HydrologyTuning.ER_ENTRENCHED) {
-            return m.widthPerDepth() < HydrologyTuning.WD_NARROW ? RiverUnit.RosgenType.G : RiverUnit.RosgenType.F;
+            return m.widthPerDepth() < HydrologyTuning.WD_NARROW
+                    ? RiverPrimitive.RosgenType.G
+                    : RiverPrimitive.RosgenType.F;
         }
 
         // Moderately entrenched.
-        if (m.entrenchment() < HydrologyTuning.ER_SLIGHT) return RiverUnit.RosgenType.B;
+        if (m.entrenchment() < HydrologyTuning.ER_SLIGHT) return RiverPrimitive.RosgenType.B;
 
         // Slightly entrenched: a broad floodplain is available.
         if (m.bedElev() < HydrologyTuning.DELTA_ELEV
                 && m.slope() < HydrologyTuning.S_DA
                 && m.entrenchment() > HydrologyTuning.ER_ANASTOMOSE) {
-            return RiverUnit.RosgenType.DA;
+            return RiverPrimitive.RosgenType.DA;
         }
         if (m.width() > HydrologyTuning.BRAID_MIN_WIDTH && m.slope() > braidThreshold(m.width())) {
-            return RiverUnit.RosgenType.D;
+            return RiverPrimitive.RosgenType.D;
         }
-        return m.widthPerDepth() < HydrologyTuning.WD_NARROW ? RiverUnit.RosgenType.E : RiverUnit.RosgenType.C;
+        return m.widthPerDepth() < HydrologyTuning.WD_NARROW
+                ? RiverPrimitive.RosgenType.E
+                : RiverPrimitive.RosgenType.C;
     }
 
     /** Gates where braiding is plausible. Braiding is not measurable without a sediment-transport

@@ -14,7 +14,7 @@ import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
-import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver;
 import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
@@ -28,11 +28,11 @@ import org.slf4j.LoggerFactory;
 /**
  * Queries/sec benchmark comparing the production {@link ImmutableRTree} against the legacy
  * {@link ImmutableQuadTree}-based query path it replaced, over one real {@link LocalRiverProvider}
- * unit tile — covering the influence query, the {@code insideChannel} existence test, and the
+ * primitive tile — covering the influence query, the {@code insideChannel} existence test, and the
  * provider-level query/carve calls.
  *
  * <p>Cross-checks correctness against a brute-force scan before timing anything (throws on mismatch),
- * since a benchmark of a broken index is worthless. Also dumps the tile's unit visualization. Run with
+ * since a benchmark of a broken index is worthless. Also dumps the tile's primitive visualization. Run with
  * {@code ./gradlew spatialIndexBenchmark}.
  */
 @TestOnly
@@ -54,12 +54,12 @@ public class SpatialIndexBenchmark {
     /** Keeps provider-level query points clear of MAX_INFLUENCE_RADIUS so a run never triggers a neighbour-tile build mid-timing. */
     private static final double PROVIDER_MARGIN = HydrologyTuning.MAX_INFLUENCE_RADIUS + 2.0;
 
-    /** Quadtree adapter: {@link HydrologicalUnit} is an influence circle rather than a
-     *  {@link SpatialIndexPoint}, so the point-index side of the comparison wraps each unit's centre. */
-    private record UnitPoint(HydrologicalUnit unit) implements SpatialIndexPoint {
+    /** Quadtree adapter: {@link HydrologicalPrimitive} is an influence circle rather than a
+     *  {@link SpatialIndexPoint}, so the point-index side of the comparison wraps each primitive's centre. */
+    private record PrimitivePoint(HydrologicalPrimitive primitive) implements SpatialIndexPoint {
         @Override
         public double[] getCoords() {
-            return unit.coord();
+            return primitive.coord();
         }
     }
 
@@ -75,63 +75,65 @@ public class SpatialIndexBenchmark {
         localRivers.setGlobalRiverProvider(globalRivers);
         final HydrologyProfileCarver carver = new HydrologyProfileCarver(localRivers);
 
-        LOG.info("building unit tile ({},{})...", TILE_X, TILE_Z);
-        final ImmutableRTree<HydrologicalUnit> unitRTree = localRivers.getUnitTree(TILE_X, TILE_Z);
-        final List<HydrologicalUnit> allUnits = unitRTree.getAllEntries();
-        LOG.info("unit tile built: {} units", unitRTree.numEntries());
+        LOG.info("building primitive tile ({},{})...", TILE_X, TILE_Z);
+        final ImmutableRTree<HydrologicalPrimitive> primitiveRTree = localRivers.getPrimitiveTree(TILE_X, TILE_Z);
+        final List<HydrologicalPrimitive> allPrimitives = primitiveRTree.getAllEntries();
+        LOG.info("primitive tile built: {} primitives", primitiveRTree.numEntries());
 
-        // World-pixel origin of the benchmark tile. The provider indexes units in the WORLD frame, so
+        // World-pixel origin of the benchmark tile. The provider indexes primitives in the WORLD frame, so
         // this is not just for the provider-level benchmarks below: EVERY structure and query point here
         // lives in that frame, including the index-level ones that used to be tile-local.
         final double worldOriginX = TILE_X * (double) GRID;
         final double worldOriginZ = TILE_Z * (double) GRID;
 
-        // The legacy structure over the same units: a point quadtree + the per-unit reach re-test. Its
-        // bounds must span the tile's WORLD extent, or every unit falls outside the root square.
-        final List<UnitPoint> unitPoints = new ArrayList<>(allUnits.size());
-        for (final HydrologicalUnit unit : allUnits) unitPoints.add(new UnitPoint(unit));
-        final ImmutableQuadTree<UnitPoint> unitQuadTree = new ImmutableQuadTree<>(
+        // The legacy structure over the same primitives: a point quadtree + the per-primitive reach re-test. Its
+        // bounds must span the tile's WORLD extent, or every primitive falls outside the root square.
+        final List<PrimitivePoint> primitivePoints = new ArrayList<>(allPrimitives.size());
+        for (final HydrologicalPrimitive primitive : allPrimitives) primitivePoints.add(new PrimitivePoint(primitive));
+        final ImmutableQuadTree<PrimitivePoint> primitiveQuadTree = new ImmutableQuadTree<>(
                 new double[] {worldOriginX - 16, worldOriginZ - 16},
                 new double[] {worldOriginX + GRID + 16, worldOriginZ + GRID + 16},
-                unitPoints);
+                primitivePoints);
 
         // Snapshot for the human: the same imagery LocalRiverTest dumps (world coords → tile canvas).
-        Debug.units.see(allUnits, "benchmark_units_tx" + TILE_X + "_tz" + TILE_Z, GRID, 4, worldOriginX, worldOriginZ);
-        Debug.units.logStats(allUnits, "tile (" + TILE_X + "," + TILE_Z + ")");
+        Debug.primitives.see(
+                allPrimitives, "benchmark_units_tx" + TILE_X + "_tz" + TILE_Z, GRID, 4, worldOriginX, worldOriginZ);
+        Debug.primitives.logStats(allPrimitives, "tile (" + TILE_X + "," + TILE_Z + ")");
 
-        crossCheckInfluenceQueries(allUnits, unitQuadTree, unitRTree, worldOriginX, worldOriginZ);
+        crossCheckInfluenceQueries(allPrimitives, primitiveQuadTree, primitiveRTree, worldOriginX, worldOriginZ);
 
         final double membershipRadius = HydrologyTuning.maxNativeWidth() / 2.0;
 
         // ---- influence query: legacy quadtree+filter vs one R-tree stab -------------------------
-        final List<UnitPoint> legacyQueryBuffer = new ArrayList<>(256);
+        final List<PrimitivePoint> legacyQueryBuffer = new ArrayList<>(256);
         final double legacyInfluenceOpsPerSec = bench(
                 "quadtree influence query (circle r=" + HydrologyTuning.MAX_INFLUENCE_RADIUS + " + reach filter)",
                 worldTilePoints(1, worldOriginX, worldOriginZ),
-                pt -> legacyInfluenceQuery(unitQuadTree, pt, legacyQueryBuffer));
-        final List<HydrologicalUnit> stabQueryBuffer = new ArrayList<>(256);
+                pt -> legacyInfluenceQuery(primitiveQuadTree, pt, legacyQueryBuffer));
+        final List<HydrologicalPrimitive> stabQueryBuffer = new ArrayList<>(256);
         final double rtreeInfluenceOpsPerSec = bench(
                 "rtree influence query (queryContaining stab)", worldTilePoints(1, worldOriginX, worldOriginZ), pt -> {
                     stabQueryBuffer.clear();
-                    return unitRTree.queryContaining(pt, stabQueryBuffer).size();
+                    return primitiveRTree.queryContaining(pt, stabQueryBuffer).size();
                 });
 
         // ---- insideChannel existence test: legacy anyPointInCircle vs R-tree anyContaining ------
         final double legacyMembershipOpsPerSec = bench(
                 "quadtree anyPointInCircle r=" + membershipRadius + " (insideChannel test)",
                 worldTilePoints(2, worldOriginX, worldOriginZ),
-                pt -> unitQuadTree.anyPointInCircle(pt, membershipRadius, (unitPoint, distSq) -> unitPoint
-                                .unit()
-                                .channelContains(distSq))
+                pt -> primitiveQuadTree.anyPointInCircle(
+                                pt, membershipRadius, (primitivePoint, distSq) -> primitivePoint
+                                        .primitive()
+                                        .channelContains(distSq))
                         ? 1
                         : 0);
         final double rtreeMembershipOpsPerSec = bench(
                 "rtree anyContaining (insideChannel test)",
                 worldTilePoints(2, worldOriginX, worldOriginZ),
-                pt -> unitRTree.anyContaining(pt, unit -> {
-                            final double deltaX = unit.coord()[0] - pt[0];
-                            final double deltaZ = unit.coord()[1] - pt[1];
-                            return unit.channelContains(deltaX * deltaX + deltaZ * deltaZ);
+                pt -> primitiveRTree.anyContaining(pt, primitive -> {
+                            final double deltaX = primitive.coord()[0] - pt[0];
+                            final double deltaZ = primitive.coord()[1] - pt[1];
+                            return primitive.channelContains(deltaX * deltaX + deltaZ * deltaZ);
                         })
                         ? 1
                         : 0);
@@ -153,18 +155,18 @@ public class SpatialIndexBenchmark {
         LOG.info("SpatialIndexBenchmark done. See {}", DEBUG_PATH);
     }
 
-    /** The pre-R-tree influence query, replicated exactly: quadtree circle scan then per-unit
+    /** The pre-R-tree influence query, replicated exactly: quadtree circle scan then per-primitive
      *  {@code riverInfluence(width)} filter — the baseline the R-tree replaces. */
     private static long legacyInfluenceQuery(
-            ImmutableQuadTree<UnitPoint> unitQuadTree, double[] pt, List<UnitPoint> buffer) {
+            ImmutableQuadTree<PrimitivePoint> primitiveQuadTree, double[] pt, List<PrimitivePoint> buffer) {
         buffer.clear();
-        unitQuadTree.getPointsInCircle(pt, HydrologyTuning.MAX_INFLUENCE_RADIUS, buffer);
+        primitiveQuadTree.getPointsInCircle(pt, HydrologyTuning.MAX_INFLUENCE_RADIUS, buffer);
         long keptCount = 0;
-        for (final UnitPoint unitPoint : buffer) {
-            final HydrologicalUnit unit = unitPoint.unit();
-            final double deltaX = unit.coord()[0] - pt[0];
-            final double deltaZ = unit.coord()[1] - pt[1];
-            final double reach = unit.getRadius();
+        for (final PrimitivePoint primitivePoint : buffer) {
+            final HydrologicalPrimitive primitive = primitivePoint.primitive();
+            final double deltaX = primitive.coord()[0] - pt[0];
+            final double deltaZ = primitive.coord()[1] - pt[1];
+            final double reach = primitive.getRadius();
             if (deltaX * deltaX + deltaZ * deltaZ <= reach * reach) keptCount++;
         }
         return keptCount;
@@ -174,37 +176,37 @@ public class SpatialIndexBenchmark {
      *  exactly (throws on mismatch), while the legacy quadtree only warns — {@code findSection}'s known
      *  0-anchored-grid boundary bug can drop points and must not fail the benchmark for an old bug. */
     private static void crossCheckInfluenceQueries(
-            List<HydrologicalUnit> allUnits,
-            ImmutableQuadTree<UnitPoint> unitQuadTree,
-            ImmutableRTree<HydrologicalUnit> unitRTree,
+            List<HydrologicalPrimitive> allPrimitives,
+            ImmutableQuadTree<PrimitivePoint> primitiveQuadTree,
+            ImmutableRTree<HydrologicalPrimitive> primitiveRTree,
             double worldOriginX,
             double worldOriginZ) {
         final Random rng = new Random(42);
         final double[] pt = new double[2];
-        final List<UnitPoint> legacyBuffer = new ArrayList<>(256);
-        final List<HydrologicalUnit> stabBuffer = new ArrayList<>(256);
+        final List<PrimitivePoint> legacyBuffer = new ArrayList<>(256);
+        final List<HydrologicalPrimitive> stabBuffer = new ArrayList<>(256);
         int quadTreeDeviations = 0;
         for (int i = 0; i < CROSS_CHECK_POINTS; i++) {
             pt[0] = worldOriginX + rng.nextDouble() * GRID;
             pt[1] = worldOriginZ + rng.nextDouble() * GRID;
 
-            final Set<HydrologicalUnit> bruteForceHits = new HashSet<>();
-            for (final HydrologicalUnit unit : allUnits) {
-                final double deltaX = unit.coord()[0] - pt[0];
-                final double deltaZ = unit.coord()[1] - pt[1];
-                final double reach = unit.getRadius();
-                if (deltaX * deltaX + deltaZ * deltaZ <= reach * reach) bruteForceHits.add(unit);
+            final Set<HydrologicalPrimitive> bruteForceHits = new HashSet<>();
+            for (final HydrologicalPrimitive primitive : allPrimitives) {
+                final double deltaX = primitive.coord()[0] - pt[0];
+                final double deltaZ = primitive.coord()[1] - pt[1];
+                final double reach = primitive.getRadius();
+                if (deltaX * deltaX + deltaZ * deltaZ <= reach * reach) bruteForceHits.add(primitive);
             }
 
             stabBuffer.clear();
-            final Set<HydrologicalUnit> stabHits = new HashSet<>(unitRTree.queryContaining(pt, stabBuffer));
+            final Set<HydrologicalPrimitive> stabHits = new HashSet<>(primitiveRTree.queryContaining(pt, stabBuffer));
             if (!bruteForceHits.equals(stabHits)) {
-                final Set<HydrologicalUnit> bruteForceOnly = new HashSet<>(bruteForceHits);
+                final Set<HydrologicalPrimitive> bruteForceOnly = new HashSet<>(bruteForceHits);
                 bruteForceOnly.removeAll(stabHits);
-                final Set<HydrologicalUnit> stabOnly = new HashSet<>(stabHits);
+                final Set<HydrologicalPrimitive> stabOnly = new HashSet<>(stabHits);
                 stabOnly.removeAll(bruteForceHits);
                 LOG.error(
-                        "R-tree stab mismatch at ({}, {}): brute force {} units, rtree {} units; missing {}, extra {}",
+                        "R-tree stab mismatch at ({}, {}): brute force {} primitives, rtree {} primitives; missing {}, extra {}",
                         pt[0],
                         pt[1],
                         bruteForceHits.size(),
@@ -215,14 +217,14 @@ public class SpatialIndexBenchmark {
             }
 
             legacyBuffer.clear();
-            unitQuadTree.getPointsInCircle(pt, HydrologyTuning.MAX_INFLUENCE_RADIUS, legacyBuffer);
-            final Set<HydrologicalUnit> legacyHits = new HashSet<>();
-            for (final UnitPoint unitPoint : legacyBuffer) {
-                final HydrologicalUnit unit = unitPoint.unit();
-                final double deltaX = unit.coord()[0] - pt[0];
-                final double deltaZ = unit.coord()[1] - pt[1];
-                final double reach = unit.getRadius();
-                if (deltaX * deltaX + deltaZ * deltaZ <= reach * reach) legacyHits.add(unit);
+            primitiveQuadTree.getPointsInCircle(pt, HydrologyTuning.MAX_INFLUENCE_RADIUS, legacyBuffer);
+            final Set<HydrologicalPrimitive> legacyHits = new HashSet<>();
+            for (final PrimitivePoint primitivePoint : legacyBuffer) {
+                final HydrologicalPrimitive primitive = primitivePoint.primitive();
+                final double deltaX = primitive.coord()[0] - pt[0];
+                final double deltaZ = primitive.coord()[1] - pt[1];
+                final double reach = primitive.getRadius();
+                if (deltaX * deltaX + deltaZ * deltaZ <= reach * reach) legacyHits.add(primitive);
             }
             if (!legacyHits.equals(bruteForceHits)) quadTreeDeviations++;
         }

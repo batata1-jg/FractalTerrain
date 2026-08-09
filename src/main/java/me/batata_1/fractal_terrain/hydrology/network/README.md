@@ -86,7 +86,7 @@ shared crossing nodes.
   only at construction and never destroyed, a DRAIN is never created and deleted only when a capture
   orphans it, a JUNCTION is created and destroyed freely.
 - **`ChannelTyper` implementations type every point, including endpoints.** Deciding that a point is a
-  source or drain rather than a reach is topology, and only `collectUnits` owns the graph; a typer sees
+  source or drain rather than a reach is topology, and only `collectPrimitives` owns the graph; a typer sees
   geometry and raster only.
-- **Unit spacing must stay `dx <= width/2`** where `collectUnits` resamples. The floodplain corridor is
-  a union of per-unit discs, and looser spacing scallops it.
+- **Primitive spacing must stay `dx <= width/2`** where `collectPrimitives` resamples. The floodplain corridor is
+  a union of per-primitive discs, and looser spacing scallops it.

@@ -6,7 +6,7 @@ Three spatial-index implementations serve two different access patterns: `QuadTr
 long-lived index that supports insert/remove during use; `ImmutableQuadTree` and `ImmutableRTree` are
 build-once, query-many indexes constructed fresh from a fully-known point/shape set on every per-tile
 hydrology build. `ImmutableQuadTree` backs cached per-tile point indexes; `ImmutableRTree` backs the
-`HydrologicalUnit` index.
+`HydrologicalPrimitive` index.
 
 ## Architecture
 

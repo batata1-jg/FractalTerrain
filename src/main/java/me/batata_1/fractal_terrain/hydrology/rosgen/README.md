@@ -44,7 +44,7 @@ braiding would be *plausible* and the outcome is accepted as a style choice.
 ## Why per reach, not per point
 
 A transect walks perpendicular to the channel, so consecutive samples stride a whole row and get no
-spatial locality — each sample is close to a cache miss. `collectUnits` resamples at a spacing that
+spatial locality — each sample is close to a cache miss. `collectPrimitives` resamples at a spacing that
 floors at 0.5 px, so a detailed tile emits tens of thousands of points. One transect per reach (Rosgen's
 own ~20-channel-width definition) is three orders of magnitude cheaper and is what the scheme specifies.
 

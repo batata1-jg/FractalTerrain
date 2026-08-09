@@ -85,7 +85,7 @@ public final class HydrologyTuning {
 
     public static final double FLOODPLAIN_WIDTH_FACTOR = 1.0f;
 
-    /** Shapes the elliptical footprint over which a unit's bed delta fades in. Uncalibrated — see README. */
+    /** Shapes the elliptical footprint over which a primitive's bed delta fades in. Uncalibrated — see README. */
     public static final double MAX_ECCENTRICITY = 0.9;
 
     /** Multiplier taking floodplain half-extent to outer influence radius; sizes the blend band. */

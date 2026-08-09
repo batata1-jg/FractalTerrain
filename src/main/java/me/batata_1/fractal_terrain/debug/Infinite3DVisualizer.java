@@ -7,8 +7,8 @@ import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
-import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
-import me.batata_1.fractal_terrain.hydrology.features.RiverUnit;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
+import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import me.batata_1.fractal_terrain.relief.DecoderChannels;
@@ -80,7 +80,7 @@ public class Infinite3DVisualizer {
      *   <li>{@link #RIVER_NET} — {@link #debugRiver}: global/local river + coast markers.</li>
      *   <li>{@link #PV} — {@link #debugPV}: peaks-and-valleys bands quantized from biome weirdness.</li>
      *   <li>{@link #HYDRO_ZONES} — {@link #debugHydroZones}: per-block carve zone (bed / floodplain /
-     *       blending), the deepest zone reached across every influencing hydrological unit.</li>
+     *       blending), the deepest zone reached across every influencing hydrological primitive.</li>
      * </ul>
      */
     public enum DebugPaintModes {
@@ -168,7 +168,7 @@ public class Infinite3DVisualizer {
     private static final BlockState FLOODPLAIN_ZONE = Blocks.GRAY_CONCRETE.defaultBlockState();
     private static final BlockState BLENDING_ZONE = Blocks.LIGHT_GRAY_CONCRETE.defaultBlockState();
 
-    /** Bed-zone block per {@link RiverUnit.RosgenType} ordinal; frozen order matches unit serialization. */
+    /** Bed-zone block per {@link RiverPrimitive.RosgenType} ordinal; frozen order matches primitive serialization. */
     private static final BlockState[] BED_ZONE_BY_ROSGEN = {
         Blocks.RED_CONCRETE.defaultBlockState(), // A   steep entrenched
         Blocks.PINK_CONCRETE.defaultBlockState(), // Aa  very steep
@@ -184,36 +184,36 @@ public class Infinite3DVisualizer {
     private static final BlockState NOT_RIVER = Blocks.BLACK_CONCRETE.defaultBlockState();
 
     /** Preview of what {@code HydrologyProfileCarver} will carve at {@code (xx, zz)}: composites the
-     *  deepest zone across covering {@link RiverUnit}s, but returns black on any non-river unit in range. */
+     *  deepest zone across covering {@link RiverPrimitive}s, but returns black on any non-river primitive in range. */
     public BlockState debugHydroZones(int xx, int y, int zz) {
         final double[] pt = mutableCoordsXZ.get();
         pt[0] = xx * 0.2; // block -> relief-pixel frame (÷ GLOBAL_SCALE_CORRECTION)
         pt[1] = zz * 0.2;
         //  LOG.info("[");
-        final HydrologicalUnit[] units =
+        final HydrologicalPrimitive[] primitives =
                 FractalTerrainInstance.getLocalRiverProvider().queryInfluence(pt);
         // LOG.info("]");
         if (xx == -4262 && zz == -4662) {
             LOG.info("oi");
         }
         BlockState deepest = DEFAULT;
-        for (final HydrologicalUnit unit : units) {
-            final double du = pt[0] - unit.coord()[0];
-            final double dv = pt[1] - unit.coord()[1];
+        for (final HydrologicalPrimitive primitive : primitives) {
+            final double du = pt[0] - primitive.coord()[0];
+            final double dv = pt[1] - primitive.coord()[1];
             final double radialDist = Math.hypot(du, dv);
-            if (radialDist >= unit.getRadius()) continue; // outside this unit's influence circle
+            if (radialDist >= primitive.getRadius()) continue; // outside this primitive's influence circle
 
-            if (!(unit instanceof RiverUnit riverUnit)) return NOT_RIVER;
+            if (!(primitive instanceof RiverPrimitive riverPrimitive)) return NOT_RIVER;
             // An unclassified reach paints as A, matching how the carve coalesces a null type.
-            final RiverUnit.RosgenType type =
-                    riverUnit.rosgenType() == null ? RiverUnit.RosgenType.A : riverUnit.rosgenType();
+            final RiverPrimitive.RosgenType type =
+                    riverPrimitive.rosgenType() == null ? RiverPrimitive.RosgenType.A : riverPrimitive.rosgenType();
 
-            // Bed is the deepest possible zone: no later unit can beat it, so paint and stop.
-            if (radialDist <= ChannelGeometry.bedHalfWidth(riverUnit.width()))
+            // Bed is the deepest possible zone: no later primitive can beat it, so paint and stop.
+            if (radialDist <= ChannelGeometry.bedHalfWidth(riverPrimitive.width()))
                 return BED_ZONE_BY_ROSGEN[type.ordinal()];
 
             final RosgenProfile profile = RosgenProfile.of(type);
-            if (radialDist <= profile.floodPlainLength(riverUnit.width())) {
+            if (radialDist <= profile.floodPlainLength(riverPrimitive.width())) {
                 deepest = FLOODPLAIN_ZONE;
             } else if (deepest == DEFAULT) {
                 deepest = BLENDING_ZONE;

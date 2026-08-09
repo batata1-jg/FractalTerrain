@@ -117,7 +117,7 @@ public final class WorldPipeline implements AutoCloseable {
         return session.seed();
     }
 
-    /** Coarse tensor accessor for biome classification, global riverUnit tracing and relief gradients.
+    /** Coarse tensor accessor for biome classification, global riverPrimitive tracing and relief gradients.
      *  Channel 6 is the blend weight; channels 0-5 are weight-multiplied sums that must be divided by it. */
     public FloatTensor getCoarseSlice(int ci0, int cj0, int ci1, int cj1) {
         return coarse.getSlice(new int[] {0, ci0, cj0}, new int[] {7, ci1, cj1});

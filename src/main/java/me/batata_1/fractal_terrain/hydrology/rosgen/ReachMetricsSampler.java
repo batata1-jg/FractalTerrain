@@ -47,7 +47,7 @@ public final class ReachMetricsSampler {
         final double bankfullWidth = Math.max(width, HydrologyTuning.MIN_WIDTH);
         final double depth = HydrologyTuning.DEPTH_MAX_FACTOR * ChannelGeometry.depthForWidth(bankfullWidth);
         final double floodProneStage = bedElev + 2.0 * depth;
-        final double bankfullWidthFactor = Math.pow(bankfullWidth,0.05) + HydrologyTuning.ENTRENTMENT_RATIO_BIAS;
+        final double bankfullWidthFactor = Math.pow(bankfullWidth, 0.05) + HydrologyTuning.ENTRENTMENT_RATIO_BIAS;
         final double maxFloodPlainWidth = HydrologyTuning.ER_WALK_WIDTHS * bankfullWidthFactor;
         final double step = Math.clamp(
                 bankfullWidth * HydrologyTuning.ER_STEP_WIDTH_FRACTION,

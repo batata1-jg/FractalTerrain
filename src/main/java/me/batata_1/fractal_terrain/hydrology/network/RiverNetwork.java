@@ -19,10 +19,10 @@ import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
-import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
-import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit.HydrologicalFeature;
-import me.batata_1.fractal_terrain.hydrology.features.RiverUnit;
-import me.batata_1.fractal_terrain.hydrology.features.RiverUnit.RosgenType;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.HydrologicalFeature;
+import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
+import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive.RosgenType;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import org.jetbrains.annotations.Nullable;
@@ -35,13 +35,13 @@ import org.slf4j.Logger;
  * node view ({@link AtomicView}), so topology rules are checked in exactly one place. Stream-capture
  * collision handling lives here in {@link #manageCollisions}, never split into its own resolver.
  *
- * <p>{@link #collectUnits} is the pipeline's exit: it packages the network into {@link HydrologicalUnit}s
+ * <p>{@link #collectPrimitives} is the pipeline's exit: it packages the network into {@link HydrologicalPrimitive}s
  * for the caller to freeze into a spatial index. See {@code README.md} for the view seam in detail.
  */
 public final class RiverNetwork {
 
     private static final double INF = 1e3;
-    /** Floor on the resample spacing used when converting features to {@link HydrologicalUnit}s. */
+    /** Floor on the resample spacing used when converting features to {@link HydrologicalPrimitive}s. */
     private static final double MIN_CONVERT_SPACING = 0.5;
 
     private static final Logger LOG = getLogger(RiverNetwork.class);
@@ -117,7 +117,7 @@ public final class RiverNetwork {
      */
     public record EdgeSpec(int startNodeIdx, int endNodeIdx, ArrayList<double[]> pts, double flow) {}
 
-    /** A geometry removed from the active network, retained for {@link #collectUnits}. */
+    /** A geometry removed from the active network, retained for {@link #collectPrimitives}. */
     private record RemovedPath(HydrologicalFeature type, ArrayList<double[]> pts, double width, int time) {}
 
     public RiverNetwork(
@@ -537,7 +537,7 @@ public final class RiverNetwork {
         return oriented;
     }
 
-    /** Records each pruned sub-path the collision pass drops, staged for {@link #collectUnits} to emit
+    /** Records each pruned sub-path the collision pass drops, staged for {@link #collectPrimitives} to emit
      *  as an {@link HydrologicalFeature#ABANDONED_RIVER} entry. */
     private void recordAbandoned(AtomicView atomic, boolean[] alive, int step) {
         final int n = atomic.size();
@@ -684,7 +684,7 @@ public final class RiverNetwork {
                 if (firstRemovedIndex == -1) firstRemovedIndex = i;
                 removed.add(ch.spline.points().get(i).clone());
             }
-        // Retained-path read: derived width of the FIRST removed spline point (serves OXBOW_LAKE units).
+        // Retained-path read: derived width of the FIRST removed spline point (serves OXBOW_LAKE primitives).
         if (removed.size() >= 2) removedPaths.add(new RemovedPath(type, removed, ch.widthAt(firstRemovedIndex), step));
     }
 
@@ -706,23 +706,23 @@ public final class RiverNetwork {
     }
 
     // ---------------------------------------------------------------------------------------------
-    // Conversion to the queryable, persistable unit tree
+    // Conversion to the queryable, persistable primitive tree
     // ---------------------------------------------------------------------------------------------
 
-    /** {@link #collectUnits(double, double, IntPredicate, ChannelTyper)} untyped: every unit's {@link
-     *  RiverUnit#rosgenType() rosgenType} is null, which callers coalesce to {@link RosgenType#A}. */
-    public List<HydrologicalUnit> collectUnits(double offsetX, double offsetZ) {
-        return collectUnits(offsetX, offsetZ, channelId -> true, null);
+    /** {@link #collectPrimitives(double, double, IntPredicate, ChannelTyper)} untyped: every primitive's {@link
+     *  RiverPrimitive#rosgenType() rosgenType} is null, which callers coalesce to {@link RosgenType#A}. */
+    public List<HydrologicalPrimitive> collectPrimitives(double offsetX, double offsetZ) {
+        return collectPrimitives(offsetX, offsetZ, channelId -> true, null);
     }
 
-    /** {@link #collectUnits(double, double, IntPredicate, ChannelTyper)} over every channel. */
-    public List<HydrologicalUnit> collectUnits(double offsetX, double offsetZ, @Nullable ChannelTyper typer) {
-        return collectUnits(offsetX, offsetZ, channelId -> true, typer);
+    /** {@link #collectPrimitives(double, double, IntPredicate, ChannelTyper)} over every channel. */
+    public List<HydrologicalPrimitive> collectPrimitives(double offsetX, double offsetZ, @Nullable ChannelTyper typer) {
+        return collectPrimitives(offsetX, offsetZ, channelId -> true, typer);
     }
 
-    public List<HydrologicalUnit> collectUnits(
+    public List<HydrologicalPrimitive> collectPrimitives(
             double offsetX, double offsetZ, IntPredicate channelIdFilter, @Nullable ChannelTyper typer) {
-        final List<HydrologicalUnit> units = new ArrayList<>();
+        final List<HydrologicalPrimitive> primitives = new ArrayList<>();
         final double[] offset = new double[] {offsetX, offsetZ};
         // Phase 1: resample every emitting channel. Types depend on neighbouring channels, so every
         // channel must hold its final geometry before any of them is classified.
@@ -730,13 +730,13 @@ public final class RiverNetwork {
         for (Channel ch : channels.values()) {
             if (!channelIdFilter.test(ch.channelId)) continue;
             if (!ch.isResampleable()) continue; // degenerate geometry (too few points or NaN): skip
-            // Spacing must be <= half the NARROWEST (intake) derived width, so consecutive units'
+            // Spacing must be <= half the NARROWEST (intake) derived width, so consecutive primitives'
             // width/2 discs always overlap (gap-free membership test + girth rendering).
             final double dx = Math.max(ch.intakeWidth() / 2.0, MIN_CONVERT_SPACING);
             try {
                 ch.reSample(dx);
             } catch (RuntimeException runaway) {
-                // Pathological runaway geometry (spline exceeds MAX_SPLINE_LENGTH); add no units.
+                // Pathological runaway geometry (spline exceeds MAX_SPLINE_LENGTH); add no primitives.
                 continue;
             }
             emitting.add(ch);
@@ -746,19 +746,19 @@ public final class RiverNetwork {
         if (typer != null) typer.prepare(this);
 
         for (Endpoint en : nodes.values()) {
-            if (en.type == Endpoint.Type.SOURCE) HydrologicalFeature.SOURCE.addUnits(offset, units, en);
+            if (en.type == Endpoint.Type.SOURCE) HydrologicalFeature.SOURCE.addPrimitives(offset, primitives, en);
             // this is wrong, not all drains are deltas
-            if (en.type == Endpoint.Type.DRAIN) HydrologicalFeature.DELTA.addUnits(offset, units, en);
+            if (en.type == Endpoint.Type.DRAIN) HydrologicalFeature.DELTA.addPrimitives(offset, primitives, en);
         }
 
         for (Channel ch : emitting) {
-            HydrologicalFeature.RIVER.addUnits(offset, units, typer, ch);
+            HydrologicalFeature.RIVER.addPrimitives(offset, primitives, typer, ch);
         }
 
         for (RemovedPath rp : removedPaths) {
-            HydrologicalFeature.ABANDONED_RIVER.addUnits(offset, units, rp);
+            HydrologicalFeature.ABANDONED_RIVER.addPrimitives(offset, primitives, rp);
         }
-        return units;
+        return primitives;
     }
 
     // ---------------------------------------------------------------------------------------------

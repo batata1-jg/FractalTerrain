@@ -21,7 +21,7 @@ import org.slf4j.LoggerFactory;
  * that already carries the global channels.
  *
  * <p>Attaches in place rather than building a parallel network, so one downstream bed-assignment and
- * unit-collection pass serves global and local channels alike.
+ * primitive-collection pass serves global and local channels alike.
  *
  * <p>A channel is kept only if it stays inside the tile's true boundary or would seam against its
  * neighbour. Global proximity uses a throwaway index since the Meanders quadtree is cleared each step.
@@ -30,7 +30,7 @@ final class LocalDrainageTracer {
 
     private static final Logger LOG = LoggerFactory.getLogger(LocalDrainageTracer.class);
 
-    private record GlobalRiverUnit(double[] pos, double width, int id) implements SpatialIndexCircle {
+    private record GlobalRiverPrimitive(double[] pos, double width, int id) implements SpatialIndexCircle {
 
         @Override
         public double[] getCenter() {
@@ -62,8 +62,8 @@ final class LocalDrainageTracer {
         final int[] nodeIndex = new int[cellCount];
         Arrays.fill(nodeIndex, -1);
 
-        final ImmutableRTree<GlobalRiverUnit> globalRiversPosition =
-                new ImmutableRTree<>(getGlobalUnits(net), new GlobalRiverUnit(new double[] {0, 0}, 0, -1));
+        final ImmutableRTree<GlobalRiverPrimitive> globalRiversPosition =
+                new ImmutableRTree<>(getGlobalPrimitives(net), new GlobalRiverPrimitive(new double[] {0, 0}, 0, -1));
 
         boolean[] riverMask = null;
         if (stages != null) {
@@ -101,10 +101,10 @@ final class LocalDrainageTracer {
                             -1,
                             HydrologyTuning.FLOW_PER_CELL_LOCAL,
                             -1);
-                    final List<GlobalRiverUnit> nearbyGlobal = globalRiversPosition.queryContaining(nextNodePos);
-                    for (GlobalRiverUnit unit : nearbyGlobal) {
-                        net.addDirectedEdge(unit.id(), nodeIndex[next]);
-                        net.addDirectedEdge(nodeIndex[next], unit.id());
+                    final List<GlobalRiverPrimitive> nearbyGlobal = globalRiversPosition.queryContaining(nextNodePos);
+                    for (GlobalRiverPrimitive primitive : nearbyGlobal) {
+                        net.addDirectedEdge(primitive.id(), nodeIndex[next]);
+                        net.addDirectedEdge(nodeIndex[next], primitive.id());
                     }
                 }
                 if (nodeIndex[current] != -1) net.addDirectedEdge(nodeIndex[current], nodeIndex[next]);
@@ -126,11 +126,11 @@ final class LocalDrainageTracer {
         }
     }
 
-    private static List<GlobalRiverUnit> getGlobalUnits(AtomicView net) {
+    private static List<GlobalRiverPrimitive> getGlobalPrimitives(AtomicView net) {
         final double[] flow = net.accumulateAndCorrectFlow();
-        final GlobalRiverUnit[] globalRivers = new GlobalRiverUnit[net.size()];
+        final GlobalRiverPrimitive[] globalRivers = new GlobalRiverPrimitive[net.size()];
         for (int id = 0; id < net.size(); id++) {
-            globalRivers[id] = new GlobalRiverUnit(net.pos(id), widthFromFlow(flow[id]), id);
+            globalRivers[id] = new GlobalRiverPrimitive(net.pos(id), widthFromFlow(flow[id]), id);
         }
         return Arrays.stream(globalRivers).toList();
     }

@@ -12,9 +12,9 @@ import me.batata_1.fractal_terrain.hydrology.profile.ZoneCategory;
  * {@link ZoneCategory#LAKE_BED} is reserved below {@link ZoneCategory#BED} for it, so a channel still
  * running through the loop will keep governing the cross-section once this record grows a real profile.
  */
-public record OxbowLakeUnit(double[] coord) implements HydrologicalUnit {
+public record OxbowLakePrimitive(double[] coord) implements HydrologicalPrimitive {
 
-    static final OxbowLakeUnit PROTOTYPE = new OxbowLakeUnit(new double[] {0.0, 0.0});
+    static final OxbowLakePrimitive PROTOTYPE = new OxbowLakePrimitive(new double[] {0.0, 0.0});
 
     @Override
     public double[] getCoords() {
@@ -37,32 +37,27 @@ public record OxbowLakeUnit(double[] coord) implements HydrologicalUnit {
     }
 
     @Override
-    public double carveFineGrained(double[] pt, double elevAtPixel) {
-        return elevAtPixel;
+    public long primitiveByteSize() {
+        return PrimitiveCodec.coordByteSize(coord);
     }
 
     @Override
-    public long unitByteSize() {
-        return UnitCodec.coordByteSize(coord);
+    public byte[] serializePrimitive() {
+        return PrimitiveCodec.writeCoord(coord);
     }
 
     @Override
-    public byte[] serializeUnit() {
-        return UnitCodec.writeCoord(coord);
-    }
-
-    @Override
-    public HydrologicalUnit deserializeUnit(byte[] rawBytes) {
-        return new OxbowLakeUnit(UnitCodec.readCoord(rawBytes));
+    public HydrologicalPrimitive deserializePrimitive(byte[] rawBytes) {
+        return new OxbowLakePrimitive(PrimitiveCodec.readCoord(rawBytes));
     }
 
     @Override
     public boolean equals(Object o) {
-        return UnitCodec.coordsEqual(this, o, coord);
+        return PrimitiveCodec.coordsEqual(this, o, coord);
     }
 
     @Override
     public int hashCode() {
-        return UnitCodec.coordsHash(coord);
+        return PrimitiveCodec.coordsHash(coord);
     }
 }

@@ -11,16 +11,16 @@ import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * One sample of a flowing channel — the reference {@link HydrologicalUnit}, the only type with a full
+ * One sample of a flowing channel — the reference {@link HydrologicalPrimitive}, the only type with a full
  * cross-section.
  *
  * <p>{@code coord} and {@code normal} are handed by reference (no boxing); treat both as immutable. A
- * null {@code normal} means no tangent — the unit averages into zones but cuts no cross-section.
+ * null {@code normal} means no tangent — the primitive averages into zones but cuts no cross-section.
  *
  * <p>A null {@code rosgenType} means never classified (spring/mouth, nothing to measure) and coalesces
- * to {@link RosgenType#A} so the unit still carves.
+ * to {@link RosgenType#A} so the primitive still carves.
  */
-public record RiverUnit(
+public record RiverPrimitive(
         double[] coord,
         double radius,
         RosgenType rosgenType,
@@ -28,9 +28,9 @@ public record RiverUnit(
         double curvature,
         double width,
         double elevation)
-        implements HydrologicalUnit {
+        implements HydrologicalPrimitive {
 
-    static final RiverUnit PROTOTYPE = new RiverUnit(new double[] {0.0, 0.0}, 0, null, null, 0,0, 0);
+    static final RiverPrimitive PROTOTYPE = new RiverPrimitive(new double[] {0.0, 0.0}, 0, null, null, 0, 0, 0);
 
     @Override
     public double[] getCoords() {
@@ -61,8 +61,8 @@ public record RiverUnit(
 
     @Override
     public float waterLine() {
-        if(width <= 1.5 ) return -1;
-        if(width <= 2.5  ) return -2;
+        if (width <= 1.5) return -1;
+        if (width <= 2.5) return -2;
         return -3;
     }
 
@@ -71,50 +71,41 @@ public record RiverUnit(
         return RosgenProfile.of(rosgenType == null ? RosgenType.A : rosgenType);
     }
 
-    /** Cuts the unit's cross-section, faded over an elliptical footprint so full strength lands across
-     *  the floodplain but tapers along the channel. Neighbouring units' ellipses cover the stretch
+    /** Cuts the primitive's cross-section, faded over an elliptical footprint so full strength lands across
+     *  the floodplain but tapers along the channel. Neighbouring primitives' ellipses cover the stretch
      *  between them, which is why the {@code dx <= width/2} spacing matters. */
     @Override
-    public double carveFineGrained(double[] pt, double elevAtPixel) {
-        if (normal == null) return elevAtPixel;
-        final RosgenProfile profile = (RosgenProfile) getProfile();
-
+    public double d(double[] pt) {
+        if (normal == null) return radius;
         final double nx = normal[0], nz = normal[1];
+        if (Math.abs(nx) < 1e-6 || Math.abs(nz) < 1e-6) return radius;
         final double dx = pt[0] - coord[0], dz = pt[1] - coord[1];
-        final double floodPlainLength = profile.floodPlainLength(width);
-        final double radiusSq = floodPlainLength * floodPlainLength;
-        if (dx * dx + dz * dz >= radiusSq) return elevAtPixel;
-        if (Math.abs(nx) < 1e-6 || Math.abs(nz) < 1e-6) {
-            return elevAtPixel;
-        }
-
-        final double signedPerpDist = nx * dx + nz * dz;
-        final double alongDist = Math.abs(nz * dx - nx * dz);
-
-        final double uninterpolatedDelta =
-                profile.riverAreaDelta(Arrays.hashCode(coord), signedPerpDist, alongDist, width, curvature);
-
-        if (radiusSq - signedPerpDist * signedPerpDist < 1e-6) return elevAtPixel;
-        final double eccentricity =
-                Math.sqrt(Math.abs(1 - (alongDist * alongDist) / (radiusSq - signedPerpDist * signedPerpDist)));
-        final double t = Math.clamp(0.5 * (Math.tanh(8 * (eccentricity - HydrologyTuning.MAX_ECCENTRICITY)) + 1), 0, 1);
-        //  final double t = Math.clamp(eccentricity / HydrologyTuning.MAX_ECCENTRICITY, 0, 1);
-        return elevAtPixel + t * uninterpolatedDelta;
+        return nx * dx + nz * dz;
     }
 
     @Override
-    public long unitByteSize() {
+    public double h(double[] pt, Object... args) {
+        if (normal == null) return elevation;
+        final RosgenProfile profile = (RosgenProfile) getProfile();
+        return elevation + profile.delta(hashCode(),d(pt),width,curvature);
+    }
+
+    @Override
+    public long primitiveByteSize() {
         // rosgen tag + coord + normal + radius + width + elevation
-        return Integer.BYTES + UnitCodec.coordByteSize(coord) + UnitCodec.coordByteSize(normal) + 4L * Double.BYTES;
+        return Integer.BYTES
+                + PrimitiveCodec.coordByteSize(coord)
+                + PrimitiveCodec.coordByteSize(normal)
+                + 4L * Double.BYTES;
     }
 
     @Override
-    public byte[] serializeUnit() {
-        final ByteBuffer buf = ByteBuffer.allocate((int) unitByteSize()).order(ByteOrder.LITTLE_ENDIAN);
+    public byte[] serializePrimitive() {
+        final ByteBuffer buf = ByteBuffer.allocate((int) primitiveByteSize()).order(ByteOrder.LITTLE_ENDIAN);
         // An unclassified reach stamps -1; every other value is a RosgenType ordinal.
         buf.putInt(rosgenType == null ? -1 : rosgenType.ordinal());
-        UnitCodec.putCoord(buf, coord);
-        UnitCodec.putCoord(buf, normal);
+        PrimitiveCodec.putCoord(buf, coord);
+        PrimitiveCodec.putCoord(buf, normal);
         buf.putDouble(curvature);
         buf.putDouble(radius);
         buf.putDouble(width);
@@ -123,24 +114,24 @@ public record RiverUnit(
     }
 
     @Override
-    public HydrologicalUnit deserializeUnit(byte[] rawBytes) {
+    public HydrologicalPrimitive deserializePrimitive(byte[] rawBytes) {
         final ByteBuffer buf = ByteBuffer.wrap(rawBytes).order(ByteOrder.LITTLE_ENDIAN);
         final int rosgenOrdinal = buf.getInt();
         final RosgenType rosgen = rosgenOrdinal < 0 ? null : RosgenType.values()[rosgenOrdinal];
-        final double[] coords = UnitCodec.getCoord(buf);
-        final double[] normalVec = UnitCodec.getCoord(buf);
+        final double[] coords = PrimitiveCodec.getCoord(buf);
+        final double[] normalVec = PrimitiveCodec.getCoord(buf);
         final double curvature = buf.getDouble();
         final double r = buf.getDouble();
         final double w = buf.getDouble();
         final double e = buf.getDouble();
-        return new RiverUnit(coords, r, rosgen, normalVec, curvature , w, e);
+        return new RiverPrimitive(coords, r, rosgen, normalVec, curvature, w, e);
     }
 
     // Records compare array components by reference; these compare contents instead.
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof RiverUnit other)) return false;
+        if (!(o instanceof RiverPrimitive other)) return false;
         return rosgenType == other.rosgenType
                 && Arrays.equals(coord, other.coord)
                 && Arrays.equals(normal, other.normal)
@@ -163,7 +154,7 @@ public record RiverUnit(
                 + ", normal=" + Arrays.toString(normal) + ", width=" + width + ", elevation=" + elevation + "]";
     }
 
-    /** Rosgen stream classification (A–G); selects the unit's {@link RosgenProfile}. */
+    /** Rosgen stream classification (A–G); selects the primitive's {@link RosgenProfile}. */
     public enum RosgenType {
         A,
         Aa,

@@ -195,7 +195,7 @@ public final class AtomicView {
     }
 
     // the edges itself can cross
-    public record nodeUnit(double[] coord, double radius, int id) implements SpatialIndexCircle {
+    public record nodePrimitive(double[] coord, double radius, int id) implements SpatialIndexCircle {
 
         @Override
         public double[] getCenter() {
@@ -243,14 +243,14 @@ public final class AtomicView {
 
         // 2. Node R-tree; each node's proximity circle bounds how far a crossing partner's endpoint can sit.
         final double radius = HydrologyTuning.MAX_MIGRATION * 5;
-        final List<nodeUnit> units = new ArrayList<>(originalSize);
-        for (int i = 0; i < originalSize; i++) units.add(new nodeUnit(pos(i), radius, i));
-        final ImmutableRTree<nodeUnit> index = new ImmutableRTree<>(units, null);
+        final List<nodePrimitive> primitives = new ArrayList<>(originalSize);
+        for (int i = 0; i < originalSize; i++) primitives.add(new nodePrimitive(pos(i), radius, i));
+        final ImmutableRTree<nodePrimitive> index = new ImmutableRTree<>(primitives, null);
 
         // 3. Detect crossings; record the (t, crossingNodeId) split points per segment (t = param along lo->hi).
         final List<List<double[]>> splits = new ArrayList<>(segments.size());
         for (int i = 0; i < segments.size(); i++) splits.add(new ArrayList<>());
-        final List<nodeUnit> nearby = new ArrayList<>();
+        final List<nodePrimitive> nearby = new ArrayList<>();
         for (int si = 0; si < segments.size(); si++) {
             final int a = segments.get(si)[0], b = segments.get(si)[1];
             final double[] pa = pos(a), pb = pos(b);
@@ -259,7 +259,7 @@ public final class AtomicView {
             nearby.clear();
             index.queryContaining(pa, nearby);
             index.queryContaining(pb, nearby);
-            for (nodeUnit nu : nearby) for (int sj : incident.get(nu.id())) if (sj > si) candidates.add(sj);
+            for (nodePrimitive nu : nearby) for (int sj : incident.get(nu.id())) if (sj > si) candidates.add(sj);
 
             for (int sj : candidates) {
                 final int c = segments.get(sj)[0], d = segments.get(sj)[1];

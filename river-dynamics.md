@@ -123,7 +123,7 @@ construction and there is no need to guard against uphill reaches.
 ### 2.2 Entrenchment ratio — the transect algorithm
 
 This is the field method transcribed to a raster, and it is exact rather than a proxy. Each
-`HydrologicalUnit` already carries a **unit normal** (`normalVec`) and a **bed elevation**, so a
+`HydrologicalPrimitive` already carries a **unit normal** (`normalVec`) and a **bed elevation**, so a
 transect is a straight raster walk.
 
 ```
@@ -307,7 +307,7 @@ Ordering rationale, in the order the tests fire:
    add a way to get them wrong.
 2. **ER second**, because it is the only test that separates the entrenched family (`F`, `G`) from
    everything with a floodplain. Within that family, W/D — i.e. catchment size — picks narrow-deep `G`
-   (a gully) over wide-shallow `F` (an incised meandering riverUnit). Note `B`'s published slope band
+   (a gully) over wide-shallow `F` (an incised meandering riverPrimitive). Note `B`'s published slope band
    (0.02–0.039) overlaps `G`'s exactly; ER, not slope, is what distinguishes them.
 3. **`DA` (anastomosing) before `D` (braided)**, because both want unconfined valleys and the
    anastomosing case is far more specific: near base level, essentially flat, extremely wide flood-prone
@@ -332,13 +332,13 @@ adopt `Q_bf ∝ DA` (reasonable for a synthetic world with uniform runoff), the 
 
 Rosgen's own tolerances (ER ±0.2, W/D ±2.0) exist because the metrics are noisy. A raster
 implementation is noisier still. If you classify per-node with hard thresholds you get types flickering
-along a single riverUnit, and since `RosgenProfile` controls `floodPlainLength` and `riverInfluence`, a
+along a single riverPrimitive, and since `RosgenProfile` controls `floodPlainLength` and `riverInfluence`, a
 flicker becomes a visible scalloped floodplain edge.
 
 Two mitigations, both cheap:
 
-- **Classify per channel segment, not per unit.** Compute one type for a whole `Channel` (or for each
-  contiguous run of `N` nodes) and stamp every unit from that channel with it. `RiverNetwork.collectUnits`
+- **Classify per channel segment, not per primitive.** Compute one type for a whole `Channel` (or for each
+  contiguous run of `N` nodes) and stamp every primitive from that channel with it. `RiverNetwork.collectPrimitives`
   is already the single point where types are stamped.
 - **Apply the published tolerances as a dead band.** When a reach's ER sits within ±0.2 of a threshold,
   keep the upstream neighbour's type. Same for W/D within ±2.0.
@@ -447,9 +447,9 @@ reflect what shipped.
 
 | Where | What changes |
 | ----- | ------------ |
-| `hydrology/HydrologicalUnit.java`, the `RosgenType` enum | Enum currently holds `A B C D` only. Level I needs `Aa+ A B C D DA E F G`. Note the serialisation writes `rosgenType.ordinal()` (the `serialize()` method) and reads it back by index (the `deserialize()` method) — **appending is safe, reordering breaks every persisted tile**. |
+| `hydrology/HydrologicalPrimitive.java`, the `RosgenType` enum | Enum currently holds `A B C D` only. Level I needs `Aa+ A B C D DA E F G`. Note the serialisation writes `rosgenType.ordinal()` (the `serialize()` method) and reads it back by index (the `deserialize()` method) — **appending is safe, reordering breaks every persisted tile**. |
 | `hydrology/profile/RosgenProfile.java` | Mirror enum, currently only `A` overrides anything. New constants need `floodPlainLength` / `riverInfluence` / bed-profile overrides; the §3.1 prescription lives here. |
-| `hydrology/meanders/RiverNetwork.java` — **RESOLVED**. | The `\ TODO: change this to the correct type` placeholder and its hardcoded `HydrologicalUnit.RosgenType.A` fallback are gone, resolved in commit 83e972f ("feat(hydrology): stamp Rosgen type and endpoint kind on units in collectUnits"). The stamping point is now the `final RosgenType rosgen = ...` assignment inside `collectUnits`, fed by the classifier in `hydrology/rosgen/`. |
+| `hydrology/meanders/RiverNetwork.java` — **RESOLVED**. | The `\ TODO: change this to the correct type` placeholder and its hardcoded `HydrologicalPrimitive.RosgenType.A` fallback are gone, resolved in commit 83e972f ("feat(hydrology): stamp Rosgen type and endpoint kind on primitives in collectPrimitives"). The stamping point is now the `final RosgenType rosgen = ...` assignment inside `collectPrimitives`, fed by the classifier in `hydrology/rosgen/`. |
 | `hydrology/LocalRiverProvider.java`, in `buildTile` | First `ChannelElevationAssigner.assign` then first `HydrologyProfileCarver.carveRiverShells`. **Classification must run between these two calls**: `assign` provides `bedElevations` (needed for slope and flood-prone stage), and the carve destroys the raw valley geometry ER depends on (§2.2). |
 | `config/HydrologyTuning.java` | New home for `S_AA`, `S_A`, `ER_ENTRENCHED`, `ER_SLIGHT`, `ER_ANASTOMOSE`, `WD_NARROW`, `FLOW_TO_KM2`, `DEPTH_MAX_FACTOR`. |
 | `hydrology/meanders/Meanders` | If sinuosity becomes prescriptive per type (§4.2), the relaxation needs a per-type target. |
@@ -486,7 +486,7 @@ put on the output.
   careful expert applications of competing schemes, a fifth of reaches disagree. Do not over-engineer
   precision that the underlying system does not have.
 
-For this project the practical reading is: Rosgen Level I is a good **vocabulary of riverUnit shapes** with
+For this project the practical reading is: Rosgen Level I is a good **vocabulary of riverPrimitive shapes** with
 published, quantitative, DEM-tractable boundaries. It is not a physical model, and the generated result
 should be judged on whether it looks right, not on whether it would survive a geomorphologist's field
 audit.

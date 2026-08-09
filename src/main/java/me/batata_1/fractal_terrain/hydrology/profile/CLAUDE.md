@@ -1,6 +1,6 @@
 # profile/
 
-Turns the hydrological-unit index into carve/paint operations consumed by `world/gen/`; see `README.md`
+Turns the hydrological-primitive index into carve/paint operations consumed by `world/gen/`; see `README.md`
 for the two carve stages and the bed-depth limitation.
 
 ## Files

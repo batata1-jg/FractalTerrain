@@ -12,46 +12,51 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import javax.imageio.ImageIO;
-import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
-import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit.HydrologicalFeature;
-import me.batata_1.fractal_terrain.hydrology.features.RiverUnit;
-import me.batata_1.fractal_terrain.hydrology.features.RiverUnit.RosgenType;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.HydrologicalFeature;
+import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
+import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive.RosgenType;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndex;
 
 /**
- * Renders a tile's {@link HydrologicalUnit} set to an upscaled color PNG and logs summary stats.
+ * Renders a tile's {@link HydrologicalPrimitive} set to an upscaled color PNG and logs summary stats.
  * Same explicit-{@code debugPath}, no-server pattern as {@link TensorVisualizer} / {@link NoiseVisualizer}.
  *
- * <p>A {@link RiverUnit} paints a translucent width-girth disc under its centre point; gaps or
- * sudden girth jumps in the render flag a width/taper bug in the unit producer.
+ * <p>A {@link RiverPrimitive} paints a translucent width-girth disc under its centre point; gaps or
+ * sudden girth jumps in the render flag a width/taper bug in the primitive producer.
  */
-public class HydrologyUnitVisualizer {
+public class HydrologyPrimitiveVisualizer {
 
     /** Alpha for the width-girth discs (blended over whatever is already in the pixel). */
     private static final double GIRTH_ALPHA = 0.35;
 
     public String debugPath;
 
-    public HydrologyUnitVisualizer(String debugPath) {
+    public HydrologyPrimitiveVisualizer(String debugPath) {
         this.debugPath = debugPath;
     }
 
-    /** Collect every unit of {@code index} and render it (works for any {@link SpatialIndex} payload). */
-    public void see(SpatialIndex<HydrologicalUnit> index, String name, int gridSize, int upscale) {
+    /** Collect every primitive of {@code index} and render it (works for any {@link SpatialIndex} payload). */
+    public void see(SpatialIndex<HydrologicalPrimitive> index, String name, int gridSize, int upscale) {
         see(index.getAllEntries(), name, gridSize, upscale);
     }
 
-    /** Renders {@code units} (tile-local coords) to a PNG; near-border units are clipped per pixel,
+    /** Renders {@code primitives} (tile-local coords) to a PNG; near-border primitives are clipped per pixel,
      *  not dropped, so a girth crossing the tile edge still shows its in-tile part. */
-    public void see(List<HydrologicalUnit> units, String name, int gridSize, int upscale) {
-        see(units, name, gridSize, upscale, 0, 0);
+    public void see(List<HydrologicalPrimitive> primitives, String name, int gridSize, int upscale) {
+        see(primitives, name, gridSize, upscale, 0, 0);
     }
 
-    /** {@link #see(List, String, int, int)} for units in <b>world</b> relief-pixel coords — the frame
+    /** {@link #see(List, String, int, int)} for primitives in <b>world</b> relief-pixel coords — the frame
      *  {@code LocalRiverProvider} publishes. {@code (originX, originZ)} shifts them into canvas frame. */
     public void see(
-            List<HydrologicalUnit> units, String name, int gridSize, int upscale, double originX, double originZ) {
-        render(units, name, gridSize, upscale, originX, originZ, HydrologyUnitVisualizer::colorFor);
+            List<HydrologicalPrimitive> primitives,
+            String name,
+            int gridSize,
+            int upscale,
+            double originX,
+            double originZ) {
+        render(primitives, name, gridSize, upscale, originX, originZ, HydrologyPrimitiveVisualizer::colorFor);
     }
 
     /** Fixed Rosgen palette indexed by {@link RosgenType#ordinal()}; stable so dumps stay comparable across runs. */
@@ -67,38 +72,44 @@ public class HydrologyUnitVisualizer {
         new Color(0x7B00FF), // G   entrenched gully
     };
 
-    /** Rendered for a unit with no Rosgen type: a source, a drain, an oxbow, or an unclassified reach. */
+    /** Rendered for a primitive with no Rosgen type: a source, a drain, an oxbow, or an unclassified reach. */
     private static final Color UNCLASSIFIED = new Color(0xFFFFFF);
 
-    /** Colour for a unit's Rosgen type. Renders {@link #UNCLASSIFIED} instead of coalescing to A like
+    /** Colour for a primitive's Rosgen type. Renders {@link #UNCLASSIFIED} instead of coalescing to A like
      *  downstream carving does — this dump shows what was measured, not what will be carved. */
-    private static Color rosgenColor(HydrologicalUnit unit) {
-        if (!(unit instanceof RiverUnit riverUnit) || riverUnit.rosgenType() == null) return UNCLASSIFIED;
-        return ROSGEN_PALETTE[riverUnit.rosgenType().ordinal()];
+    private static Color rosgenColor(HydrologicalPrimitive primitive) {
+        if (!(primitive instanceof RiverPrimitive riverPrimitive) || riverPrimitive.rosgenType() == null)
+            return UNCLASSIFIED;
+        return ROSGEN_PALETTE[riverPrimitive.rosgenType().ordinal()];
     }
 
     /** As {@link #see(List, String, int, int)} but colours by Rosgen type: the classification's visual
      *  regression check — expect long runs of one colour, changing at valley transitions. */
-    public void seeByRosgenType(List<HydrologicalUnit> units, String name, int gridSize, int upscale) {
-        seeByRosgenType(units, name, gridSize, upscale, 0, 0);
+    public void seeByRosgenType(List<HydrologicalPrimitive> primitives, String name, int gridSize, int upscale) {
+        seeByRosgenType(primitives, name, gridSize, upscale, 0, 0);
     }
 
     /** {@link #seeByRosgenType(List, String, int, int)} with the world→canvas origin of {@link #see}. */
     public void seeByRosgenType(
-            List<HydrologicalUnit> units, String name, int gridSize, int upscale, double originX, double originZ) {
-        render(units, name, gridSize, upscale, originX, originZ, HydrologyUnitVisualizer::rosgenColor);
+            List<HydrologicalPrimitive> primitives,
+            String name,
+            int gridSize,
+            int upscale,
+            double originX,
+            double originZ) {
+        render(primitives, name, gridSize, upscale, originX, originZ, HydrologyPrimitiveVisualizer::rosgenColor);
     }
 
-    /** Renders {@code units} with {@code palette} choosing colour, so a unit's girth disc and its centre
+    /** Renders {@code primitives} with {@code palette} choosing colour, so a primitive's girth disc and its centre
      *  point never show different colours after independent lookups in the two render passes. */
     private void render(
-            List<HydrologicalUnit> units,
+            List<HydrologicalPrimitive> primitives,
             String name,
             int gridSize,
             int upscale,
             double originX,
             double originZ,
-            Function<HydrologicalUnit, Color> palette) {
+            Function<HydrologicalPrimitive, Color> palette) {
         if (gridSize <= 0 || upscale <= 0)
             throw new IllegalArgumentException("gridSize and upscale must be > 0, got " + gridSize + ", " + upscale);
         final int side = gridSize * upscale;
@@ -106,21 +117,21 @@ public class HydrologyUnitVisualizer {
 
         // Pass 1 — width girths: translucent filled disc of radius width/2 (tile px). Only a River has a
         // width; the position-only feature types contribute their centre point in pass 2 and nothing here.
-        for (final HydrologicalUnit unit : units) {
-            if (!(unit instanceof RiverUnit riverUnit)) continue;
-            final int rgb = palette.apply(unit).getRGB();
-            final double centerX = (unit.coord()[0] - originX) * upscale;
-            final double centerZ = (unit.coord()[1] - originZ) * upscale;
-            final double radius = riverUnit.width() * 0.5 * upscale;
+        for (final HydrologicalPrimitive primitive : primitives) {
+            if (!(primitive instanceof RiverPrimitive riverPrimitive)) continue;
+            final int rgb = palette.apply(primitive).getRGB();
+            final double centerX = (primitive.coord()[0] - originX) * upscale;
+            final double centerZ = (primitive.coord()[1] - originZ) * upscale;
+            final double radius = riverPrimitive.width() * 0.5 * upscale;
             blendDisc(image, centerX, centerZ, radius, rgb);
         }
 
-        // Pass 2 — unit points: solid squares in the full-strength color, on top of the girths.
+        // Pass 2 — primitive points: solid squares in the full-strength color, on top of the girths.
         final int pointHalf = Math.max(1, upscale / 2) / 2; // point square side = max(1, upscale/2)
-        for (final HydrologicalUnit unit : units) {
-            final int rgb = palette.apply(unit).getRGB();
-            final int px = (int) Math.round((unit.coord()[0] - originX) * upscale);
-            final int pz = (int) Math.round((unit.coord()[1] - originZ) * upscale);
+        for (final HydrologicalPrimitive primitive : primitives) {
+            final int rgb = palette.apply(primitive).getRGB();
+            final int px = (int) Math.round((primitive.coord()[0] - originX) * upscale);
+            final int pz = (int) Math.round((primitive.coord()[1] - originZ) * upscale);
             for (int x = px - pointHalf; x <= px + pointHalf; x++) {
                 for (int z = pz - pointHalf; z <= pz + pointHalf; z++) {
                     if (x >= 0 && x < side && z >= 0 && z < side) image.setRGB(x, z, rgb);
@@ -137,37 +148,42 @@ public class HydrologyUnitVisualizer {
             throw new UncheckedIOException(e);
         }
         DEBUG_LOGGER.info(
-                "unit tree '{}': {} units rendered to {} ({}x{} px)", name, units.size(), outputFile, side, side);
+                "primitive tree '{}': {} primitives rendered to {} ({}x{} px)",
+                name,
+                primitives.size(),
+                outputFile,
+                side,
+                side);
     }
 
-    /** Logs per-type point counts and, over the {@link RiverUnit} units, width/elevation min-mean-max
+    /** Logs per-type point counts and, over the {@link RiverPrimitive} primitives, width/elevation min-mean-max
      *  — a numeric sanity check alongside the visual dump, without opening a PNG. */
-    public void logStats(List<HydrologicalUnit> units, String label) {
-        if (units.isEmpty()) {
-            DEBUG_LOGGER.info("unit stats [{}]: empty", label);
+    public void logStats(List<HydrologicalPrimitive> primitives, String label) {
+        if (primitives.isEmpty()) {
+            DEBUG_LOGGER.info("primitive stats [{}]: empty", label);
             return;
         }
         final Map<HydrologicalFeature, Integer> pointsPerType = new HashMap<>();
         int riverCount = 0;
         double widthMin = Double.POSITIVE_INFINITY, widthMax = Double.NEGATIVE_INFINITY, widthSum = 0;
         double elevMin = Double.POSITIVE_INFINITY, elevMax = Double.NEGATIVE_INFINITY;
-        for (final HydrologicalUnit unit : units) {
-            pointsPerType.merge(unit.getType(), 1, Integer::sum);
-            if (!(unit instanceof RiverUnit riverUnit)) continue;
+        for (final HydrologicalPrimitive primitive : primitives) {
+            pointsPerType.merge(primitive.getType(), 1, Integer::sum);
+            if (!(primitive instanceof RiverPrimitive riverPrimitive)) continue;
             riverCount++;
-            widthMin = Math.min(widthMin, riverUnit.width());
-            widthMax = Math.max(widthMax, riverUnit.width());
-            widthSum += riverUnit.width();
-            elevMin = Math.min(elevMin, riverUnit.elevation());
-            elevMax = Math.max(elevMax, riverUnit.elevation());
+            widthMin = Math.min(widthMin, riverPrimitive.width());
+            widthMax = Math.max(widthMax, riverPrimitive.width());
+            widthSum += riverPrimitive.width();
+            elevMin = Math.min(elevMin, riverPrimitive.elevation());
+            elevMax = Math.max(elevMax, riverPrimitive.elevation());
         }
         if (riverCount == 0) {
-            DEBUG_LOGGER.info("unit stats [{}]: {} points, none of them rivers", label, units.size());
+            DEBUG_LOGGER.info("primitive stats [{}]: {} points, none of them rivers", label, primitives.size());
         } else {
             DEBUG_LOGGER.info(
-                    "unit stats [{}]: {} points ({} river); width min/mean/max = {}/{}/{}; elevation min/max = {}/{}",
+                    "primitive stats [{}]: {} points ({} river); width min/mean/max = {}/{}/{}; elevation min/max = {}/{}",
                     label,
-                    units.size(),
+                    primitives.size(),
                     riverCount,
                     widthMin,
                     widthSum / riverCount,
@@ -176,14 +192,14 @@ public class HydrologyUnitVisualizer {
                     elevMax);
         }
         for (final Map.Entry<HydrologicalFeature, Integer> e : pointsPerType.entrySet()) {
-            DEBUG_LOGGER.info("unit stats [{}]:   {} -> {} points", label, e.getKey(), e.getValue());
+            DEBUG_LOGGER.info("primitive stats [{}]:   {} -> {} points", label, e.getKey(), e.getValue());
         }
     }
 
-    /** A unit's render color: one full-brightness hue per {@link HydrologicalFeature} type. */
-    private static Color colorFor(HydrologicalUnit unit) {
+    /** A primitive's render color: one full-brightness hue per {@link HydrologicalFeature} type. */
+    private static Color colorFor(HydrologicalPrimitive primitive) {
         final float hue =
-                switch (unit.getType()) {
+                switch (primitive.getType()) {
                     case RIVER -> 0.60f; // blue
                     case ABANDONED_RIVER -> 0.08f; // orange
                     case OXBOW_LAKE -> 0.85f; // magenta

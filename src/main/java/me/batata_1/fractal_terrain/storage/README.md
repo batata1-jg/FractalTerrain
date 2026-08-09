@@ -38,7 +38,7 @@ no bin lock is ever held across a slow load or compute; losers of the race simpl
 `CompletableFuture`.
 
 **`claimForCompute`/`fulfillClaim`/`abandonClaim` is a public claim API, not just an internal helper.**
-`LocalRiverProvider`'s dual-store `buildTile` (units-index `Storage` + carved-elevation `Storage`, built
+`LocalRiverProvider`'s dual-store `buildTile` (primitives-index `Storage` + carved-elevation `Storage`, built
 from one pass) depends on this API to cross-fill its second store without a duplicate compute: it claims
 the second key itself rather than calling a compute function that would recompute work the first store's
 pass already did. Do not bypass `claimForCompute` with a check-then-act pattern (e.g.

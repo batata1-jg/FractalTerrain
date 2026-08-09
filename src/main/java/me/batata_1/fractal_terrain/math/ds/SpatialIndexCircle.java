@@ -2,7 +2,7 @@ package me.batata_1.fractal_terrain.math.ds;
 
 /**
  * A circle {@link SpatialIndexShape}. Implementations (typically payload-carrying {@code record}s,
- * e.g. {@code HydrologicalUnit} with its influence radius) only provide {@link #getCenter()} and
+ * e.g. {@code HydrologicalPrimitive} with its influence radius) only provide {@link #getCenter()} and
  * {@link #getRadius()}; every geometric test is defaulted off those two — mirroring how
  * {@link SpatialIndexPoint} derives everything from {@code getCoords()}. All distance tests compare
  * squared distances, so no method takes a square root.

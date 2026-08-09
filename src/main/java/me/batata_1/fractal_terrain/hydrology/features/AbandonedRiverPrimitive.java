@@ -11,9 +11,9 @@ import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
  * influence disc. It will most likely end up claiming a shallow, aged variant of the river zones rather
  * than one of its own.
  */
-public record AbandonedRiverUnit(double[] coord) implements HydrologicalUnit {
+public record AbandonedRiverPrimitive(double[] coord) implements HydrologicalPrimitive {
 
-    static final AbandonedRiverUnit PROTOTYPE = new AbandonedRiverUnit(new double[] {0.0, 0.0});
+    static final AbandonedRiverPrimitive PROTOTYPE = new AbandonedRiverPrimitive(new double[] {0.0, 0.0});
 
     @Override
     public double[] getCoords() {
@@ -36,32 +36,27 @@ public record AbandonedRiverUnit(double[] coord) implements HydrologicalUnit {
     }
 
     @Override
-    public double carveFineGrained(double[] pt, double elevAtPixel) {
-        return elevAtPixel;
+    public long primitiveByteSize() {
+        return PrimitiveCodec.coordByteSize(coord);
     }
 
     @Override
-    public long unitByteSize() {
-        return UnitCodec.coordByteSize(coord);
+    public byte[] serializePrimitive() {
+        return PrimitiveCodec.writeCoord(coord);
     }
 
     @Override
-    public byte[] serializeUnit() {
-        return UnitCodec.writeCoord(coord);
-    }
-
-    @Override
-    public HydrologicalUnit deserializeUnit(byte[] rawBytes) {
-        return new AbandonedRiverUnit(UnitCodec.readCoord(rawBytes));
+    public HydrologicalPrimitive deserializePrimitive(byte[] rawBytes) {
+        return new AbandonedRiverPrimitive(PrimitiveCodec.readCoord(rawBytes));
     }
 
     @Override
     public boolean equals(Object o) {
-        return UnitCodec.coordsEqual(this, o, coord);
+        return PrimitiveCodec.coordsEqual(this, o, coord);
     }
 
     @Override
     public int hashCode() {
-        return UnitCodec.coordsHash(coord);
+        return PrimitiveCodec.coordsHash(coord);
     }
 }

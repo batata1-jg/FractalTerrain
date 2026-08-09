@@ -5,7 +5,7 @@ import static me.batata_1.fractal_terrain.FractalTerrainInstance.getReliefProvid
 
 import java.util.function.Function;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
-import me.batata_1.fractal_terrain.hydrology.features.HydrologicalUnit;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import net.minecraft.world.level.ChunkPos;
 
@@ -47,13 +47,13 @@ public record FractalTerrainHeightmap(Object[] data) {
         VEGETATION(pos -> fillBilinear(pos, getBiomeProvider()::getVegetation)),
         WEIRDNESS(getBiomeProvider()::fillWeirdness),
         // Special (like ELEVATION): zero-filled here, then populated by the second pass
-        // (PopulateNoiseStep#fineGrainedUnitPass) as carve(x,z) − pre-carve elevation. Negative where the
+        // (PopulateNoiseStep#fineGrainedPrimitivePass) as carve(x,z) − pre-carve elevation. Negative where the
         // river carved below the original terrain; the surface painter places water there.
         RIVER_DIFFERENCE(pos -> new float[1 << 8]),
-        RIVER_TYPE(pos -> new HydrologicalUnit.HydrologicalFeature[1 << 8]) {
+        RIVER_TYPE(pos -> new HydrologicalPrimitive.HydrologicalFeature[1 << 8]) {},
 
-        },
-        WATER_HEIGHT(pos -> new float[1 << 8]),;
+        WATER_HEIGHT(pos -> new float[1 << 8]),
+        ;
 
         private static float[] fillBilinear(ChunkPos chunkPos, Function<int[], Float> f) {
             final float[] heights = new float[1 << 8];

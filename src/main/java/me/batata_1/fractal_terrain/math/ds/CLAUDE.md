@@ -10,7 +10,7 @@ Spatial-index data structures: a mutable `QuadTree` and immutable, build-once `I
 | `SpatialIndex.java`           | Query interface over indexed shapes                        | Consuming a spatial index                       |
 | `QuadTree.java`               | Mutable quadtree with read/write lock                      | Building a quadtree, concurrent-read contract   |
 | `ImmutableQuadTree.java`      | Immutable, frozen quadtree                                 | Cached per-tile point indexes                   |
-| `ImmutableRTree.java`         | Immutable R-tree (backs the `HydrologicalUnit` index)      | Rectangle/shape range queries per tile          |
+| `ImmutableRTree.java`         | Immutable R-tree (backs the `HydrologicalPrimitive` index)      | Rectangle/shape range queries per tile          |
 | `SpatialIndexShape.java`      | Base shape type indexed by the structures                  | Adding a shape type                             |
 | `SpatialIndexPoint.java`      | Point shape                                                | Point queries                                   |
 | `SpatialIndexCircle.java`     | Circle shape                                               | Radius queries                                  |

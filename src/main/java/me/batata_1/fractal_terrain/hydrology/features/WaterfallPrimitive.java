@@ -13,9 +13,9 @@ import me.batata_1.fractal_terrain.hydrology.profile.ZoneCategory;
  * {@link ZoneCategory#BED} for it, so once this record grows a profile that claims that zone the drop
  * will win over the channel bed running into it with no change on the carve side.
  */
-public record WaterfallUnit(double[] coord) implements HydrologicalUnit {
+public record WaterfallPrimitive(double[] coord) implements HydrologicalPrimitive {
 
-    static final WaterfallUnit PROTOTYPE = new WaterfallUnit(new double[] {0.0, 0.0});
+    static final WaterfallPrimitive PROTOTYPE = new WaterfallPrimitive(new double[] {0.0, 0.0});
 
     @Override
     public double[] getCoords() {
@@ -43,32 +43,27 @@ public record WaterfallUnit(double[] coord) implements HydrologicalUnit {
     }
 
     @Override
-    public double carveFineGrained(double[] pt, double elevAtPixel) {
-        return elevAtPixel;
+    public long primitiveByteSize() {
+        return PrimitiveCodec.coordByteSize(coord);
     }
 
     @Override
-    public long unitByteSize() {
-        return UnitCodec.coordByteSize(coord);
+    public byte[] serializePrimitive() {
+        return PrimitiveCodec.writeCoord(coord);
     }
 
     @Override
-    public byte[] serializeUnit() {
-        return UnitCodec.writeCoord(coord);
-    }
-
-    @Override
-    public HydrologicalUnit deserializeUnit(byte[] rawBytes) {
-        return new WaterfallUnit(UnitCodec.readCoord(rawBytes));
+    public HydrologicalPrimitive deserializePrimitive(byte[] rawBytes) {
+        return new WaterfallPrimitive(PrimitiveCodec.readCoord(rawBytes));
     }
 
     @Override
     public boolean equals(Object o) {
-        return UnitCodec.coordsEqual(this, o, coord);
+        return PrimitiveCodec.coordsEqual(this, o, coord);
     }
 
     @Override
     public int hashCode() {
-        return UnitCodec.coordsHash(coord);
+        return PrimitiveCodec.coordsHash(coord);
     }
 }

@@ -9,7 +9,7 @@ suite does not currently compile.
 | ---------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------- |
 | `GlobalRiverGoldenTest.java`             | Frozen checksum over the global tile pipeline                 | Changing the global trace, coast/ridge masks, arrow packing      |
 | `LocalRiverGoldenTest.java`              | Frozen checksum over the local drainage trace                 | Changing flow accumulation, reach tests, attach rules            |
-| `SpatialIndexCorrectnessGoldenTest.java` | Unit-index correctness against a brute-force reference        | Changing the R-tree, unit radii, or the cross-tile query         |
+| `SpatialIndexCorrectnessGoldenTest.java` | Primitive-index correctness against a brute-force reference        | Changing the R-tree, primitive radii, or the cross-tile query         |
 | `ChannelGeometryTest.java`               | Width-to-depth law behaviour and guards                       | Changing `W_REF`, `WD_EXPONENT`, or the ratio floor              |
 
 ## Subdirectories

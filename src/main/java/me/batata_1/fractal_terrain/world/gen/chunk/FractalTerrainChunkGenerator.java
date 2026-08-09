@@ -129,12 +129,12 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
                 final int xx = startingX + dx;
                 final int zz = startingZ + dz;
                 final int reliefHeight = (int) reliefBaseHeight[(dx << 4) + dz];
-                final int  waterHeight = (int) waterLineHeight[(dx << 4) + dz]; //water height no ocean;
+                final int waterHeight = (int) waterLineHeight[(dx << 4) + dz]; // water height no ocean;
                 // Fill water up to sea level, or higher if the ELEVATION heightmap value exceeds it.
-                // PopulateNoiseStep#fineGrainedUnitPass currently writes a flat per-chunk placeholder into
+                // PopulateNoiseStep#fineGrainedPrimitivePass currently writes a flat per-chunk placeholder into
                 // ELEVATION (the hydrology bed-carve call is commented out there), so reliefHeight here
                 // does not yet reflect real per-block relief or a carved river channel.
-                final int aboveWaterHeight = Math.max(reliefHeight,Math.max(seaLevel,waterHeight));
+                final int aboveWaterHeight = Math.max(reliefHeight, Math.max(seaLevel, waterHeight));
                 mutable.set(xx, bottom, zz);
                 BlockState state;
                 for (int y = bottom; y <= aboveWaterHeight; y++) {
@@ -200,9 +200,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
             @NotNull BiomeManager biomeAccess,
             @NotNull StructureManager structureAccessor,
             @NotNull ChunkAccess chunk,
-            GenerationStep.@NotNull Carving carverStep) {
-
-    }
+            GenerationStep.@NotNull Carving carverStep) {}
 
     @Override
     public void buildSurface(

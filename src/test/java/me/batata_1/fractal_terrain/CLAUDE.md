@@ -6,7 +6,7 @@ JUnit 5 golden-gate tests, run via `gradle test` (`useJUnitPlatform()`).
 
 | Directory    | What                                                          | When to read                                                       |
 | ------------ | ------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `hydrology/` | Global/local river goldens, spatial index, channel geometry   | Verifying or re-baselining river generation and the units index    |
+| `hydrology/` | Global/local river goldens, spatial index, channel geometry   | Verifying or re-baselining river generation and the primitives index    |
 | `ml/`        | ONNX pipeline session-lifecycle regression                    | Verifying session reload and model offload thread-safety           |
 | `math/`      | Empty stub; no tests yet                                      | Never — add a `CLAUDE.md` here once it holds code                  |
 

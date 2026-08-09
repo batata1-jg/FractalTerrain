@@ -11,9 +11,9 @@ import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
  * Distinct from {@link HydrologicalFeature#DRAIN}, which marks the topological end of a channel; a delta
  * is the depositional landform that may sit there.
  */
-public record DeltaUnit(double[] coord) implements HydrologicalUnit {
+public record DeltaPrimitive(double[] coord) implements HydrologicalPrimitive {
 
-    static final DeltaUnit PROTOTYPE = new DeltaUnit(new double[] {0.0, 0.0});
+    static final DeltaPrimitive PROTOTYPE = new DeltaPrimitive(new double[] {0.0, 0.0});
 
     @Override
     public double[] getCoords() {
@@ -36,32 +36,27 @@ public record DeltaUnit(double[] coord) implements HydrologicalUnit {
     }
 
     @Override
-    public double carveFineGrained(double[] pt, double elevAtPixel) {
-        return elevAtPixel;
+    public long primitiveByteSize() {
+        return PrimitiveCodec.coordByteSize(coord);
     }
 
     @Override
-    public long unitByteSize() {
-        return UnitCodec.coordByteSize(coord);
+    public byte[] serializePrimitive() {
+        return PrimitiveCodec.writeCoord(coord);
     }
 
     @Override
-    public byte[] serializeUnit() {
-        return UnitCodec.writeCoord(coord);
-    }
-
-    @Override
-    public HydrologicalUnit deserializeUnit(byte[] rawBytes) {
-        return new DeltaUnit(UnitCodec.readCoord(rawBytes));
+    public HydrologicalPrimitive deserializePrimitive(byte[] rawBytes) {
+        return new DeltaPrimitive(PrimitiveCodec.readCoord(rawBytes));
     }
 
     @Override
     public boolean equals(Object o) {
-        return UnitCodec.coordsEqual(this, o, coord);
+        return PrimitiveCodec.coordsEqual(this, o, coord);
     }
 
     @Override
     public int hashCode() {
-        return UnitCodec.coordsHash(coord);
+        return PrimitiveCodec.coordsHash(coord);
     }
 }
