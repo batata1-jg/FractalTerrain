@@ -2,8 +2,6 @@ package me.batata_1.fractal_terrain.hydrology.profile;
 
 import java.util.Arrays;
 import java.util.List;
-
-import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
@@ -42,7 +40,7 @@ public final class HydrologyProfileInprinter {
     /** Amortizes the influence query across a whole chunk — one tree query per chunk rather than one
      *  per block. Feed the result to {@link #carvePrefetched}. */
     public List<HydrologicalPrimitive> prefetchChunk(double centerPixelX, double centerPixelZ, double chunkRadiusPx) {
-        var primitives = localRiver.queryInfluence(new double[]{centerPixelX, centerPixelZ}, chunkRadiusPx);
+        var primitives = localRiver.queryInfluence(new double[] {centerPixelX, centerPixelZ}, chunkRadiusPx);
         primitives.sort(HydrologicalPrimitive.comparator);
         return primitives;
     }
@@ -52,37 +50,17 @@ public final class HydrologyProfileInprinter {
         return new PrefetchedPrimitives(localRiver.queryInfluence(pt, extraRadius));
     }
 
-    private static int[] resolveRiverNearestIdsChunk(List<HydrologicalPrimitive> primitives,int startX, int startZ) {
-        final int[] ids = new int[256];
-        final double[] pt = {0,0};
-        for (int dx = 0; dx < 16; dx++) {
-            for (int dz = 0; dz < 16; dz++) {
-                final int pos = (dx << 4) + dz;
-                pt[0] = (startX + dx) / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION;
-                pt[1] = (startZ + dz) / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION;
-                ids[pos] = resolveRiverNearestId(primitives,pt);
-            }
-        }
-        return ids;
-    }
-
-    private static int resolveRiverNearestId(List<HydrologicalPrimitive> primitives,double[] pt) {
+    private static int resolveRiverNearestId(List<HydrologicalPrimitive> primitives, double[] pt) {
         int nearestid = -1;
         double dist = 1e9;
-        for(int id=0 ; id<primitives.size() ; id++) {
-            if(!(primitives.get(id) instanceof RiverPrimitive river)) break;
-            if(VectorOps.distanceSquared(pt,river.coord())>=dist) continue;
+        for (int id = 0; id < primitives.size(); id++) {
+            if (!(primitives.get(id) instanceof RiverPrimitive river)) break;
+            if (VectorOps.distanceSquared(pt, river.coord()) >= dist) continue;
             nearestid = id;
-            dist = VectorOps.distanceSquared(pt,river.coord());
+            dist = VectorOps.distanceSquared(pt, river.coord());
         }
         return nearestid;
     }
-
-    public static double[] carveRiverPrimitives(List<HydrologicalPrimitive> primitives,int id,double[] pt) {
-        if(id==-1) return new double[]{0,0};
-
-    }
-
 
     // -------------------------------------------------------------------------
     // Tile-level shell pre-carve (moved from LocalRiverProvider)
@@ -114,16 +92,16 @@ public final class HydrologyProfileInprinter {
                 weightedElev = 0;
                 for (final HydrologicalPrimitive primitive : nearby) {
                     if (!primitive.containsPoint(pixel)) continue;
-                    if( primitive instanceof RiverPrimitive river) {
+                    if (primitive instanceof RiverPrimitive river) {
                         final double deltaWeight = river.w(pixel);
                         weight += deltaWeight;
                         weightedElev += deltaWeight * river.h(pixel);
                     }
                 }
-                if(weight <= 1e-8) continue;
+                if (weight <= 1e-8) continue;
                 final double elev = weightedElev / weight;
                 weight = Math.clamp(weight, 0, 1);
-                elevation[idx] = (float) ( (1-weight)*elevation[idx] + weight*elev );
+                elevation[idx] = (float) ((1 - weight) * elevation[idx] + weight * elev);
             }
         }
     }
