@@ -99,4 +99,25 @@ public final class VectorOps {
     public static double[] perpendicular(double[] d) {
         return new double[] {d[1], -d[0]};
     }
+
+    /**
+     * Closest point on a segment, as the normalised position along it plus the squared distance.
+     *
+     * <p>Writes into {@code outProjection} rather than returning, so the per-pixel carve loop stays
+     * allocation-free. 2D-only by design: reads only indices 0 and 1, no length check (hot path).
+     */
+    public static void projectPointOntoSegment(
+            double[] point, double[] segStart, double[] segEnd, double[] outProjection) {
+        final double segX = segEnd[0] - segStart[0];
+        final double segZ = segEnd[1] - segStart[1];
+        final double segLenSq = segX * segX + segZ * segZ;
+        final double toPointX = point[0] - segStart[0];
+        final double toPointZ = point[1] - segStart[1];
+        final double segParam =
+                segLenSq < 1e-12 ? 0.0 : Math.clamp((toPointX * segX + toPointZ * segZ) / segLenSq, 0.0, 1.0);
+        final double footToPointX = toPointX - segParam * segX;
+        final double footToPointZ = toPointZ - segParam * segZ;
+        outProjection[0] = segParam;
+        outProjection[1] = footToPointX * footToPointX + footToPointZ * footToPointZ;
+    }
 }
