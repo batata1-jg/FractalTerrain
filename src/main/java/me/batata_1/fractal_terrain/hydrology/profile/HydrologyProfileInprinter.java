@@ -2,9 +2,12 @@ package me.batata_1.fractal_terrain.hydrology.profile;
 
 import java.util.Arrays;
 import java.util.List;
+
+import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
+import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 import org.jetbrains.annotations.TestOnly;
 
@@ -17,11 +20,11 @@ import org.jetbrains.annotations.TestOnly;
  *
  * <p>All geometry is in the relief-pixel frame. The carving twin of {@code HydrologyProfilePainter}.
  */
-public final class HydrologyProfileCarver {
+public final class HydrologyProfileInprinter {
 
     private final LocalRiverProvider localRiver;
 
-    public HydrologyProfileCarver(LocalRiverProvider localRiver) {
+    public HydrologyProfileInprinter(LocalRiverProvider localRiver) {
         this.localRiver = localRiver;
     }
 
@@ -36,16 +39,12 @@ public final class HydrologyProfileCarver {
      */
     public record PrefetchedPrimitives(List<HydrologicalPrimitive> primitives) {}
 
-    /** Single-point carve; {@link #prefetchChunk} is the path for anything hot. */
-    public float carveAtPixel(double[] pt, double shellElevAtPixel) {
-        final PrefetchedPrimitives prefetched = queryPrimitives(pt, 0.0);
-        return carvePrefetched(prefetched, pt, shellElevAtPixel);
-    }
-
     /** Amortizes the influence query across a whole chunk — one tree query per chunk rather than one
      *  per block. Feed the result to {@link #carvePrefetched}. */
-    public PrefetchedPrimitives prefetchChunk(double centerPixelX, double centerPixelZ, double chunkRadiusPx) {
-        return queryPrimitives(new double[] {centerPixelX, centerPixelZ}, chunkRadiusPx);
+    public List<HydrologicalPrimitive> prefetchChunk(double centerPixelX, double centerPixelZ, double chunkRadiusPx) {
+        var primitives = localRiver.queryInfluence(new double[]{centerPixelX, centerPixelZ}, chunkRadiusPx);
+        primitives.sort(HydrologicalPrimitive.comparator);
+        return primitives;
     }
 
     /** Query the primitives influencing {@code pt} (relief-pixel frame, inflated by {@code extraRadius}). */
@@ -53,23 +52,37 @@ public final class HydrologyProfileCarver {
         return new PrefetchedPrimitives(localRiver.queryInfluence(pt, extraRadius));
     }
 
-    /** Merges every influencing primitive into one elevation, resolved through the {@link ZoneCategory}
-     *  hierarchy. Averages within a zone but switches hard between zones, deliberately: two rivers
-     *  sharing a floodplain should blend, a bed crossing it should cut through. */
-    public float carvePrefetched(PrefetchedPrimitives prefetched, double[] pt, double elevAtPixel) {
-        final HydrologicalPrimitive[] primitives = prefetched.primitives().toArray(new HydrologicalPrimitive[0]);
-
-        double weight = 0;
-        double weightedElev = 0;
-        for (final HydrologicalPrimitive primitive : primitives) {
-            final double w = primitive.w(pt);
-            if (!(primitive instanceof RiverPrimitive)) continue;
-            weightedElev += w * primitive.h(pt);
-            weight += w;
+    private static int[] resolveRiverNearestIdsChunk(List<HydrologicalPrimitive> primitives,int startX, int startZ) {
+        final int[] ids = new int[256];
+        final double[] pt = {0,0};
+        for (int dx = 0; dx < 16; dx++) {
+            for (int dz = 0; dz < 16; dz++) {
+                final int pos = (dx << 4) + dz;
+                pt[0] = (startX + dx) / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION;
+                pt[1] = (startZ + dz) / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION;
+                ids[pos] = resolveRiverNearestId(primitives,pt);
+            }
         }
-        if(weight <= 1e-6) return (float) elevAtPixel;
-        return (float) (weightedElev / weight);
+        return ids;
     }
+
+    private static int resolveRiverNearestId(List<HydrologicalPrimitive> primitives,double[] pt) {
+        int nearestid = -1;
+        double dist = 1e9;
+        for(int id=0 ; id<primitives.size() ; id++) {
+            if(!(primitives.get(id) instanceof RiverPrimitive river)) break;
+            if(VectorOps.distanceSquared(pt,river.coord())>=dist) continue;
+            nearestid = id;
+            dist = VectorOps.distanceSquared(pt,river.coord());
+        }
+        return nearestid;
+    }
+
+    public static double[] carveRiverPrimitives(List<HydrologicalPrimitive> primitives,int id,double[] pt) {
+        if(id==-1) return new double[]{0,0};
+
+    }
+
 
     // -------------------------------------------------------------------------
     // Tile-level shell pre-carve (moved from LocalRiverProvider)

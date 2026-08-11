@@ -2,16 +2,12 @@ package me.batata_1.fractal_terrain.world.gen.populatenoise;
 
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
-import java.util.Arrays;
 import java.util.List;
 
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
-import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
-import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
-import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver;
-import me.batata_1.fractal_terrain.hydrology.profile.ZoneCategory;
+import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
 import net.minecraft.world.level.ChunkPos;
@@ -43,7 +39,7 @@ public class PopulateNoiseStep {
         final HydrologicalPrimitive.HydrologicalFeature[] riverType =
                 (HydrologicalPrimitive.HydrologicalFeature[]) heightmap.get(Types.RIVER_TYPE);
         final float[] waterElev = (float[]) heightmap.get(Types.WATER_HEIGHT);
-        final HydrologyProfileCarver carver = FractalTerrainInstance.getHydrologyCarver();
+        final HydrologyProfileInprinter imprinter = FractalTerrainInstance.getHydrologyCarver();
         final int startX = chunkPos.getMinBlockX();
         final int startZ = chunkPos.getMinBlockZ();
         // One influence query serves the whole chunk: prefetch every primitive that could reach any of the
@@ -53,9 +49,7 @@ public class PopulateNoiseStep {
         final double chunkCenterPixelX = (startX + 8) / scale;
         final double chunkCenterPixelZ = (startZ + 8) / scale;
         final double chunkRadiusPx = (8.0 * Math.sqrt(2.0)) / scale;
-        final HydrologyProfileCarver.PrefetchedPrimitives chunkPrimitives =
-                carver.prefetchChunk(chunkCenterPixelX, chunkCenterPixelZ, chunkRadiusPx);
-        final List<HydrologicalPrimitive> primitives = chunkPrimitives.primitives();
+        final List<HydrologicalPrimitive> primitives = imprinter.prefetchChunk(chunkCenterPixelX, chunkCenterPixelZ, chunkRadiusPx);;
         primitives.sort(HydrologicalPrimitive.comparator);
         final double[] mutablePt = new double[2];
 
@@ -70,36 +64,7 @@ public class PopulateNoiseStep {
                 final float baseElev = interpolatedElevs[pos];
                 mutablePt[0] = (startX + dx) / scale;
                 mutablePt[1] = (startZ + dz) / scale;
-                nearestDist = 1e9;
-                nearestPrimitive = null;
-                weight = 0;
-                weightedElev = 0;
-                for(HydrologicalPrimitive primitive : primitives) {
-                    if (!primitive.containsPoint(mutablePt)) continue;
-                    if( primitive instanceof RiverPrimitive river) {
-                        final double deltaWeight = river.w(mutablePt);
-                        weight += deltaWeight;
-                        weightedElev += deltaWeight * river.h(mutablePt);
-                        nearestPrimitive = primitive;
-                    }
-                }
-                if(weight <= 1e-8) refinedElev = baseElev;
-                else {
-                    final double elev = weightedElev / weight;
-                    weight = Math.clamp(weight, 0, 1);
-                  //  refinedElev = (float) ((1-weight)*baseElev + weight*elev);
-                    refinedElev = (float) elev;
-                }
-                riverDifference[pos] = refinedElev - baseElev;
-                interpolatedElevs[pos] = Math.max(bottom, refinedElev) + seaLevel - 1;
-                if (nearestPrimitive instanceof RiverPrimitive river) {
-                    if (nearestDist > (river.width() / 2) + 0.25) continue;
-                    riverType[pos] = river.getType();
-                    waterElev[pos] =
-                            (float) (nearestPrimitive.waterLine() + Math.max(bottom, river.elevation()) + seaLevel - 1);
-                } else {
-                    riverType[pos] = null;
-                }
+
             }
         }
     }

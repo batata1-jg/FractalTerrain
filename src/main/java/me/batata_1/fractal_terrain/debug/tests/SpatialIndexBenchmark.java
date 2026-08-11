@@ -16,7 +16,7 @@ import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
-import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver;
+import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
 import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
@@ -73,7 +73,7 @@ public class SpatialIndexBenchmark {
         final GlobalRiverProvider globalRivers = new GlobalRiverProvider(null);
         final LocalRiverProvider localRivers = new LocalRiverProvider(null);
         localRivers.setGlobalRiverProvider(globalRivers);
-        final HydrologyProfileCarver carver = new HydrologyProfileCarver(localRivers);
+        final HydrologyProfileInprinter carver = new HydrologyProfileInprinter(localRivers);
 
         LOG.info("building primitive tile ({},{})...", TILE_X, TILE_Z);
         final ImmutableRTree<HydrologicalPrimitive> primitiveRTree = localRivers.getPrimitiveTree(TILE_X, TILE_Z);
@@ -143,10 +143,6 @@ public class SpatialIndexBenchmark {
                 "LocalRiverProvider.queryInfluence",
                 worldInnerPoints(5, worldOriginX, worldOriginZ),
                 pt -> localRivers.queryInfluence(pt).toArray().length);
-        bench(
-                "HydrologyProfileCarver.carveAtPixel",
-                worldInnerPoints(6, worldOriginX, worldOriginZ),
-                pt -> Float.floatToIntBits(carver.carveAtPixel(pt, 100.0)));
 
         LOG.info(
                 "throughput ratio (rtree/quadtree): influence query {}x, insideChannel test {}x",

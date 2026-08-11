@@ -3,6 +3,8 @@ package me.batata_1.fractal_terrain.hydrology.profile;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
+
 /**
  * How one kind of hydrological feature shapes terrain around it — the extension point every new feature
  * type plugs into.
@@ -21,4 +23,6 @@ public interface HydrologyProfile {
     default double shellElevation(HydrologicalPrimitive primitive, double radialDist, double curElev) {
         return curElev;
     }
+
+
 }

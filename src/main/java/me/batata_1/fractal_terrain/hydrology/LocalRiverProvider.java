@@ -20,7 +20,7 @@ import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
-import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver;
+import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingSpatialIndex;
@@ -160,7 +160,7 @@ public class LocalRiverProvider {
         final float[] carvedElevationGlobal = base[0].clone();
         ChannelElevationAssigner.assign(network, boundaryElev, carvedElevationGlobal);
         LOG.debug("finished first assign() pass");
-        HydrologyProfileCarver.carveRiverShells(
+        HydrologyProfileInprinter.carveRiverShells(
                 carvedElevationGlobal, sim.collectPrimitives(0, 0).toArray(new HydrologicalPrimitive[0]), PADDED);
         // Snapshot here, not at the end: this buffer is the drainage input for the local trace below, so
         // the harness needs it as it stood when step 2 read it.
@@ -262,7 +262,7 @@ public class LocalRiverProvider {
     }
 
     /**
-     * Every primitive influencing {@code pt}, unordered — feeds {@link HydrologyProfileCarver}'s flat
+     * Every primitive influencing {@code pt}, unordered — feeds {@link HydrologyProfileInprinter}'s flat
      * distance-weighted merge. {@code extraRadius} inflates the circles so the per-chunk prefetch can
      * serve a whole chunk from one query. Returns indexed instances; callers must not mutate them.
      */

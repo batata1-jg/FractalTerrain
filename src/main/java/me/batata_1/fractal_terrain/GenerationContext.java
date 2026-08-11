@@ -4,11 +4,10 @@ import java.nio.file.Path;
 import me.batata_1.fractal_terrain.debug.Infinite3DVisualizer;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
-import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver;
+import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfilePainter;
 import me.batata_1.fractal_terrain.ml.pipeline.WorldPipeline;
 import me.batata_1.fractal_terrain.noise.NoiseSampler;
-import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
 import me.batata_1.fractal_terrain.relief.ReliefProvider;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmapCache;
 import me.batata_1.fractal_terrain.world.biome.BiomeProvider;
@@ -41,7 +40,7 @@ public final class GenerationContext {
     private final BiomeProvider biomeProvider;
     private final GlobalRiverProvider globalRiverProvider;
     private final LocalRiverProvider localRiverProvider;
-    private final HydrologyProfileCarver hydrologyCarver;
+    private final HydrologyProfileInprinter hydrologyCarver;
     private final HydrologyProfilePainter hydrologyPainter;
     private final PopulateNoiseStep populateNoiseStep;
     private final FractalTerrainSurfaceSystem surfaceBuilder;
@@ -55,7 +54,7 @@ public final class GenerationContext {
         // Build order mirrors the dependency graph: global → local → relief → biome.
         this.globalRiverProvider = new GlobalRiverProvider(worldPath + "/fractal_terrain");
         this.localRiverProvider = new LocalRiverProvider(worldPath + "/fractal_terrain");
-        this.hydrologyCarver = new HydrologyProfileCarver(this.localRiverProvider);
+        this.hydrologyCarver = new HydrologyProfileInprinter(this.localRiverProvider);
         this.hydrologyPainter = new HydrologyProfilePainter(this.localRiverProvider);
         this.reliefProvider = new ReliefProvider(worldPath + "/fractal_terrain");
         this.biomeProvider = new BiomeProvider(worldPath + "/fractal_terrain");
@@ -102,7 +101,7 @@ public final class GenerationContext {
         return localRiverProvider;
     }
 
-    public HydrologyProfileCarver getHydrologyCarver() {
+    public HydrologyProfileInprinter getHydrologyCarver() {
         return hydrologyCarver;
     }
 
