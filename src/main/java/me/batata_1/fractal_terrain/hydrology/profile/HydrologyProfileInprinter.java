@@ -62,6 +62,76 @@ public final class HydrologyProfileInprinter {
         return nearestid;
     }
 
+    /**
+     * The signed perpendicular distance from {@code point} to the nearest channel, with that channel's
+     * cross-section read at the foot point.
+     *
+     * <p>Measures against the two-segment polyline through the nearest knot rather than the quintic:
+     * the primitives carry no velocity or acceleration, so the true curve cannot be rebuilt here.
+     */
+    public static NearestChannelSample sampleNearestChannel(
+            List<HydrologicalPrimitive> primitives, int nearestPrimitiveIndex, double[] point) {
+        if (nearestPrimitiveIndex < 0 || nearestPrimitiveIndex >= primitives.size()) return null;
+        if (!(primitives.get(nearestPrimitiveIndex) instanceof RiverPrimitive nearestKnot)) return null;
+
+        final double[] projection = new double[2];
+        RiverPrimitive segStart = null;
+        RiverPrimitive segEnd = null;
+        double bestSegParam = 0.0;
+        double bestDistSq = Double.MAX_VALUE;
+
+        for (int offset = -1; offset <= 1; offset += 2) {
+            final int neighbourIndex = nearestPrimitiveIndex + offset;
+            if (neighbourIndex < 0 || neighbourIndex >= primitives.size()) continue;
+            if (!(primitives.get(neighbourIndex) instanceof RiverPrimitive neighbour)) continue;
+            if (!nearestKnot.isKnotAdjacentTo(neighbour)) continue;
+            // Always orient the segment downstream, so segParam interpolates from the lower knot up.
+            final boolean neighbourIsUpstream = neighbour.knotIndex() < nearestKnot.knotIndex();
+            final RiverPrimitive start = neighbourIsUpstream ? neighbour : nearestKnot;
+            final RiverPrimitive end = neighbourIsUpstream ? nearestKnot : neighbour;
+            VectorOps.projectPointOntoSegment(point, start.coord(), end.coord(), projection);
+            if (projection[1] >= bestDistSq) continue;
+            bestDistSq = projection[1];
+            bestSegParam = projection[0];
+            segStart = start;
+            segEnd = end;
+        }
+
+        if (segStart == null) return isolatedKnotSample(nearestKnot, point);
+        return interpolatedSample(segStart, segEnd, bestSegParam, bestDistSq, point);
+    }
+
+    /** A knot with no knot-adjacent neighbour in range influences the point alone, so its tangent
+     *  line is the correct answer — not a degraded one. */
+    private static NearestChannelSample isolatedKnotSample(RiverPrimitive knot, double[] point) {
+        return new NearestChannelSample(
+                knot.d(point), knot.width(), knot.curvature(), knot.elevation(), knot.rosgenType(), knot.channelId());
+    }
+
+    /** Signs the distance with the interpolated normal so it agrees with {@link RiverPrimitive#d},
+     *  which is the convention the asymmetric Rosgen profiles were tuned against. */
+    private static NearestChannelSample interpolatedSample(
+            RiverPrimitive segStart, RiverPrimitive segEnd, double segParam, double distSq, double[] point) {
+        final double footX = lerp(segStart.coord()[0], segEnd.coord()[0], segParam);
+        final double footZ = lerp(segStart.coord()[1], segEnd.coord()[1], segParam);
+        final double[] footNormal = VectorOps.normalize(new double[] {
+            lerp(segStart.normal()[0], segEnd.normal()[0], segParam),
+            lerp(segStart.normal()[1], segEnd.normal()[1], segParam)
+        });
+        final double side = footNormal[0] * (point[0] - footX) + footNormal[1] * (point[1] - footZ);
+        return new NearestChannelSample(
+                Math.signum(side) * Math.sqrt(distSq),
+                lerp(segStart.width(), segEnd.width(), segParam),
+                lerp(segStart.curvature(), segEnd.curvature(), segParam),
+                lerp(segStart.elevation(), segEnd.elevation(), segParam),
+                segParam < 0.5 ? segStart.rosgenType() : segEnd.rosgenType(),
+                segStart.channelId());
+    }
+
+    private static double lerp(double from, double to, double t) {
+        return from + t * (to - from);
+    }
+
     // -------------------------------------------------------------------------
     // Tile-level shell pre-carve (moved from LocalRiverProvider)
     // -------------------------------------------------------------------------
