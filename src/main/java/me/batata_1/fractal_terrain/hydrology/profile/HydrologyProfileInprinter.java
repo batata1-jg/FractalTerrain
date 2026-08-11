@@ -114,13 +114,21 @@ public final class HydrologyProfileInprinter {
             RiverPrimitive segStart, RiverPrimitive segEnd, double segParam, double distSq, double[] point) {
         final double footX = lerp(segStart.coord()[0], segEnd.coord()[0], segParam);
         final double footZ = lerp(segStart.coord()[1], segEnd.coord()[1], segParam);
-        final double[] footNormal = VectorOps.normalize(new double[] {
+        final double[] lerpedNormal = {
             lerp(segStart.normal()[0], segEnd.normal()[0], segParam),
             lerp(segStart.normal()[1], segEnd.normal()[1], segParam)
-        });
+        };
+        // Near-opposite knot normals (a sharp bend) lerp toward the zero vector, which normalize()
+        // would hand back as-is; that silently zeroes signedPerpDist. Fall back to segStart's normal
+        // — it is already unit-length and, being the lower-index (upstream) knot, the natural default.
+        final double[] footNormal =
+                VectorOps.magnitude(lerpedNormal) < 1e-12 ? segStart.normal() : VectorOps.normalize(lerpedNormal);
         final double side = footNormal[0] * (point[0] - footX) + footNormal[1] * (point[1] - footZ);
+        // A point exactly on the centreline has no bank to prefer; call it the positive bank rather
+        // than let Math.signum(0.0) collapse the real distance to zero.
+        final double sideSign = side == 0.0 ? 1.0 : Math.signum(side);
         return new NearestChannelSample(
-                Math.signum(side) * Math.sqrt(distSq),
+                sideSign * Math.sqrt(distSq),
                 lerp(segStart.width(), segEnd.width(), segParam),
                 lerp(segStart.curvature(), segEnd.curvature(), segParam),
                 lerp(segStart.elevation(), segEnd.elevation(), segParam),
