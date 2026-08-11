@@ -27,7 +27,6 @@ public enum RosgenProfile implements HydrologyProfile {
             return 1.2 * (width / 2);
         }
 
-
         @Override
         protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
             return -depth * (1 - Math.abs(signedPerpDist));
@@ -96,7 +95,7 @@ public enum RosgenProfile implements HydrologyProfile {
         }
     },
     D {
-        //TODO:Usar fnl
+        // TODO:Usar fnl
         private static final OctaveSimplexNoiseSampler noiseSampler =
                 new OctaveSimplexNoiseSampler(0, 1, 1, 1, 1, 1, null, null);
 
@@ -109,7 +108,7 @@ public enum RosgenProfile implements HydrologyProfile {
 
         @Override
         protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
-           // return -3 * Math.abs(noiseSampler.sample(1.0 / seed, signedPerpDist));
+            // return -3 * Math.abs(noiseSampler.sample(1.0 / seed, signedPerpDist));
             return -3;
         }
     },
@@ -140,7 +139,6 @@ public enum RosgenProfile implements HydrologyProfile {
             return (width / 2) * 1.275;
         }
 
-
         @Override
         protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
             return -Math.min(1, 0.5 * depth * Math.pow(1 - signedPerpDist * signedPerpDist, 0.16)) - 3;
@@ -151,7 +149,6 @@ public enum RosgenProfile implements HydrologyProfile {
         public double floodPlainLength(double width) {
             return 1.2 * (width / 2);
         }
-
     };
 
     /** Delegates to {@link #riverInfluenceElevation} with the reach's width and bank elevation. */
@@ -170,6 +167,19 @@ public enum RosgenProfile implements HydrologyProfile {
 
     public static double smoothMin(double a, double b, double lambda) {
         return (a + b - Math.sqrt((a - b) * (a - b) + lambda)) / 2;
+    }
+
+    /**
+     * Smooth minimum that is <em>exactly</em> {@link Math#min} once the inputs differ by more than
+     * {@code blendRange}.
+     *
+     * <p>Unlike {@link #smoothMin}, which biases its result downward even for equal inputs, this
+     * leaves terrain the river cannot reach bit-identical — the carve must not sink the whole map.
+     */
+    public static double blendMin(double a, double b, double blendRange) {
+        if (blendRange <= 0.0) return Math.min(a, b);
+        final double overlap = Math.max(blendRange - Math.abs(a - b), 0.0) / blendRange;
+        return Math.min(a, b) - overlap * overlap * blendRange * 0.25;
     }
 
     /** Floodplain half-extent. Placeholder law shared by all types; override per constant. */
@@ -207,31 +217,27 @@ public enum RosgenProfile implements HydrologyProfile {
 
     // ---- Bed (per-pixel residual trench, cut below the already-carved shell) ----
 
-
     /** The raw bed trench, before {@link RiverPrimitive#h} fades it over its footprint. */
-    public double delta(
-            long randSeed, double signedPerpDist, double width, double curvature) {
+    public double delta(long randSeed, double signedPerpDist, double width, double curvature) {
         final double floodPlainLen = floodPlainLength(width);
         final double marginLen = width / 2;
         final double perpDist = Math.abs(signedPerpDist);
         final double bedContribution = bedDelta(
-            randSeed,
-            signedPerpDist / marginLen,
-            FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depthForWidth(width),
-            curvature
-        );
+                randSeed,
+                signedPerpDist / marginLen,
+                FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depthForWidth(width),
+                curvature);
         final double floodPlainContribution = floodPlainDelta(
-            randSeed,
-            signedPerpDist > 0
-                    ? ((signedPerpDist - marginLen) / (floodPlainLen - marginLen))
-                    : ((marginLen + signedPerpDist) / (marginLen - floodPlainLen)),
-            width,
-            floodPlainLen,
-            curvature
-        );
-        final double valleyContribution = valleyDelta(perpDist-floodPlainLen);
-        if(perpDist<=marginLen) return -10;
-        if(perpDist<=floodPlainLen) return floodPlainContribution;
+                randSeed,
+                signedPerpDist > 0
+                        ? ((signedPerpDist - marginLen) / (floodPlainLen - marginLen))
+                        : ((marginLen + signedPerpDist) / (marginLen - floodPlainLen)),
+                width,
+                floodPlainLen,
+                curvature);
+        final double valleyContribution = valleyDelta(perpDist - floodPlainLen);
+        if (perpDist <= marginLen) return -10;
+        if (perpDist <= floodPlainLen) return floodPlainContribution;
         return valleyContribution;
     }
 

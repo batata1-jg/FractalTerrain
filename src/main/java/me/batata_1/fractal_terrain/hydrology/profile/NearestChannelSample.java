@@ -18,4 +18,21 @@ public record NearestChannelSample(
         double channelCurvature,
         double bedElevation,
         RosgenType rosgenType,
-        int channelId) {}
+        int channelId) {
+
+    /** How far the rim rounds where the valley cone meets untouched ground, in relief pixels. */
+    private static final double CARVE_BLEND_RANGE = 2.0;
+
+    /**
+     * Cuts this cross-section into the shell-carved terrain.
+     *
+     * <p>Needs no influence radius: outside the floodplain the profile is a cone rising away from
+     * the channel, so the min hands back ambient wherever that cone clears it.
+     */
+    public double carveInto(double ambientElevation) {
+        final RosgenProfile profile = RosgenProfile.of(rosgenType == null ? RosgenType.A : rosgenType);
+        final double bedTarget =
+                bedElevation + profile.delta(channelId, signedPerpDist, channelWidth, channelCurvature);
+        return RosgenProfile.blendMin(ambientElevation, bedTarget, CARVE_BLEND_RANGE);
+    }
+}
