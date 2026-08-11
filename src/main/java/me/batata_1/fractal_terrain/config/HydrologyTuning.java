@@ -37,10 +37,18 @@ public final class HydrologyTuning {
     /** Radius at which a local river is taken to meet a global channel. Uncalibrated — see README. */
     public static final double LOCAL_ATTACH_RADIUS = 4.0;
 
-    /** Meander resample/migration step (native px); debug visualizers and tests reason about it too. */
+    /** Default meander resample/migration step (native px); debug visualizers and tests reason about it too. */
     public static final double DX = 1.5;
-    /** max per-step displacement for the valley-seeking migration. */
-    public static final double MAX_MIGRATION = HydrologyTuning.DX * 3;
+
+    /** Max per-step displacement of a migration run resampled at {@code dx}: caps how far a point may
+     *  travel relative to its neighbours, so one step cannot fold the polyline over itself. */
+    public static double maxMigration(double dx) {
+        return dx * 1.5;
+    }
+
+    /** Max per-step displacement at the default {@link #DX}; the network's collision search radius
+     *  (see {@code AtomicView}) is derived from it. */
+    public static final double MAX_MIGRATION = maxMigration(DX);
 
     // ──────────────────────────────────────────────────────────────────────────
     // Flow accumulation (see Drainage.computeFlow)
@@ -98,7 +106,7 @@ public final class HydrologyTuning {
     public static final double MARGIN_INFLUENCE_FACTOR = 5.0;
 
     public static double maxInfluence(double width) {
-        return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, width * (MAX_INFLUENCE_RADIUS / MAX_WIDTH));
+        return Math.clamp(0.844803*Math.pow(width+0.990178,1.52681)+0.167833,1,MAX_INFLUENCE_RADIUS);
     }
 
     public static double widthFromFlow(double rawFlow) {

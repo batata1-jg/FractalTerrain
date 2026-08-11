@@ -6,6 +6,8 @@ import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.*;
 import static me.batata_1.fractal_terrain.hydrology.meanders.Meanders.DEBUG_STEPS;
 
 import java.util.*;
+import java.util.function.Predicate;
+
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.network.AtomicView;
@@ -29,6 +31,8 @@ import org.slf4j.LoggerFactory;
 final class LocalDrainageTracer {
 
     private static final Logger LOG = LoggerFactory.getLogger(LocalDrainageTracer.class);
+    private static final Predicate<GlobalRiverPrimitive> acceptanceTest = globalRiverPrimitive -> true;
+
 
     private record GlobalRiverPrimitive(double[] pos, double width, int id) implements SpatialIndexCircle {
 
@@ -73,7 +77,6 @@ final class LocalDrainageTracer {
 
         final QuadTree<CoordPoint> sources =
                 new QuadTree<>(new double[] {0, 0}, new double[] {PADDED + 1, PADDED + 1}, 7);
-
         while (!sourceQueue.isEmpty()) {
             final int current = sourceQueue.poll();
             if (elev[current] < 0) continue;
@@ -83,11 +86,14 @@ final class LocalDrainageTracer {
             if ((flow[next] >= FLOW_THRESHOLD && gradMag[next] >= GRAD_THRESHOLD) || nodeIndex[current] != -1) {
                 if (stages != null) riverMask[current] = true;
                 // create the source if there isnt a source nearby
+
                 final double[] curNodePos =
                         new double[] {Math.floorDiv(current, PADDED) + 0.5, (current % PADDED) + 0.5};
                 if (nodeIndex[current] == -1
                         && nodeIndex[next] == -1
-                        && !sources.containsPointInCircle(curNodePos, 5.0)) {
+                        && !sources.containsPointInCircle(curNodePos, 5.0)
+                        && !globalRiversPosition.anyContaining(curNodePos,acceptanceTest)
+                ) {
                     nodeIndex[current] = net.addNode(curNodePos, Endpoint.Type.SOURCE, -1, flow[current], -1);
                     sources.insertPoint(new CoordPoint(curNodePos));
                 }
@@ -130,7 +136,7 @@ final class LocalDrainageTracer {
         final double[] flow = net.accumulateAndCorrectFlow();
         final GlobalRiverPrimitive[] globalRivers = new GlobalRiverPrimitive[net.size()];
         for (int id = 0; id < net.size(); id++) {
-            globalRivers[id] = new GlobalRiverPrimitive(net.pos(id), widthFromFlow(flow[id]), id);
+            globalRivers[id] = new GlobalRiverPrimitive(net.pos(id), maxInfluence(widthFromFlow(flow[id])), id);
         }
         return Arrays.stream(globalRivers).toList();
     }

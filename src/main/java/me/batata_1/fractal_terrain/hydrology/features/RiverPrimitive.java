@@ -8,6 +8,7 @@ import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
+import me.batata_1.fractal_terrain.math.ds.SpatialIndexRotatedRectangle;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -22,30 +23,16 @@ import org.jetbrains.annotations.Nullable;
  */
 public record RiverPrimitive(
         double[] coord,
-        double radius,
+        double influence,
         RosgenType rosgenType,
-        double @Nullable [] normal,
+        double[] normal,
         double curvature,
         double width,
-        double elevation)
-        implements HydrologicalPrimitive {
+        double elevation,
+        long ids)
+        implements SpatialIndexRotatedRectangle, HydrologicalPrimitive {
 
-    static final RiverPrimitive PROTOTYPE = new RiverPrimitive(new double[] {0.0, 0.0}, 0, null, null, 0, 0, 0);
-
-    @Override
-    public double[] getCoords() {
-        return coord;
-    }
-
-    @Override
-    public double[] getCenter() {
-        return coord;
-    }
-
-    @Override
-    public double getRadius() {
-        return radius;
-    }
+    static final RiverPrimitive PROTOTYPE = new RiverPrimitive(new double[] {0.0, 0.0}, 0, null, null, 0, 0, 0,0);
 
     @Override
     public HydrologicalFeature getType() {
@@ -76,9 +63,7 @@ public record RiverPrimitive(
      *  between them, which is why the {@code dx <= width/2} spacing matters. */
     @Override
     public double d(double[] pt) {
-        if (normal == null) return radius;
         final double nx = normal[0], nz = normal[1];
-        if (Math.abs(nx) < 1e-6 || Math.abs(nz) < 1e-6) return radius;
         final double dx = pt[0] - coord[0], dz = pt[1] - coord[1];
         return nx * dx + nz * dz;
     }
@@ -91,12 +76,32 @@ public record RiverPrimitive(
     }
 
     @Override
+    public double w(double[] pt, Object... args) {
+        final double dx = pt[0] - coord[0], dz = pt[1] - coord[1];
+        final double nx = normal[0], nz = normal[1];
+        final double length = getLength();
+        final double width = getWidth();
+        final double distanceWidth = d(pt);
+        final double distanceLength = (dx * nz - dz * nx);
+        if(Math.abs(distanceWidth) >= width || Math.abs(distanceLength) >= length) return 0;
+        final double weightWidth = Math.pow(1-(distanceWidth*distanceWidth) / (width*width), 2);
+        final  double weightLength = Math.pow(1-(distanceLength*distanceLength) / (length*length), 2);
+        return Math.pow(Math.clamp(smoothMin(weightLength, weightWidth,0.02),0,1),7);
+    }
+
+    public static double smoothMin(double a, double b, double lambda) {
+        return (a + b - Math.sqrt((a - b) * (a - b) + lambda)) / 2;
+    }
+
+
+    @Override
     public long primitiveByteSize() {
         // rosgen tag + coord + normal + radius + width + elevation
         return Integer.BYTES
                 + PrimitiveCodec.coordByteSize(coord)
                 + PrimitiveCodec.coordByteSize(normal)
-                + 4L * Double.BYTES;
+                + 4L * Double.BYTES
+                + Long.BYTES;
     }
 
     @Override
@@ -107,9 +112,10 @@ public record RiverPrimitive(
         PrimitiveCodec.putCoord(buf, coord);
         PrimitiveCodec.putCoord(buf, normal);
         buf.putDouble(curvature);
-        buf.putDouble(radius);
+        buf.putDouble(influence);
         buf.putDouble(width);
         buf.putDouble(elevation);
+        buf.putLong(ids);
         return buf.array();
     }
 
@@ -124,7 +130,8 @@ public record RiverPrimitive(
         final double r = buf.getDouble();
         final double w = buf.getDouble();
         final double e = buf.getDouble();
-        return new RiverPrimitive(coords, r, rosgen, normalVec, curvature, w, e);
+        final long id = buf.getLong();
+        return new RiverPrimitive(coords, r, rosgen, normalVec, curvature, w, e,id);
     }
 
     // Records compare array components by reference; these compare contents instead.
@@ -135,14 +142,13 @@ public record RiverPrimitive(
         return rosgenType == other.rosgenType
                 && Arrays.equals(coord, other.coord)
                 && Arrays.equals(normal, other.normal)
-                && Double.compare(radius, other.radius) == 0
                 && Double.compare(width, other.width) == 0
                 && Double.compare(elevation, other.elevation) == 0;
     }
 
     @Override
     public int hashCode() {
-        int result = Objects.hash(rosgenType, radius, width, elevation);
+        int result = Objects.hash(rosgenType, width, elevation);
         result = 31 * result + Arrays.hashCode(coord);
         result = 31 * result + Arrays.hashCode(normal);
         return result;
@@ -150,8 +156,34 @@ public record RiverPrimitive(
 
     @Override
     public String toString() {
-        return "River[coord=" + Arrays.toString(coord) + ", radius=" + radius + ", rosgenType=" + rosgenType
+        return "River[coord=" + Arrays.toString(coord) + ", influence=" + influence + ", rosgenType=" + rosgenType
                 + ", normal=" + Arrays.toString(normal) + ", width=" + width + ", elevation=" + elevation + "]";
+    }
+
+    @Override
+    public double getAngle() {
+        throw new IllegalStateException("River Primitive uses angle cosines and sines directly");
+    }
+
+    public double getCosAngle() {
+        return normal[1];
+    }
+
+
+    public double getSinAngle() {
+        return normal[0];
+    }
+
+
+    @Override
+    public double getLength() {
+        return influence*2;
+    }
+
+    /** refers to the width of the river primitive, NOT the accutal river width */
+    @Override
+    public double getWidth() {
+        return influence*2;
     }
 
     /** Rosgen stream classification (A–G); selects the primitive's {@link RosgenProfile}. */

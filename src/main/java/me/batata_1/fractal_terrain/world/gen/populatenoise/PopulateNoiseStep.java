@@ -3,6 +3,8 @@ package me.batata_1.fractal_terrain.world.gen.populatenoise;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import java.util.Arrays;
+import java.util.List;
+
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
@@ -53,13 +55,14 @@ public class PopulateNoiseStep {
         final double chunkRadiusPx = (8.0 * Math.sqrt(2.0)) / scale;
         final HydrologyProfileCarver.PrefetchedPrimitives chunkPrimitives =
                 carver.prefetchChunk(chunkCenterPixelX, chunkCenterPixelZ, chunkRadiusPx);
-        final HydrologicalPrimitive[] primitives = chunkPrimitives.primitives();
+        final List<HydrologicalPrimitive> primitives = chunkPrimitives.primitives();
+        primitives.sort(HydrologicalPrimitive.comparator);
         final double[] mutablePt = new double[2];
 
         float refinedElev = 0;
-        final double[] zoneSums = new double[ZoneCategory.COUNT];
-        final double[] zoneWeights = new double[ZoneCategory.COUNT];
         double nearestDist;
+        double weight = 0;
+        double weightedElev = 0;
         HydrologicalPrimitive nearestPrimitive;
         for (int dx = 0; dx < 16; dx++) {
             for (int dz = 0; dz < 16; dz++) {
@@ -69,34 +72,24 @@ public class PopulateNoiseStep {
                 mutablePt[1] = (startZ + dz) / scale;
                 nearestDist = 1e9;
                 nearestPrimitive = null;
-                for (final HydrologicalPrimitive primitive : primitives) {
-                    final double[] primitiveCoord = primitive.coord();
-                    final double radialDist =
-                            Math.hypot(mutablePt[0] - primitiveCoord[0], mutablePt[1] - primitiveCoord[1]);
-                    final HydrologyProfile profile = primitive.getProfile();
-                    if (primitive.influence() < radialDist) continue; // out of this primitive's reach
-                    final ZoneCategory zone = profile.categoryAt(primitive, radialDist);
-                    if (zone == null) continue;
-                    final double weight = profile.zoneWeight(primitive, zone, radialDist);
-                    if (weight <= 0) continue;
-                    if (radialDist < nearestDist) {
-                        nearestDist = radialDist;
+                weight = 0;
+                weightedElev = 0;
+                for(HydrologicalPrimitive primitive : primitives) {
+                    if (!primitive.containsPoint(mutablePt)) continue;
+                    if( primitive instanceof RiverPrimitive river) {
+                        final double deltaWeight = river.w(mutablePt);
+                        weight += deltaWeight;
+                        weightedElev += deltaWeight * river.h(mutablePt);
                         nearestPrimitive = primitive;
                     }
-                    final int slot = zone.ordinal();
-                    zoneSums[slot] += weight * primitive.h(mutablePt);
-                    zoneWeights[slot] += weight;
                 }
-                boolean intersects = false;
-                for (final ZoneCategory zone : ZoneCategory.BY_PRIORITY) {
-                    final int slot = zone.ordinal();
-                    if (zoneWeights[slot] > 1e-6) {
-                        refinedElev = (float) (zoneSums[slot] / zoneWeights[slot]);
-                        intersects = true;
-                        break;
-                    }
+                if(weight <= 1e-8) refinedElev = baseElev;
+                else {
+                    final double elev = weightedElev / weight;
+                    weight = Math.clamp(weight, 0, 1);
+                  //  refinedElev = (float) ((1-weight)*baseElev + weight*elev);
+                    refinedElev = (float) elev;
                 }
-                if (!intersects) refinedElev = baseElev;
                 riverDifference[pos] = refinedElev - baseElev;
                 interpolatedElevs[pos] = Math.max(bottom, refinedElev) + seaLevel - 1;
                 if (nearestPrimitive instanceof RiverPrimitive river) {

@@ -2,15 +2,19 @@ package me.batata_1.fractal_terrain.debug;
 
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.CH;
 
+import java.util.ArrayList;
 import java.util.function.Function;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
+import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
+import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileCarver;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import me.batata_1.fractal_terrain.math.Interpolation;
+import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 import me.batata_1.fractal_terrain.relief.DecoderChannels;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
 import net.minecraft.world.level.ChunkPos;
@@ -50,7 +54,62 @@ public class Infinite3DVisualizer {
                 return (int) reliefBaseHeight[(x & 15) * 16 + (z & 15)];
             }
         },
+        SINGLE_PRIMITIVE(0,0,0,xz->0f) {
 
+            private static final ArrayList<HydrologicalPrimitive> primitives = new ArrayList<>();
+            private static final ImmutableRTree<HydrologicalPrimitive> tree;
+            private static final int BASE_ELEV = 80;
+            static {
+                final double width = 7;
+                primitives.add(new RiverPrimitive(
+                        new double[]{256,256},
+                        HydrologyTuning.maxInfluence(width),
+                        RiverPrimitive.RosgenType.C,
+                        new double[]{0,1},
+                        0.4,
+                        width,
+                        64,
+                        0
+                ));
+                primitives.add(new RiverPrimitive(
+                        new double[]{256+HydrologyTuning.maxInfluence(width),256,+HydrologyTuning.maxInfluence(width)},
+                        HydrologyTuning.maxInfluence(width),
+                        RiverPrimitive.RosgenType.C,
+                        new double[]{1,0},
+                        0.4,
+                        width,
+                        64,
+                        0
+                ));
+                tree = new ImmutableRTree<>(
+                        primitives,
+                        HydrologicalPrimitive.PROTOTYPE
+                );
+            }
+
+            @Override
+            public int sample(int x, int z) {
+                x %= 512*5;
+                z %= 512*5;
+                if(x<0) x += 512*5;
+                if(z<0) z += 512*5;
+                final double[] pt = {x/5.0,z/5.0};
+                var primitives = tree.queryContaining(pt);
+                if(primitives.isEmpty()) return BASE_ELEV;
+                double weight =0;
+                double weightedElev = 0;
+                double distance = 10;
+                for(HydrologicalPrimitive primitive : primitives) {
+                    final var dw = primitive.w(pt);
+                    weight += dw;
+                    weightedElev += dw * primitive.h(pt);
+                    final double dist = Math.clamp(Math.hypot(pt[0]-primitive.coord()[0],pt[1]-primitive.coord()[1]), 0.02, 100);
+                    distance += 1/dist;
+                }
+                if(weight <= 1e-8) return BASE_ELEV;
+                return (int) (1/distance);
+            }
+        },
         DIST_SHORE(10.0f, 1.0f, 5.0f, xz ->
                 (float) FractalTerrainInstance.getBiomeProvider().getDistShore(xz));
 
@@ -84,6 +143,7 @@ public class Infinite3DVisualizer {
      * </ul>
      */
     public enum DebugPaintModes {
+        EMPTY((var a, var b, var c, var d) -> DEFAULT),
         RIVER_NET(Infinite3DVisualizer::debugRiver),
         PV(Infinite3DVisualizer::debugPV),
         HYDRO_ZONES(Infinite3DVisualizer::debugHydroZones);
@@ -191,17 +251,15 @@ public class Infinite3DVisualizer {
         pt[1] = zz * 0.2;
         //  LOG.info("[");
         final HydrologicalPrimitive[] primitives =
-                FractalTerrainInstance.getLocalRiverProvider().queryInfluence(pt);
+                FractalTerrainInstance.getLocalRiverProvider().queryInfluence(pt).toArray(new HydrologicalPrimitive[0]);
         // LOG.info("]");
-        if (xx == -4262 && zz == -4662) {
-            LOG.info("oi");
-        }
+
         BlockState deepest = DEFAULT;
         for (final HydrologicalPrimitive primitive : primitives) {
             final double du = pt[0] - primitive.coord()[0];
             final double dv = pt[1] - primitive.coord()[1];
             final double radialDist = Math.hypot(du, dv);
-            if (radialDist >= primitive.getRadius()) continue; // outside this primitive's influence circle
+            if (!primitive.containsPoint(pt)) continue; // outside this primitive's influence circle
 
             if (!(primitive instanceof RiverPrimitive riverPrimitive)) return NOT_RIVER;
             // An unclassified reach paints as A, matching how the carve coalesces a null type.

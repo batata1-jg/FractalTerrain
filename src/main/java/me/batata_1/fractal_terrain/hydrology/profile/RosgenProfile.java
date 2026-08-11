@@ -27,10 +27,6 @@ public enum RosgenProfile implements HydrologyProfile {
             return 1.2 * (width / 2);
         }
 
-        @Override
-        public double riverInfluence(double width) {
-            return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, width / HydrologyTuning.MIN_WIDTH);
-        }
 
         @Override
         protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
@@ -38,11 +34,6 @@ public enum RosgenProfile implements HydrologyProfile {
         }
     },
     Aa {
-
-        @Override
-        public double riverInfluence(double width) {
-            return Math.clamp(0.5 * (width / HydrologyTuning.MIN_WIDTH), width, HydrologyTuning.MAX_INFLUENCE_RADIUS);
-        }
 
         @Override
         protected double valleyDelta(double dist) {
@@ -67,11 +58,6 @@ public enum RosgenProfile implements HydrologyProfile {
         }
 
         @Override
-        public double riverInfluence(double width) {
-            return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, floodPlainLength(width) / HydrologyTuning.MIN_WIDTH);
-        }
-
-        @Override
         protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
             return Math.min(-1, 0.25 * super.bedDelta(seed, signedPerpDist, depth, curvature));
         }
@@ -89,11 +75,6 @@ public enum RosgenProfile implements HydrologyProfile {
         @Override
         public double floodPlainLength(double width) {
             return 1.3 * Math.pow(width, 1.1);
-        }
-
-        @Override
-        public double riverInfluence(double width) {
-            return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, 10 * Math.pow(width, 0.575));
         }
 
         @Override
@@ -127,13 +108,6 @@ public enum RosgenProfile implements HydrologyProfile {
         }
 
         @Override
-        public double riverInfluence(double width) {
-            return Math.min(
-                    HydrologyTuning.MAX_INFLUENCE_RADIUS,
-                    3 * maxHalfWidth * Math.pow(floodPlainLength(width) / (1.5 * maxHalfWidth), 0.75));
-        }
-
-        @Override
         protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
            // return -3 * Math.abs(noiseSampler.sample(1.0 / seed, signedPerpDist));
             return -3;
@@ -146,11 +120,6 @@ public enum RosgenProfile implements HydrologyProfile {
         @Override
         public double floodPlainLength(double width) {
             return maxHalfWidth * Math.pow(width / HydrologyTuning.MAX_WIDTH, 0.3);
-        }
-
-        @Override
-        public double riverInfluence(double width) {
-            return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, 1.3 * floodPlainLength(width));
         }
 
         @Override
@@ -171,12 +140,6 @@ public enum RosgenProfile implements HydrologyProfile {
             return (width / 2) * 1.275;
         }
 
-        @Override
-        public double riverInfluence(double width) {
-            return Math.min(
-                    HydrologyTuning.MAX_INFLUENCE_RADIUS,
-                    1.5 * maxHalfWidth * Math.pow(floodPlainLength(width) / (maxHalfWidth), 0.75));
-        }
 
         @Override
         protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
@@ -189,27 +152,7 @@ public enum RosgenProfile implements HydrologyProfile {
             return 1.2 * (width / 2);
         }
 
-        @Override
-        public double riverInfluence(double width) {
-            return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, 2*width);
-        }
     };
-
-    // ---- Zone mapping (the HydrologyProfile contract, expressed over a River's width) ----
-
-    /** The nested river zones. INFLUENCE comes from the primitive's index radius, not {@link #riverInfluence},
-     *  so carve reach stays identical to the circle the R-tree found the primitive by. */
-    @Override
-    public double zoneRadius(HydrologicalPrimitive primitive, ZoneCategory category) {
-        if (!(primitive instanceof RiverPrimitive riverPrimitive))
-            return HydrologyProfile.super.zoneRadius(primitive, category);
-        return switch (category) {
-            case BED -> ChannelGeometry.bedHalfWidth(riverPrimitive.width());
-            case FLOODPLAIN -> floodPlainLength(riverPrimitive.width());
-            case INFLUENCE -> riverPrimitive.getRadius();
-            default -> NO_ZONE;
-        };
-    }
 
     /** Delegates to {@link #riverInfluenceElevation} with the reach's width and bank elevation. */
     @Override
@@ -236,7 +179,7 @@ public enum RosgenProfile implements HydrologyProfile {
 
     /** Outer reach of the river, and the primitive's index radius. Calls the virtual
      *  {@link #floodPlainLength}, so overriding only the floodplain still yields consistent influence. */
-    public double riverInfluence(double width) {
+    public static double riverInfluence(double width) {
         return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, width * HydrologyTuning.INFLUENCE_BLEND_MULTIPLIER);
     }
 
@@ -287,7 +230,7 @@ public enum RosgenProfile implements HydrologyProfile {
             curvature
         );
         final double valleyContribution = valleyDelta(perpDist-floodPlainLen);
-        if(perpDist<=marginLen) return bedContribution;
+        if(perpDist<=marginLen) return -10;
         if(perpDist<=floodPlainLen) return floodPlainContribution;
         return valleyContribution;
     }

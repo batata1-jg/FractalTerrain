@@ -142,7 +142,7 @@ public class SpatialIndexBenchmark {
         bench(
                 "LocalRiverProvider.queryInfluence",
                 worldInnerPoints(5, worldOriginX, worldOriginZ),
-                pt -> localRivers.queryInfluence(pt).length);
+                pt -> localRivers.queryInfluence(pt).toArray().length);
         bench(
                 "HydrologyProfileCarver.carveAtPixel",
                 worldInnerPoints(6, worldOriginX, worldOriginZ),
@@ -164,10 +164,7 @@ public class SpatialIndexBenchmark {
         long keptCount = 0;
         for (final PrimitivePoint primitivePoint : buffer) {
             final HydrologicalPrimitive primitive = primitivePoint.primitive();
-            final double deltaX = primitive.coord()[0] - pt[0];
-            final double deltaZ = primitive.coord()[1] - pt[1];
-            final double reach = primitive.getRadius();
-            if (deltaX * deltaX + deltaZ * deltaZ <= reach * reach) keptCount++;
+            if (primitive.containsPoint(pt)) keptCount++;
         }
         return keptCount;
     }
@@ -192,10 +189,7 @@ public class SpatialIndexBenchmark {
 
             final Set<HydrologicalPrimitive> bruteForceHits = new HashSet<>();
             for (final HydrologicalPrimitive primitive : allPrimitives) {
-                final double deltaX = primitive.coord()[0] - pt[0];
-                final double deltaZ = primitive.coord()[1] - pt[1];
-                final double reach = primitive.getRadius();
-                if (deltaX * deltaX + deltaZ * deltaZ <= reach * reach) bruteForceHits.add(primitive);
+                if (primitive.containsPoint(pt)) bruteForceHits.add(primitive);
             }
 
             stabBuffer.clear();
@@ -221,10 +215,7 @@ public class SpatialIndexBenchmark {
             final Set<HydrologicalPrimitive> legacyHits = new HashSet<>();
             for (final PrimitivePoint primitivePoint : legacyBuffer) {
                 final HydrologicalPrimitive primitive = primitivePoint.primitive();
-                final double deltaX = primitive.coord()[0] - pt[0];
-                final double deltaZ = primitive.coord()[1] - pt[1];
-                final double reach = primitive.getRadius();
-                if (deltaX * deltaX + deltaZ * deltaZ <= reach * reach) legacyHits.add(primitive);
+                if (primitive.containsPoint(pt)) legacyHits.add(primitive);
             }
             if (!legacyHits.equals(bruteForceHits)) quadTreeDeviations++;
         }

@@ -14,5 +14,6 @@ Spatial-index data structures: a mutable `QuadTree` and immutable, build-once `I
 | `SpatialIndexShape.java`      | Base shape type indexed by the structures                  | Adding a shape type                             |
 | `SpatialIndexPoint.java`      | Point shape                                                | Point queries                                   |
 | `SpatialIndexCircle.java`     | Circle shape                                               | Radius queries                                  |
-| `SpatialIndexRectangle.java`  | Rectangle shape                                            | Bounding-box queries                            |
+| `SpatialIndexRectangle.java`  | Axis-aligned rectangle shape                               | Bounding-box queries                            |
+| `SpatialIndexRotatedRectangle.java` | Oriented rectangle shape (center/angle/length/width) | Queries by a footprint aligned to a bearing     |
 | `CoordPoint.java`             | Integer coordinate record                                 | Coordinate keys in indexes                       |

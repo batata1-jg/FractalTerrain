@@ -2,6 +2,7 @@ package me.batata_1.fractal_terrain.hydrology.features;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.Comparator;
 import java.util.List;
 import java.util.function.Supplier;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
@@ -12,6 +13,7 @@ import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
+import me.batata_1.fractal_terrain.math.ds.SpatialIndexShape;
 import me.batata_1.fractal_terrain.storage.Persistable;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -28,7 +30,7 @@ import org.slf4j.LoggerFactory;
  * must override {@code equals}/{@code hashCode} — see {@link PrimitiveCodec#coordsEqual}.
  */
 public interface HydrologicalPrimitive
-        extends SpatialIndexPoint, SpatialIndexCircle, Persistable<HydrologicalPrimitive> {
+        extends SpatialIndexShape, Persistable<HydrologicalPrimitive> {
 
     /** Probe {@code Storage} uses to decide the index is persistable; any primitive type would serve. */
     HydrologicalPrimitive PROTOTYPE = RiverPrimitive.PROTOTYPE;
@@ -36,15 +38,83 @@ public interface HydrologicalPrimitive
     /** Deliberately small, so a feature with no profile yet barely perturbs the terrain. */
     double DEFAULT_RADIUS = 2.0;
 
+
+    Comparator<HydrologicalPrimitive> comparator = (p1, p2) -> {
+        if (p1.getType().ordinal() < p2.getType().ordinal()) return -1;
+        if (p1.getType().ordinal() > p2.getType().ordinal()) return 1;
+        if (p1 instanceof RiverPrimitive r1 && p2 instanceof RiverPrimitive r2)
+            return Long.compare(r1.ids(), r2.ids());
+        return 0;
+    };
+
     Logger LOG = LoggerFactory.getLogger(HydrologicalPrimitive.class);
 
     /** Which kind of feature this primitive is; the tag {@link #serialize()} writes. */
     HydrologicalFeature getType();
 
+    long primitiveByteSize();
+
+    /** This primitive's payload, without the type tag {@link #serialize()} prepends. */
+    byte[] serializePrimitive();
+
     default float waterLine() {
         return -1;
     }
-    ;
+
+
+
+    // Records compare array components by reference; these compare contents instead.
+    @Override
+    boolean equals(Object o);
+
+    @Override
+    int hashCode();
+
+    /** The profile deciding this primitive's carve zones and shell pull. */
+    HydrologyProfile getProfile();
+
+    /** The primitive's own cross-section, layered onto what the shell carve already cut. Returning
+     *  {@code elevAtPixel} unchanged means the primitive adds no detail of its own. */
+    double h(double[] pt, Object... args);
+
+    double w(double[] pt, Object... args);
+
+    double d(double[] pt);
+
+    double[] coord();
+
+    /** Whether the point is inside open water. Defaults to no, so a wetted type opts in. */
+    default boolean channelContains(double distSqFromCentre) {
+        return false;
+    }
+
+    @Override
+    default long byteSize() {
+        return Integer.BYTES + primitiveByteSize();
+    }
+
+    /** Type tag + {@link #serializePrimitive()} body. See the class javadoc. */
+    @Override
+    default byte[] serialize() throws UnsupportedOperationException {
+        final byte[] body = serializePrimitive();
+        final ByteBuffer buf = ByteBuffer.allocate(Integer.BYTES + body.length).order(ByteOrder.LITTLE_ENDIAN);
+        buf.putInt(getType().ordinal());
+        buf.put(body);
+        return buf.array();
+    }
+
+    /** Reads the type tag, then rebuilds the body on that feature's prototype. See the class javadoc. */
+    @Override
+    default HydrologicalPrimitive deserialize(byte[] rawBytes) throws UnsupportedOperationException {
+        final ByteBuffer buf = ByteBuffer.wrap(rawBytes).order(ByteOrder.LITTLE_ENDIAN);
+        final HydrologicalFeature type = HydrologicalFeature.fromTag(buf.getInt());
+        final byte[] body = new byte[rawBytes.length - Integer.BYTES];
+        buf.get(body);
+        return type.prototype().deserializePrimitive(body);
+    }
+
+    /** Rebuild a primitive of this record's type from a {@link #serializePrimitive()} body (no type tag). */
+    HydrologicalPrimitive deserializePrimitive(byte[] rawBytes);
 
     /**
      * Feature kinds and the registry mapping each to its record.
@@ -66,6 +136,8 @@ public interface HydrologicalPrimitive
                     final double width = ch.widthAt(i);
                     final RosgenProfile profile = RosgenProfile.of(types[i]);
                     final double[] coords = VectorOps.sub(ch.spline.sample(i), offset);
+                    //TODO: breaks for multiple channels in diferent tiles.
+                    final long packedIds = i | (((long)ch.channelId)<<32);
                     out.add(new RiverPrimitive(
                             coords,
                             profile.riverInfluence(width),
@@ -73,7 +145,8 @@ public interface HydrologicalPrimitive
                             ch.spline.normal(i),
                             ch.spline.curvature(i),
                             width,
-                            ch.bedElev(i)));
+                            ch.bedElev(i),
+                            packedIds));
                 }
             }
         },
@@ -129,81 +202,4 @@ public interface HydrologicalPrimitive
 
         public abstract void addPrimitives(double[] offset, List<HydrologicalPrimitive> primitives, Object... args);
     }
-
-    // Records compare array components by reference; these compare contents instead.
-    @Override
-    boolean equals(Object o);
-
-    @Override
-    int hashCode();
-
-    /** The profile deciding this primitive's carve zones and shell pull. */
-    HydrologyProfile getProfile();
-
-    /** The primitive's own cross-section, layered onto what the shell carve already cut. Returning
-     *  {@code elevAtPixel} unchanged means the primitive adds no detail of its own. */
-    default double h(double[] pt, Object... args) {
-        return 0;
-    }
-
-    default double w(double[] pt, Object... args) {
-            final double r = getRadius();
-            final double d = d(pt);
-            if(d<1) return 1;
-//            if(d>=r) return 0;
-            return Math.pow(Math.max(0,r+1-Math.abs(d)) /((r+1)*d) ,2);
-    }
-
-    default double d(double[] pt) {
-        return Math.hypot(pt[0]-coord()[0], pt[1]-coord()[1]);
-    }
-
-    @Override
-    default double getRadius() {
-        return DEFAULT_RADIUS;
-    }
-
-    default double influence() {
-        return getRadius();
-    }
-
-    double[] coord();
-
-    /** Whether the point is inside open water. Defaults to no, so a wetted type opts in. */
-    default boolean channelContains(double distSqFromCentre) {
-        return false;
-    }
-
-    @Override
-    default long byteSize() {
-        return Integer.BYTES + primitiveByteSize();
-    }
-
-    /** Type tag + {@link #serializePrimitive()} body. See the class javadoc. */
-    @Override
-    default byte[] serialize() throws UnsupportedOperationException {
-        final byte[] body = serializePrimitive();
-        final ByteBuffer buf = ByteBuffer.allocate(Integer.BYTES + body.length).order(ByteOrder.LITTLE_ENDIAN);
-        buf.putInt(getType().ordinal());
-        buf.put(body);
-        return buf.array();
-    }
-
-    /** Reads the type tag, then rebuilds the body on that feature's prototype. See the class javadoc. */
-    @Override
-    default HydrologicalPrimitive deserialize(byte[] rawBytes) throws UnsupportedOperationException {
-        final ByteBuffer buf = ByteBuffer.wrap(rawBytes).order(ByteOrder.LITTLE_ENDIAN);
-        final HydrologicalFeature type = HydrologicalFeature.fromTag(buf.getInt());
-        final byte[] body = new byte[rawBytes.length - Integer.BYTES];
-        buf.get(body);
-        return type.prototype().deserializePrimitive(body);
-    }
-
-    long primitiveByteSize();
-
-    /** This primitive's payload, without the type tag {@link #serialize()} prepends. */
-    byte[] serializePrimitive();
-
-    /** Rebuild a primitive of this record's type from a {@link #serializePrimitive()} body (no type tag). */
-    HydrologicalPrimitive deserializePrimitive(byte[] rawBytes);
 }

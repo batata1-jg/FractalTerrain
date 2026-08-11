@@ -59,7 +59,7 @@ final class PrimitiveCodec {
     static boolean coordsEqual(HydrologicalPrimitive self, Object other, double[] coord) {
         if (self == other) return true;
         if (other == null || self.getClass() != other.getClass()) return false;
-        return Arrays.equals(coord, ((HydrologicalPrimitive) other).getCoords());
+        return Arrays.equals(coord, ((HydrologicalPrimitive) other).coord());
     }
 
     /** The {@link #coordsEqual} counterpart: a hash over the coordinate contents. */

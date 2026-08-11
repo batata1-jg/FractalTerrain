@@ -261,21 +261,23 @@ public class LocalRiverProvider {
                 (tileOriginX, tileOriginZ, tileIndex) -> tileIndex.anyContaining(pt, acceptanceTest));
     }
 
-    /** Every primitive influencing {@code pt}, unordered — feeds {@link HydrologyProfileCarver}'s flat
-     *  distance-weighted merge. {@code extraRadius} inflates the circles so the per-chunk prefetch can
-     *  serve a whole chunk from one query. Returns indexed instances; callers must not mutate them. */
-    public HydrologicalPrimitive[] queryInfluence(double[] pt, double extraRadius) {
+    /**
+     * Every primitive influencing {@code pt}, unordered — feeds {@link HydrologyProfileCarver}'s flat
+     * distance-weighted merge. {@code extraRadius} inflates the circles so the per-chunk prefetch can
+     * serve a whole chunk from one query. Returns indexed instances; callers must not mutate them.
+     */
+    public List<HydrologicalPrimitive> queryInfluence(double[] pt, double extraRadius) {
         final List<HydrologicalPrimitive> influencingPrimitives = new ArrayList<>(64);
         primitives.forEachTileWithin(
                 pt, HydrologyTuning.MAX_INFLUENCE_RADIUS + extraRadius, (tileOriginX, tileOriginZ, tileIndex) -> {
                     tileIndex.queryContaining(pt, extraRadius, influencingPrimitives);
                     return false;
                 });
-        return influencingPrimitives.toArray(new HydrologicalPrimitive[0]);
+        return influencingPrimitives;
     }
 
     /** {@link #queryInfluence(double[], double)} with no extra radius (single-point queries). */
-    public HydrologicalPrimitive[] queryInfluence(double[] pt) {
+    public List<HydrologicalPrimitive> queryInfluence(double[] pt) {
         return queryInfluence(pt, 0.0);
     }
 

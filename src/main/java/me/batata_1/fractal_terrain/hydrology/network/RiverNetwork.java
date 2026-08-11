@@ -1,6 +1,7 @@
 package me.batata_1.fractal_terrain.hydrology.network;
 
 import static me.batata_1.fractal_terrain.config.DebugConfig.DEBUG_CROSSING_WINNER;
+import static me.batata_1.fractal_terrain.config.HydrologyTuning.maxInfluence;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 import static me.batata_1.fractal_terrain.hydrology.meanders.Meanders.DEBUG_STEPS;
 
@@ -732,7 +733,7 @@ public final class RiverNetwork {
             if (!ch.isResampleable()) continue; // degenerate geometry (too few points or NaN): skip
             // Spacing must be <= half the NARROWEST (intake) derived width, so consecutive primitives'
             // width/2 discs always overlap (gap-free membership test + girth rendering).
-            final double dx = Math.max(ch.intakeWidth() / 2.0, MIN_CONVERT_SPACING);
+            final double dx = Math.max( maxInfluence(ch.intakeWidth()) / 2.0, MIN_CONVERT_SPACING);
             try {
                 ch.reSample(dx);
             } catch (RuntimeException runaway) {

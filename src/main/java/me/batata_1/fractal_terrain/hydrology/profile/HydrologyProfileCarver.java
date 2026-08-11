@@ -34,7 +34,7 @@ public final class HydrologyProfileCarver {
      * re-queries the spatial index. Produced by {@link #prefetchChunk} / {@link #queryPrimitives} and consumed
      * by {@link #carvePrefetched}.
      */
-    public record PrefetchedPrimitives(HydrologicalPrimitive[] primitives) {}
+    public record PrefetchedPrimitives(List<HydrologicalPrimitive> primitives) {}
 
     /** Single-point carve; {@link #prefetchChunk} is the path for anything hot. */
     public float carveAtPixel(double[] pt, double shellElevAtPixel) {
@@ -57,7 +57,7 @@ public final class HydrologyProfileCarver {
      *  hierarchy. Averages within a zone but switches hard between zones, deliberately: two rivers
      *  sharing a floodplain should blend, a bed crossing it should cut through. */
     public float carvePrefetched(PrefetchedPrimitives prefetched, double[] pt, double elevAtPixel) {
-        final HydrologicalPrimitive[] primitives = prefetched.primitives();
+        final HydrologicalPrimitive[] primitives = prefetched.primitives().toArray(new HydrologicalPrimitive[0]);
 
         double weight = 0;
         double weightedElev = 0;
@@ -100,21 +100,17 @@ public final class HydrologyProfileCarver {
                 weight = 0;
                 weightedElev = 0;
                 for (final HydrologicalPrimitive primitive : nearby) {
-                    final double[] coord = primitive.getCenter();
-                    final double dx = pixel[0] - coord[0];
-                    final double dz = pixel[1] - coord[1];
-                    final double radialDist = Math.hypot(dx, dz);
-                    final double influenceRadius = primitive.getRadius();
-                    if (radialDist >= influenceRadius) continue;
+                    if (!primitive.containsPoint(pixel)) continue;
                     if( primitive instanceof RiverPrimitive river) {
                         final double deltaWeight = river.w(pixel);
                         weight += deltaWeight;
                         weightedElev += deltaWeight * river.h(pixel);
                     }
                 }
-                if(weight <= 1e-6) continue;
-//                final double elev = weightedElev / weight;
-                elevation[idx] = (float) ( weightedElev /weight);
+                if(weight <= 1e-8) continue;
+                final double elev = weightedElev / weight;
+                weight = Math.clamp(weight, 0, 1);
+                elevation[idx] = (float) ( (1-weight)*elevation[idx] + weight*elev );
             }
         }
     }
@@ -137,12 +133,12 @@ public final class HydrologyProfileCarver {
                 HydrologicalPrimitive nearest = null;
                 double nearestDist = Double.MAX_VALUE;
                 for (final HydrologicalPrimitive primitive : nearby) {
-                    final double[] coord = primitive.getCenter();
+                    final double[] coord = primitive.coord();
                     final double dx = pixel[0] - coord[0];
                     final double dz = pixel[1] - coord[1];
                     final double radialDist = Math.hypot(dx, dz);
-                    final double influenceRadius = primitive.getRadius();
-                    if (radialDist >= influenceRadius) continue; // outside this primitive's influence
+
+                    if (!primitive.containsPoint(pixel)) continue; // outside this primitive's influence
                     if (radialDist < nearestDist && primitive instanceof RiverPrimitive river) {
                         nearestDist = radialDist;
                         nearest = river;

@@ -196,7 +196,7 @@ final class GlobalNetworkBuilder {
         final double primaryElev = (primaryCell != null) ? grp.getElevation(primaryCell.ccx(), primaryCell.ccz()) : 0.0;
         final int relaxSteps = MIN_RELAX_STEPS + (int) Math.round(Math.max(0.0, primaryElev) * RELAX_STEPS_PER_ELEV);
 
-        sim.relaxLowerGrad(Math.min(relaxSteps, MAX_RELAX_STEPS));
+        sim.relaxLowerGrad(Math.min(relaxSteps, MAX_RELAX_STEPS),5);
         clearBuildState(cells, nodeSpecs, edgeSpecs, centerIdx, edgeNodeIdx);
         return new Result(sim, boundaryElevByNodeIdx);
     }

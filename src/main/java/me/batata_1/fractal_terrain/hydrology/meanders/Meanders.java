@@ -1,12 +1,10 @@
 package me.batata_1.fractal_terrain.hydrology.meanders;
 
-import static me.batata_1.fractal_terrain.config.HydrologyTuning.MAX_MIGRATION;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.function.Consumer;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
@@ -28,11 +26,20 @@ import org.slf4j.Logger;
  * <p>Each step resamples every channel, migrates its interior points, then asks the network to resolve
  * self-intersection cutoffs and stream-capture collisions. {@link #relaxLowerGrad} runs the same loop
  * with a valley-seeking migration instead of meandering (and a network constructed without history).
+ *
+ * <p>Every step takes a {@code dx} (native px): it is both the resample spacing and — through
+ * {@link HydrologyTuning#maxMigration} — the cap on per-step displacement, so a caller coarsening the
+ * geometry gets proportionally bolder migration and the two never fall out of scale with each other.
  */
 public final class Meanders {
 
+    /** A per-step migration rule; {@code dx} is the step's resample spacing (native px). */
+    @FunctionalInterface
+    private interface MigrationRule {
+        void migrate(Channel ch, double dx);
+    }
+
     private static final double TWO_THIRDS = 2.0 / 3.0;
-    private static final double INF = 1e9;
     private static final double OMEGA = -1.0;
     private static final double GAMMA = 2.5;
 
@@ -55,7 +62,6 @@ public final class Meanders {
     private final RiverNetwork network;
 
     private int currentStep = 0; // the step number being processed, for debug image folders
-    private final double maxMigrationMagnetude;
 
     public Meanders(
             int gridSize,
@@ -104,7 +110,6 @@ public final class Meanders {
         this.gradX = gradX;
         this.gradZ = gradZ;
         this.elev = elev;
-        this.maxMigrationMagnetude = INF;
         this.network = new RiverNetwork(
                 gridSize, nodeSpecs, edgeSpecs, savePreviousStates, maxSavedStates, HydrologyTuning.DX);
     }
@@ -114,35 +119,39 @@ public final class Meanders {
         return network;
     }
 
-    /** One simulation step using the Ikeda-Parker-Sawai meander migration. */
-    public void step(int i) {
-        stepImpl(i, this::migrateMeanders);
+    /** One simulation step using the Ikeda-Parker-Sawai meander migration, at resample spacing {@code dx}. */
+    public void step(int i, double dx) {
+        stepImpl(i, dx, this::migrateMeanders);
     }
 
     /** One step that only relaxes channels down the terrain gradient (no meandering). */
-    public void relaxStep(int i) {
-        stepImpl(i, this::migrateLowerGrad);
+    public void relaxStep(int i, double dx) {
+        stepImpl(i, dx, this::migrateLowerGrad);
     }
 
     /** Relax the whole network down-gradient for {@code steps} steps (cutoffs + collisions run). */
-    public void relaxLowerGrad(int steps) {
+    public void relaxLowerGrad(int steps, double dx) {
         for (int i = 1; i <= steps; i++) {
-            relaxStep(i);
+            relaxStep(i, dx);
         }
     }
 
     public void simulate(int n) {
-        for (int i = 1; i <= n; i++) step(i);
+        simulate(n, HydrologyTuning.DX);
     }
 
-    private void stepImpl(int i, Consumer<Channel> migrate) {
+    public void simulate(int n, double dx) {
+        for (int i = 1; i <= n; i++) step(i, dx);
+    }
+
+    private void stepImpl(int i, double dx, MigrationRule migrate) {
         currentStep = i;
         network.beginStep();
         dumpNetwork("00_original");
         for (Channel ch : network.getChannels()) {
-            ch.reSample(HydrologyTuning.DX);
+            ch.reSample(dx);
             ch.spline = QuinticHermiteSpline.createCatmullRom(ch.spline.points());
-            migrate.accept(ch);
+            migrate.migrate(ch, dx);
         }
 
         network.resolveEndpoints();
@@ -156,7 +165,7 @@ public final class Meanders {
         network.manageCollisions(i, network.viewAtomic());
         dumpNetwork("04_managed");
         for (Channel ch : network.getChannels()) {
-            ch.reSample(HydrologyTuning.DX);
+            ch.reSample(dx);
             ch.spline = QuinticHermiteSpline.createCatmullRom(ch.spline.points());
         }
         dumpNetwork("05_final");
@@ -177,13 +186,13 @@ public final class Meanders {
     // Migration
     // ---------------------------------------------------------------------------------------------
 
-    private static double[] computeMigrationRates(Channel ch) {
+    private static double[] computeMigrationRates(Channel ch, double dx) {
         final double sinuosity = ch.computeSinuosity();
         final double[] localRates = ch.computeLocalRates();
         Debug.isNan(localRates);
         final double sigmaToTheMinus2over3 = Math.pow(sinuosity, -TWO_THIRDS);
         final double alpha = 2 * FRICTION / ch.depth();
-        final double expTerm = Math.exp(-alpha * HydrologyTuning.DX);
+        final double expTerm = Math.exp(-alpha * dx);
         double integralTerm = 0;
         final double[] migRates = new double[ch.spline.points().size()];
         for (int i = 0; i < ch.spline.points().size(); i++) {
@@ -196,9 +205,11 @@ public final class Meanders {
         return migRates;
     }
 
-    /** Meander migration (Ikeda-Parker-Sawai). Endpoints stay pinned so graph node coordinates hold. */
-    public void migrateMeanders(Channel ch) {
-        final double[] migrationRates = computeMigrationRates(ch);
+    /** Meander migration (Ikeda-Parker-Sawai) at resample spacing {@code dx}. Endpoints stay pinned so
+     *  graph node coordinates hold. */
+    public void migrateMeanders(Channel ch, double dx) {
+        final double[] migrationRates = computeMigrationRates(ch, dx);
+        final double maxMigration = HydrologyTuning.maxMigration(dx);
         final int pointCount = ch.spline.points().size();
         ArrayList<double[]> migratedPoints = new ArrayList<>(pointCount);
         for (int i = 0; i < pointCount; i++) {
@@ -206,7 +217,7 @@ public final class Meanders {
                 migratedPoints.add(ch.spline.points().get(i)); // pin node endpoints
                 continue;
             }
-            final double rate = Math.clamp(DT * migrationRates[i], -maxMigrationMagnetude, maxMigrationMagnetude);
+            final double rate = Math.clamp(DT * migrationRates[i], -maxMigration, maxMigration);
             final double[] point = ch.spline.points().get(i);
             final double[] normal = ch.spline.normal(i);
             final double factor = -rate * borderDamping(point[0], point[1], ch.dischargeWidth());
@@ -217,8 +228,10 @@ public final class Meanders {
         ch.spline = QuinticHermiteSpline.createCatmullRom(migratedPoints);
     }
 
-    /** Pulls the channel toward the valley floor, so relaxed rivers follow the decoded terrain. */
-    public void migrateLowerGrad(Channel ch) {
+    /** Pulls the channel toward the valley floor, so relaxed rivers follow the decoded terrain.
+     *  {@code dx} is the step's resample spacing, which caps the displacement. */
+    public void migrateLowerGrad(Channel ch, double dx) {
+        final double maxMigration = HydrologyTuning.maxMigration(dx);
         final int pointCount = ch.spline.points().size();
         ArrayList<double[]> migratedPoints = new ArrayList<>(pointCount);
         for (int i = 0; i < pointCount; i++) {
@@ -226,19 +239,19 @@ public final class Meanders {
             final double[] gradient = sampleGradient(point[0], point[1]);
             final double[] displacementNormal = VectorOps.project(gradient, ch.spline.normal(i));
 
-            double dx = gradient[0] * -1;
-            double dz = gradient[1] * -1;
-            final double magnitude = Math.sqrt(dx * dx + dz * dz);
-            if (magnitude > MAX_MIGRATION) {
-                final double clampFactor = MAX_MIGRATION / magnitude;
-                dx = dx * clampFactor;
-                dz = dz * clampFactor;
+            double moveX = gradient[0] * -1;
+            double moveZ = gradient[1] * -1;
+            final double magnitude = Math.sqrt(moveX * moveX + moveZ * moveZ);
+            if (magnitude > maxMigration) {
+                final double clampFactor = maxMigration / magnitude;
+                moveX = moveX * clampFactor;
+                moveZ = moveZ * clampFactor;
             }
 
             final double dampFactor = borderDamping(point[0], point[1], ch.dischargeWidth());
-            dx = dx * dampFactor;
-            dz = dz * dampFactor;
-            migratedPoints.add(new double[] {point[0] + dx, point[1] + dz});
+            moveX = moveX * dampFactor;
+            moveZ = moveZ * dampFactor;
+            migratedPoints.add(new double[] {point[0] + moveX, point[1] + moveZ});
         }
         ch.spline = QuinticHermiteSpline.createCatmullRom(migratedPoints);
     }
@@ -265,11 +278,12 @@ public final class Meanders {
     }
 
     @TestOnly
-    public double[][] computedMigVector(Channel ch) {
-        final double[] migRates = computeMigrationRates(ch);
+    public double[][] computedMigVector(Channel ch, double dx) {
+        final double[] migRates = computeMigrationRates(ch, dx);
+        final double maxMigration = HydrologyTuning.maxMigration(dx);
         double[][] newPts = new double[ch.spline.getSize()][2];
         for (int i = 0; i < ch.spline.points().size(); i++) {
-            final double rate = Math.clamp(DT * migRates[i], -maxMigrationMagnetude, maxMigrationMagnetude);
+            final double rate = Math.clamp(DT * migRates[i], -maxMigration, maxMigration);
             final double[] migVector = VectorOps.scale(ch.spline.normal(i), -rate);
             double[] newPt = VectorOps.add(ch.spline.points().get(i), migVector);
             Debug.isNan(newPt);

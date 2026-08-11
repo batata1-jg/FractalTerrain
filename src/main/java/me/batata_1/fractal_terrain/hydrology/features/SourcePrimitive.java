@@ -2,6 +2,7 @@ package me.batata_1.fractal_terrain.hydrology.features;
 
 import me.batata_1.fractal_terrain.hydrology.profile.DefaultProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
+import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
 
 /**
  * The head of a channel — the spring or seep a river starts at.
@@ -11,14 +12,9 @@ import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
  * point of the river it heads, not an independent feature: the network still stamps
  * {@link HydrologicalFeature#SOURCE} on the first point of a channel that begins at a source node.
  */
-public record SourcePrimitive(double[] coord) implements HydrologicalPrimitive {
+public record SourcePrimitive(double[] coord) implements HydrologicalPrimitive , SpatialIndexCircle {
 
     static final SourcePrimitive PROTOTYPE = new SourcePrimitive(new double[] {0.0, 0.0});
-
-    @Override
-    public double[] getCoords() {
-        return coord;
-    }
 
     @Override
     public double[] getCenter() {
@@ -38,6 +34,21 @@ public record SourcePrimitive(double[] coord) implements HydrologicalPrimitive {
     @Override
     public HydrologyProfile getProfile() {
         return DefaultProfile.INSTANCE;
+    }
+
+    @Override
+    public double h(double[] pt, Object... args) {
+        return 0;
+    }
+
+    @Override
+    public double w(double[] pt, Object... args) {
+        return 0;
+    }
+
+    @Override
+    public double d(double[] pt) {
+        return 0;
     }
 
     @Override

@@ -46,7 +46,7 @@ public class RiverNetworkVisualizer {
         for (Channel c : meanders.getChannels()) {
             DEBUG_LOGGER.info("channel {}", c.channelId);
             //  c.spline = QuinticHermiteSpline.createCatmullRom(c.spline.points());
-            var migVector = meanders.computedMigVector(c);
+            var migVector = meanders.computedMigVector(c, samplingDist);
             // c.reSample(0.5);
             for (int i = 0; i < c.spline.points().size(); i++) {
                 double[] pt = c.spline.points().get(i);

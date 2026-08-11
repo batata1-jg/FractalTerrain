@@ -56,4 +56,28 @@ public interface SpatialIndexShape {
             return upperCorner;
         }
     }
+
+    /** Ready-made oriented rectangle, for query construction or as a bare stored entry. */
+    record RotatedRectangle(double[] center, double angle, double length, double width)
+            implements SpatialIndexRotatedRectangle {
+        @Override
+        public double[] coord() {
+            return center;
+        }
+
+        @Override
+        public double getAngle() {
+            return angle;
+        }
+
+        @Override
+        public double getLength() {
+            return length;
+        }
+
+        @Override
+        public double getWidth() {
+            return width;
+        }
+    }
 }
