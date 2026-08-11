@@ -66,9 +66,7 @@ public record RiverPrimitive(
 
     @Override
     public float waterLine() {
-        if (width <= 1.5) return -1;
-        if (width <= 2.5) return -2;
-        return -3;
+        return HydrologicalPrimitive.waterLine(width);
     }
 
     @Override

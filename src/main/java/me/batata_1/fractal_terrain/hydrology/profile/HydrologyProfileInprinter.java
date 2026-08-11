@@ -50,16 +50,19 @@ public final class HydrologyProfileInprinter {
         return new PrefetchedPrimitives(localRiver.queryInfluence(pt, extraRadius));
     }
 
-    private static int resolveRiverNearestId(List<HydrologicalPrimitive> primitives, double[] pt) {
-        int nearestid = -1;
-        double dist = 1e9;
-        for (int id = 0; id < primitives.size(); id++) {
-            if (!(primitives.get(id) instanceof RiverPrimitive river)) break;
-            if (VectorOps.distanceSquared(pt, river.coord()) >= dist) continue;
-            nearestid = id;
-            dist = VectorOps.distanceSquared(pt, river.coord());
+    /** Index into {@code primitives} of the river knot whose coordinate is nearest {@code point}, or
+     *  -1 when none is. Relies on the comparator sorting rivers first, so the scan can stop early. */
+    public static int resolveNearestPrimitiveIndex(List<HydrologicalPrimitive> primitives, double[] point) {
+        int nearestIndex = -1;
+        double nearestDistSq = Double.MAX_VALUE;
+        for (int i = 0; i < primitives.size(); i++) {
+            if (!(primitives.get(i) instanceof RiverPrimitive river)) break;
+            final double distSq = VectorOps.distanceSquared(point, river.coord());
+            if (distSq >= nearestDistSq) continue;
+            nearestIndex = i;
+            nearestDistSq = distSq;
         }
-        return nearestid;
+        return nearestIndex;
     }
 
     /**

@@ -11,8 +11,6 @@ import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import me.batata_1.fractal_terrain.math.VectorOps;
-import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
-import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexShape;
 import me.batata_1.fractal_terrain.storage.Persistable;
 import org.jetbrains.annotations.Nullable;
@@ -29,8 +27,7 @@ import org.slf4j.LoggerFactory;
  * #getProfile()} answers where and how much, {@link #h} answers what. Implementations
  * must override {@code equals}/{@code hashCode} — see {@link PrimitiveCodec#coordsEqual}.
  */
-public interface HydrologicalPrimitive
-        extends SpatialIndexShape, Persistable<HydrologicalPrimitive> {
+public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<HydrologicalPrimitive> {
 
     /** Probe {@code Storage} uses to decide the index is persistable; any primitive type would serve. */
     HydrologicalPrimitive PROTOTYPE = RiverPrimitive.PROTOTYPE;
@@ -38,12 +35,10 @@ public interface HydrologicalPrimitive
     /** Deliberately small, so a feature with no profile yet barely perturbs the terrain. */
     double DEFAULT_RADIUS = 2.0;
 
-
     Comparator<HydrologicalPrimitive> comparator = (p1, p2) -> {
         if (p1.getType().ordinal() < p2.getType().ordinal()) return -1;
         if (p1.getType().ordinal() > p2.getType().ordinal()) return 1;
-        if (p1 instanceof RiverPrimitive r1 && p2 instanceof RiverPrimitive r2)
-            return Long.compare(r1.ids(), r2.ids());
+        if (p1 instanceof RiverPrimitive r1 && p2 instanceof RiverPrimitive r2) return Long.compare(r1.ids(), r2.ids());
         return 0;
     };
 
@@ -61,7 +56,13 @@ public interface HydrologicalPrimitive
         return -1;
     }
 
-
+    /** Water surface offset below the bank, stepped by channel size. Static because the carve reads
+     *  it at an interpolated width, not at any one primitive's. */
+    static float waterLine(double channelWidth) {
+        if (channelWidth <= 1.5) return -1;
+        if (channelWidth <= 2.5) return -2;
+        return -3;
+    }
 
     // Records compare array components by reference; these compare contents instead.
     @Override
@@ -136,8 +137,8 @@ public interface HydrologicalPrimitive
                     final double width = ch.widthAt(i);
                     final RosgenProfile profile = RosgenProfile.of(types[i]);
                     final double[] coords = VectorOps.sub(ch.spline.sample(i), offset);
-                    //TODO: breaks for multiple channels in diferent tiles.
-                    final long packedIds = i | (((long)ch.channelId)<<32);
+                    // TODO: breaks for multiple channels in diferent tiles.
+                    final long packedIds = i | (((long) ch.channelId) << 32);
                     out.add(new RiverPrimitive(
                             coords,
                             profile.riverInfluence(width),

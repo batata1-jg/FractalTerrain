@@ -3,11 +3,11 @@ package me.batata_1.fractal_terrain.world.gen.populatenoise;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import java.util.List;
-
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
+import me.batata_1.fractal_terrain.hydrology.profile.NearestChannelSample;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
 import net.minecraft.world.level.ChunkPos;
@@ -49,22 +49,42 @@ public class PopulateNoiseStep {
         final double chunkCenterPixelX = (startX + 8) / scale;
         final double chunkCenterPixelZ = (startZ + 8) / scale;
         final double chunkRadiusPx = (8.0 * Math.sqrt(2.0)) / scale;
-        final List<HydrologicalPrimitive> primitives = imprinter.prefetchChunk(chunkCenterPixelX, chunkCenterPixelZ, chunkRadiusPx);;
-        primitives.sort(HydrologicalPrimitive.comparator);
+        final List<HydrologicalPrimitive> primitives =
+                imprinter.prefetchChunk(chunkCenterPixelX, chunkCenterPixelZ, chunkRadiusPx);
         final double[] mutablePt = new double[2];
 
-        float refinedElev = 0;
-        double nearestDist;
-        double weight = 0;
-        double weightedElev = 0;
-        HydrologicalPrimitive nearestPrimitive;
         for (int dx = 0; dx < 16; dx++) {
             for (int dz = 0; dz < 16; dz++) {
                 final int pos = (dx << 4) + dz;
-                final float baseElev = interpolatedElevs[pos];
+                final float ambientElevation = interpolatedElevs[pos];
                 mutablePt[0] = (startX + dx) / scale;
                 mutablePt[1] = (startZ + dz) / scale;
 
+                final int nearestPrimitiveIndex =
+                        HydrologyProfileInprinter.resolveNearestPrimitiveIndex(primitives, mutablePt);
+                final NearestChannelSample sample =
+                        HydrologyProfileInprinter.sampleNearestChannel(primitives, nearestPrimitiveIndex, mutablePt);
+
+                if (sample == null) {
+                    riverDifference[pos] = 0;
+                    riverType[pos] = null;
+                    interpolatedElevs[pos] = Math.max(bottom, ambientElevation) + seaLevel - 1;
+                    continue;
+                }
+
+                final float refinedElev = (float) sample.carveInto(ambientElevation);
+                riverDifference[pos] = refinedElev - ambientElevation;
+                interpolatedElevs[pos] = Math.max(bottom, refinedElev) + seaLevel - 1;
+
+                if (Math.abs(sample.signedPerpDist()) <= (sample.channelWidth() / 2) + 0.25) {
+                    riverType[pos] = HydrologicalPrimitive.HydrologicalFeature.RIVER;
+                    waterElev[pos] = (float) (HydrologicalPrimitive.waterLine(sample.channelWidth())
+                            + Math.max(bottom, sample.bedElevation())
+                            + seaLevel
+                            - 1);
+                } else {
+                    riverType[pos] = null;
+                }
             }
         }
     }
