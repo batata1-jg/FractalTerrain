@@ -53,9 +53,6 @@ public class PopulateNoiseStep {
                 imprinter.prefetchChunk(chunkCenterPixelX, chunkCenterPixelZ, chunkRadiusPx);
         final double[] mutablePt = new double[2];
 
-
-
-
         for (int dx = 0; dx < 16; dx++) {
             for (int dz = 0; dz < 16; dz++) {
                 final int pos = (dx << 4) + dz;
