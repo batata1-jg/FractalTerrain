@@ -53,6 +53,9 @@ public class PopulateNoiseStep {
                 imprinter.prefetchChunk(chunkCenterPixelX, chunkCenterPixelZ, chunkRadiusPx);
         final double[] mutablePt = new double[2];
 
+
+
+
         for (int dx = 0; dx < 16; dx++) {
             for (int dz = 0; dz < 16; dz++) {
                 final int pos = (dx << 4) + dz;
@@ -63,13 +66,13 @@ public class PopulateNoiseStep {
                 final int nearestPrimitiveIndex =
                         HydrologyProfileInprinter.resolveNearestPrimitiveIndex(primitives, mutablePt);
                 final float defaultElevation = Math.max(bottom, ambientElevation) + seaLevel - 1;
-                if(nearestPrimitiveIndex==-1) {
+                if (nearestPrimitiveIndex == -1) {
                     riverDifference[pos] = 0;
                     riverType[pos] = null;
                     interpolatedElevs[pos] = defaultElevation;
                     continue;
                 }
-                if(!primitives.get(nearestPrimitiveIndex).containsPoint(mutablePt)) {
+                if (!primitives.get(nearestPrimitiveIndex).containsPoint(mutablePt)) {
                     riverDifference[pos] = 0;
                     riverType[pos] = null;
                     interpolatedElevs[pos] = defaultElevation;

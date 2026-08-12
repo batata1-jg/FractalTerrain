@@ -748,7 +748,8 @@ public final class RiverNetwork {
 
         for (Endpoint en : nodes.values()) {
             if (en.type == Endpoint.Type.SOURCE) HydrologicalFeature.SOURCE.addPrimitives(offset, primitives, en);
-            if (en.type == Endpoint.Type.JUNCTION) HydrologicalFeature.CONFLUENCE.addPrimitives(offset, primitives, en);
+            if (en.type == Endpoint.Type.JUNCTION)
+                HydrologicalFeature.CONFLUENCE.addPrimitives(offset, primitives, en, this, typer);
             // TODO: fix this, not all drains are deltas
             if (en.type == Endpoint.Type.DRAIN) HydrologicalFeature.DELTA.addPrimitives(offset, primitives, en);
         }

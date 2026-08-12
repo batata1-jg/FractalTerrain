@@ -33,7 +33,7 @@ public record NearestChannelSample(
         final RosgenProfile profile = RosgenProfile.of(rosgenType == null ? RosgenType.A : rosgenType);
         final double bedTarget =
                 bedElevation + profile.delta(channelId, signedPerpDist, channelWidth, channelCurvature);
-        return Math.min(ambientElevation,bedTarget);
-       // return RosgenProfile.blendMin(ambientElevation, bedTarget, CARVE_BLEND_RANGE);
+        return Math.min(ambientElevation, bedTarget);
+        // return RosgenProfile.blendMin(ambientElevation, bedTarget, CARVE_BLEND_RANGE);
     }
 }

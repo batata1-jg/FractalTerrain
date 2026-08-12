@@ -173,8 +173,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
                 final int zz = startingZ + dz;
                 mutable.set(xx, bottom, zz);
                 BlockState state;
-                int surfaceH =
-                        FractalTerrainInstance.getInfinite3DVisualizer().debugElevController(xx, zz);
+                int surfaceH = FractalTerrainInstance.getInfinite3DVisualizer().debugElevController(xx, zz);
 
                 for (int y = bottom; y <= surfaceH; y++) {
                     mutable.setY(y);

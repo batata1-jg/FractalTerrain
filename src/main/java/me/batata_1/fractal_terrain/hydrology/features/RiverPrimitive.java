@@ -74,7 +74,6 @@ public record RiverPrimitive(
         return RosgenProfile.of(rosgenType == null ? RosgenType.A : rosgenType);
     }
 
-
     @Override
     public double d(double[] pt) {
         final double nx = normal[0], nz = normal[1];

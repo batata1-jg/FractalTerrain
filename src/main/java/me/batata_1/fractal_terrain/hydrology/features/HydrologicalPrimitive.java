@@ -2,12 +2,14 @@ package me.batata_1.fractal_terrain.hydrology.features;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.function.Supplier;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
+import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import me.batata_1.fractal_terrain.math.VectorOps;
@@ -178,9 +180,87 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
         CONFLUENCE(() -> ConfluencePrimitive.PROTOTYPE) {
             @Override
             public void addPrimitives(double[] offset, List<HydrologicalPrimitive> primitives, Object... args) {
-                Endpoint endpoint = (Endpoint) args[0];
-               // endpoint.
-                //primitives.add(new ConfluencePrimitive());
+                Endpoint en = (Endpoint) args[0];
+                RiverNetwork network = (RiverNetwork) args[1];
+                ChannelTyper typer = (ChannelTyper) args[2];
+
+                // Incident arms = incoming channels plus the outgoing one, filtered to usable geometry.
+                final List<Channel> arms = new ArrayList<>();
+                for (int armId : en.incoming) {
+                    Channel ch = network.getChannel(armId);
+                    if (ch != null && ch.isResampleable() && ch.bedElevations != null && ch.numPts() >= 2) {
+                        arms.add(ch);
+                    }
+                }
+                if (en.outgoing != -1) {
+                    Channel ch = network.getChannel(en.outgoing);
+                    if (ch != null && ch.isResampleable() && ch.bedElevations != null && ch.numPts() >= 2) {
+                        arms.add(ch);
+                    }
+                }
+                if (arms.size() < 2) return; // a single-arm junction is not a confluence
+
+                final int n = arms.size();
+                final int[] junctionKnots = new int[n];
+                final double[] angles = new double[n];
+                final double[] curvatures = new double[n];
+                final double[] widths = new double[n];
+                final RiverPrimitive.RosgenType[] rosgenTypes = new RiverPrimitive.RosgenType[n];
+
+                double influence = 0;
+                double minJunctionBed = Double.POSITIVE_INFINITY;
+                Channel outgoingArm = null;
+                int outgoingKnot = -1;
+
+                // Pass 1: everything that does not depend on the influence radius.
+                for (int k = 0; k < n; k++) {
+                    final Channel ch = arms.get(k);
+                    final boolean atStart = ch.startNodeId == en.id;
+                    final int jk = atStart ? 0 : ch.numPts() - 1;
+                    final int adj = atStart ? 1 : ch.numPts() - 2;
+                    junctionKnots[k] = jk;
+
+                    final double[] adjPt = ch.spline.points().get(adj);
+                    angles[k] = Math.atan2(adjPt[1] - en.coord[1], adjPt[0] - en.coord[0]);
+                    widths[k] = ch.widthAt(jk);
+                    curvatures[k] = ch.spline.curvature(jk);
+                    rosgenTypes[k] = typer == null ? null : typer.typesFor(ch)[jk];
+
+                    influence = Math.max(influence, RosgenProfile.riverInfluence(widths[k]));
+                    minJunctionBed = Math.min(minJunctionBed, ch.bedElev(jk));
+                    if (atStart) {
+                        outgoingArm = ch;
+                        outgoingKnot = jk;
+                    }
+                }
+                // The trunk defines the junction floor; fall back to the shallowest arm without one.
+                final double junctionElevation =
+                        outgoingArm != null ? outgoingArm.bedElev(outgoingKnot) : minJunctionBed;
+
+                // Pass 2: walk each arm outward to where it crosses the now-final influence radius.
+                final double[] rimElevations = new double[n];
+                for (int k = 0; k < n; k++) {
+                    final Channel ch = arms.get(k);
+                    final int jk = junctionKnots[k];
+                    final int farEnd = jk == 0 ? ch.numPts() - 1 : 0;
+                    final int step = jk == 0 ? 1 : -1;
+                    int idx = jk;
+                    while (idx != farEnd
+                            && VectorOps.distance(ch.spline.points().get(idx), en.coord) <= influence) {
+                        idx += step;
+                    }
+                    rimElevations[k] = ch.bedElev(idx);
+                }
+
+                primitives.add(new ConfluencePrimitive(
+                        VectorOps.sub(en.coord, offset),
+                        influence,
+                        junctionElevation,
+                        angles,
+                        curvatures,
+                        widths,
+                        rimElevations,
+                        rosgenTypes));
             }
         };
         /** {@code values()} without the defensive copy; indexed by the on-disk type tag. */
