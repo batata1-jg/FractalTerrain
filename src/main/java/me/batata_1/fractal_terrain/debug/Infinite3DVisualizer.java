@@ -53,60 +53,63 @@ public class Infinite3DVisualizer {
                 return (int) reliefBaseHeight[(x & 15) * 16 + (z & 15)];
             }
         },
-        SINGLE_PRIMITIVE(0,0,0,xz->0f) {
+        SINGLE_PRIMITIVE(0, 0, 0, xz -> 0f) {
 
             private static final ArrayList<HydrologicalPrimitive> primitives = new ArrayList<>();
             private static final ImmutableRTree<HydrologicalPrimitive> tree;
             private static final int BASE_ELEV = 80;
+
             static {
                 final double width = 7;
                 primitives.add(new RiverPrimitive(
-                        new double[]{256,256},
+                        new double[] {256, 256},
                         HydrologyTuning.maxInfluence(width),
                         RiverPrimitive.RosgenType.C,
-                        new double[]{0,1},
+                        new double[] {0, 1},
                         0.4,
                         width,
                         64,
-                        0
-                ));
+                        0));
                 primitives.add(new RiverPrimitive(
-                        new double[]{256+HydrologyTuning.maxInfluence(width),256,+HydrologyTuning.maxInfluence(width)},
+                        new double[] {
+                            256 + HydrologyTuning.maxInfluence(width), 256, +HydrologyTuning.maxInfluence(width)
+                        },
                         HydrologyTuning.maxInfluence(width),
                         RiverPrimitive.RosgenType.C,
-                        new double[]{1,0},
+                        new double[] {1, 0},
                         0.4,
                         width,
                         64,
-                        0
-                ));
-                tree = new ImmutableRTree<>(
-                        primitives,
-                        HydrologicalPrimitive.PROTOTYPE
-                );
+                        0));
+                tree = new ImmutableRTree<>(primitives, HydrologicalPrimitive.PROTOTYPE);
             }
 
             @Override
             public int sample(int x, int z) {
-                x %= 512*5;
-                z %= 512*5;
-                if(x<0) x += 512*5;
-                if(z<0) z += 512*5;
-                final double[] pt = {x/5.0,z/5.0};
+                x %= 512 * 5;
+                z %= 512 * 5;
+                if (x < 0) x += 512 * 5;
+                if (z < 0) z += 512 * 5;
+                final double[] pt = {x / 5.0, z / 5.0};
                 var primitives = tree.queryContaining(pt);
-                if(primitives.isEmpty()) return BASE_ELEV;
-                double weight =0;
+                if (primitives.isEmpty()) return BASE_ELEV;
+                double weight = 0;
                 double weightedElev = 0;
                 double distance = 10;
-                for(HydrologicalPrimitive primitive : primitives) {
+                for (HydrologicalPrimitive primitive : primitives) {
                     final var dw = primitive.w(pt);
                     weight += dw;
                     weightedElev += dw * primitive.h(pt);
-                    final double dist = Math.clamp(Math.hypot(pt[0]-primitive.coord()[0],pt[1]-primitive.coord()[1]), 0.02, 100);
-                    distance += 1/dist;
+                    final double dist = Math.clamp(
+                            Math.hypot(
+                                    pt[0] - primitive.coord()[0],
+                                    pt[1] - primitive.coord()[1]),
+                            0.02,
+                            100);
+                    distance += 1 / dist;
                 }
-                if(weight <= 1e-8) return BASE_ELEV;
-                return (int) (1/distance);
+                if (weight <= 1e-8) return BASE_ELEV;
+                return (int) (1 / distance);
             }
         },
         DIST_SHORE(10.0f, 1.0f, 5.0f, xz ->
@@ -249,8 +252,9 @@ public class Infinite3DVisualizer {
         pt[0] = xx * 0.2; // block -> relief-pixel frame (÷ GLOBAL_SCALE_CORRECTION)
         pt[1] = zz * 0.2;
         //  LOG.info("[");
-        final HydrologicalPrimitive[] primitives =
-                FractalTerrainInstance.getLocalRiverProvider().queryInfluence(pt).toArray(new HydrologicalPrimitive[0]);
+        final HydrologicalPrimitive[] primitives = FractalTerrainInstance.getLocalRiverProvider()
+                .queryInfluence(pt)
+                .toArray(new HydrologicalPrimitive[0]);
         // LOG.info("]");
 
         BlockState deepest = DEFAULT;

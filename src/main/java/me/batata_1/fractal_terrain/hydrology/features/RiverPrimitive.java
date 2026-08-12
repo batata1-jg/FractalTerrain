@@ -74,9 +74,7 @@ public record RiverPrimitive(
         return RosgenProfile.of(rosgenType == null ? RosgenType.A : rosgenType);
     }
 
-    /** Cuts the primitive's cross-section, faded over an elliptical footprint so full strength lands across
-     *  the floodplain but tapers along the channel. Neighbouring primitives' ellipses cover the stretch
-     *  between them, which is why the {@code dx <= width/2} spacing matters. */
+
     @Override
     public double d(double[] pt) {
         final double nx = normal[0], nz = normal[1];
@@ -102,7 +100,7 @@ public record RiverPrimitive(
         if (Math.abs(distanceWidth) >= width || Math.abs(distanceLength) >= length) return 0;
         final double weightWidth = Math.pow(1 - (distanceWidth * distanceWidth) / (width * width), 2);
         final double weightLength = Math.pow(1 - (distanceLength * distanceLength) / (length * length), 2);
-        return Math.pow(Math.clamp(smoothMin(weightLength, weightWidth, 0.02), 0, 1), 7);
+        return Math.pow(Math.clamp(smoothMin(weightLength, weightWidth, 0.02), 0, 1), 2);
     }
 
     public static double smoothMin(double a, double b, double lambda) {

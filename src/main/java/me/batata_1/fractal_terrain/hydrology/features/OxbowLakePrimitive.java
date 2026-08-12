@@ -13,7 +13,7 @@ import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
  * {@link ZoneCategory#LAKE_BED} is reserved below {@link ZoneCategory#BED} for it, so a channel still
  * running through the loop will keep governing the cross-section once this record grows a real profile.
  */
-public record OxbowLakePrimitive(double[] coord) implements HydrologicalPrimitive , SpatialIndexCircle {
+public record OxbowLakePrimitive(double[] coord) implements HydrologicalPrimitive, SpatialIndexCircle {
 
     static final OxbowLakePrimitive PROTOTYPE = new OxbowLakePrimitive(new double[] {0.0, 0.0});
 

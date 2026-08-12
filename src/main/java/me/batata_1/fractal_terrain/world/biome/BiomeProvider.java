@@ -3,9 +3,8 @@ package me.batata_1.fractal_terrain.world.biome;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.*;
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 
-import java.util.List;
-
 import com.google.common.base.Function;
+import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
@@ -145,7 +144,7 @@ public class BiomeProvider {
 
     public BiomeProvider(String path) {
         final_tiles = new NonIntersectingInfiniteTensor(
-                path, "final_biome_tiles", new int[] {TILE_CHANNELS, 512, 512}, buildTile ());
+                path, "final_biome_tiles", new int[] {TILE_CHANNELS, 512, 512}, buildTile());
         // Vanilla Climate.Sampler order: temperature, humidity, continentalness, erosion, depth, weirdness.
         // Each channel produces its own density via its creator (DEPTH's is the vertical y-gradient).
         final float scale = 1;
@@ -196,7 +195,7 @@ public class BiomeProvider {
             }
             // FloatTensor t = new FloatTensor(entries, new int[] {TILE_CHANNELS, 512, 512});
             //  ;; Debug.seeTile(t, x, z, "final_biomes");
-            return new FloatTensor(entries, new int[]{TILE_CHANNELS, 512, 512});
+            return new FloatTensor(entries, new int[] {TILE_CHANNELS, 512, 512});
         };
     }
 

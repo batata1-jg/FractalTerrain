@@ -12,7 +12,7 @@ import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
  * Distinct from {@link HydrologicalFeature#DRAIN}, which marks the topological end of a channel; a delta
  * is the depositional landform that may sit there.
  */
-public record DeltaPrimitive(double[] coord) implements SpatialIndexCircle,HydrologicalPrimitive {
+public record DeltaPrimitive(double[] coord) implements SpatialIndexCircle, HydrologicalPrimitive {
 
     static final DeltaPrimitive PROTOTYPE = new DeltaPrimitive(new double[] {0.0, 0.0});
 

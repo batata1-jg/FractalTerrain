@@ -50,7 +50,7 @@ public class FractalTerrain implements ModInitializer {
                     server.overworld().getChunkSource().getGenerator();
             BiomeSource source =
                     server.overworld().getChunkSource().getGenerator().getBiomeSource();
-          //  LOG.info("biomas: {} ", source.possibleBiomes());
+            //  LOG.info("biomas: {} ", source.possibleBiomes());
             if (!(chunkGenerator instanceof FractalTerrainChunkGenerator)) return;
             if (world.dimension() != Level.OVERWORLD) return;
             FractalTerrainInstance.init(server);

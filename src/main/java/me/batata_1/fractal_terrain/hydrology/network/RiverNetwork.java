@@ -733,7 +733,7 @@ public final class RiverNetwork {
             if (!ch.isResampleable()) continue; // degenerate geometry (too few points or NaN): skip
             // Spacing must be <= half the NARROWEST (intake) derived width, so consecutive primitives'
             // width/2 discs always overlap (gap-free membership test + girth rendering).
-            final double dx = Math.max( maxInfluence(ch.intakeWidth()) / 2.0, MIN_CONVERT_SPACING);
+            final double dx = Math.max(maxInfluence(ch.intakeWidth()) / 2.0, MIN_CONVERT_SPACING);
             try {
                 ch.reSample(dx);
             } catch (RuntimeException runaway) {
@@ -748,7 +748,8 @@ public final class RiverNetwork {
 
         for (Endpoint en : nodes.values()) {
             if (en.type == Endpoint.Type.SOURCE) HydrologicalFeature.SOURCE.addPrimitives(offset, primitives, en);
-            // this is wrong, not all drains are deltas
+            if (en.type == Endpoint.Type.JUNCTION) HydrologicalFeature.CONFLUENCE.addPrimitives(offset, primitives, en);
+            // TODO: fix this, not all drains are deltas
             if (en.type == Endpoint.Type.DRAIN) HydrologicalFeature.DELTA.addPrimitives(offset, primitives, en);
         }
 

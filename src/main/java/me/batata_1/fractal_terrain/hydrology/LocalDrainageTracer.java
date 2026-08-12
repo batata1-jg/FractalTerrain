@@ -7,7 +7,6 @@ import static me.batata_1.fractal_terrain.hydrology.meanders.Meanders.DEBUG_STEP
 
 import java.util.*;
 import java.util.function.Predicate;
-
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.network.AtomicView;
@@ -32,7 +31,6 @@ final class LocalDrainageTracer {
 
     private static final Logger LOG = LoggerFactory.getLogger(LocalDrainageTracer.class);
     private static final Predicate<GlobalRiverPrimitive> acceptanceTest = globalRiverPrimitive -> true;
-
 
     private record GlobalRiverPrimitive(double[] pos, double width, int id) implements SpatialIndexCircle {
 
@@ -92,8 +90,7 @@ final class LocalDrainageTracer {
                 if (nodeIndex[current] == -1
                         && nodeIndex[next] == -1
                         && !sources.containsPointInCircle(curNodePos, 5.0)
-                        && !globalRiversPosition.anyContaining(curNodePos,acceptanceTest)
-                ) {
+                        && !globalRiversPosition.anyContaining(curNodePos, acceptanceTest)) {
                     nodeIndex[current] = net.addNode(curNodePos, Endpoint.Type.SOURCE, -1, flow[current], -1);
                     sources.insertPoint(new CoordPoint(curNodePos));
                 }

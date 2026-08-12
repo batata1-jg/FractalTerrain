@@ -137,11 +137,12 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
                     final double width = ch.widthAt(i);
                     final RosgenProfile profile = RosgenProfile.of(types[i]);
                     final double[] coords = VectorOps.sub(ch.spline.sample(i), offset);
-                    // TODO: breaks for multiple channels in diferent tiles.
+                    // TODO: may breaks for multiple channels in diferent tiles.
+                    // TODO: replace influence with delta height / width
                     final long packedIds = i | (((long) ch.channelId) << 32);
                     out.add(new RiverPrimitive(
                             coords,
-                            profile.riverInfluence(width),
+                            RosgenProfile.riverInfluence(width),
                             types[i],
                             ch.spline.normal(i),
                             ch.spline.curvature(i),
@@ -173,8 +174,15 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
         DELTA(() -> DeltaPrimitive.PROTOTYPE) {
             @Override
             public void addPrimitives(double[] offset, List<HydrologicalPrimitive> primitives, Object... args) {}
+        },
+        CONFLUENCE(() -> ConfluencePrimitive.PROTOTYPE) {
+            @Override
+            public void addPrimitives(double[] offset, List<HydrologicalPrimitive> primitives, Object... args) {
+                Endpoint endpoint = (Endpoint) args[0];
+               // endpoint.
+                //primitives.add(new ConfluencePrimitive());
+            }
         };
-
         /** {@code values()} without the defensive copy; indexed by the on-disk type tag. */
         private static final HydrologicalFeature[] VALUES = values();
 

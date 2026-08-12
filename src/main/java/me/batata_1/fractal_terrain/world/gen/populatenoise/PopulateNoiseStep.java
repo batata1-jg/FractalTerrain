@@ -62,13 +62,26 @@ public class PopulateNoiseStep {
 
                 final int nearestPrimitiveIndex =
                         HydrologyProfileInprinter.resolveNearestPrimitiveIndex(primitives, mutablePt);
+                final float defaultElevation = Math.max(bottom, ambientElevation) + seaLevel - 1;
+                if(nearestPrimitiveIndex==-1) {
+                    riverDifference[pos] = 0;
+                    riverType[pos] = null;
+                    interpolatedElevs[pos] = defaultElevation;
+                    continue;
+                }
+                if(!primitives.get(nearestPrimitiveIndex).containsPoint(mutablePt)) {
+                    riverDifference[pos] = 0;
+                    riverType[pos] = null;
+                    interpolatedElevs[pos] = defaultElevation;
+                    continue;
+                }
                 final NearestChannelSample sample =
                         HydrologyProfileInprinter.sampleNearestChannel(primitives, nearestPrimitiveIndex, mutablePt);
 
                 if (sample == null) {
                     riverDifference[pos] = 0;
                     riverType[pos] = null;
-                    interpolatedElevs[pos] = Math.max(bottom, ambientElevation) + seaLevel - 1;
+                    interpolatedElevs[pos] = defaultElevation;
                     continue;
                 }
 

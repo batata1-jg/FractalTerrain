@@ -14,7 +14,7 @@ import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
  * {@link ZoneCategory#BED} for it, so once this record grows a profile that claims that zone the drop
  * will win over the channel bed running into it with no change on the carve side.
  */
-public record WaterfallPrimitive(double[] coord) implements HydrologicalPrimitive , SpatialIndexCircle {
+public record WaterfallPrimitive(double[] coord) implements HydrologicalPrimitive, SpatialIndexCircle {
 
     static final WaterfallPrimitive PROTOTYPE = new WaterfallPrimitive(new double[] {0.0, 0.0});
 

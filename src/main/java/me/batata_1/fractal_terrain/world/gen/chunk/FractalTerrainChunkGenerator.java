@@ -129,6 +129,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
                 final int xx = startingX + dx;
                 final int zz = startingZ + dz;
                 final int reliefHeight = (int) reliefBaseHeight[(dx << 4) + dz];
+
                 final int waterHeight = (int) waterLineHeight[(dx << 4) + dz]; // water height no ocean;
                 // Fill water up to sea level, or higher if the ELEVATION heightmap value exceeds it.
                 // PopulateNoiseStep#fineGrainedPrimitivePass currently writes a flat per-chunk placeholder into
@@ -172,8 +173,9 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
                 final int zz = startingZ + dz;
                 mutable.set(xx, bottom, zz);
                 BlockState state;
-                final int surfaceH =
+                int surfaceH =
                         FractalTerrainInstance.getInfinite3DVisualizer().debugElevController(xx, zz);
+
                 for (int y = bottom; y <= surfaceH; y++) {
                     mutable.setY(y);
                     state = DEFAUT;

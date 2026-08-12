@@ -12,7 +12,7 @@ import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
  * point of the river it heads, not an independent feature: the network still stamps
  * {@link HydrologicalFeature#SOURCE} on the first point of a channel that begins at a source node.
  */
-public record SourcePrimitive(double[] coord) implements HydrologicalPrimitive , SpatialIndexCircle {
+public record SourcePrimitive(double[] coord) implements HydrologicalPrimitive, SpatialIndexCircle {
 
     static final SourcePrimitive PROTOTYPE = new SourcePrimitive(new double[] {0.0, 0.0});
 
