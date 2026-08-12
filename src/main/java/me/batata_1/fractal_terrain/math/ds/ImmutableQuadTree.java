@@ -270,7 +270,8 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
 
     /** Buffer-reusing overload for hot paths. {@code out} is appended to, never cleared. */
     public List<T> getPointsInBox(final double[] b, final double[] d, final List<T> out) {
-        if (b.length != 2 || d.length != 2) throw new IllegalStateException();
+        SpatialIndex.requirePlanar(b, "b");
+        SpatialIndex.requirePlanar(d, "d");
         if (CHECK_QUERY_NAN) checkBoxQueryNaN(b, d);
         query(new SpatialIndexShape.Rectangle(b, d), out);
         if (CHECK_QUERY_NAN) checkResultNaN("getPointsInBox", out);
@@ -283,7 +284,7 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
 
     /** Buffer-reusing overload for hot paths. {@code out} is appended to, never cleared. */
     public List<T> getPointsInCircle(final double[] center, final double r, final List<T> out) {
-        if (center.length != 2) throw new IllegalStateException();
+        SpatialIndex.requirePlanar(center, "center");
         if (CHECK_QUERY_NAN) checkCircleQueryNaN(center, r);
         query(new SpatialIndexShape.Circle(center, r), out);
         if (CHECK_QUERY_NAN) checkResultNaN("getPointsInCircle", out);
@@ -293,7 +294,7 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
     /** Existence-only counterpart to {@link #getPointsInCircle}, for callers that need a yes/no and
      *  should not pay for a result list. */
     public boolean anyPointInCircle(final double[] center, final double radius, final PointTest<T> test) {
-        if (center.length != 2) throw new IllegalStateException();
+        SpatialIndex.requirePlanar(center, "center");
         if (CHECK_QUERY_NAN) checkCircleQueryNaN(center, radius);
         return anyInCircle(center, radius, test);
     }

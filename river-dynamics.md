@@ -139,7 +139,7 @@ ER = floodProneWidth / bankfullWidth
 
 Three implementation constraints, each of which will silently corrupt the result if ignored:
 
-1. **Sample the raw decoded elevation, never the carved buffer.** `HydrologyProfileCarver.carveRiverShells`
+1. **Sample the raw decoded elevation, never the carved buffer.** `HydrologyProfileInprinter.carveRiverShells`
    *creates* the floodplain — measuring ER on its output measures the tuning constants
    (`FLOODPLAIN_BASE`, `FLOODPLAIN_WIDTH_FACTOR`), not the terrain. The classification is only
    meaningful upstream of the first carve.
@@ -450,7 +450,7 @@ reflect what shipped.
 | `hydrology/HydrologicalPrimitive.java`, the `RosgenType` enum | Enum currently holds `A B C D` only. Level I needs `Aa+ A B C D DA E F G`. Note the serialisation writes `rosgenType.ordinal()` (the `serialize()` method) and reads it back by index (the `deserialize()` method) — **appending is safe, reordering breaks every persisted tile**. |
 | `hydrology/profile/RosgenProfile.java` | Mirror enum, currently only `A` overrides anything. New constants need `floodPlainLength` / `riverInfluence` / bed-profile overrides; the §3.1 prescription lives here. |
 | `hydrology/meanders/RiverNetwork.java` — **RESOLVED**. | The `\ TODO: change this to the correct type` placeholder and its hardcoded `HydrologicalPrimitive.RosgenType.A` fallback are gone, resolved in commit 83e972f ("feat(hydrology): stamp Rosgen type and endpoint kind on primitives in collectPrimitives"). The stamping point is now the `final RosgenType rosgen = ...` assignment inside `collectPrimitives`, fed by the classifier in `hydrology/rosgen/`. |
-| `hydrology/LocalRiverProvider.java`, in `buildTile` | First `ChannelElevationAssigner.assign` then first `HydrologyProfileCarver.carveRiverShells`. **Classification must run between these two calls**: `assign` provides `bedElevations` (needed for slope and flood-prone stage), and the carve destroys the raw valley geometry ER depends on (§2.2). |
+| `hydrology/LocalRiverProvider.java`, in `buildTile` | First `ChannelElevationAssigner.assign` then first `HydrologyProfileInprinter.carveRiverShells`. **Classification must run between these two calls**: `assign` provides `bedElevations` (needed for slope and flood-prone stage), and the carve destroys the raw valley geometry ER depends on (§2.2). |
 | `config/HydrologyTuning.java` | New home for `S_AA`, `S_A`, `ER_ENTRENCHED`, `ER_SLIGHT`, `ER_ANASTOMOSE`, `WD_NARROW`, `FLOW_TO_KM2`, `DEPTH_MAX_FACTOR`. |
 | `hydrology/meanders/Meanders` | If sinuosity becomes prescriptive per type (§4.2), the relaxation needs a per-type target. |
 

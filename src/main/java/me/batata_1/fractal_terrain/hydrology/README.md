@@ -26,7 +26,7 @@ reference):
 1. `GlobalNetworkBuilder.build` traces + Meanders-relaxes the global (coarse-arrow) subgraph for this
    tile's owned 2x2 coarse cells, returning the network plus the boundary-elevation map it accumulated
    for source/drain nodes.
-2. `ChannelElevationAssigner.assign` over the global-only graph, then `HydrologyProfileCarver
+2. `ChannelElevationAssigner.assign` over the global-only graph, then `HydrologyProfileInprinter
    .carveRiverShells` carves the global valley shell into the decoded elevation — so the drainage field
    computed next already sees valleys.
 3. `Drainage.fillSinks` + `Drainage.computeDrainageDirection` over that carved elevation.

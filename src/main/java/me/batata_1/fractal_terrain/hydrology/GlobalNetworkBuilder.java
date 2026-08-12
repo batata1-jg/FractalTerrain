@@ -58,7 +58,8 @@ final class GlobalNetworkBuilder {
                 final int ccx = tileX * 2 + a;
                 final int ccz = tileZ * 2 + b;
                 final int arrow = grp.getArrow(ccx, ccz);
-                if (!GlobalRiverProvider.isRiver(arrow) && !GlobalRiverProvider.isCoast(arrow)) continue;
+                final boolean carriesWater = GlobalRiverProvider.isRiver(arrow) || GlobalRiverProvider.isCoast(arrow);
+                if (!carriesWater) continue;
                 int outDir = -1;
                 final int outMask = GlobalRiverProvider.outgoingMask(arrow);
                 for (int d = 4; d <= 7; d++)

@@ -190,7 +190,8 @@ public class Drainage {
         // Seed: every border cell at its own elevation.
         for (int x = 0; x < gridSize; x++) {
             for (int z = 0; z < gridSize; z++) {
-                if (x != 0 && z != 0 && x != gridSize - 1 && z != gridSize - 1) continue;
+                final boolean isBorder = x == 0 || z == 0 || x == gridSize - 1 || z == gridSize - 1;
+                if (!isBorder) continue;
                 final int cell = x * gridSize + z;
                 filled[cell] = elevation[cell];
                 closed.set(cell);

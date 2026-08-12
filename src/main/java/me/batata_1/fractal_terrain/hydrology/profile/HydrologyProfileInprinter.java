@@ -31,14 +31,14 @@ public final class HydrologyProfileInprinter {
     // -------------------------------------------------------------------------
 
     /**
-     * A chunk's influencing primitives, gathered once (see {@link #queryPrimitives}) so the per-block merge never
+     * A chunk's influencing primitives, gathered once (see {@link #queryPrimitives}) so the per-block carve never
      * re-queries the spatial index. Produced by {@link #prefetchChunk} / {@link #queryPrimitives} and consumed
-     * by {@link #carvePrefetched}.
+     * by {@link #resolveNearestPrimitiveIndex} / {@link #sampleNearestChannel}.
      */
     public record PrefetchedPrimitives(List<HydrologicalPrimitive> primitives) {}
 
     /** Amortizes the influence query across a whole chunk — one tree query per chunk rather than one
-     *  per block. Feed the result to {@link #carvePrefetched}. */
+     *  per block. Feed the result to {@link #sampleNearestChannel}. */
     public List<HydrologicalPrimitive> prefetchChunk(double centerPixelX, double centerPixelZ, double chunkRadiusPx) {
         var primitives = localRiver.queryInfluence(new double[] {centerPixelX, centerPixelZ}, chunkRadiusPx);
         primitives.sort(HydrologicalPrimitive.comparator);

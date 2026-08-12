@@ -17,4 +17,21 @@ public interface SpatialIndex<EntryType> {
 
     /** Every stored entry, as a freshly-allocated list (order unspecified). For debug renders/dumps. */
     List<EntryType> getAllEntries();
+
+    /**
+     * Guards the 2-D contract every index here assumes; centralized so the rank check cannot drift
+     * between the three implementations if one ever grows a third dimension.
+     */
+    static void requirePlanar(double[] coords, String name) {
+        if (coords.length != 2) {
+            throw new IllegalStateException(name + " must be 2-D, got rank " + coords.length);
+        }
+    }
+
+    /** {@link #requirePlanar(double[], String)} for a point's own rank. */
+    static void requirePlanar(SpatialIndexPoint point, String name) {
+        if (point.size() != 2) {
+            throw new IllegalStateException(name + " must be 2-D, got rank " + point.size());
+        }
+    }
 }

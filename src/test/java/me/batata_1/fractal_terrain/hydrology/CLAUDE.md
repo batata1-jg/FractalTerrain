@@ -1,7 +1,7 @@
 # hydrology/ (test)
 
-JUnit gates for the deterministic hydrology math. See the repo-root `CLAUDE.md` "Test" section — this
-suite does not currently compile.
+JUnit gates for the deterministic hydrology math. See `../CLAUDE.md` "Status" for the current
+pass/fail baseline — several goldens and Rosgen cases fail pre-existing.
 
 ## Files
 
@@ -18,3 +18,5 @@ suite does not currently compile.
 | ----------- | ----------------------------------------------- | ----------------------------------------------- |
 | `meanders/` | Meander relaxation + network-seam goldens       | Changing relaxation, the view seam, or capture  |
 | `rosgen/`   | Rosgen key, sampler and classifier-order tests  | Changing thresholds, transects, or graph order  |
+| `features/` | `RiverPrimitive` channel/knot id bit-packing    | Changing the packed `ids` layout or knot adjacency |
+| `profile/`  | Bed-carve geometry: blend-min, nearest-channel sample, polyline chord error | Changing the carve blend, foot-point sampling, or polyline approximation |

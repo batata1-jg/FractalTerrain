@@ -108,7 +108,7 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
     public QuadTree(double[] minXZ, double[] maxXZ, List<T> points, T pointPrototype, int maxTreeDepth) {
         this(minXZ, maxXZ, pointPrototype, maxTreeDepth);
         for (T pt : points) {
-            if (pt.size() != 2) throw new IllegalStateException();
+            SpatialIndex.requirePlanar(pt, "point");
             update(pt, 1);
         }
     }
@@ -324,7 +324,7 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
     }
 
     public void insertPoint(final T pt) {
-        if (pt.size() != 2) throw new IllegalStateException();
+        SpatialIndex.requirePlanar(pt, "point");
         lock.writeLock().lock();
         try {
             update(pt, 1);
@@ -334,7 +334,7 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
     }
 
     public void removePoint(final T pt) {
-        if (pt.size() != 2) throw new IllegalStateException();
+        SpatialIndex.requirePlanar(pt, "point");
         lock.writeLock().lock();
         try {
             delete(pt, 1);
@@ -353,7 +353,8 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
     }
 
     public List<T> getPointsInBox(final double[] b, final double[] d) {
-        if (d.length != 2 || b.length != 2) throw new IllegalStateException();
+        SpatialIndex.requirePlanar(d, "d");
+        SpatialIndex.requirePlanar(b, "b");
         lock.readLock().lock();
         try {
             List<T> resp = query(new SpatialIndexShape.Rectangle(b, d), 1);
@@ -365,7 +366,7 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
     }
 
     public List<T> getPointsInCircle(final double[] pt, final double r) {
-        if (pt.length != 2) throw new IllegalStateException();
+        SpatialIndex.requirePlanar(pt, "pt");
         lock.readLock().lock();
         try {
             List<T> resp = query(new SpatialIndexShape.Circle(pt, r), 1);
@@ -378,7 +379,7 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
 
     /** Existence-only twin of {@link #getPointsInCircle}, allocating no result list. */
     public boolean containsPointInCircle(final double[] center, final double radius) {
-        if (center.length != 2) throw new IllegalStateException();
+        SpatialIndex.requirePlanar(center, "center");
         lock.readLock().lock();
         try {
             return anyPoint(new SpatialIndexShape.Circle(center, radius), 1);
@@ -388,7 +389,8 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
     }
 
     public List<double[]> getPointCoordsInBox(final double[] b, final double[] d) {
-        if (d.length != 2 || b.length != 2) throw new IllegalStateException();
+        SpatialIndex.requirePlanar(d, "d");
+        SpatialIndex.requirePlanar(b, "b");
         lock.readLock().lock();
         try {
             List<T> resp = query(new SpatialIndexShape.Rectangle(b, d), 1);

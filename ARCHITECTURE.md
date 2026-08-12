@@ -5,7 +5,7 @@ System overview for `FractalTerrain` post the 2026-07 code-hygiene refactor. Pac
 
 > **The `feature/hydrology` branch is mid-rework and some stages are switched off.** The per-pixel
 > hydrology carve stack is active: `PopulateNoiseStep.updateToFinalElev` reads each column's real
-> per-column relief and refines it through `HydrologyProfileCarver.carvePrefetched` before writing
+> per-column relief and refines it through `NearestChannelSample.carveInto` before writing
 > `ELEVATION`, so `Types.RIVER_DIFFERENCE` is not uniformly `0`. Biome decoration is still
 > unconditionally disabled by a debug flag. See "Current debug state" below for the exact per-flag state
 > (including the surface step, which currently runs) before assuming any generation behaviour described
@@ -89,7 +89,7 @@ walk-termination exclusion and its reach-seed adjacency, read from a point index
 graph's channels each call. `HydrologyTileGeometry.java` centralizes the shared tile-frame geometry
 (`GRID=512`, `PAD=1`, `PADDED=514`, `COARSE_PX=256`) all three depend on. `Drainage.java` (sink-fill,
 D8/D4 drainage direction, flow accumulation, and the `Drainage.FlowGraph` routing topology both the flow
-accumulator and the local trace walk) and `ChannelGeometry.java` are lower-level shared helpers. The `hydrology/profile/` subpackage (`HydrologyProfileCarver`, `HydrologyProfilePainter`,
+accumulator and the local trace walk) and `ChannelGeometry.java` are lower-level shared helpers. The `hydrology/profile/` subpackage (`HydrologyProfileInprinter`, `HydrologyProfilePainter`,
 `HydrologyProfile`, `RosgenProfile`) turns the hydrological-primitive index into carve/paint operations
 consumed by `world/gen/`. `GlobalRiverProvider.java` is independent of `LocalRiverProvider` and caches
 its own 64×64-coarse-px tiles directly (coarse-px addressed, not the 512-native-px tile grid — see
@@ -98,7 +98,7 @@ Coordinate frames).
 **Hydrology carve pipeline.** `RosgenProfile` defines a feature's *reference* elevation as the bank.
 Two carve stages exist and both are live:
 
-1. **Tile-level shell carve** (`HydrologyProfileCarver.carveRiverShells`, static). For each pixel of the
+1. **Tile-level shell carve** (`HydrologyProfileInprinter.carveRiverShells`, static). For each pixel of the
    padded tile buffer it stabs an R-tree built over the primitives it was handed and collects **every** primitive
    whose influence circle actually contains the pixel, not just the nearest. Each contributing primitive
    supplies `HydrologyProfile.shellElevation(primitive, radialDist, curElev)` — for a `RiverPrimitive`,
@@ -108,19 +108,23 @@ Two carve stages exist and both are live:
    them. There is no nearest-wins rule and no pristine ambient snapshot, so at a confluence overlapping
    primitives blend rather than one profile winning outright. Pixels with a negative ambient elevation (ocean)
    are skipped. The carve reads and writes the same buffer, so the two passes per tile compound.
-2. **Per-pixel bed residual** (`HydrologyProfileCarver.carveAtPixel` / `prefetchChunk` +
-   `carvePrefetched`), invoked from `PopulateNoiseStep` during chunk fill and written into
-   `Types.RIVER_DIFFERENCE`. `carvePrefetched` resolves every influencing primitive into one of the
-   `ZoneCategory` zones via `HydrologyProfile.categoryAt`/`zoneWeight` (priority order `WATERFALL` >
-   `BED` > `LAKE_BED` > `FLOODPLAIN` > `INFLUENCE`), averages contributions **within** the
-   highest-priority non-empty zone but switches hard **between** zones — two rivers sharing a floodplain
-   blend, a bed crossing it cuts through instead. Each primitive contributes through its own
-   `h(pt, elevAtPixel)`, implemented per feature type (`RiverPrimitive`, `WaterfallPrimitive`,
-   `OxbowLakePrimitive`, `SourcePrimitive`, `DeltaPrimitive`, `AbandonedRiverPrimitive`); `RiverPrimitive`'s fades
-   `RosgenProfile.riverAreaDelta` (the per-type bed trench, computed within the bed half-width from
-   `ChannelGeometry.depthForWidth`) in over an elliptical footprint around the primitive, at full strength from
-   `HydrologyTuning.MAX_ECCENTRICITY` outward. `HydrologyProfilePainter` reads the resulting
-   `RIVER_DIFFERENCE` to place riverPrimitive water.
+2. **Per-pixel bed carve** (`HydrologyProfileInprinter.resolveNearestPrimitiveIndex` +
+   `sampleNearestChannel` → `NearestChannelSample.carveInto`), invoked from `PopulateNoiseStep` during
+   chunk fill and written into `Types.RIVER_DIFFERENCE`. This stage resolves **one** channel per point
+   rather than merging many: it takes the nearest `RiverPrimitive` knot, projects the point onto the
+   two-segment polyline through that knot and its knot-adjacent neighbours, and reads width, curvature,
+   bed elevation and Rosgen type at the **foot point on the centreline** — one coherent cross-section
+   instead of several knots' disagreeing tangent-line distances. `carveInto` is then
+   `min(ambient, bedElevation + RosgenProfile.delta(...))`, which needs no influence radius because
+   outside the floodplain the profile is a cone rising away from the channel. Only `RiverPrimitive`
+   participates; any other feature type yields a `null` sample and a zero difference.
+   `HydrologyProfilePainter` reads the resulting `RIVER_DIFFERENCE` to place river water.
+
+   The `ZoneCategory` priority merge that previously drove this stage (`WATERFALL` > `BED` > `LAKE_BED` >
+   `FLOODPLAIN` > `INFLUENCE`, averaging within a zone and switching hard between zones) is **gone**:
+   `HydrologyProfile.categoryAt`/`zoneWeight` and `RosgenProfile.riverAreaDelta` no longer exist, and the
+   per-feature `h(pt, elevAtPixel)` contributions are no longer consulted by the bed carve. `ZoneCategory`
+   itself survives only as a reservation for feature types that have yet to grow real profiles.
 
 `HydrologyTuning.MAX_LOCAL_WIDTH` is retained but unread by live code, not even through the
 `FractalTerrainConfig` facade re-export.
@@ -180,7 +184,7 @@ compute, so this order is load-bearing:
 | ----- | -------- | ------- | ---------- |
 | 1 | `GlobalRiverProvider` | `hydrology/` | `WorldPipeline` coarse tensor (via the static `pipeline` field) |
 | 2 | `LocalRiverProvider` | `hydrology/` | `GlobalRiverProvider` (fallback via adapter when no test override), decoder tensor |
-| 2a | `HydrologyProfileCarver` / `HydrologyProfilePainter` | `hydrology/profile/` | the just-built `LocalRiverProvider` |
+| 2a | `HydrologyProfileInprinter` / `HydrologyProfilePainter` | `hydrology/profile/` | the just-built `LocalRiverProvider` |
 | 3 | `ReliefProvider` | `relief/` | `LocalRiverProvider` (fallback via adapter when no test override), decoder tensor |
 | 4 | `BiomeProvider` | `world/biome/` | `ReliefProvider`, `LocalRiverProvider` (both via the adapter), climate from `WorldPipeline` |
 
@@ -195,7 +199,7 @@ of the `global → local → relief → biome` ordering constraint.
 ## The `GenerationContext` seam
 
 `GenerationContext.java` holds the whole per-world graph (server, `ReliefProvider`, `BiomeProvider`,
-`GlobalRiverProvider`, `LocalRiverProvider`, `HydrologyProfileCarver`/`Painter`, `PopulateNoiseStep`,
+`GlobalRiverProvider`, `LocalRiverProvider`, `HydrologyProfileInprinter`/`Painter`, `PopulateNoiseStep`,
 `FractalTerrainSurfaceSystem`, `FractalTerrainHeightmapCache`, `RandomState`, `Infinite3DVisualizer`) as
 `final` fields, constructed once per world load.
 
@@ -230,7 +234,7 @@ or publish it):
 
 Mixins and Fabric-instantiated types have no constructor the mod controls, so they are expected to keep
 resolving through the adapter permanently; full removal of the static getters is scoped to the remaining
-mod-constructed providers and has no owner milestone. `hydrology/profile/HydrologyProfileCarver.java` has
+mod-constructed providers and has no owner milestone. `hydrology/profile/HydrologyProfileInprinter.java` has
 already been migrated — it takes its `LocalRiverProvider` by constructor. Treat
 `FractalTerrainInstance.getX()` reach-throughs as expected, not as debt to silently clean up.
 

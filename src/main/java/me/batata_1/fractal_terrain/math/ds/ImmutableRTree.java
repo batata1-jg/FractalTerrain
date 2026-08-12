@@ -362,7 +362,7 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
     /** The single traversal both public queries ride on, so pruning rules cannot diverge between
      *  the gathering and early-exit paths. */
     private boolean stab(final double[] queryPoint, final double inflateRadius, final StabVisitor<T> visitor) {
-        if (queryPoint.length != 2) throw new IllegalStateException();
+        SpatialIndex.requirePlanar(queryPoint, "queryPoint");
         if (elements.length == 0) return false;
 
         int capacity = 64;

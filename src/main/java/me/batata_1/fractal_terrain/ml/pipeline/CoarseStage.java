@@ -26,6 +26,9 @@ final class CoarseStage {
     static final int TILE_SIZE = 64;
     static final int TILE_STRIDE = 48;
 
+    /** DPM-Solver++ step count; sets the scheduler's sigma ladder, so the two must stay in step. */
+    private static final int DENOISE_STEPS = 20;
+
     private static final float[] MODEL_MEANS = WorldPipelineModelConfig.coarseMeans();
     private static final float[] MODEL_STDS = WorldPipelineModelConfig.coarseStds();
     private static final float[] COND_SNR = WorldPipelineModelConfig.conditioningSnr();
@@ -121,7 +124,7 @@ final class CoarseStage {
         }
 
         // Initial sample: (6, S, S) noise * sigma_max
-        EDMScheduler sched = new EDMScheduler(20);
+        EDMScheduler sched = new EDMScheduler(DENOISE_STEPS);
         float[] sample = WorldPipeline.flatten3D(GaussianNoisePatch.generate(seed + 1, i1, j1, S, S, 6, S, S));
         for (int k = 0; k < sample.length; k++) sample[k] *= sched.sigmas[0];
 
@@ -141,11 +144,11 @@ final class CoarseStage {
                 j1,
                 i1 + S,
                 j1 + S);
-        // Reused across all 20 steps. The conditioning half (channels 6..10 = condMixed) is constant
+        // Reused across all steps. The conditioning half (channels 6..10 = condMixed) is constant
         // across steps, so copy it once; only the scaledIn half is refreshed per step.
         final float[] xIn = coarseInputScratch.get();
         System.arraycopy(condMixed, 0, xIn, 6 * S * S, 5 * S * S);
-        for (int step = 0; step < 20; step++) {
+        for (int step = 0; step < DENOISE_STEPS; step++) {
             float sigma = sched.sigmas[step];
             float cnoise = EDMScheduler.trigflowPreconditionNoise(sigma);
             float[] scaledIn = EDMScheduler.preconditionInputs(sample, sigma);

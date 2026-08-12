@@ -62,7 +62,7 @@ the page is guaranteed accurate.
 | `carver-definition.md`  | `worldgen/configured_carver` JSON: cave and canyon carvers                  | Carving caves/ravines, tuning carver parameters                    | 5  |
 | `cave.md`               | Cave and aquifer generation, noise caves vs carver caves                    | Cave/aquifer behaviour, water table interaction                    | 1  |
 | `ore.md`                | Ore distribution and vein generation per ore type                           | Ore placement, distribution curves                                 | 1  |
-| `riverUnit.md`              | River biome: generation, terrain shape, variants                            | **Hydrology work** — vanilla riverUnit behaviour as a baseline         | 1  |
+| `river.md`              | River biome: generation, terrain shape, variants                            | **Hydrology work** — vanilla river behaviour as a baseline         | 1  |
 
 ### Structures
 

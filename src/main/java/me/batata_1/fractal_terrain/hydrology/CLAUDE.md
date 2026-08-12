@@ -7,6 +7,7 @@ cache design and coordinate frames.
 
 | File                            | What                                                                                       | When to read                                                       |
 | ------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| `README.md`                     | Dual-store cache design, coordinate frames, the two-pass `buildTile` ordering               | Onboarding to hydrology, changing tile build order or frames        |
 | `LocalRiverProvider.java`       | Thin orchestrator over the 512-native-px tile dual-store cache; `buildTile` is the pipeline | Local riverPrimitive/carve output, tile caching, build ordering, test overrides |
 | `GlobalRiverProvider.java`      | Coarse-px global riverPrimitive network, caches its own 64×64-coarse-px tiles                        | Global network, coarse-frame addressing, `computeTileForTest`      |
 | `GlobalNetworkBuilder.java`     | Traces/relaxes the global network inside a tile; returns it plus its boundary-elevation map | Global-network trace math, coarse↔native tile mapping              |
