@@ -3,7 +3,6 @@ package me.batata_1.fractal_terrain.hydrology.profile;
 import java.util.Arrays;
 import java.util.List;
 
-import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
@@ -41,6 +40,8 @@ public final class HydrologyProfileInprinter {
 
         final double[] columns = new double[256 * 2];
         final double[] mutablePt = new double[2];
+        final double[] mutableArray = new double[2];
+        final float[] indexWeightDistance = new float[3];
 
         for (int dx = 0; dx < 16; dx++) {
             for (int dz = 0; dz < 16; dz++) {
@@ -49,13 +50,20 @@ public final class HydrologyProfileInprinter {
                 mutablePt[0] = (startX + dx) / scale;
                 mutablePt[1] = (startZ + dz) / scale;
 
-                final int nearestPrimitiveIndex =
-                        HydrologyProfileInprinter.resolveNearestPrimitiveIndex(primitives, mutablePt);
+                final int nearestPrimitiveIndex = resolveNearestPrimitiveIndex(primitives, mutablePt);
                 if (nearestPrimitiveIndex == -1) continue;
                 if (!primitives.get(nearestPrimitiveIndex).containsPoint(mutablePt)) continue;
 
-                final NearestChannelSample sample =
-                        HydrologyProfileInprinter.sampleNearestChannel(primitives, nearestPrimitiveIndex, mutablePt);
+                indexWeightDistance[0]=-1;
+                indexWeightDistance[1]=1;
+                indexWeightDistance[2]=-1;
+                sampleNearestChannel(primitives, nearestPrimitiveIndex, mutablePt,indexWeightDistance,mutableArray);
+
+                final int neighborIndex = Float.floatToIntBits(indexWeightDistance[0]);
+                final RiverPrimitive n0 = (RiverPrimitive) primitives.get(nearestPrimitiveIndex);
+                final RiverPrimitive n1 = (RiverPrimitive) primitives.get(neighborIndex>0?neighborIndex:nearestPrimitiveIndex);
+
+
                 if (sample == null) continue;
 
                 columns[pos * 2] = sample.carveInto(ambientElevation[pos]);
@@ -117,16 +125,18 @@ public final class HydrologyProfileInprinter {
      * <p>Measures against the two-segment polyline through the nearest knot rather than the quintic:
      * the primitives carry no velocity or acceleration, so the true curve cannot be rebuilt here.
      */
-    public static NearestChannelSample sampleNearestChannel(
-            List<HydrologicalPrimitive> primitives, int nearestPrimitiveIndex, double[] point) {
-        if (nearestPrimitiveIndex < 0 || nearestPrimitiveIndex >= primitives.size()) return null;
-        if (!(primitives.get(nearestPrimitiveIndex) instanceof RiverPrimitive nearestKnot)) return null;
+    public static void sampleNearestChannel(
+            List<HydrologicalPrimitive> primitives,
+            int nearestPrimitiveIndex,
+            double[] point,
+            float[] indexWeightDistance,
+            double[] projection) {
+        if (nearestPrimitiveIndex < 0 || nearestPrimitiveIndex >= primitives.size()) return;
+        if (!(primitives.get(nearestPrimitiveIndex) instanceof RiverPrimitive nearestKnot)) return;
 
-        final double[] projection = new double[2];
-        RiverPrimitive segStart = null;
-        RiverPrimitive segEnd = null;
-        double bestSegParam = 0.0;
-        double bestDistSq = Double.MAX_VALUE;
+        int otherIndex = -1;
+        double nearestWeight = 1.0;
+        double bestDist = Double.MAX_VALUE;
 
         for (int offset = -1; offset <= 1; offset += 2) {
             final int neighbourIndex = nearestPrimitiveIndex + offset;
@@ -138,23 +148,23 @@ public final class HydrologyProfileInprinter {
             final RiverPrimitive start = neighbourIsUpstream ? neighbour : nearestKnot;
             final RiverPrimitive end = neighbourIsUpstream ? nearestKnot : neighbour;
             VectorOps.projectPointOntoSegment(point, start.coord(), end.coord(), projection);
-            if (projection[1] >= bestDistSq) continue;
-            bestDistSq = projection[1];
-            bestSegParam = projection[0];
-            segStart = start;
-            segEnd = end;
+            if (Math.abs(projection[1]) >= Math.abs(bestDist)) continue;
+            bestDist = projection[1];
+            // segParam runs start -> end, so the nearest knot's share of it is segParam only when the
+            // neighbour is the upstream end of the segment.
+            nearestWeight = neighbourIsUpstream ? projection[0] : 1.0 - projection[0];
+            otherIndex = neighbourIndex;
         }
 
-        if (segStart == null) return isolatedKnotSample(nearestKnot, point);
-        return interpolatedSample(segStart, segEnd, bestSegParam, bestDistSq, point);
+        // A knot with no knot-adjacent neighbour in range influences the point alone, so its tangent
+        // line is the correct answer — not a degraded one — and the whole weight is its own.
+        if (otherIndex == -1) return;
+
+        indexWeightDistance[0] = Float.intBitsToFloat(otherIndex);
+        indexWeightDistance[1] = (float) nearestWeight;
+        indexWeightDistance[2] = (float) bestDist;
     }
 
-    /** A knot with no knot-adjacent neighbour in range influences the point alone, so its tangent
-     *  line is the correct answer — not a degraded one. */
-    private static NearestChannelSample isolatedKnotSample(RiverPrimitive knot, double[] point) {
-        return new NearestChannelSample(
-                knot.d(point), knot.width(), knot.curvature(), knot.elevation(), knot.rosgenType(), knot.channelId());
-    }
 
     /** Signs the distance with the interpolated normal so it agrees with {@link RiverPrimitive#d},
      *  which is the convention the asymmetric Rosgen profiles were tuned against. */
