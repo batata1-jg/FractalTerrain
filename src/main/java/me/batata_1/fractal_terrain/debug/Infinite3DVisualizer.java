@@ -266,8 +266,7 @@ public class Infinite3DVisualizer {
 
             if (!(primitive instanceof RiverPrimitive riverPrimitive)) return NOT_RIVER;
             // An unclassified reach paints as A, matching how the carve coalesces a null type.
-            final RiverPrimitive.RosgenType type =
-                    riverPrimitive.rosgenType() == null ? RiverPrimitive.RosgenType.A : riverPrimitive.rosgenType();
+            final RiverPrimitive.RosgenType type = RiverPrimitive.RosgenType.orDefault(riverPrimitive.rosgenType());
 
             // Bed is the deepest possible zone: no later primitive can beat it, so paint and stop.
             if (radialDist <= ChannelGeometry.bedHalfWidth(riverPrimitive.width()))

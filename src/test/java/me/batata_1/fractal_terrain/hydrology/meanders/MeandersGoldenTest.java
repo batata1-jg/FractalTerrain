@@ -215,18 +215,13 @@ class MeandersGoldenTest {
     // Scenario builders
     // -----------------------------------------------------------------------------------------
 
-    private static float[] zeroGrid() {
-        return new float[GRID * GRID];
-    }
-
     /** One source -> one drain edge from a list of points. */
     private static Meanders oneEdge(ArrayList<double[]> pts, double flow) {
         List<NodeSpec> nodeSpecs = List.of(
                 new NodeSpec(pts.getFirst()[0], pts.getFirst()[1], Endpoint.Type.SOURCE),
                 new NodeSpec(pts.getLast()[0], pts.getLast()[1], Endpoint.Type.DRAIN));
         List<EdgeSpec> edgeSpecs = List.of(new EdgeSpec(0, 1, pts, flow));
-        float[] g = zeroGrid();
-        return new Meanders(GRID, g, g, nodeSpecs, edgeSpecs);
+        return new Meanders(new RiverNetwork(GRID, nodeSpecs, edgeSpecs));
     }
 
     /** A single wide horizontal trunk SOURCE(0) -> DRAIN(1) along z = 256, x in [100, 400]. */
@@ -280,8 +275,7 @@ class MeandersGoldenTest {
                 new NodeSpec(aPts.getFirst()[0], aPts.getFirst()[1], Endpoint.Type.SOURCE),
                 new NodeSpec(aPts.getLast()[0], aPts.getLast()[1], Endpoint.Type.DRAIN));
         List<EdgeSpec> edgeSpecs = List.of(new EdgeSpec(0, 1, bPts, 20.0), new EdgeSpec(2, 3, aPts, 5.0));
-        float[] g = zeroGrid();
-        return new Meanders(GRID, g, g, nodeSpecs, edgeSpecs);
+        return new Meanders(new RiverNetwork(GRID, nodeSpecs, edgeSpecs));
     }
 
     /** Two parallel sinusoidal channels (100 pts each) that meander into each other over 100 steps. */
@@ -302,8 +296,7 @@ class MeandersGoldenTest {
                 new NodeSpec(pts1.getFirst()[0], pts1.getFirst()[1], Endpoint.Type.SOURCE),
                 new NodeSpec(pts1.getLast()[0], pts1.getLast()[1], Endpoint.Type.DRAIN));
         List<EdgeSpec> edgeSpecs = List.of(new EdgeSpec(0, 1, pts, flow), new EdgeSpec(2, 3, pts1, flow));
-        float[] g = zeroGrid();
-        return new Meanders(GRID, g, g, nodeSpecs, edgeSpecs);
+        return new Meanders(new RiverNetwork(GRID, nodeSpecs, edgeSpecs));
     }
 
     // -----------------------------------------------------------------------------------------

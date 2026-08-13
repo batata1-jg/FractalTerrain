@@ -30,7 +30,7 @@ public record NearestChannelSample(
      * the channel, so the min hands back ambient wherever that cone clears it.
      */
     public double carveInto(double ambientElevation) {
-        final RosgenProfile profile = RosgenProfile.of(rosgenType == null ? RosgenType.A : rosgenType);
+        final RosgenProfile profile = RosgenProfile.of(RosgenType.orDefault(rosgenType));
         final double bedTarget =
                 bedElevation + profile.delta(channelId, signedPerpDist, channelWidth, channelCurvature);
         return Math.min(ambientElevation, bedTarget);

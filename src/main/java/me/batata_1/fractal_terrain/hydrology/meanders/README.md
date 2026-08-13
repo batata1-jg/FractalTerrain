@@ -2,8 +2,9 @@
 
 ## Overview
 
-`Meanders`/`RiverNetwork` is the mutable graph a single tile build works on: a directed dendritic
-in-tree of `Channel` edges and `Endpoint` nodes, relaxed by `Meanders` and mutated in place by the
+`RiverNetwork` is the mutable graph a single tile build works on: a directed dendritic
+in-tree of `Channel` edges and `Endpoint` nodes, migrated by the `ChannelMigrator` models
+(`GradientNetworkRelaxation`, then `Meanders`) and mutated in place by the
 local-drainage attach and collision passes. It exists as a mutable structure — rather than an immutable
 value rebuilt per step — because relaxation, local attachment, and collision resolution all need to
 edit the same graph incrementally without re-deriving it from scratch each time.
@@ -21,16 +22,17 @@ across an `update`). `manageCollisions` is a full rebuild over this same seam: d
 crossings, run a deterministic two-mark DFS from every source to orient and prune dangling branches
 (recording pruned runs as `ABANDONED_RIVER` when history is enabled), then `update` the result back in.
 
-Per one `LocalRiverProvider.buildTile` call: `GlobalNetworkBuilder` builds a fresh `Meanders`/
-`RiverNetwork` purely from its parameters (global-only graph) and returns it; `LocalDrainageTracer` then
+Per one `LocalRiverProvider.buildTile` call: `GlobalNetworkBuilder` builds a fresh `RiverNetwork`
+purely from its parameters (global-only graph), relaxes it with a `GradientNetworkRelaxation`, and
+returns it; `LocalDrainageTracer` then
 mutates that SAME instance in place via `viewAtomic()`/`manageCollisions` to attach the local subgraph
 traced off the drainage field. Both stages, and the graph itself, live only for the duration of that one
 `buildTile` call.
 
 ## Invariants
 
-**Per-tile, single-threaded — no state shared across tiles or threads.** A fresh `Meanders`/
-`RiverNetwork` is constructed for every `buildTile` call; nothing about the graph (channel/node id
+**Per-tile, single-threaded — no state shared across tiles or threads.** A fresh `RiverNetwork`
+is constructed for every `buildTile` call; nothing about the graph (channel/node id
 counters, the working `QuadTree`, the `AtomicView` seam) is reused or shared between tiles or across
 worker threads. `GlobalNetworkBuilder` builds and returns its network purely from its call parameters
 (no shared mutable state, so concurrent per-tile builds on different worker threads never interact), and

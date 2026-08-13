@@ -16,11 +16,11 @@ import java.util.function.Predicate;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
-import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
+import me.batata_1.fractal_terrain.hydrology.rosgen.ReachRosgenClassifier;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingSpatialIndex;
@@ -153,15 +153,17 @@ public class LocalRiverProvider {
         // 1. global rivers: trace + relax, returning the network plus the boundary-elevation map
         //    GlobalNetworkBuilder accumulated for it (source/drain node datum).
         final GlobalNetworkBuilder.Result globalResult = GlobalNetworkBuilder.build(tileX, tileZ, base, grp);
-        final Meanders sim = globalResult.network();
-        final RiverNetwork network = sim.getNetwork();
+        final RiverNetwork network = globalResult.network();
+        final float[] rawElev = globalResult.rawElev();
         final Map<Integer, Double> boundaryElev = new HashMap<>(globalResult.boundaryElevByNodeIdx());
 
         final float[] carvedElevationGlobal = base[0].clone();
         ChannelElevationAssigner.assign(network, boundaryElev, carvedElevationGlobal);
         LOG.debug("finished first assign() pass");
         HydrologyProfileInprinter.carveRiverShells(
-                carvedElevationGlobal, sim.collectPrimitives(0, 0).toArray(new HydrologicalPrimitive[0]), PADDED);
+                carvedElevationGlobal,
+                collectPrimitives(network, rawElev, 0, 0).toArray(new HydrologicalPrimitive[0]),
+                PADDED);
         // Snapshot here, not at the end: this buffer is the drainage input for the local trace below, so
         // the harness needs it as it stood when step 2 read it.
         if (stages != null) stages.elevationFirstPass = cropToTile(carvedElevationGlobal).data;
@@ -206,7 +208,8 @@ public class LocalRiverProvider {
         // tile frame: they index against a PADDED x PADDED buffer addressed by pixel index.
         final int tileOriginX = tileX * GRID;
         final int tileOriginZ = tileZ * GRID;
-        final List<HydrologicalPrimitive> primitivePoints = sim.collectPrimitives(PAD - tileOriginX, PAD - tileOriginZ);
+        final List<HydrologicalPrimitive> primitivePoints =
+                collectPrimitives(network, rawElev, PAD - tileOriginX, PAD - tileOriginZ);
         final ImmutableRTree<HydrologicalPrimitive> primitiveIndex =
                 new ImmutableRTree<>(primitivePoints, HydrologicalPrimitive.PROTOTYPE);
 
@@ -224,6 +227,13 @@ public class LocalRiverProvider {
             stages.primitiveTree = primitiveIndex;
         }
         return new TileResult(primitiveIndex, carvedTile);
+    }
+
+    /** Packages the graph into primitives, each carrying a Rosgen type. A fresh classifier per call:
+     *  {@code prepare} rebuilds its whole cache anyway, and the two calls see different graphs. */
+    private static List<HydrologicalPrimitive> collectPrimitives(
+            RiverNetwork network, float[] rawElev, double offsetX, double offsetZ) {
+        return network.collectPrimitives(offsetX, offsetZ, new ReachRosgenClassifier(rawElev, PADDED));
     }
 
     private FloatTensor cropToTile(float[] padded) {

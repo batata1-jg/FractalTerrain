@@ -22,6 +22,22 @@ public class PopulateNoiseStep {
     private static final Logger LOG = getLogger(PopulateNoiseStep.class);
     private static final BlockState BEDROCK = Blocks.BEDROCK.defaultBlockState();
     private static final BlockState DEEPSLATE = Blocks.DEEPSLATE.defaultBlockState();
+
+    /** Columns in a chunk; the length unit of every per-column array below. */
+    private static final int COLUMNS = 16 * 16;
+
+    /** Stride of the (elevation, weight) pairs {@link #resolveRiverPrimitives} returns. */
+    private static final int PAIR = 2;
+
+    /** Offset of the weight within a pair; the elevation sits at offset 0. */
+    private static final int WEIGHT = 1;
+
+    /** The weight a resolved river column carries. The carve is a hard {@code Math.min} against
+     *  ambient, so a river either owns its column or does not touch it — there is no partial blend yet.
+     *  Expressing that as a weight anyway is what lets a second primitive family join the merge without
+     *  restructuring the loop. */
+    private static final double FULL_WEIGHT = 1.0;
+
     private final NoiseGeneratorSettings settings;
 
     public PopulateNoiseStep(NoiseGeneratorSettings settings) {
@@ -39,68 +55,37 @@ public class PopulateNoiseStep {
         final HydrologicalPrimitive.HydrologicalFeature[] riverType =
                 (HydrologicalPrimitive.HydrologicalFeature[]) heightmap.get(Types.RIVER_TYPE);
         final float[] waterElev = (float[]) heightmap.get(Types.WATER_HEIGHT);
-        final HydrologyProfileInprinter imprinter = FractalTerrainInstance.getHydrologyCarver();
-        final int startX = chunkPos.getMinBlockX();
-        final int startZ = chunkPos.getMinBlockZ();
+        final HydrologyProfileInprinter imprinter = FractalTerrainInstance.getHydrologyInprinter();
         // One influence query serves the whole chunk: prefetch every primitive that could reach any of the
         // 256 columns (chunk center + half-diagonal, both in the relief-pixel frame), then run the
         // flat merge per block against the prefetched array — 1 tree query per chunk instead of 256.
         final double scale = FractalTerrainConfig.GLOBAL_SCALE_CORRECTION;
-        final double chunkCenterPixelX = (startX + 8) / scale;
-        final double chunkCenterPixelZ = (startZ + 8) / scale;
+        final double chunkCenterPixelX = (chunkPos.getMinBlockX() + 8) / scale;
+        final double chunkCenterPixelZ = (chunkPos.getMinBlockZ() + 8) / scale;
         final double chunkRadiusPx = (8.0 * Math.sqrt(2.0)) / scale;
         final List<HydrologicalPrimitive> primitives =
                 imprinter.prefetchChunk(chunkCenterPixelX, chunkCenterPixelZ, chunkRadiusPx);
-        final double[] mutablePt = new double[2];
+
+        final double[] riverWeightedElevations =
+                HydrologyProfileInprinter.resolveRiverPrimitives(chunkPos, scale,  primitives, interpolatedElevs, riverType, waterElev);
 
         for (int dx = 0; dx < 16; dx++) {
             for (int dz = 0; dz < 16; dz++) {
                 final int pos = (dx << 4) + dz;
                 final float ambientElevation = interpolatedElevs[pos];
-                mutablePt[0] = (startX + dx) / scale;
-                mutablePt[1] = (startZ + dz) / scale;
+                // Weighted merge of every primitive family that claims this column. Rivers are the only
+                // contributor today; a non-river family adds its own (elevation, weight) pair here.
+                final double riverWeight = riverWeightedElevations[pos * PAIR + WEIGHT];
+                final float mergedElevation = (riverWeight <= 0.0)
+                        ? ambientElevation
+                        : (float) ((1.0 - riverWeight) * ambientElevation + riverWeight * riverWeightedElevations[pos * PAIR]);
 
-                final int nearestPrimitiveIndex =
-                        HydrologyProfileInprinter.resolveNearestPrimitiveIndex(primitives, mutablePt);
-                final float defaultElevation = Math.max(bottom, ambientElevation) + seaLevel - 1;
-                if (nearestPrimitiveIndex == -1) {
-                    riverDifference[pos] = 0;
-                    riverType[pos] = null;
-                    interpolatedElevs[pos] = defaultElevation;
-                    continue;
-                }
-                if (!primitives.get(nearestPrimitiveIndex).containsPoint(mutablePt)) {
-                    riverDifference[pos] = 0;
-                    riverType[pos] = null;
-                    interpolatedElevs[pos] = defaultElevation;
-                    continue;
-                }
-                final NearestChannelSample sample =
-                        HydrologyProfileInprinter.sampleNearestChannel(primitives, nearestPrimitiveIndex, mutablePt);
-
-                if (sample == null) {
-                    riverDifference[pos] = 0;
-                    riverType[pos] = null;
-                    interpolatedElevs[pos] = defaultElevation;
-                    continue;
-                }
-
-                final float refinedElev = (float) sample.carveInto(ambientElevation);
-                riverDifference[pos] = refinedElev - ambientElevation;
-                interpolatedElevs[pos] = Math.max(bottom, refinedElev) + seaLevel - 1;
-
-                if (Math.abs(sample.signedPerpDist()) <= (sample.channelWidth() / 2) + 0.25) {
-                    riverType[pos] = HydrologicalPrimitive.HydrologicalFeature.RIVER;
-                    waterElev[pos] = (float) (HydrologicalPrimitive.waterLine(sample.channelWidth())
-                            + Math.max(bottom, sample.bedElevation())
-                            + seaLevel
-                            - 1);
-                } else {
-                    riverType[pos] = null;
-                }
+                riverDifference[pos] = mergedElevation - ambientElevation;
+                interpolatedElevs[pos] = Math.max(bottom, mergedElevation) + seaLevel - 1;
             }
         }
     }
+
 
     public BlockState fillRocks(int x, int y, int z) {
         if (y <= -128) return BEDROCK;

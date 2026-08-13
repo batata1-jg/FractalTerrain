@@ -2,10 +2,9 @@ package me.batata_1.fractal_terrain.hydrology.network;
 
 import java.util.HashSet;
 import java.util.Set;
-import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
 
 /**
- * A vertex of the river-network graph held by {@link Meanders}, sitting on a channel endpoint.
+ * A vertex of the river-network graph held by {@link RiverNetwork}, sitting on a channel endpoint.
  *
  * <p>The network is a dendritic in-tree, so {@link #outgoing} is one channel id rather than a set;
  * that single-outflow rule is invariant K1, enforced by {@link RiverNetwork#assertSingleOutflow}.

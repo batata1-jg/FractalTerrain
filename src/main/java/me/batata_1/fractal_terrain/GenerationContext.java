@@ -40,7 +40,7 @@ public final class GenerationContext {
     private final BiomeProvider biomeProvider;
     private final GlobalRiverProvider globalRiverProvider;
     private final LocalRiverProvider localRiverProvider;
-    private final HydrologyProfileInprinter hydrologyCarver;
+    private final HydrologyProfileInprinter hydrologyInprinter;
     private final HydrologyProfilePainter hydrologyPainter;
     private final PopulateNoiseStep populateNoiseStep;
     private final FractalTerrainSurfaceSystem surfaceBuilder;
@@ -54,7 +54,7 @@ public final class GenerationContext {
         // Build order mirrors the dependency graph: global → local → relief → biome.
         this.globalRiverProvider = new GlobalRiverProvider(worldPath + "/fractal_terrain");
         this.localRiverProvider = new LocalRiverProvider(worldPath + "/fractal_terrain");
-        this.hydrologyCarver = new HydrologyProfileInprinter(this.localRiverProvider);
+        this.hydrologyInprinter = new HydrologyProfileInprinter(this.localRiverProvider);
         this.hydrologyPainter = new HydrologyProfilePainter(this.localRiverProvider);
         this.reliefProvider = new ReliefProvider(worldPath + "/fractal_terrain");
         this.biomeProvider = new BiomeProvider(worldPath + "/fractal_terrain");
@@ -101,8 +101,8 @@ public final class GenerationContext {
         return localRiverProvider;
     }
 
-    public HydrologyProfileInprinter getHydrologyCarver() {
-        return hydrologyCarver;
+    public HydrologyProfileInprinter getHydrologyInprinter() {
+        return hydrologyInprinter;
     }
 
     public HydrologyProfilePainter getHydrologyPainter() {

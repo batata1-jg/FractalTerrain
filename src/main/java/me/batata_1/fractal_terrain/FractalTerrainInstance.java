@@ -114,8 +114,8 @@ public class FractalTerrainInstance {
         return current().getLocalRiverProvider();
     }
 
-    public static HydrologyProfileInprinter getHydrologyCarver() {
-        return current().getHydrologyCarver();
+    public static HydrologyProfileInprinter getHydrologyInprinter() {
+        return current().getHydrologyInprinter();
     }
 
     public static HydrologyProfilePainter getHydrologyPainter() {

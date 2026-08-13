@@ -10,12 +10,12 @@ import java.util.Set;
 import java.util.function.ToLongFunction;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
+import me.batata_1.fractal_terrain.config.DebugConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
-import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
 import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
@@ -65,7 +65,7 @@ public class SpatialIndexBenchmark {
 
     public static void main(String[] args) {
         LOG.info("SpatialIndexBenchmark start; output dir = {}", DEBUG_PATH);
-        Meanders.DEBUG_STEPS = false;
+        DebugConfig.DEBUG_STEPS = false;
         ModelAssetManager.ensureAssetsReady();
         FractalTerrainInstance.initPipeline();
         pipeline.updateInstance(420, DEBUG_PATH);

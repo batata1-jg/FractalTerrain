@@ -71,7 +71,7 @@ public record RiverPrimitive(
 
     @Override
     public HydrologyProfile getProfile() {
-        return RosgenProfile.of(rosgenType == null ? RosgenType.A : rosgenType);
+        return RosgenProfile.of(RosgenType.orDefault(rosgenType));
     }
 
     @Override
@@ -206,6 +206,12 @@ public record RiverPrimitive(
         DA,
         E,
         F,
-        G
+        G;
+
+        /** What an unclassified reach carves as. A domain rule, not a caller's choice — a reach the
+         *  Rosgen key could not type still has to be given a profile, and A is the conservative one. */
+        public static RosgenType orDefault(RosgenType type) {
+            return type == null ? A : type;
+        }
     }
 }

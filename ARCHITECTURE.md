@@ -73,8 +73,8 @@ model-specific constants (means/stds, latent compression, native resolution) fro
 **Hydrology split** (`hydrology/`): `LocalRiverProvider.java` is a thin orchestrator over a dual-store
 cache (an `ImmutableRTree<HydrologicalPrimitive>` spatial index + a carved-elevation `FloatTensor`, filled by
 one `buildTile` call). `buildTile` builds ONE per-tile `RiverNetwork` graph: `GlobalNetworkBuilder.java`
-traces/relaxes the global (Meanders) subgraph and returns it together with the boundary-elevation map it
-accumulated; `LocalDrainageTracer.java` then traces the drainage-derived local network and attaches
+traces the global subgraph, relaxes it with `GradientNetworkRelaxation`, and returns the `RiverNetwork`
+together with the pre-carve elevation snapshot and the boundary-elevation map it accumulated; `LocalDrainageTracer.java` then traces the drainage-derived local network and attaches
 every surviving segment directly onto that SAME graph in place, returning nothing. It works through the
 atomic seam: `RiverNetwork.viewAtomic()` yields an `AtomicView` in which every interior spline point is a
 first-class node, the tracer appends `SOURCE`/interior/`DRAIN` nodes and directed edges to it, and
@@ -345,7 +345,7 @@ bands, in order of increasing cost:
   allocation, interfaces, streams, records, defensive copies are all fine and preferred for clarity.
   Strive to put as much code as possible above the line.
 - **Warm (tile creation):** `LocalRiverProvider.buildTile` and the 512×512-iteration tile passes it
-  drives (`Drainage`, `ChannelElevationAssigner`, `Meanders`). Runs 512×512 times, but once per tile with
+  drives (`Drainage`, `ChannelElevationAssigner`, the `ChannelMigrator` models). Runs 512×512 times, but once per tile with
   the result cached — moderate abstraction is acceptable, unless the warm code recurses, which multiplies
   the cost back into hot territory.
 - **Hot (below the line, permanently):** a chunk's 16×16 = 256-column inner loop is never cold, no matter
@@ -409,7 +409,7 @@ that an allocation-avoiding or abstraction-skipping pattern is deliberate, not a
   Adding, reordering or deduplicating those passes changes terrain output — it is not a refactor-safe
   region.
 - **`RiverNetwork`/`QuadTree` reuse is per-tile and single-threaded.** `GlobalNetworkBuilder` builds and
-  returns a fresh `Meanders`/`RiverNetwork` purely from its parameters; `LocalDrainageTracer` then mutates
+  returns a fresh `RiverNetwork` purely from its parameters; `LocalDrainageTracer` then mutates
   that same network in place to attach the local subgraph (`traceLocalNetwork` returns nothing) — both are
   still per-tile/no-shared-state (documented explicitly in both classes' Invariants sections), so each
   tile build's graph carries no state shared across tiles or threads. `QuadTree` itself is safe for

@@ -1,9 +1,9 @@
 package me.batata_1.fractal_terrain.hydrology;
 
+import static me.batata_1.fractal_terrain.config.DebugConfig.DEBUG_STEPS;
 import static me.batata_1.fractal_terrain.config.HydrologyTuning.*;
 import static me.batata_1.fractal_terrain.hydrology.Drainage.*;
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.*;
-import static me.batata_1.fractal_terrain.hydrology.meanders.Meanders.DEBUG_STEPS;
 
 import java.util.*;
 import java.util.function.Predicate;
@@ -25,7 +25,7 @@ import org.slf4j.LoggerFactory;
  * primitive-collection pass serves global and local channels alike.
  *
  * <p>A channel is kept only if it stays inside the tile's true boundary or would seam against its
- * neighbour. Global proximity uses a throwaway index since the Meanders quadtree is cleared each step.
+ * neighbour. Global proximity uses a throwaway index since the RiverNetwork quadtree is cleared each step.
  */
 final class LocalDrainageTracer {
 

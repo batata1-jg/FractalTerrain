@@ -8,6 +8,7 @@ import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
+import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork.EdgeSpec;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork.NodeSpec;
 import org.slf4j.Logger;
@@ -32,18 +33,13 @@ public class MeandersTest {
         if (!cond) throw new AssertionError(msg);
     }
 
-    private static float[] zeroGrid() {
-        return new float[GRID * GRID];
-    }
-
     /** One source -> one drain edge from a list of points. */
     private static Meanders oneEdge(ArrayList<double[]> pts, double flow) {
         List<NodeSpec> nodeSpecs = List.of(
                 new NodeSpec(pts.getFirst()[0], pts.getFirst()[1], Endpoint.Type.SOURCE),
                 new NodeSpec(pts.getLast()[0], pts.getLast()[1], Endpoint.Type.DRAIN));
         List<EdgeSpec> edgeSpecs = List.of(new EdgeSpec(0, 1, pts, flow));
-        float[] g = zeroGrid();
-        return new Meanders(GRID, g, g, nodeSpecs, edgeSpecs);
+        return new Meanders(new RiverNetwork(GRID, nodeSpecs, edgeSpecs));
     }
 
     private static Meanders trunkInstance() {
@@ -78,8 +74,7 @@ public class MeandersTest {
                 new NodeSpec(pts1.getFirst()[0], pts1.getFirst()[1], Endpoint.Type.SOURCE),
                 new NodeSpec(pts1.getLast()[0], pts1.getLast()[1], Endpoint.Type.DRAIN));
         List<EdgeSpec> edgeSpecs = List.of(new EdgeSpec(0, 1, pts, flow), new EdgeSpec(2, 3, pts1, flow));
-        float[] g = zeroGrid();
-        Meanders sim = new Meanders(GRID, g, g, nodeSpecs, edgeSpecs);
+        Meanders sim = new Meanders(new RiverNetwork(GRID, nodeSpecs, edgeSpecs));
 
         double x0 = pts.getFirst()[0], z0 = pts.getFirst()[1];
 
@@ -134,8 +129,7 @@ public class MeandersTest {
                 new NodeSpec(aPts.getFirst()[0], aPts.getFirst()[1], Endpoint.Type.SOURCE),
                 new NodeSpec(aPts.getLast()[0], aPts.getLast()[1], Endpoint.Type.DRAIN));
         List<EdgeSpec> edgeSpecs = List.of(new EdgeSpec(0, 1, bPts, 20.0), new EdgeSpec(2, 3, aPts, 5.0));
-        float[] g = zeroGrid();
-        return new Meanders(GRID, g, g, nodeSpecs, edgeSpecs);
+        return new Meanders(new RiverNetwork(GRID, nodeSpecs, edgeSpecs));
     }
 
     private static void testIndependentCrossing() {

@@ -8,6 +8,7 @@ import java.util.Collections;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
+import me.batata_1.fractal_terrain.config.DebugConfig;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.Drainage;
 import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
@@ -54,7 +55,7 @@ public class LocalRiverTest {
 
     public static void main(String[] args) {
         LOG.info("LocalRiverTest start; output dir = {}", DEBUG_PATH);
-        Meanders.DEBUG_STEPS = false;
+        DebugConfig.DEBUG_STEPS = false;
         ModelAssetManager.ensureAssetsReady();
         FractalTerrainInstance.initPipeline();
         pipeline.updateInstance(420, DEBUG_PATH);

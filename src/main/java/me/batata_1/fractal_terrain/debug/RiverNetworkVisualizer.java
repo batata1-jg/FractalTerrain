@@ -103,23 +103,23 @@ public class RiverNetworkVisualizer {
 
     /** Whole-network render: O(channel length + node count), unlike {@link #see}'s per-pixel query —
      *  use this for large networks where {@link #see} is too slow. */
-    public void seeNetwork(Meanders meanders, String folder, String name) {
-        final int size = meanders.getGridSize() * NETWORK_SCALE;
+    public void seeNetwork(RiverNetwork network, String folder, String name) {
+        final int size = network.getGridSize() * NETWORK_SCALE;
         final int[] rgb = new int[size * size]; // black background
 
-        for (Channel c : meanders.getChannels()) {
+        for (Channel c : network.getChannels()) {
             var pts = c.spline.points();
             for (int i = 1; i < pts.size(); i++) drawLine(rgb, size, pts.get(i - 1), pts.get(i), COLOR_CHANNEL);
         }
-        for (Endpoint endpoint : meanders.getNodes()) {
+        for (Endpoint endpoint : network.getNodes()) {
             drawDot(rgb, size, endpoint.coord, nodeColor(endpoint.type), 2);
         }
 
         writeImage(rgb, size, folder, name);
     }
 
-    /** As {@link #seeNetwork(Meanders, String, String)} but from raw {@code nodeSpecs}/{@code edgeSpecs},
-     *  skipping {@link Meanders} construction — use to inspect a network that fails to build. */
+    /** As {@link #seeNetwork(RiverNetwork, String, String)} but from raw {@code nodeSpecs}/{@code edgeSpecs},
+     *  skipping {@link RiverNetwork} construction — use to inspect a network that fails to build. */
     public void seeNetwork(
             int gridSize,
             List<RiverNetwork.NodeSpec> nodeSpecs,
@@ -140,7 +140,7 @@ public class RiverNetworkVisualizer {
         writeImage(rgb, size, folder, name);
     }
 
-    /** As {@link #seeNetwork(Meanders, String, String)} but over an {@link AtomicView}, where every
+    /** As {@link #seeNetwork(RiverNetwork, String, String)} but over an {@link AtomicView}, where every
      *  interior spline point is a first-class node — lets you inspect atomic-graph topology directly. */
     public void seeNetwork(AtomicView atomic, int gridSize, String folder, String name) {
         final int size = gridSize * NETWORK_SCALE;

@@ -43,11 +43,14 @@ final class GlobalNetworkBuilder {
     private record CellInfo(int ccx, int ccz, int outDirection, int dcx, int dcz, double[] drain) {}
 
     /**
-     * The relaxed {@link Meanders} network together with the boundary-elevation map {@link #build}
+     * The relaxed {@link RiverNetwork} together with the boundary-elevation map {@link #build}
      * accumulated for it (source/drain node datum keyed by minted node id), for the caller to hand to
      * {@link ChannelElevationAssigner#assign}.
+     *
+     * <p>{@code rawElev} is the pre-carve elevation snapshot the Rosgen classifier must measure against;
+     * it travels with the network because only {@link #build} runs early enough to take it.
      */
-    record Result(Meanders network, Map<Integer, Double> boundaryElevByNodeIdx) {}
+    record Result(RiverNetwork network, float[] rawElev, Map<Integer, Double> boundaryElevByNodeIdx) {}
 
     static Result build(int tileX, int tileZ, float[][] base, GlobalRiverProvider grp) {
         final float[] elev = base[0];
@@ -183,13 +186,11 @@ final class GlobalNetworkBuilder {
         // Raw elevation snapshot for Rosgen classification. base[0] is the buffer carveRiverShells
         // mutates in place, so the snapshot is taken here -- before the first assign and first carve --
         // or entrenchment reads the carve's own floodplain instead of the terrain. It sits above the
-        // empty-network return so both Meanders construction sites receive it.
+        // empty-network return so both exit paths carry it.
         final float[] rawElev = base[0].clone();
 
-        final float[] gradX = base[2].clone();
-        final float[] gradZ = base[3].clone();
-        final Meanders sim = new Meanders(PADDED, gradX, gradZ, rawElev, nodeSpecs, edgeSpecs);
-        if (edgeSpecs.isEmpty()) return new Result(sim, boundaryElevByNodeIdx);
+        final RiverNetwork network = new RiverNetwork(PADDED, nodeSpecs, edgeSpecs);
+        if (edgeSpecs.isEmpty()) return new Result(network, rawElev, boundaryElevByNodeIdx);
 
         // Relaxation steps vary with the elevation of the tile's primary owned cell (2*tileCoords):
         // higher terrain gets more steps, capped at MAX_RELAX_STEPS.
@@ -197,9 +198,10 @@ final class GlobalNetworkBuilder {
         final double primaryElev = (primaryCell != null) ? grp.getElevation(primaryCell.ccx(), primaryCell.ccz()) : 0.0;
         final int relaxSteps = MIN_RELAX_STEPS + (int) Math.round(Math.max(0.0, primaryElev) * RELAX_STEPS_PER_ELEV);
 
-        sim.relaxLowerGrad(Math.min(relaxSteps, MAX_RELAX_STEPS), 5);
+        new GradientNetworkRelaxation(network, base[2].clone(), base[3].clone())
+                .relax(Math.min(relaxSteps, MAX_RELAX_STEPS), 5);
         clearBuildState(cells, nodeSpecs, edgeSpecs, centerIdx, edgeNodeIdx);
-        return new Result(sim, boundaryElevByNodeIdx);
+        return new Result(network, rawElev, boundaryElevByNodeIdx);
     }
 
     /** Drops the build scaffolding once the graph has copied it, so a tile build does not hold it for

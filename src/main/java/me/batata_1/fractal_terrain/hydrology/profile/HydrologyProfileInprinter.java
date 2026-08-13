@@ -2,11 +2,14 @@ package me.batata_1.fractal_terrain.hydrology.profile;
 
 import java.util.Arrays;
 import java.util.List;
+
+import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
+import net.minecraft.world.level.ChunkPos;
 import org.jetbrains.annotations.TestOnly;
 
 /**
@@ -24,6 +27,48 @@ public final class HydrologyProfileInprinter {
 
     public HydrologyProfileInprinter(LocalRiverProvider localRiver) {
         this.localRiver = localRiver;
+    }
+
+    public static double[] resolveRiverPrimitives(
+            ChunkPos chunkPos,
+            double scale,
+            List<HydrologicalPrimitive> primitives,
+            float[] ambientElevation,
+            HydrologicalPrimitive.HydrologicalFeature[] riverType,
+            float[] waterElev) {
+        final int startX = chunkPos.getMinBlockX();
+        final int startZ = chunkPos.getMinBlockZ();
+
+        final double[] columns = new double[256 * 2];
+        final double[] mutablePt = new double[2];
+
+        for (int dx = 0; dx < 16; dx++) {
+            for (int dz = 0; dz < 16; dz++) {
+                final int pos = (dx << 4) + dz;
+                riverType[pos] = null;
+                mutablePt[0] = (startX + dx) / scale;
+                mutablePt[1] = (startZ + dz) / scale;
+
+                final int nearestPrimitiveIndex =
+                        HydrologyProfileInprinter.resolveNearestPrimitiveIndex(primitives, mutablePt);
+                if (nearestPrimitiveIndex == -1) continue;
+                if (!primitives.get(nearestPrimitiveIndex).containsPoint(mutablePt)) continue;
+
+                final NearestChannelSample sample =
+                        HydrologyProfileInprinter.sampleNearestChannel(primitives, nearestPrimitiveIndex, mutablePt);
+                if (sample == null) continue;
+
+                columns[pos * 2] = sample.carveInto(ambientElevation[pos]);
+                columns[pos * 2 + 1] = 1;
+
+                if (Math.abs(sample.signedPerpDist()) <= (sample.channelWidth() / 2) + 0.25) {
+                    riverType[pos] = HydrologicalPrimitive.HydrologicalFeature.RIVER;
+                    waterElev[pos] = (float) (HydrologicalPrimitive.waterLine(sample.channelWidth())
+                            + sample.bedElevation());
+                }
+            }
+        }
+        return columns;
     }
 
     // -------------------------------------------------------------------------

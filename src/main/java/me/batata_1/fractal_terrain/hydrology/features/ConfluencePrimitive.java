@@ -63,8 +63,7 @@ public record ConfluencePrimitive(
     public HydrologyProfile getProfile() {
         final int widest = widestArm();
         if (widest < 0) return RosgenProfile.A;
-        final RiverPrimitive.RosgenType type =
-                rosgenTypes[widest] == null ? RiverPrimitive.RosgenType.A : rosgenTypes[widest];
+        final RiverPrimitive.RosgenType type = RiverPrimitive.RosgenType.orDefault(rosgenTypes[widest]);
         return RosgenProfile.of(type);
     }
 
@@ -139,7 +138,7 @@ public record ConfluencePrimitive(
     private double armElevation(int k, double r, double signedPerpDist) {
         final double t = influence > 0 ? Math.clamp(r / influence, 0, 1) : 1;
         final double rimLerp = junctionElevation + (rimElevations[k] - junctionElevation) * t;
-        final RiverPrimitive.RosgenType type = rosgenTypes[k] == null ? RiverPrimitive.RosgenType.A : rosgenTypes[k];
+        final RiverPrimitive.RosgenType type = RiverPrimitive.RosgenType.orDefault(rosgenTypes[k]);
         return rimLerp + RosgenProfile.of(type).delta(hashCode(), signedPerpDist, widths[k], curvatures[k]);
     }
 

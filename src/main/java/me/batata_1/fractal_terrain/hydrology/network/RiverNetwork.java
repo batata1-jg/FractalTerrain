@@ -1,9 +1,9 @@
 package me.batata_1.fractal_terrain.hydrology.network;
 
 import static me.batata_1.fractal_terrain.config.DebugConfig.DEBUG_CROSSING_WINNER;
+import static me.batata_1.fractal_terrain.config.DebugConfig.DEBUG_STEPS;
 import static me.batata_1.fractal_terrain.config.HydrologyTuning.maxInfluence;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
-import static me.batata_1.fractal_terrain.hydrology.meanders.Meanders.DEBUG_STEPS;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -120,6 +120,11 @@ public final class RiverNetwork {
 
     /** A geometry removed from the active network, retained for {@link #collectPrimitives}. */
     private record RemovedPath(HydrologicalFeature type, ArrayList<double[]> pts, double width, int time) {}
+
+    /** The production construction path: a graph that keeps no history, resampled at the default spacing. */
+    public RiverNetwork(int gridSize, List<NodeSpec> nodeSpecs, List<EdgeSpec> edgeSpecs) {
+        this(gridSize, nodeSpecs, edgeSpecs, false, 0, HydrologyTuning.DX);
+    }
 
     public RiverNetwork(
             int gridSize,
@@ -617,7 +622,7 @@ public final class RiverNetwork {
     }
 
     // ---------------------------------------------------------------------------------------------
-    // Step hooks used by Meanders
+    // Step hooks used by the ChannelMigrator models
     // ---------------------------------------------------------------------------------------------
 
     /** Clears the working spatial index at the start of a step. */

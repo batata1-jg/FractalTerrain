@@ -26,6 +26,12 @@ public final class DebugConfig {
     public static final boolean DEBUG_MANAGE_COLLISIONS = ModConfig.readBoolean("debug.manage_collisions", false);
     public static final boolean DEBUG_CROSSING_WINNER = false;
 
+    /** When true, every migration step dumps per-stage network PNGs into {@code step_<n>/} folders.
+     *  Mutable, unlike the flags above: the debug harnesses set it per run, and it lives here rather
+     *  than on a migration driver so {@code hydrology/} and {@code hydrology/network/} need not import
+     *  upward from {@code hydrology/meanders/} to read it. */
+    public static boolean DEBUG_STEPS = false;
+
     /** Logs every distance-to-shore grid cell (coarse-px coordinate + value) as a biome tile is built. */
     public static final boolean DEBUG_DSHORE = ModConfig.readBoolean("debug.dshore", false);
 
