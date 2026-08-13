@@ -6,6 +6,7 @@ import java.util.List;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
+import me.batata_1.fractal_terrain.math.Interpolation;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 import net.minecraft.world.level.ChunkPos;
@@ -56,23 +57,25 @@ public final class HydrologyProfileInprinter {
 
                 indexWeightDistance[0]=-1;
                 indexWeightDistance[1]=1;
-                indexWeightDistance[2]=-1;
+                indexWeightDistance[2]=Float.MAX_VALUE;
                 sampleNearestChannel(primitives, nearestPrimitiveIndex, mutablePt,indexWeightDistance,mutableArray);
 
+                final double curElev = ambientElevation[pos];
                 final int neighborIndex = Float.floatToIntBits(indexWeightDistance[0]);
                 final RiverPrimitive n0 = (RiverPrimitive) primitives.get(nearestPrimitiveIndex);
                 final RiverPrimitive n1 = (RiverPrimitive) primitives.get(neighborIndex>0?neighborIndex:nearestPrimitiveIndex);
+                final double signedDist = neighborIndex>0?indexWeightDistance[2]:n0.d(mutablePt);
+                final double lerpWeight = neighborIndex>0?1:indexWeightDistance[1];
+                final double bedElev = Interpolation.lerp(n0.elevation(), n1.elevation(), lerpWeight);
+                final double width = Interpolation.lerp(n0.width(),n1.width(), lerpWeight);
 
+                columns[pos * 2] = Interpolation.lerp(Math.min(curElev,n0.h(signedDist)),Math.min(curElev,n1.h(signedDist)), lerpWeight);
+                columns[pos * 2 + 1] = Interpolation.lerp(n0.w(mutablePt), n1.w(mutablePt), lerpWeight);
 
-                if (sample == null) continue;
-
-                columns[pos * 2] = sample.carveInto(ambientElevation[pos]);
-                columns[pos * 2 + 1] = 1;
-
-                if (Math.abs(sample.signedPerpDist()) <= (sample.channelWidth() / 2) + 0.25) {
+                if (Math.abs(signedDist) <= (width / 2) + 0.25) {
                     riverType[pos] = HydrologicalPrimitive.HydrologicalFeature.RIVER;
-                    waterElev[pos] = (float) (HydrologicalPrimitive.waterLine(sample.channelWidth())
-                            + sample.bedElevation());
+                    waterElev[pos] = (float) (HydrologicalPrimitive.waterLine(width)
+                            + bedElev);
                 }
             }
         }
@@ -157,7 +160,7 @@ public final class HydrologyProfileInprinter {
         }
 
         // A knot with no knot-adjacent neighbour in range influences the point alone, so its tangent
-        // line is the correct answer — not a degraded one — and the whole weight is its own.
+        // line is the correct answer — not a degraded one — and the whole lerpWeight is its own.
         if (otherIndex == -1) return;
 
         indexWeightDistance[0] = Float.intBitsToFloat(otherIndex);
@@ -166,37 +169,7 @@ public final class HydrologyProfileInprinter {
     }
 
 
-    /** Signs the distance with the interpolated normal so it agrees with {@link RiverPrimitive#d},
-     *  which is the convention the asymmetric Rosgen profiles were tuned against. */
-    private static NearestChannelSample interpolatedSample(
-            RiverPrimitive segStart, RiverPrimitive segEnd, double segParam, double distSq, double[] point) {
-        final double footX = lerp(segStart.coord()[0], segEnd.coord()[0], segParam);
-        final double footZ = lerp(segStart.coord()[1], segEnd.coord()[1], segParam);
-        final double[] lerpedNormal = {
-            lerp(segStart.normal()[0], segEnd.normal()[0], segParam),
-            lerp(segStart.normal()[1], segEnd.normal()[1], segParam)
-        };
-        // Near-opposite knot normals (a sharp bend) lerp toward the zero vector, which normalize()
-        // would hand back as-is; that silently zeroes signedPerpDist. Fall back to segStart's normal
-        // — it is already unit-length and, being the lower-index (upstream) knot, the natural default.
-        final double[] footNormal =
-                VectorOps.magnitude(lerpedNormal) < 1e-12 ? segStart.normal() : VectorOps.normalize(lerpedNormal);
-        final double side = footNormal[0] * (point[0] - footX) + footNormal[1] * (point[1] - footZ);
-        // A point exactly on the centreline has no bank to prefer; call it the positive bank rather
-        // than let Math.signum(0.0) collapse the real distance to zero.
-        final double sideSign = side == 0.0 ? 1.0 : Math.signum(side);
-        return new NearestChannelSample(
-                sideSign * Math.sqrt(distSq),
-                lerp(segStart.width(), segEnd.width(), segParam),
-                lerp(segStart.curvature(), segEnd.curvature(), segParam),
-                lerp(segStart.elevation(), segEnd.elevation(), segParam),
-                segParam < 0.5 ? segStart.rosgenType() : segEnd.rosgenType(),
-                segStart.channelId());
-    }
 
-    private static double lerp(double from, double to, double t) {
-        return from + t * (to - from);
-    }
 
     // -------------------------------------------------------------------------
     // Tile-level shell pre-carve (moved from LocalRiverProvider)
@@ -231,7 +204,7 @@ public final class HydrologyProfileInprinter {
                     if (primitive instanceof RiverPrimitive river) {
                         final double deltaWeight = river.w(pixel);
                         weight += deltaWeight;
-                        weightedElev += deltaWeight * river.h(pixel);
+                        weightedElev += deltaWeight * river.h(river.d(pixel));
                     }
                 }
                 if (weight <= 1e-8) continue;

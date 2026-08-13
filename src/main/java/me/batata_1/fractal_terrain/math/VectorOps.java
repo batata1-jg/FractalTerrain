@@ -101,7 +101,12 @@ public final class VectorOps {
     }
 
     /**
-     * Closest point on a segment, as the normalised position along it plus the squared distance.
+     * Closest point on a segment, as the normalised position along it plus the signed distance to it.
+     *
+     * <p>Signed by which bank the point falls on, using the same convention as
+     * {@code RiverPrimitive.d}: positive where {@code perpendicular(segEnd - segStart)} points, so a
+     * caller can hand the value straight to an asymmetric cross-section. The magnitude stays the true
+     * distance to the segment, endpoint-clamped included.
      *
      * <p>Writes into {@code outProjection} rather than returning, so the per-pixel carve loop stays
      * allocation-free. 2D-only by design: reads only indices 0 and 1, no length check (hot path).
@@ -117,7 +122,12 @@ public final class VectorOps {
                 segLenSq < 1e-12 ? 0.0 : Math.clamp((toPointX * segX + toPointZ * segZ) / segLenSq, 0.0, 1.0);
         final double footToPointX = toPointX - segParam * segX;
         final double footToPointZ = toPointZ - segParam * segZ;
+        // Read off the infinite line, not the clamped foot: past an endpoint the foot vector swings
+        // round to point along the segment, which would flip the bank for no geometric reason. A
+        // degenerate segment gives 0 here and falls to the positive bank, matching the on-centreline case.
+        final double side = segZ * toPointX - segX * toPointZ;
+        final double dist = Math.sqrt(footToPointX * footToPointX + footToPointZ * footToPointZ);
         outProjection[0] = segParam;
-        outProjection[1] = footToPointX * footToPointX + footToPointZ * footToPointZ;
+        outProjection[1] = side < 0.0 ? -dist : dist;
     }
 }

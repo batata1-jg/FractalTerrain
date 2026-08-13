@@ -67,9 +67,14 @@ public record ConfluencePrimitive(
         return RosgenProfile.of(type);
     }
 
+    @Override
+    public double h(double signedDist) {
+        return 0;
+    }
+
     /** Angular bracket + inverse-distance blend across the two arms straddling {@code pt}, so the
      *  surface interpolates smoothly between confluent channels' cross-sections. */
-    @Override
+
     public double h(double[] pt) {
         if (angles.length == 0) return junctionElevation;
         final BracketSample bracket = bracketSample(pt);

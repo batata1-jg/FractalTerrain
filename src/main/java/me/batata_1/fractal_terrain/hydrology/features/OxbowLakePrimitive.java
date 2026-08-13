@@ -38,7 +38,7 @@ public record OxbowLakePrimitive(double[] coord) implements HydrologicalPrimitiv
     }
 
     @Override
-    public double h(double[] pt) {
+    public double h(double signedDist) {
         return 0;
     }
 

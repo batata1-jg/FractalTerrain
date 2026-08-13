@@ -6,4 +6,4 @@ Gates the shared vector helpers the hydrology carve depends on.
 
 | File                          | What                                                                | When to read                                                        |
 | ----------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `VectorOpsProjectionTest.java`| `VectorOps.projectPointOntoSegment`: clamped segment parameter and squared distance, the primitive `sampleNearestChannel` projects with | Changing projection, endpoint clamping, or the returned `(t, distSq)` pair |
+| `VectorOpsProjectionTest.java`| `VectorOps.projectPointOntoSegment`: clamped segment parameter and bank-signed distance, the primitive `sampleNearestChannel` projects with | Changing projection, endpoint clamping, the bank sign convention, or the returned `(t, signedDist)` pair |

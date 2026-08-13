@@ -37,7 +37,7 @@ public record DeltaPrimitive(double[] coord) implements SpatialIndexCircle, Hydr
     }
 
     @Override
-    public double h(double[] pt) {
+    public double h(double signedDist) {
         return 0;
     }
 
