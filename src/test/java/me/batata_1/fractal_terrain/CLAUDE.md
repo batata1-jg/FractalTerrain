@@ -16,7 +16,7 @@ Compiles and runs. The earlier `:compileTestJava` break (`FractalTerrainConfig.m
 by commit ea43e40) is fixed — `hydrology/SpatialIndexCorrectnessGoldenTest.java:52` now calls
 `HydrologyTuning.maxNativeWidth()`.
 
-Last measured on `ad118e3`: **83 tests, 15 failed, 3 skipped** across 15 classes. The failures are
+Last measured on `8d92e23`: **92 tests, 15 failed, 3 skipped** across 16 classes. The failures are
 pre-existing, not flakes, and cluster in three places:
 
 - `RosgenKeyTest` (6) and `ReachMetricsSamplerTest` (1) — Rosgen thresholds/transects
