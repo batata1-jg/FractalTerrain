@@ -67,11 +67,6 @@ public record ConfluencePrimitive(
         return RosgenProfile.of(type);
     }
 
-    @Override
-    public double h(double signedDist) {
-        return 0;
-    }
-
     /** Angular bracket + inverse-distance blend across the two arms straddling {@code pt}, so the
      *  surface interpolates smoothly between confluent channels' cross-sections. */
 
@@ -97,7 +92,7 @@ public record ConfluencePrimitive(
         final double u = (dx * dx + dz * dz) / (influence * influence);
         if (u >= 1) return 0;
         final double t = 1 - u;
-        return t * t;
+        return t;
     }
 
     /** Signed perpendicular distance to the angularly nearest arm — shares {@link #bracketSample} with
@@ -144,7 +139,9 @@ public record ConfluencePrimitive(
         final double t = influence > 0 ? Math.clamp(r / influence, 0, 1) : 1;
         final double rimLerp = junctionElevation + (rimElevations[k] - junctionElevation) * t;
         final RiverPrimitive.RosgenType type = RiverPrimitive.RosgenType.orDefault(rosgenTypes[k]);
-        return rimLerp + RosgenProfile.of(type).delta(hashCode(), signedPerpDist, widths[k], curvatures[k]);
+        RosgenProfile profile = RosgenProfile.of(type);
+        if(Math.abs(signedPerpDist) > profile.floodPlainLength(widths[k])) return rimLerp + profile.delta(hashCode(), profile.floodPlainLength(widths[k]), widths[k], curvatures[k]);
+        return rimLerp + profile.delta(hashCode(), signedPerpDist, widths[k], curvatures[k]);
     }
 
     /** The CW/CCW arm pair bracketing {@code pt}'s bearing from the junction, wrapping across ±π; the

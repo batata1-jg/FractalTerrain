@@ -6,6 +6,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.function.Supplier;
+
+import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
@@ -32,7 +34,8 @@ import org.slf4j.LoggerFactory;
 public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<HydrologicalPrimitive> {
 
     /** Probe {@code Storage} uses to decide the index is persistable; any primitive type would serve. */
-    HydrologicalPrimitive PROTOTYPE = RiverPrimitive.PROTOTYPE;
+    HydrologicalPrimitive PROTOTYPE = new RiverPrimitive(new double[] {0.0, 0.0}, 0, null, null, 0, 0, 0, 0);
+
 
     /** Deliberately small, so a feature with no profile yet barely perturbs the terrain. */
     double DEFAULT_RADIUS = 2.0;
@@ -78,7 +81,7 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
 
     /** The primitive's own cross-section, layered onto what the shell carve already cut. Returning
      *  {@code elevAtPixel} unchanged means the primitive adds no detail of its own. */
-    double h(double signedDist);
+
 
     double w(double[] pt);
 
@@ -144,7 +147,7 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
                     final long packedIds = i | (((long) ch.channelId) << 32);
                     out.add(new RiverPrimitive(
                             coords,
-                            RosgenProfile.riverInfluence(width),
+                            HydrologyTuning.maxInfluence(width),
                             types[i],
                             ch.spline.normal(i),
                             ch.spline.curvature(i),
@@ -226,7 +229,7 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
                     curvatures[k] = ch.spline.curvature(jk);
                     rosgenTypes[k] = typer == null ? null : typer.typesFor(ch)[jk];
 
-                    influence = Math.max(influence, RosgenProfile.riverInfluence(widths[k]));
+                    influence = Math.max(influence, HydrologyTuning.maxInfluence(widths[k]));
                     minJunctionBed = Math.min(minJunctionBed, ch.bedElev(jk));
                     if (atStart) {
                         outgoingArm = ch;

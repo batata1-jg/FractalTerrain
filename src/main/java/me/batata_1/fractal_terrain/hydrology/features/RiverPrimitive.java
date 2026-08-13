@@ -81,7 +81,6 @@ public record RiverPrimitive(
         return nx * dx + nz * dz;
     }
 
-    @Override
     public double h(double signedDist) {
         if (normal == null) return elevation;
         final RosgenProfile profile = (RosgenProfile) getProfile();

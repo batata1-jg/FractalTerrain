@@ -37,11 +37,6 @@ public record SourcePrimitive(double[] coord) implements HydrologicalPrimitive, 
     }
 
     @Override
-    public double h(double signedDist) {
-        return 0;
-    }
-
-    @Override
     public double w(double[] pt) {
         return 0;
     }

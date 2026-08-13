@@ -37,11 +37,6 @@ public record AbandonedRiverPrimitive(double[] coord) implements SpatialIndexCir
     }
 
     @Override
-    public double h(double signedDist) {
-        return 0;
-    }
-
-    @Override
     public double w(double[] pt) {
         return 0;
     }

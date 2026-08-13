@@ -5,7 +5,9 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
+import me.batata_1.fractal_terrain.hydrology.features.ConfluencePrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
+import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
@@ -67,20 +69,42 @@ public class PopulateNoiseStep {
 
         final double[] riverWeightedElevations =
                 HydrologyProfileInprinter.resolveRiverPrimitives(chunkPos, scale,  primitives, interpolatedElevs, riverType, waterElev);
+        int nonRiverIndex = -1;
+        for(int id=0 ; id<primitives.size() ; id++) if(!(primitives.get(id) instanceof RiverPrimitive)) {
+            nonRiverIndex=id;
+            break;
+        }
+
+        final int startX = chunkPos.getMinBlockX();
+        final int startZ = chunkPos.getMinBlockZ();
+
+        final double[] mutablePt = new double[2];
 
         for (int dx = 0; dx < 16; dx++) {
             for (int dz = 0; dz < 16; dz++) {
                 final int pos = (dx << 4) + dz;
                 final float ambientElevation = interpolatedElevs[pos];
+                mutablePt[0] = (startX + dx) / scale;
+                mutablePt[1] = (startZ + dz) / scale;
+
                 // Weighted merge of every primitive family that claims this column. Rivers are the only
                 // contributor today; a non-river family adds its own (elevation, weight) pair here.
                 final double riverWeight = riverWeightedElevations[pos * PAIR + WEIGHT];
-                final float mergedElevation = (riverWeight <= 0.0)
+                double mergedElevation = (riverWeight <= 1e-8)
                         ? ambientElevation
-                        : (float) ((1.0 - riverWeight) * ambientElevation + riverWeight * riverWeightedElevations[pos * PAIR]);
+                        : riverWeightedElevations[pos * PAIR];
+                if((!primitives.isEmpty())&&nonRiverIndex!=-1) {
+                    for(int id=nonRiverIndex ; id<primitives.size() ; id++) {
+                        if((primitives.get(id) instanceof ConfluencePrimitive confluence)) {
+                            final double weight = confluence.w(mutablePt);
+                            mergedElevation = confluence.h(mutablePt);
+                        }
+                    }
+                }
 
-                riverDifference[pos] = mergedElevation - ambientElevation;
-                interpolatedElevs[pos] = Math.max(bottom, mergedElevation) + seaLevel - 1;
+
+                riverDifference[pos] = (float) (mergedElevation - ambientElevation);
+                interpolatedElevs[pos] = (float) (Math.max(bottom, mergedElevation) + seaLevel - 1);
             }
         }
     }

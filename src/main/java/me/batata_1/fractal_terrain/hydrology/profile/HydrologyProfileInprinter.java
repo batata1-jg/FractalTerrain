@@ -215,39 +215,4 @@ public final class HydrologyProfileInprinter {
         }
     }
 
-    @TestOnly
-    public static void carveRiverShellsNearest(float[] elevation, HydrologicalPrimitive[] primitives, int paddedSize) {
-        if (primitives.length == 0) return;
-        final ImmutableRTree<HydrologicalPrimitive> index =
-                new ImmutableRTree<>(Arrays.asList(primitives), HydrologicalPrimitive.PROTOTYPE);
-
-        for (int pi = 0; pi < paddedSize; pi++) {
-            for (int pj = 0; pj < paddedSize; pj++) {
-                final int idx = pi * paddedSize + pj;
-                final float ambient = elevation[idx];
-                if (ambient < 0) continue;
-                final double[] pixel = {pi, pj};
-                final List<HydrologicalPrimitive> nearby = index.queryContaining(pixel);
-                if (nearby.isEmpty()) continue;
-
-                HydrologicalPrimitive nearest = null;
-                double nearestDist = Double.MAX_VALUE;
-                for (final HydrologicalPrimitive primitive : nearby) {
-                    final double[] coord = primitive.coord();
-                    final double dx = pixel[0] - coord[0];
-                    final double dz = pixel[1] - coord[1];
-                    final double radialDist = Math.hypot(dx, dz);
-
-                    if (!primitive.containsPoint(pixel)) continue; // outside this primitive's influence
-                    if (radialDist < nearestDist && primitive instanceof RiverPrimitive river) {
-                        nearestDist = radialDist;
-                        nearest = river;
-                    }
-                }
-
-                if (nearest == null) continue;
-                elevation[idx] = (float) nearest.getProfile().shellElevation(nearest, nearestDist, elevation[idx]);
-            }
-        }
-    }
 }

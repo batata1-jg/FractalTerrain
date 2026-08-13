@@ -151,12 +151,6 @@ public enum RosgenProfile implements HydrologyProfile {
         }
     };
 
-    /** Delegates to {@link #riverInfluenceElevation} with the reach's width and bank elevation. */
-    @Override
-    public double shellElevation(HydrologicalPrimitive primitive, double radialDist, double curElev) {
-        if (!(primitive instanceof RiverPrimitive riverPrimitive)) return curElev;
-        return riverInfluenceElevation(radialDist, riverPrimitive.width(), curElev, riverPrimitive.elevation());
-    }
 
     // ---- Horizontal extents (type-dependent; shared placeholder law, override per constant) ----
     private static final Logger LOG = LoggerFactory.getLogger(RosgenProfile.class);
@@ -185,29 +179,6 @@ public enum RosgenProfile implements HydrologyProfile {
     /** Floodplain half-extent. Placeholder law shared by all types; override per constant. */
     public double floodPlainLength(double width) {
         return width / 2;
-    }
-
-    /** Outer reach of the river, and the primitive's index radius. Calls the virtual
-     *  {@link #floodPlainLength}, so overriding only the floodplain still yields consistent influence. */
-    public static double riverInfluence(double width) {
-        return Math.min(HydrologyTuning.MAX_INFLUENCE_RADIUS, width * HydrologyTuning.INFLUENCE_BLEND_MULTIPLIER);
-    }
-
-    /** The river's valley pull: full inside the floodplain, released to nothing at the influence edge.
-     *  The carver blends this across every primitive reaching a pixel, so a confluence gets both profiles. */
-    public double riverInfluenceElevation(double radialDist, double width, double curElev, double primitiveElev) {
-        final double riverInfluence = riverInfluence(width);
-        final double floodPlainLength = floodPlainLength(width);
-        if (radialDist < floodPlainLength) return primitiveElev;
-        if (radialDist < riverInfluence) {
-            final double t = (radialDist - floodPlainLength) / (riverInfluence - floodPlainLength);
-            final double lambda = (1 - t) * 0.5;
-            final double influenceContribution = (1 - t) * primitiveElev + t * curElev;
-            final double valleyContribution =
-                    smoothMin(curElev, primitiveElev + valleyDelta(radialDist - floodPlainLength), lambda);
-            return smoothMax(valleyContribution, influenceContribution, lambda);
-        }
-        return curElev;
     }
 
     // always starts as 0 and gradually carve the valley shape.

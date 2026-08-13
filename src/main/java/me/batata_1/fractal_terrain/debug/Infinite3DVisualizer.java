@@ -99,7 +99,7 @@ public class Infinite3DVisualizer {
                 for (HydrologicalPrimitive primitive : primitives) {
                     final var dw = primitive.w(pt);
                     weight += dw;
-                    weightedElev += dw * primitive.h(pt);
+                    weightedElev += dw * 0;
                     final double dist = Math.clamp(
                             Math.hypot(
                                     pt[0] - primitive.coord()[0],
@@ -264,7 +264,7 @@ public class Infinite3DVisualizer {
             final double radialDist = Math.hypot(du, dv);
             if (!primitive.containsPoint(pt)) continue; // outside this primitive's influence circle
 
-            if (!(primitive instanceof RiverPrimitive riverPrimitive)) return NOT_RIVER;
+            if (!(primitive instanceof RiverPrimitive riverPrimitive)) continue;
             // An unclassified reach paints as A, matching how the carve coalesces a null type.
             final RiverPrimitive.RosgenType type = RiverPrimitive.RosgenType.orDefault(riverPrimitive.rosgenType());
 
