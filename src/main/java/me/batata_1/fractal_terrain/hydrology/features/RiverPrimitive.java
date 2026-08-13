@@ -82,14 +82,14 @@ public record RiverPrimitive(
     }
 
     @Override
-    public double h(double[] pt, Object... args) {
+    public double h(double[] pt) {
         if (normal == null) return elevation;
         final RosgenProfile profile = (RosgenProfile) getProfile();
         return elevation + profile.delta(hashCode(), d(pt), width, curvature);
     }
 
     @Override
-    public double w(double[] pt, Object... args) {
+    public double w(double[] pt) {
         final double dx = pt[0] - coord[0], dz = pt[1] - coord[1];
         final double nx = normal[0], nz = normal[1];
         final double length = getLength();

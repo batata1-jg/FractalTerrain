@@ -217,7 +217,7 @@ public enum RosgenProfile implements HydrologyProfile {
 
     // ---- Bed (per-pixel residual trench, cut below the already-carved shell) ----
 
-    /** The raw bed trench, before {@link RiverPrimitive#h} fades it over its footprint. */
+    /** The raw bed trench, before {@link HydrologicalPrimitive#h} fades it over its footprint. */
     public double delta(long randSeed, double signedPerpDist, double width, double curvature) {
         final double floodPlainLen = floodPlainLength(width);
         final double marginLen = width / 2;

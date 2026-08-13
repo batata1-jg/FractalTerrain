@@ -335,6 +335,52 @@ files — flipping them back means editing source.
 | **native** | 1 native px, the decoder/relief pixel resolution; 1:1 with block-px inside a tile | `TensorLayout` fixes the axis order `CH=0/X=1/Z=2` (`TensorLayout.java:16-19`) for every ONNX-facing tensor in this frame; `DecoderChannels.INNER = 512` / `relief/ReliefProvider`'s `INNER = 512` size the relief tile in native px. |
 | **coarse** | 1 coarse unit = 256 native px | `HydrologyTileGeometry.COARSE_PX = 256` (`HydrologyTileGeometry.java:19`); `GlobalRiverProvider` caches its own tiles in this frame directly (`getArrow(cx, cz)` etc., 64×64-coarse-px tiles); `GlobalNetworkBuilder` bridges the two frames by mapping a 512-native-px relief tile `(tileX, tileZ)` onto its 2×2 owned coarse cells `(tileX*2 + a, tileZ*2 + b)` (`GlobalNetworkBuilder.java:58-59`, `:94-95`). No current source javadoc spells out the "1 unit = 256 native pixels" definition in prose; `COARSE_PX` is the only normative source. |
 
+## Hot/cold line of abstraction
+
+Allocation and abstraction cost is judged by call frequency, not code size or apparent complexity. Three
+bands, in order of increasing cost:
+
+- **Cold (above the line):** code called a few times — provider construction, `GenerationContext` wiring,
+  network tracing/relaxation orchestration, persistence/codec paths, debug harnesses. Abstraction,
+  allocation, interfaces, streams, records, defensive copies are all fine and preferred for clarity.
+  Strive to put as much code as possible above the line.
+- **Warm (tile creation):** `LocalRiverProvider.buildTile` and the 512×512-iteration tile passes it
+  drives (`Drainage`, `ChannelElevationAssigner`, `Meanders`). Runs 512×512 times, but once per tile with
+  the result cached — moderate abstraction is acceptable, unless the warm code recurses, which multiplies
+  the cost back into hot territory.
+- **Hot (below the line, permanently):** a chunk's 16×16 = 256-column inner loop is never cold, no matter
+  how it is optimized. Optimize for performance at all costs: avoid heap allocation, avoid virtual
+  dispatch/abstraction layers, avoid varargs boxing, avoid iterator/stream allocation, hoist invariants
+  out of loops, reuse scratch buffers, prefer parallel primitive arrays over object graphs.
+
+**Hot sites in this repo:**
+
+- `world/gen/populatenoise/PopulateNoiseStep.java` `fineGrainedPrimitivePass`, the `dx`/`dz` double loop
+  at lines 56–102 — runs 256 times per chunk, for every chunk generated.
+- `hydrology/features/HydrologicalPrimitive.java:81–85` — `double h(double[] pt, Object... args)`,
+  `double w(double[] pt, Object... args)`, `double d(double[] pt)`, and every implementation
+  (`RiverPrimitive`, `ConfluencePrimitive`, `SourcePrimitive`, `DeltaPrimitive`, `WaterfallPrimitive`,
+  `OxbowLakePrimitive`, `AbandonedRiverPrimitive`), plus everything those call
+  (`HydrologyProfile`/`RosgenProfile`/`DefaultProfile`, `VectorOps`). The `Object... args` varargs on
+  `h`/`w` is itself an allocation-per-call hazard — an example of the signature shape this rule warns
+  against.
+- `hydrology/profile/HydrologyProfileInprinter.resolveNearestPrimitiveIndex`/`sampleNearestChannel`, and
+  `NearestChannelSample.carveInto` — invoked once per column from that loop.
+
+**Hot-path code that already follows the rule** — the reference patterns to copy:
+
+- `PopulateNoiseStep.java:45–53` — one `prefetchChunk` influence query serves all 256 columns of a chunk,
+  instead of one query per column.
+- `PopulateNoiseStep.java:54` — `final double[] mutablePt = new double[2]`, a single scratch buffer
+  mutated per column instead of a fresh point allocated per block.
+- `PopulateNoiseStep.java:21–24` — `static final` `BlockState` constants.
+- The heightmap's parallel primitive arrays (`float[]`/`enum[]`) rather than per-column objects.
+
+Declare an intentional hot-path optimization with `:PERF: [what]; [why]`
+(`.claude/conventions/intent-markers.md`) — this is how below-the-line code tells the quality reviewer
+that an allocation-avoiding or abstraction-skipping pattern is deliberate, not an oversight. See
+`.claude/conventions/performance.md` for the actionable rule list for someone writing code.
+
 ## Invariants (do not violate)
 
 - **Seams before splits.** The seam milestones (M-005/M-006/M-007/M-008) landed before the god-class

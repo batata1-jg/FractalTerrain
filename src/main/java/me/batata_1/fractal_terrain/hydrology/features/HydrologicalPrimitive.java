@@ -78,9 +78,9 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
 
     /** The primitive's own cross-section, layered onto what the shell carve already cut. Returning
      *  {@code elevAtPixel} unchanged means the primitive adds no detail of its own. */
-    double h(double[] pt, Object... args);
+    double h(double[] pt);
 
-    double w(double[] pt, Object... args);
+    double w(double[] pt);
 
     double d(double[] pt);
 

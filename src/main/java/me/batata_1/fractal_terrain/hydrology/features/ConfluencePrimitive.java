@@ -71,7 +71,7 @@ public record ConfluencePrimitive(
     /** Angular bracket + inverse-distance blend across the two arms straddling {@code pt}, so the
      *  surface interpolates smoothly between confluent channels' cross-sections. */
     @Override
-    public double h(double[] pt, Object... args) {
+    public double h(double[] pt) {
         if (angles.length == 0) return junctionElevation;
         final BracketSample bracket = bracketSample(pt);
         final double hI = armElevation(bracket.i(), bracket.r(), bracket.dI());
@@ -87,7 +87,7 @@ public record ConfluencePrimitive(
     /** Quartic radial falloff from the junction center, matching the shell blend's degree without a
      *  square root. */
     @Override
-    public double w(double[] pt, Object... args) {
+    public double w(double[] pt) {
         if (influence <= 0) return 0;
         final double dx = pt[0] - coord[0], dz = pt[1] - coord[1];
         final double u = (dx * dx + dz * dz) / (influence * influence);
@@ -97,7 +97,7 @@ public record ConfluencePrimitive(
     }
 
     /** Signed perpendicular distance to the angularly nearest arm — shares {@link #bracketSample} with
-     *  {@link #h} so the two can't disagree. */
+     *  {@link HydrologicalPrimitive#h} so the two can't disagree. */
     @Override
     public double d(double[] pt) {
         if (angles.length == 0) return 0;

@@ -39,6 +39,13 @@ Only `RiverPrimitive` participates: `sampleNearestChannel` returns `null` for an
 `PopulateNoiseStep` writes a zero river-difference in that case. `prefetchChunk`/`PrefetchedPrimitives`
 still amortize the R-tree query so one query serves every block of a chunk.
 
+`resolveNearestPrimitiveIndex`, `sampleNearestChannel`, and `NearestChannelSample.carveInto` are invoked
+once per column from `PopulateNoiseStep`'s per-chunk loop (256 calls/chunk, every chunk generated), so
+they sit below this repo's hot/cold line of abstraction (root `ARCHITECTURE.md`): no heap allocation, no
+new abstraction layers, scratch reuse over fresh allocation. `NearestChannelSample` itself is a `record`
+returned once per column rather than a scratch buffer — treat that allocation as the accepted cost of the
+current design, not a pattern to copy elsewhere on this path.
+
 **`ZoneCategory` is currently reserved, not live.** No carve path reads it: `HydrologyProfile.categoryAt`
 and `zoneWeight` no longer exist, and the zone-priority merge they drove was replaced by the
 single-nearest-channel carve above. The enum and the `WATERFALL`/`LAKE_BED` reservations referenced from
