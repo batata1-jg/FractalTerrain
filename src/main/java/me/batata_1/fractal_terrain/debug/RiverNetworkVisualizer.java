@@ -105,6 +105,12 @@ public class RiverNetworkVisualizer {
      *  use this for large networks where {@link #see} is too slow. */
     public void seeNetwork(RiverNetwork network, String folder, String name) {
         final int size = network.getGridSize() * NETWORK_SCALE;
+        DEBUG_LOGGER.info(
+                "seeNetwork {}/{}: {} nodes, {} edges (channels)",
+                folder,
+                name,
+                network.getNodes().size(),
+                network.getChannels().size());
         final int[] rgb = new int[size * size]; // black background
 
         for (Channel c : network.getChannels()) {
@@ -127,6 +133,8 @@ public class RiverNetworkVisualizer {
             String folder,
             String name) {
         final int size = gridSize * NETWORK_SCALE;
+        DEBUG_LOGGER.info(
+                "seeNetwork {}/{}: {} nodes, {} edges (specs)", folder, name, nodeSpecs.size(), edgeSpecs.size());
         final int[] rgb = new int[size * size]; // black background
 
         for (RiverNetwork.EdgeSpec edge : edgeSpecs) {
@@ -144,6 +152,9 @@ public class RiverNetworkVisualizer {
      *  interior spline point is a first-class node — lets you inspect atomic-graph topology directly. */
     public void seeNetwork(AtomicView atomic, int gridSize, String folder, String name) {
         final int size = gridSize * NETWORK_SCALE;
+        int arcs = 0;
+        for (List<Integer> successors : atomic.adjacency) arcs += successors.size();
+        DEBUG_LOGGER.info("seeNetwork {}/{}: {} nodes, {} edges (directed arcs)", folder, name, atomic.size(), arcs);
         final int[] rgb = new int[size * size]; // black background
 
         final int n = atomic.size();

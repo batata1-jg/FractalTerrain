@@ -9,6 +9,8 @@ package me.batata_1.fractal_terrain.config;
  */
 public final class HydrologyTuning {
 
+    public static final double PRIMITIVE_BLEND_STRENGTH = 1.1;
+
     private HydrologyTuning() {}
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -106,8 +108,8 @@ public final class HydrologyTuning {
     public static final double MARGIN_INFLUENCE_FACTOR = 5.0;
 
     public static double maxInfluence(double width) {
-        return Math.clamp(width * 5,2,MAX_INFLUENCE_RADIUS);
-       // return Math.clamp(0.844803 * Math.pow(width + 0.990178, 1.52681) + 0.167833, 1, MAX_INFLUENCE_RADIUS);
+        return Math.clamp(width * 5, 2, MAX_INFLUENCE_RADIUS);
+        // return Math.clamp(0.844803 * Math.pow(width + 0.990178, 1.52681) + 0.167833, 1, MAX_INFLUENCE_RADIUS);
     }
 
     public static double widthFromFlow(double rawFlow) {

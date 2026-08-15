@@ -2,7 +2,6 @@ package me.batata_1.fractal_terrain.hydrology.network;
 
 import static me.batata_1.fractal_terrain.config.DebugConfig.DEBUG_CROSSING_WINNER;
 import static me.batata_1.fractal_terrain.config.DebugConfig.DEBUG_STEPS;
-import static me.batata_1.fractal_terrain.config.HydrologyTuning.maxInfluence;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import java.util.ArrayDeque;
@@ -437,8 +436,15 @@ public final class RiverNetwork {
         Arrays.fill(outgoing, NONE);
         final ArrayDeque<Integer> dfsStack = new ArrayDeque<>();
         for (int sourceId : sortedSourceIds(atomic)) {
-            if (visited[sourceId] == -1 || foundDrain[visited[sourceId]])
-                dfsVisit(atomic, sourceId, sourceId, dfsStack, visited, foundDrain, streamMarked, outgoing);
+            if (visited[sourceId] == -1 || foundDrain[visited[sourceId]]) {
+                try {
+                    dfsVisit(atomic, sourceId, sourceId, dfsStack, visited, foundDrain, streamMarked, outgoing);
+                } catch (StackOverflowError e) {
+                    Debug.river.seeNetwork(atomic, 514, "OSAMA_BIN_LADEN", "baseAtomicView");
+                    LOG.error("stack overflow, dfsStack: big");
+                    throw e;
+                }
+            }
             dfsStack.clear();
         }
 
@@ -738,7 +744,7 @@ public final class RiverNetwork {
             if (!ch.isResampleable()) continue; // degenerate geometry (too few points or NaN): skip
             // Spacing must be <= half the NARROWEST (intake) derived width, so consecutive primitives'
             // width/2 discs always overlap (gap-free membership test + girth rendering).
-            final double dx = Math.max(maxInfluence(ch.intakeWidth()) / 2.0, MIN_CONVERT_SPACING);
+            final double dx = Math.max(ch.intakeWidth(), MIN_CONVERT_SPACING);
             try {
                 ch.reSample(dx);
             } catch (RuntimeException runaway) {

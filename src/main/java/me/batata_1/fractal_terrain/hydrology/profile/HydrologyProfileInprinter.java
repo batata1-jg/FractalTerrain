@@ -2,7 +2,6 @@ package me.batata_1.fractal_terrain.hydrology.profile;
 
 import java.util.Arrays;
 import java.util.List;
-
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
@@ -10,7 +9,6 @@ import me.batata_1.fractal_terrain.math.Interpolation;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 import net.minecraft.world.level.ChunkPos;
-import org.jetbrains.annotations.TestOnly;
 
 /**
  * The elevation side of the hydrology profile — where rivers actually cut the terrain.
@@ -29,6 +27,9 @@ public final class HydrologyProfileInprinter {
         this.localRiver = localRiver;
     }
 
+    /** Cuts the bed of every channel reaching this chunk into {@code columns}, one (elevation, weight)
+     *  pair per block. Split per channel rather than per nearest knot so a column caught between two
+     *  channels - a confluence, a tight meander - is carved by both instead of only the closer one. */
     public static double[] resolveRiverPrimitives(
             ChunkPos chunkPos,
             double scale,
@@ -43,6 +44,9 @@ public final class HydrologyProfileInprinter {
         final double[] mutablePt = new double[2];
         final double[] mutableArray = new double[2];
         final float[] indexWeightDistance = new float[3];
+        // Channel runs depend only on the prefetched list, so they are resolved once for all 256 columns.
+        final int[] channelRuns = resolveChannelRuns(primitives);
+        final int channelCount = Math.max(channelRuns.length - 1, 0);
 
         for (int dx = 0; dx < 16; dx++) {
             for (int dz = 0; dz < 16; dz++) {
@@ -51,32 +55,62 @@ public final class HydrologyProfileInprinter {
                 mutablePt[0] = (startX + dx) / scale;
                 mutablePt[1] = (startZ + dz) / scale;
 
-                final int nearestPrimitiveIndex = resolveNearestPrimitiveIndex(primitives, mutablePt);
-                if (nearestPrimitiveIndex == -1) continue;
-                if (!primitives.get(nearestPrimitiveIndex).containsPoint(mutablePt)) continue;
-
-                indexWeightDistance[0]=-1;
-                indexWeightDistance[1]=1;
-                indexWeightDistance[2]=Float.MAX_VALUE;
-                sampleNearestChannel(primitives, nearestPrimitiveIndex, mutablePt,indexWeightDistance,mutableArray);
-
                 final double curElev = ambientElevation[pos];
-                final int neighborIndex = Float.floatToIntBits(indexWeightDistance[0]);
-                final RiverPrimitive n0 = (RiverPrimitive) primitives.get(nearestPrimitiveIndex);
-                final RiverPrimitive n1 = (RiverPrimitive) primitives.get(neighborIndex>0?neighborIndex:nearestPrimitiveIndex);
-                final double signedDist = neighborIndex>0?indexWeightDistance[2]:n0.d(mutablePt);
-                final double lerpWeight = neighborIndex>0?1:indexWeightDistance[1];
-                final double bedElev = Interpolation.lerp(n0.elevation(), n1.elevation(), lerpWeight);
-                final double width = Interpolation.lerp(n0.width(),n1.width(), lerpWeight);
+                double weightSum = 0;
+                double weightedElev = -1;
+                // The strongest contributor, which carries the column when every influence weight is zero.
+                double bestWeight = -1;
+                double bestElev = 0;
+                // Tracked apart from bestWeight: the channel whose bed the column sits in owns the water
+                // surface, and that need not be the channel with the largest influence weight.
+                double claimWeight = -1;
 
-                columns[pos * 2] = Interpolation.lerp(Math.min(curElev,n0.h(signedDist)),Math.min(curElev,n1.h(signedDist)), lerpWeight);
-                columns[pos * 2 + 1] = Interpolation.lerp(n0.w(mutablePt), n1.w(mutablePt), lerpWeight);
+                for (int channel = 0; channel < channelCount; channel++) {
+                    final int nearestPrimitiveIndex = resolveNearestRiverPrimitiveIndex(
+                            primitives, mutablePt, channelRuns[channel], channelRuns[channel + 1]);
+                    if (nearestPrimitiveIndex == -1) continue;
+                    if (!primitives.get(nearestPrimitiveIndex).containsPoint(mutablePt)) continue;
 
-                if (Math.abs(signedDist) <= (width / 2) + 0.25) {
+                    indexWeightDistance[0] = -1;
+                    indexWeightDistance[1] = 1;
+                    indexWeightDistance[2] = Float.MAX_VALUE;
+                    sampleNearestChannel(
+                            primitives, nearestPrimitiveIndex, mutablePt, indexWeightDistance, mutableArray);
+
+                    final int neighborIndex = Float.floatToIntBits(indexWeightDistance[0]);
+                    final boolean paired = neighborIndex > 0;
+                    final RiverPrimitive n0 = (RiverPrimitive) primitives.get(nearestPrimitiveIndex);
+                    final RiverPrimitive n1 =
+                            (RiverPrimitive) primitives.get(paired ? neighborIndex : nearestPrimitiveIndex);
+                    final double signedDist = paired ? indexWeightDistance[2] : n0.d(mutablePt);
+                    final double lerpWeight = paired ? 1 : indexWeightDistance[1];
+
+                    final double channelWeight = Interpolation.lerp(n0.w(mutablePt), n1.w(mutablePt), lerpWeight);
+                    final double channelElev = Interpolation.lerp(
+                            Math.min(curElev, n0.h(signedDist)), Math.min(curElev, n1.h(signedDist)), lerpWeight);
+
+                    weightSum += channelWeight;
+                    if (weightedElev < 0) weightedElev = channelElev;
+                    else {
+                        weightedElev = channelElev * channelWeight + (1 - channelWeight) * weightedElev;
+                    }
+                    if (channelWeight > bestWeight) {
+                        bestWeight = channelWeight;
+                        bestElev = channelElev;
+                    }
+
+                    final double width = Interpolation.lerp(n0.width(), n1.width(), lerpWeight);
+                    if (Math.abs(signedDist) > (width / 2) + 0.25) continue;
+                    if (claimWeight >= 0 && channelWeight <= claimWeight) continue;
+                    claimWeight = channelWeight;
+                    final double bedElev = Interpolation.lerp(n0.elevation(), n1.elevation(), lerpWeight);
                     riverType[pos] = HydrologicalPrimitive.HydrologicalFeature.RIVER;
-                    waterElev[pos] = (float) (HydrologicalPrimitive.waterLine(width)
-                            + bedElev);
+                    waterElev[pos] = (float) (HydrologicalPrimitive.waterLine(width) + bedElev);
                 }
+
+                if (bestWeight < 0) continue;
+                columns[pos * 2] = weightSum > 1e-8 ? weightedElev : 0;
+                columns[pos * 2 + 1] = Math.clamp(weightSum, 0, 1);
             }
         }
         return columns;
@@ -89,7 +123,7 @@ public final class HydrologyProfileInprinter {
     /**
      * A chunk's influencing primitives, gathered once (see {@link #queryPrimitives}) so the per-block carve never
      * re-queries the spatial index. Produced by {@link #prefetchChunk} / {@link #queryPrimitives} and consumed
-     * by {@link #resolveNearestPrimitiveIndex} / {@link #sampleNearestChannel}.
+     * by {@link #resolveNearestRiverPrimitiveIndex} / {@link #sampleNearestChannel}.
      */
     public record PrefetchedPrimitives(List<HydrologicalPrimitive> primitives) {}
 
@@ -106,8 +140,22 @@ public final class HydrologyProfileInprinter {
         return new PrefetchedPrimitives(localRiver.queryInfluence(pt, extraRadius));
     }
 
-    /** Index into {@code primitives} of the river knot whose coordinate is nearest {@code point}, or
-     *  -1 when none is. Relies on the comparator sorting rivers first, so the scan can stop early. */
+    /** As {@link #resolveNearestRiverPrimitiveIndex(List, double[])}, narrowed to one channel's knot run so the
+     *  carve can resolve each channel's own nearest knot instead of a single global winner. */
+    public static int resolveNearestRiverPrimitiveIndex(
+            List<HydrologicalPrimitive> primitives, double[] point, int fromIndex, int toIndex) {
+        int nearestIndex = -1;
+        double nearestDistSq = Double.MAX_VALUE;
+        for (int i = fromIndex; i < toIndex; i++) {
+            if (!(primitives.get(i) instanceof RiverPrimitive river)) break;
+            final double distSq = VectorOps.distanceSquared(point, river.coord());
+            if (distSq >= nearestDistSq) continue;
+            nearestIndex = i;
+            nearestDistSq = distSq;
+        }
+        return nearestIndex;
+    }
+
     public static int resolveNearestPrimitiveIndex(List<HydrologicalPrimitive> primitives, double[] point) {
         int nearestIndex = -1;
         double nearestDistSq = Double.MAX_VALUE;
@@ -119,6 +167,29 @@ public final class HydrologyProfileInprinter {
             nearestDistSq = distSq;
         }
         return nearestIndex;
+    }
+
+    /** No channel reaches the query - the empty run table. */
+    private static final int[] NO_CHANNELS = new int[0];
+
+    /** Start index of each channel's knot run, terminated by the end of the last run. Relies on
+     *  {@code HydrologicalPrimitive.comparator} sorting rivers first and then by packed {@code ids}, which
+     *  leaves every channel's knots in one half-open interval {@code [runs[c], runs[c + 1])}. */
+    public static int[] resolveChannelRuns(List<HydrologicalPrimitive> primitives) {
+        int riverCount = 0;
+        while (riverCount < primitives.size() && primitives.get(riverCount) instanceof RiverPrimitive) riverCount++;
+        if (riverCount == 0) return NO_CHANNELS;
+
+        final int[] runs = new int[riverCount + 1];
+        int runCount = 0;
+        int previousChannelId = 0;
+        for (int i = 0; i < riverCount; i++) {
+            final int channelId = ((RiverPrimitive) primitives.get(i)).channelId();
+            if (i == 0 || channelId != previousChannelId) runs[runCount++] = i;
+            previousChannelId = channelId;
+        }
+        runs[runCount++] = riverCount;
+        return Arrays.copyOf(runs, runCount);
     }
 
     /**
@@ -168,9 +239,6 @@ public final class HydrologyProfileInprinter {
         indexWeightDistance[2] = (float) bestDist;
     }
 
-
-
-
     // -------------------------------------------------------------------------
     // Tile-level shell pre-carve (moved from LocalRiverProvider)
     // -------------------------------------------------------------------------
@@ -214,5 +282,4 @@ public final class HydrologyProfileInprinter {
             }
         }
     }
-
 }

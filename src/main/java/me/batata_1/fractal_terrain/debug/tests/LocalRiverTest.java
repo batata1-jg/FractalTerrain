@@ -46,11 +46,11 @@ public class LocalRiverTest {
     private static final int PAD = 1;
 
     /** Tiles (tx, tz) to render. */
-    private static final int[][] TILES = { // {-2, -2}
+    private static final int[][] TILES = {{-1, -1}
         // {0, -1},
         //    {-1,-1}
         //   {-1,-1},{0,-1},{0,-2}
-        {-1, -1}, {-1, -2}, {-2, -1}, {-2, -2}
+        // {-1, -1}, {-1, -2}, {-2, -1}, {-2, -2}
     };
 
     public static void main(String[] args) {

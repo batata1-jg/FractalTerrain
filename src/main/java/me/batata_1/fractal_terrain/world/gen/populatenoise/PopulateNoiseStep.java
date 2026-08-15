@@ -5,10 +5,11 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
-import me.batata_1.fractal_terrain.hydrology.features.ConfluencePrimitive;
+import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
+import me.batata_1.fractal_terrain.math.Interpolation;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
 import net.minecraft.world.level.ChunkPos;
@@ -45,6 +46,11 @@ public class PopulateNoiseStep {
         this.settings = settings;
     }
 
+    public static double smoothStep(double r0, double r1, double x) {
+        final double t = Math.clamp((x - r0) / (r1 - r0), 0, 1);
+        return t * t * (3.0 - 2.0 * t);
+    }
+
     /** Cuts the river bed into the tile-carved shell, the last elevation pass before blocks are
      *  placed. The shell-to-bed delta lands in {@link Types#RIVER_DIFFERENCE}, which is what the
      *  water fill later reads. */
@@ -67,13 +73,14 @@ public class PopulateNoiseStep {
         final List<HydrologicalPrimitive> primitives =
                 imprinter.prefetchChunk(chunkCenterPixelX, chunkCenterPixelZ, chunkRadiusPx);
 
-        final double[] riverWeightedElevations =
-                HydrologyProfileInprinter.resolveRiverPrimitives(chunkPos, scale,  primitives, interpolatedElevs, riverType, waterElev);
+        final double[] riverWeightedElevations = HydrologyProfileInprinter.resolveRiverPrimitives(
+                chunkPos, scale, primitives, interpolatedElevs, riverType, waterElev);
         int nonRiverIndex = -1;
-        for(int id=0 ; id<primitives.size() ; id++) if(!(primitives.get(id) instanceof RiverPrimitive)) {
-            nonRiverIndex=id;
-            break;
-        }
+        for (int id = 0; id < primitives.size(); id++)
+            if (!(primitives.get(id) instanceof RiverPrimitive)) {
+                nonRiverIndex = id;
+                break;
+            }
 
         final int startX = chunkPos.getMinBlockX();
         final int startZ = chunkPos.getMinBlockZ();
@@ -87,28 +94,27 @@ public class PopulateNoiseStep {
                 mutablePt[0] = (startX + dx) / scale;
                 mutablePt[1] = (startZ + dz) / scale;
 
-                // Weighted merge of every primitive family that claims this column. Rivers are the only
-                // contributor today; a non-river family adds its own (elevation, weight) pair here.
-                final double riverWeight = riverWeightedElevations[pos * PAIR + WEIGHT];
-                double mergedElevation = (riverWeight <= 1e-8)
-                        ? ambientElevation
-                        : riverWeightedElevations[pos * PAIR];
-                if((!primitives.isEmpty())&&nonRiverIndex!=-1) {
-                    for(int id=nonRiverIndex ; id<primitives.size() ; id++) {
-                        if((primitives.get(id) instanceof ConfluencePrimitive confluence)) {
-                            final double weight = confluence.w(mutablePt);
-                            mergedElevation = confluence.h(mutablePt);
-                        }
-                    }
-                }
+                double mergedElevation = ambientElevation;
+                double smoothedMinDist = 64;
 
+                for (HydrologicalPrimitive primitive : primitives) {
+                    if (!(primitive instanceof RiverPrimitive river)) break;
+                    if (!river.containsPoint(mutablePt)) continue;
+                    final double dist = Math.hypot(mutablePt[0] - river.coord()[0], mutablePt[1] - river.coord()[1]);
+                    double smoothDistWeight =
+                            smoothStep(-1, 1, (smoothedMinDist - dist) / HydrologyTuning.PRIMITIVE_BLEND_STRENGTH);
+                    final double influenceWeight = Math.pow(river.w(mutablePt), 0.1);
+                    final double weight = smoothDistWeight * influenceWeight;
+                    smoothedMinDist = Interpolation.lerp(dist, smoothedMinDist, weight);
+                    mergedElevation = Interpolation.lerp(
+                            Math.min(river.h(river.d(mutablePt)), ambientElevation), mergedElevation, weight);
+                }
 
                 riverDifference[pos] = (float) (mergedElevation - ambientElevation);
                 interpolatedElevs[pos] = (float) (Math.max(bottom, mergedElevation) + seaLevel - 1);
             }
         }
     }
-
 
     public BlockState fillRocks(int x, int y, int z) {
         if (y <= -128) return BEDROCK;
