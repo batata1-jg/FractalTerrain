@@ -437,13 +437,7 @@ public final class RiverNetwork {
         final ArrayDeque<Integer> dfsStack = new ArrayDeque<>();
         for (int sourceId : sortedSourceIds(atomic)) {
             if (visited[sourceId] == -1 || foundDrain[visited[sourceId]]) {
-                try {
-                    dfsVisit(atomic, sourceId, sourceId, dfsStack, visited, foundDrain, streamMarked, outgoing);
-                } catch (StackOverflowError e) {
-                    Debug.river.seeNetwork(atomic, 514, "OSAMA_BIN_LADEN", "baseAtomicView");
-                    LOG.error("stack overflow, dfsStack: big");
-                    throw e;
-                }
+                dfsVisit(atomic, sourceId, sourceId, dfsStack, visited, foundDrain, streamMarked, outgoing);
             }
             dfsStack.clear();
         }
@@ -470,47 +464,65 @@ public final class RiverNetwork {
         return sources; // ids are appended in ascending order already
     }
 
-    /** Recursive step of the capture DFS; true means this branch reached a terminus and was promoted. */
+    /** Iterative capture DFS from {@code root}; true means this branch reached a terminus and was promoted.
+     *  Frames live in {@code stack} (the path) plus a parallel neighbor-cursor stack, so deep chains can no
+     *  longer overflow the JVM stack. */
     private boolean dfsVisit(
             AtomicView atomic,
-            int node,
+            int root,
             int sourceId,
             Deque<Integer> stack,
             int[] visited,
             boolean[] foundDrain,
             boolean[] streamMarked,
             int[] outgoing) {
-        if (streamMarked[node] || atomic.role(node) == Endpoint.Type.DRAIN) return true; // already a terminus
-        if (visited[node] == sourceId) return false; // on-stack ancestor or exhausted branch — NOT promoted, NOT marked
-        if (visited[node] != -1 && !foundDrain[visited[node]]) return false;
+        if (streamMarked[root] || atomic.role(root) == Endpoint.Type.DRAIN) return true; // already a terminus
+        if (visited[root] == sourceId) return false; // on-stack ancestor or exhausted branch — NOT promoted, NOT marked
+        if (visited[root] != -1 && !foundDrain[visited[root]]) return false;
 
-        visited[node] = sourceId;
-        stack.push(node);
+        visited[root] = sourceId;
+        stack.push(root);
+        final Deque<Integer> cursors = new ArrayDeque<>(); // next-neighbor index per frame, parallel to `stack`
+        cursors.push(0);
 
-        // pinned per-node adjacency order: directed tree-successor first (if present), then crossing
-        // partners ascending by atomic id.
-        final List<Integer> neighbors = atomic.adjacency.get(node);
+        while (!stack.isEmpty()) {
+            final int node = stack.peek();
 
-        for (int next : neighbors) {
-            if (streamMarked[next] || atomic.role(next) == Endpoint.Type.DRAIN) {
-                // Promotion happens ONLY here: reaching a DRAIN or an already-streamMarked node. Every node
-                // on `stack` is not-yet-streamMarked (the entry guard never pushes a streamMarked node), so
-                // the whole stack is the promoted suffix.
-                promoteSuffix(stack, next, streamMarked, outgoing);
-                foundDrain[sourceId] = true;
-                stack.pop();
-                return true;
+            // pinned per-node adjacency order: directed tree-successor first (if present), then crossing
+            // partners ascending by atomic id.
+            final List<Integer> neighbors = atomic.adjacency.get(node);
+            int i = cursors.pop();
+            int descend = NONE;
+
+            while (i < neighbors.size()) {
+                final int next = neighbors.get(i++);
+                if (streamMarked[next] || atomic.role(next) == Endpoint.Type.DRAIN) {
+                    // Promotion happens ONLY here: reaching a DRAIN or an already-streamMarked node. Every node
+                    // on `stack` is not-yet-streamMarked (the entry guard never pushes a streamMarked node), so
+                    // the whole stack is the promoted suffix.
+                    promoteSuffix(stack, next, streamMarked, outgoing);
+                    foundDrain[sourceId] = true;
+                    stack.clear(); // recursion unwound every frame on its way out; clearing matches that
+                    return true;
+                }
+                // the callee's own entry guards, inlined: reaching here, only the visited/foundDrain one can fire
+                if (visited[next] != sourceId && (visited[next] == -1 || foundDrain[visited[next]])) {
+                    descend = next;
+                    break;
+                }
+                // else: `next` is visited-but-unmarked (dead branch / ancestor) — try the next neighbor
             }
-            if (visited[next] != sourceId
-                    && dfsVisit(atomic, next, sourceId, stack, visited, foundDrain, streamMarked, outgoing)) {
-                stack.pop(); // promotion already happened for this whole stack, deeper in the recursion
-                return true;
+
+            if (descend == NONE) {
+                stack.pop(); // exhausted — node stays merely visited, unpromoted; pruned in step 4
+            } else {
+                cursors.push(i); // where `node` resumes once the child branch is exhausted
+                visited[descend] = sourceId;
+                stack.push(descend);
+                cursors.push(0);
             }
-            // else: `next` is visited-but-unmarked (dead branch / ancestor) — try the next neighbor
         }
-
-        stack.pop();
-        return false; // exhausted — node stays merely visited, unpromoted; pruned in step 4
+        return false;
     }
 
     /** Promotes {@code stack} into the oriented tree toward {@code terminus} — the sole place outgoing
