@@ -216,6 +216,9 @@ public final class RiverNetwork {
     /** Sentinel for "no canonical id" (interior/JUNCTION-equivalent atomic nodes) and "unset crossingEdge". */
     private static final int NONE = -1;
 
+    /** Sentinel for "this frame was not entered from anywhere" — identity-compared, never read as a vector. */
+    private static final double[] NO_TANGENT = new double[2];
+
     /** The per-cell own-flow constant carried by interior/junction atomic nodes (see {@link #viewAtomic()}). */
     private static final double FLOW_PER_CELL = HydrologyTuning.FLOW_PER_CELL_LOCAL;
 
@@ -465,7 +468,8 @@ public final class RiverNetwork {
     }
 
     /** Iterative capture DFS from {@code root}; true means this branch reached a terminus and was promoted.
-     *  Frames live in {@code stack} (the path) plus a parallel neighbor-cursor stack, so deep chains can no
+     *  {@code stack} alone carries the frames: a child is stamped {@code visited[..] == sourceId} before being
+     *  pushed, so a resumed frame rescans and skips it — no per-frame cursor needed, and recursion depth can no
      *  longer overflow the JVM stack. */
     private boolean dfsVisit(
             AtomicView atomic,
@@ -482,20 +486,21 @@ public final class RiverNetwork {
 
         visited[root] = sourceId;
         stack.push(root);
-        final Deque<Integer> cursors = new ArrayDeque<>(); // next-neighbor index per frame, parallel to `stack`
-        cursors.push(0);
+        // The hop that entered each stacked node, so a frame can pick the straightest continuation of it.
+        final Deque<double[]> tangents = new ArrayDeque<>();
+        tangents.push(NO_TANGENT); // the root was not entered from anywhere
 
         while (!stack.isEmpty()) {
             final int node = stack.peek();
 
             // pinned per-node adjacency order: directed tree-successor first (if present), then crossing
-            // partners ascending by atomic id.
+            // partners ascending by atomic id. Both scans below walk it, so ties stay deterministic.
             final List<Integer> neighbors = atomic.adjacency.get(node);
-            int i = cursors.pop();
             int descend = NONE;
 
-            while (i < neighbors.size()) {
-                final int next = neighbors.get(i++);
+            // Terminus first: any DRAIN or already-streamMarked neighbor outranks descending, so a terminus
+            // sitting later in the adjacency order can never be deferred behind an earlier live branch.
+            for (int next : neighbors) {
                 if (streamMarked[next] || atomic.role(next) == Endpoint.Type.DRAIN) {
                     // Promotion happens ONLY here: reaching a DRAIN or an already-streamMarked node. Every node
                     // on `stack` is not-yet-streamMarked (the entry guard never pushes a streamMarked node), so
@@ -505,21 +510,39 @@ public final class RiverNetwork {
                     stack.clear(); // recursion unwound every frame on its way out; clearing matches that
                     return true;
                 }
-                // the callee's own entry guards, inlined: reaching here, only the visited/foundDrain one can fire
-                if (visited[next] != sourceId && (visited[next] == -1 || foundDrain[visited[next]])) {
+            }
+
+            // Otherwise descend into the straightest continuation: |cross| of the candidate tangent against the
+            // hop that entered `node` is sin(turn angle), so the least-deflected partner wins and captured
+            // channels keep flowing the way they were already headed. The root has no entering hop, so it falls
+            // back to the nearest neighbor.
+            final double[] here = atomic.pos(node);
+            final double[] prevTangent = tangents.peek();
+            double[] descendTangent = null;
+            double best = Double.POSITIVE_INFINITY;
+            for (int next : neighbors) {
+                // the callee's own entry guards, inlined: reaching here, only the visited/foundDrain one can fire.
+                // `visited[next] == sourceId` also covers children this frame already descended into and exhausted.
+                if (visited[next] == sourceId || (visited[next] != -1 && !foundDrain[visited[next]])) continue;
+                final double[] there = atomic.pos(next);
+                final double[] tangent = VectorOps.normalize(VectorOps.sub(there, here));
+                final double score = prevTangent == NO_TANGENT
+                        ? VectorOps.distanceSquared(here, there)
+                        : Math.abs(VectorOps.cross2D(tangent, prevTangent));
+                if (score < best) { // strict, so equally aligned partners fall back to adjacency order
+                    best = score;
                     descend = next;
-                    break;
+                    descendTangent = tangent;
                 }
-                // else: `next` is visited-but-unmarked (dead branch / ancestor) — try the next neighbor
             }
 
             if (descend == NONE) {
                 stack.pop(); // exhausted — node stays merely visited, unpromoted; pruned in step 4
+                tangents.pop();
             } else {
-                cursors.push(i); // where `node` resumes once the child branch is exhausted
                 visited[descend] = sourceId;
                 stack.push(descend);
-                cursors.push(0);
+                tangents.push(descendTangent);
             }
         }
         return false;
