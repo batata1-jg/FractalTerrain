@@ -180,7 +180,8 @@ public class LocalRiverProvider {
         // 3. local rivers: trace + attach into the SAME graph as standalone SOURCE-rooted edges (dangling
         //    JUNCTION end, or coast DRAIN), then run the atomic collision pass which reorients + attaches
         //    each dangling local edge to a nearby global channel via a bed-overlap crossing (or demotes it
-        //    to an ABANDONED_RIVER when its DFS branch reaches no drain). update() re-assigns every channel
+        //    to an ABANDONED_RIVER when the reverse BFS from the drains never reaches it). update() re-assigns
+        //    every channel
         //    id but preserves SOURCE/DRAIN node ids, so the boundary map below keys on node type, not the
         //    old (now churn-broken) before/after channel-id snapshot.
         LocalDrainageTracer.traceLocalNetwork(drainagePadded, carvedElevationGlobal, base[4], network, stages);

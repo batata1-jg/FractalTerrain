@@ -52,14 +52,32 @@ rescale** — only a clamp to the anchor ceiling plus the local lerp.
 what keeps the result acyclic and single-outflow by construction:
 
 1. Detect crossings by bed overlap on per-point width; join the crossing node pairs with undirected edges.
-2. Two-mark DFS from each source, visiting the directed tree-successor first and then crossing partners
-   in ascending atomic id. A stack suffix is promoted only on reaching a DRAIN or an already-marked node.
-3. Keep only promoted edges.
-4. Prune unmarked nodes — each dangling sub-path becomes an `ABANDONED_RIVER` when recording is on.
+2. Layered multi-source BFS from every DRAIN over the reversed graph — a predecessor list *is* the
+   reversal, so a node's BFS parent is by definition its forward-graph successor and no un-reversal step
+   exists. Distance is hop count: cheap and O(V+E), at the cost of a slight bias toward coarsely-sampled
+   channels, since atomic spacing varies by pass (`RESAMPLE_DIST` vs. `DX`). Whole layers are processed
+   with candidates sorted by ascending atomic id, so the result depends only on layer structure — not on
+   dequeue order, and not on any per-source start order. Parents tied at the same distance break on
+   straightest continuation (least deflection from the candidate's own existing heading toward its
+   parent, so a captured channel keeps flowing the way it was already going; a layer-0 DRAIN has no
+   tangent and falls back to nearest-by-squared-distance), then ascending atomic id.
+3. SOURCE nodes are reachable but never expanded and never anyone's parent — `resolveEndpoints` cannot
+   express a SOURCE with incoming flow. A node is alive only if BFS reaches it *and* a forward sweep from
+   a reached SOURCE along parent edges reaches it back; reachability alone can leave an interior-role
+   headwater that `update` never starts a chain from (it only starts at SOURCE, DRAIN, or in-degree >= 2),
+   silently dropping its points.
+4. Keep only the parent edges of live nodes; prune the rest, recording each dangling sub-path as an
+   `ABANDONED_RIVER` when recording is on. One parent per node gives single-outflow (K1) and strictly
+   decreasing distance along parent edges gives acyclicity, both by construction.
 5. Re-derive flow, then `update` back in place.
 
-The net effect: two channels that merely cross and each reach their own drain are **not** merged; a
-dangling tributary crossing a trunk **is** captured into it; a branch reaching no drain is pruned.
+The net effect: a crossing that `resolveCrossingEdges` planarizes into a shared node forces a merge —
+the shared node has two forward continuations but K1 permits only one outgoing edge, so one channel's
+continuation survives and the other is pruned to an `ABANDONED_RIVER`. The BFS picks the survivor by
+shortest hop count to a drain, so the physically nearer drain wins; two rivers meeting at the same
+elevation do form a confluence, so a forced merge here is the realistic outcome, not a limitation. A
+dangling tributary crossing a trunk is captured into a live channel the same way; a branch reaching no
+drain is pruned.
 
 This was once planned as a separate `StreamCaptureResolver` class. That never landed — the logic lives
 here in `RiverNetwork`.

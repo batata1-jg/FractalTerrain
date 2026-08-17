@@ -9,7 +9,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -216,9 +215,6 @@ public final class RiverNetwork {
     /** Sentinel for "no canonical id" (interior/JUNCTION-equivalent atomic nodes) and "unset crossingEdge". */
     private static final int NONE = -1;
 
-    /** Sentinel for "this frame was not entered from anywhere" — identity-compared, never read as a vector. */
-    private static final double[] NO_TANGENT = new double[2];
-
     /** The per-cell own-flow constant carried by interior/junction atomic nodes (see {@link #viewAtomic()}). */
     private static final double FLOW_PER_CELL = HydrologyTuning.FLOW_PER_CELL_LOCAL;
 
@@ -409,12 +405,12 @@ public final class RiverNetwork {
     // Collisions (stream capture) — a from-scratch orient-and-prune over the atomic view
     // ---------------------------------------------------------------------------------------------
 
-    /** Stream capture: where channels have drifted into each other, re-orients the network so one
-     *  captures the other and prunes what no longer reaches a drain. Rebuilds topology from scratch
-     *  rather than patching it, which is what keeps the result acyclic and single-outflow. */
+    /** Stream capture: re-orients the network so a drifted-together crossing merges into one channel and
+     *  prunes what no longer reaches a drain. Orientation is an O(V+E) reverse BFS from every drain: the
+     *  shortest hop-count path decides which continuation survives a merge. */
     public void manageCollisions(int step, AtomicView atomic) {
 
-        // step 1: undirected crossing edges + the pinned per-node adjacency (tree successor + partners).
+        // step 1: undirected crossing edges, added to the adjacency in both directions, then planarized.
         if (DEBUG_STEPS) {
             Debug.river.seeNetwork(atomic, 514, "step_" + step, "baseAtomicView");
         }
@@ -426,138 +422,108 @@ public final class RiverNetwork {
         }
 
         atomic.resolveCrossingEdges();
-        final int n = atomic.size();
 
-        // step 2: deterministic two-mark DFS.
-        final int[] visited = new int[n];
-        Arrays.fill(visited, -1);
-        final boolean[] foundDrain = new boolean[n];
-        Arrays.fill(foundDrain, false);
-        final boolean[] streamMarked = new boolean[n];
-        Arrays.fill(streamMarked, false);
-        final int[] outgoing = new int[n];
-        Arrays.fill(outgoing, NONE);
-        final ArrayDeque<Integer> dfsStack = new ArrayDeque<>();
-        for (int sourceId : sortedSourceIds(atomic)) {
-            if (visited[sourceId] == -1 || foundDrain[visited[sourceId]]) {
-                dfsVisit(atomic, sourceId, sourceId, dfsStack, visited, foundDrain, streamMarked, outgoing);
-            }
-            dfsStack.clear();
-        }
+        // step 2: layered multi-source reverse BFS from every DRAIN — reachability and orientation
+        // together (see reverseBfsCapture for the invariants this establishes by construction).
+        final ReachTree reach = reverseBfsCapture(atomic);
 
-        // alive = streamMarked, plus any node referenced as a promoted successor (reached drains).
-        final boolean[] alive = streamMarked.clone();
-        for (int u = 0; u < n; u++) if (streamMarked[u] && outgoing[u] != NONE) alive[outgoing[u]] = true;
+        // step 3: record each unreached dangling sub-path as an abandoned river (history only).
+        if (savePreviousStates) recordAbandoned(atomic, reach.alive(), step);
 
-        // step 4: record each unmarked dangling sub-path as an abandoned river (history only).
-        if (savePreviousStates) recordAbandoned(atomic, alive, step);
-
-        // step 3 + 5: build the oriented compact view, derive flow, fold back in place.
-        final AtomicView oriented = buildOriented(atomic, alive, outgoing);
+        // step 4: build the oriented compact view, derive flow, fold back in place.
+        final AtomicView oriented = buildOriented(atomic, reach.alive(), reach.outgoing());
         if (DEBUG_STEPS) {
             Debug.river.seeNetwork(oriented, 514, "step_" + step, "orientedAtomicView");
         }
         update(oriented);
     }
 
-    /** SOURCE atomic ids in ascending order (the mandatory DFS start order — trunk selection depends on it). */
-    private static List<Integer> sortedSourceIds(AtomicView atomic) {
-        final List<Integer> sources = new ArrayList<>();
-        for (int id = 0; id < atomic.size(); id++) if (atomic.role(id) == Endpoint.Type.SOURCE) sources.add(id);
-        return sources; // ids are appended in ascending order already
+    /** {@link #reverseBfsCapture}'s result: which atomic nodes survive, and each survivor's downstream successor. */
+    private record ReachTree(boolean[] alive, int[] outgoing) {}
+
+    /** Layered multi-source reverse BFS from every DRAIN over {@code adjReversed} (the reversal — no
+     *  adjacency is ever physically flipped), producing a shortest-hop capture tree: {@code parent[]} is
+     *  {@code outgoing[]} by construction. See {@code README.md} "Stream capture" for the invariants this establishes. */
+    private static ReachTree reverseBfsCapture(AtomicView atomic) {
+        final int n = atomic.size();
+        final List<List<Integer>> adjReversed = new ArrayList<>(n);
+        for (int v = 0; v < n; v++) adjReversed.add(new ArrayList<>());
+        for (int u = 0; u < n; u++)
+            for (int v : atomic.adjacency.get(u)) adjReversed.get(v).add(u);
+
+        final int[] dist = new int[n];
+        Arrays.fill(dist, NONE);
+        final int[] parent = new int[n];
+        Arrays.fill(parent, NONE);
+
+        List<Integer> layer = new ArrayList<>();
+        for (int id = 0; id < n; id++) if (atomic.role(id) == Endpoint.Type.DRAIN) layer.add(id);
+        for (int id : layer) dist[id] = 0;
+
+        // Each node's distance is set at discovery (never re-set once found), so the result is
+        // independent of dequeue order and the whole pass stays O(V+E).
+        int d = 0;
+        while (!layer.isEmpty()) {
+            final List<Integer> next = new ArrayList<>();
+            for (int p : layer) {
+                if (atomic.role(p) == Endpoint.Type.SOURCE) continue; // absorbing: never expanded
+                for (int u : adjReversed.get(p)) {
+                    if (dist[u] != NONE) continue; // already settled in an earlier layer
+                    dist[u] = d + 1;
+                    next.add(u);
+                }
+            }
+            Collections.sort(next); // ascending atomic id — deterministic, independent of dequeue order
+            for (int u : next) {
+                parent[u] = pickStraightestParent(atomic, u, dist, d, parent);
+            }
+            layer = next;
+            d++;
+        }
+
+        // Phase 2: mark forward from every reached SOURCE along parent[] (K1 guarantees a single path),
+        // stopping at an already-marked node or NONE — the O(V) sweep the class javadoc requires.
+        final boolean[] markedFromSource = new boolean[n];
+        for (int id = 0; id < n; id++) {
+            if (dist[id] == NONE || atomic.role(id) != Endpoint.Type.SOURCE) continue;
+            int cur = id;
+            while (cur != NONE && !markedFromSource[cur]) {
+                markedFromSource[cur] = true;
+                cur = parent[cur];
+            }
+        }
+
+        final boolean[] alive = new boolean[n];
+        for (int id = 0; id < n; id++) alive[id] = dist[id] != NONE && markedFromSource[id];
+        return new ReachTree(alive, parent);
     }
 
-    /** Iterative capture DFS from {@code root}; true means this branch reached a terminus and was promoted.
-     *  {@code stack} alone carries the frames: a child is stamped {@code visited[..] == sourceId} before being
-     *  pushed, so a resumed frame rescans and skips it — no per-frame cursor needed, and recursion depth can no
-     *  longer overflow the JVM stack. */
-    private boolean dfsVisit(
-            AtomicView atomic,
-            int root,
-            int sourceId,
-            Deque<Integer> stack,
-            int[] visited,
-            boolean[] foundDrain,
-            boolean[] streamMarked,
-            int[] outgoing) {
-        if (streamMarked[root] || atomic.role(root) == Endpoint.Type.DRAIN) return true; // already a terminus
-        if (visited[root] == sourceId) return false; // on-stack ancestor or exhausted branch — NOT promoted, NOT marked
-        if (visited[root] != -1 && !foundDrain[visited[root]]) return false;
-
-        visited[root] = sourceId;
-        stack.push(root);
-        // The hop that entered each stacked node, so a frame can pick the straightest continuation of it.
-        final Deque<double[]> tangents = new ArrayDeque<>();
-        tangents.push(NO_TANGENT); // the root was not entered from anywhere
-
-        while (!stack.isEmpty()) {
-            final int node = stack.peek();
-
-            // pinned per-node adjacency order: directed tree-successor first (if present), then crossing
-            // partners ascending by atomic id. Both scans below walk it, so ties stay deterministic.
-            final List<Integer> neighbors = atomic.adjacency.get(node);
-            int descend = NONE;
-
-            // Terminus first: any DRAIN or already-streamMarked neighbor outranks descending, so a terminus
-            // sitting later in the adjacency order can never be deferred behind an earlier live branch.
-            for (int next : neighbors) {
-                if (streamMarked[next] || atomic.role(next) == Endpoint.Type.DRAIN) {
-                    // Promotion happens ONLY here: reaching a DRAIN or an already-streamMarked node. Every node
-                    // on `stack` is not-yet-streamMarked (the entry guard never pushes a streamMarked node), so
-                    // the whole stack is the promoted suffix.
-                    promoteSuffix(stack, next, streamMarked, outgoing);
-                    foundDrain[sourceId] = true;
-                    stack.clear(); // recursion unwound every frame on its way out; clearing matches that
-                    return true;
-                }
-            }
-
-            // Otherwise descend into the straightest continuation: |cross| of the candidate tangent against the
-            // hop that entered `node` is sin(turn angle), so the least-deflected partner wins and captured
-            // channels keep flowing the way they were already headed. The root has no entering hop, so it falls
-            // back to the nearest neighbor.
-            final double[] here = atomic.pos(node);
-            final double[] prevTangent = tangents.peek();
-            double[] descendTangent = null;
-            double best = Double.POSITIVE_INFINITY;
-            for (int next : neighbors) {
-                // the callee's own entry guards, inlined: reaching here, only the visited/foundDrain one can fire.
-                // `visited[next] == sourceId` also covers children this frame already descended into and exhausted.
-                if (visited[next] == sourceId || (visited[next] != -1 && !foundDrain[visited[next]])) continue;
-                final double[] there = atomic.pos(next);
-                final double[] tangent = VectorOps.normalize(VectorOps.sub(there, here));
-                final double score = prevTangent == NO_TANGENT
-                        ? VectorOps.distanceSquared(here, there)
-                        : Math.abs(VectorOps.cross2D(tangent, prevTangent));
-                if (score < best) { // strict, so equally aligned partners fall back to adjacency order
-                    best = score;
-                    descend = next;
-                    descendTangent = tangent;
-                }
-            }
-
-            if (descend == NONE) {
-                stack.pop(); // exhausted — node stays merely visited, unpromoted; pruned in step 4
-                tangents.pop();
+    /** Straightest-continuation tie-break for {@link #reverseBfsCapture}, over {@code u}'s own forward
+     *  adjacency filtered to same-layer, non-SOURCE candidates. |cross2D| of the hop into a candidate
+     *  against its downstream tangent is sin(turn angle), so the least-deflected candidate wins, keeping
+     *  a captured channel flowing the way it was already headed. A layer-0 DRAIN candidate has no tangent
+     *  yet, so it falls back to nearest-by-distance; ties beyond that fall to the lowest atomic id. */
+    private static int pickStraightestParent(AtomicView atomic, int u, int[] dist, int layerDist, int[] parent) {
+        final double[] here = atomic.pos(u);
+        int best = NONE;
+        double bestScore = Double.POSITIVE_INFINITY;
+        for (int p : atomic.adjacency.get(u)) {
+            if (dist[p] != layerDist || atomic.role(p) == Endpoint.Type.SOURCE) continue;
+            final double[] there = atomic.pos(p);
+            final double score;
+            if (parent[p] == NONE) {
+                score = VectorOps.distanceSquared(here, there);
             } else {
-                visited[descend] = sourceId;
-                stack.push(descend);
-                tangents.push(descendTangent);
+                final double[] hop = VectorOps.normalize(VectorOps.sub(there, here));
+                final double[] tangent = VectorOps.normalize(VectorOps.sub(atomic.pos(parent[p]), there));
+                score = Math.abs(VectorOps.cross2D(hop, tangent));
+            }
+            if (score < bestScore || (score == bestScore && p < best)) {
+                bestScore = score;
+                best = p;
             }
         }
-        return false;
-    }
-
-    /** Promotes {@code stack} into the oriented tree toward {@code terminus} — the sole place outgoing
-     *  edges are assigned, preserving the single-outflow invariant established during DFS orientation. */
-    private static void promoteSuffix(Deque<Integer> stack, int terminus, boolean[] streamMarked, int[] outgoing) {
-        int next = terminus;
-        streamMarked[next] = true; // ensures terminus is streamMarked
-        for (int node : stack) { // ArrayDeque iterates head (top of stack) first
-            outgoing[node] = next;
-            streamMarked[node] = true;
-            next = node;
-        }
+        return best;
     }
 
     /** The pruned, oriented atomic view the collision pass promotes crossings into. Roles, canonical ids

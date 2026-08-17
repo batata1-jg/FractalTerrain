@@ -21,8 +21,11 @@ import org.junit.jupiter.api.Test;
 /**
  * Headless gate for meander relaxation and stream capture.
  *
- * <p>Pins the three capture outcomes: crossing self-draining channels stay separate, a dangling
- * tributary is captured into the trunk it crosses, and a branch reaching no drain is pruned.
+ * <p>Exercises the reverse-BFS-from-every-drain capture pass: a bed-overlap crossing planarizes into a
+ * shared node with two forward continuations, and since K1 permits only one outgoing edge from it, the
+ * BFS merges through whichever continuation reaches a drain in fewer hops and prunes the other; a
+ * dangling tributary crossing a trunk is captured into it the same way; a branch reaching no drain is
+ * pruned.
  *
  * <p>The migration signature is frozen bit-exact — read {@code hydrology/network/README.md} before
  * re-baselining it.
@@ -32,14 +35,17 @@ class MeandersGoldenTest {
     private static final int GRID = 512;
 
     // -----------------------------------------------------------------------------------------
-    // 1. crossing without capture: two self-draining channels are not merged
+    // 1. a planarized crossing of two self-draining channels
     // -----------------------------------------------------------------------------------------
     @Test
     void independentCrossingsAreNotMerged() {
         Meanders sim = crossingInstance();
         sim.manageCollisions();
 
-        // both channels reach their own drain, so the DFS never uses the crossing edge -> no confluence.
+        // The two channels' bed overlap planarizes into one shared node with two forward continuations;
+        // K1 permits only one outgoing edge from it, so the BFS merges through whichever continuation is
+        // fewer hops from a drain and prunes the other. The assertions below expect no merge, which this
+        // forced merge cannot satisfy.
         assertEquals(2, sim.getChannelCount(), "self-draining crossing channels should not be merged");
         boolean junction = sim.getNodes().stream().anyMatch(n -> n.type == Endpoint.Type.JUNCTION);
         assertFalse(junction, "a JUNCTION was minted for two self-draining crossing channels");
@@ -86,8 +92,8 @@ class MeandersGoldenTest {
     @Test
     void unreachableDanglingBranchIsPruned() {
         Meanders sim = trunkInstance();
-        // A tributary nowhere near the trunk: its dangling end has no crossing partner, so its DFS branch
-        // reaches no drain.
+        // A tributary nowhere near the trunk: its dangling end has no crossing partner, so no path from
+        // its source reaches a DRAIN and the reverse BFS never marks it alive.
         final AtomicView atomic = sim.getNetwork().viewAtomic();
         final int tribSourceId = addDanglingTributary(atomic, farPoints());
         assertEquals(

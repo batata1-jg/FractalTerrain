@@ -19,8 +19,9 @@ canonical `RiverNetwork` in place: it re-derives per-node flow (`accumulateAndCo
 `Channel`s as maximal chains between structural nodes (source/drain/confluence), and re-assigns channel
 ids while preserving SOURCE/DRAIN node ids (so a boundary-elevation map keyed on those ids stays valid
 across an `update`). `manageCollisions` is a full rebuild over this same seam: detect bed-overlap
-crossings, run a deterministic two-mark DFS from every source to orient and prune dangling branches
-(recording pruned runs as `ABANDONED_RIVER` when history is enabled), then `update` the result back in.
+crossings, then run a multi-source BFS from every DRAIN over the reversed graph (shortest hop count,
+ties broken by straightest continuation) to orient and prune dangling branches (recording pruned runs
+as `ABANDONED_RIVER` when history is enabled), then `update` the result back in.
 
 Per one `LocalRiverProvider.buildTile` call: `GlobalNetworkBuilder` builds a fresh `RiverNetwork`
 purely from its parameters (global-only graph), relaxes it with a `GradientNetworkRelaxation`, and
