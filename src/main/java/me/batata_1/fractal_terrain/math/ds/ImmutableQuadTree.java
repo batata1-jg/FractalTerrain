@@ -106,11 +106,7 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
         // below — NaN makes every `floor(coord/m0)` comparison true forever (it never converges), and an
         // infinity drives m0 to overflow — and corrupts every downstream findSection / bounds compare.
         for (final T p : sorted) {
-            final double px = p.get(X);
-            final double pz = p.get(Z);
-            if (!Double.isFinite(px) || !Double.isFinite(pz))
-                throw new IllegalArgumentException(
-                        "ImmutableQuadTree input point has non-finite coordinates (" + px + ", " + pz + "): " + p);
+            SpatialIndex.requireFinite(p.get(X), p.get(Z), "ImmutableQuadTree", p);
         }
 
         // Size the root square to the point bbox (plus a fixed margin) so every point falls inside it.

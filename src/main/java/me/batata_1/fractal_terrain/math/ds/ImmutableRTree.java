@@ -99,13 +99,10 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
         final double[] scratchUpperCorner = new double[2];
         for (int i = 0; i < elementCount; i++) {
             retained.get(i).writeMbrInto(scratchLowerCorner, scratchUpperCorner);
-            if (!Double.isFinite(scratchLowerCorner[X])
-                    || !Double.isFinite(scratchLowerCorner[Z])
-                    || !Double.isFinite(scratchUpperCorner[X])
-                    || !Double.isFinite(scratchUpperCorner[Z]))
-                throw new IllegalArgumentException("ImmutableRTree input element has a non-finite MBR ("
-                        + Arrays.toString(scratchLowerCorner) + " .. " + Arrays.toString(scratchUpperCorner) + "): "
-                        + retained.get(i));
+            SpatialIndex.requireFinite(
+                    scratchLowerCorner[X], scratchLowerCorner[Z], "ImmutableRTree MBR lower corner", retained.get(i));
+            SpatialIndex.requireFinite(
+                    scratchUpperCorner[X], scratchUpperCorner[Z], "ImmutableRTree MBR upper corner", retained.get(i));
             elementMbrMinX[i] = scratchLowerCorner[X];
             elementMbrMinZ[i] = scratchLowerCorner[Z];
             elementMbrMaxX[i] = scratchUpperCorner[X];
