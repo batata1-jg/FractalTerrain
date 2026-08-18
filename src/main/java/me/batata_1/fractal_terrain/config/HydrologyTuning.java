@@ -52,6 +52,14 @@ public final class HydrologyTuning {
      *  (see {@code AtomicView}) is derived from it. */
     public static final double MAX_MIGRATION = maxMigration(DX);
 
+    /** {@code Centreline.normalAt}'s stencil half-length as a multiple of the point's own width.
+     *  Uncalibrated by design — long enough to beat 45-degree lattice quantization, short enough not to
+     *  smooth away real meander curvature. */
+    public static final double TANGENT_WIDTHS = 1.0;
+
+    /** Floor (native px) on {@code Centreline.normalAt}'s stencil half-length, for a headwater's minimum width. */
+    public static final double TANGENT_MIN_PX = 2.0;
+
     // ──────────────────────────────────────────────────────────────────────────
     // Flow accumulation (see Drainage.computeFlow)
     // ──────────────────────────────────────────────────────────────────────────

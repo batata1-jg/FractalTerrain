@@ -69,7 +69,6 @@ public record ConfluencePrimitive(
 
     /** Angular bracket + inverse-distance blend across the two arms straddling {@code pt}, so the
      *  surface interpolates smoothly between confluent channels' cross-sections. */
-
     public double h(double[] pt) {
         if (angles.length == 0) return junctionElevation;
         final BracketSample bracket = bracketSample(pt);
@@ -140,7 +139,8 @@ public record ConfluencePrimitive(
         final double rimLerp = junctionElevation + (rimElevations[k] - junctionElevation) * t;
         final RiverPrimitive.RosgenType type = RiverPrimitive.RosgenType.orDefault(rosgenTypes[k]);
         RosgenProfile profile = RosgenProfile.of(type);
-        if(Math.abs(signedPerpDist) > profile.floodPlainLength(widths[k])) return rimLerp + profile.delta(hashCode(), profile.floodPlainLength(widths[k]), widths[k], curvatures[k]);
+        if (Math.abs(signedPerpDist) > profile.floodPlainLength(widths[k]))
+            return rimLerp + profile.delta(hashCode(), profile.floodPlainLength(widths[k]), widths[k], curvatures[k]);
         return rimLerp + profile.delta(hashCode(), signedPerpDist, widths[k], curvatures[k]);
     }
 

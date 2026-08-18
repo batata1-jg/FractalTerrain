@@ -12,16 +12,12 @@ JUnit 5 golden-gate tests, run via `gradle test` (`useJUnitPlatform()`).
 
 ## Status
 
-Compiles and runs. The earlier `:compileTestJava` break (`FractalTerrainConfig.maxNativeWidth()`, removed
-by commit ea43e40) is fixed — `hydrology/SpatialIndexCorrectnessGoldenTest.java:52` now calls
-`HydrologyTuning.maxNativeWidth()`.
+Does NOT compile as of `1d32c85` (verified 2026-08-17): `NearestChannelSampleTest`, `BlendMinTest`,
+`PolylineChordErrorTest`, and `SpatialIndexCorrectnessGoldenTest` reference symbols absent from
+`src/main` (a deleted `NearestChannelSample` record/3-arg sampler, and a nonexistent
+`RosgenProfile.riverInfluence(double)`). See root `CLAUDE.md` "Test" for the full breakdown.
 
-Last measured on `8d92e23`: **92 tests, 15 failed, 3 skipped** across 16 classes. The failures are
-pre-existing, not flakes, and cluster in three places:
-
-- `RosgenKeyTest` (6) and `ReachMetricsSamplerTest` (1) — Rosgen thresholds/transects
-- `ChannelGeometryTest` (3) — the width-to-depth law
-- `GlobalRiverGoldenTest` (1), `LocalRiverGoldenTest` (2), `MeandersGoldenTest` (2) — captured goldens
-
-Re-run before assuming this baseline still holds; treat a red run as suspect only if the failure set
-differs from the above.
+With those four files deleted locally, the suite runs: **74 tests, 19 failed, 1 skipped**, all
+pre-existing — `RosgenKeyTest` (6), `ConfluencePrimitiveTest` (4), `ChannelGeometryTest` (3),
+`LocalRiverGoldenTest` (2), `MeandersGoldenTest` (2), `GlobalRiverGoldenTest` (1),
+`ReachMetricsSamplerTest` (1).

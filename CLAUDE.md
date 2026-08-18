@@ -14,6 +14,8 @@ deep-learning diffusion model, plus a procedural hydrology (riverUnit) system.
 | `settings.gradle`  | Gradle project + repositories                            | Adding repositories or subprojects                                    |
 | `.gitignore`       | Ignore rules; note `/CLAUDE.md` and `/.claude/` are ignored (local-only) | Checking why a file is untracked, adding an ignore rule |
 | `LICENSE.txt`      | License                                                  | Legal questions                                                       |
+| `quick-tips-optimizing-jvm.md` | JVM hot-path optimization techniques; a reference essay, not project-specific | General JVM performance technique lookup |
+| `river-dynamics.md` | Research notes deriving Rosgen Level-I classification from a DEM; basis for `hydrology/rosgen/` | Understanding why the Rosgen classifier works the way it does |
 
 ## Subdirectories
 
@@ -48,28 +50,30 @@ There is no checked-in `gradlew` wrapper — invoke Gradle via your IDE or a loc
 
 ## Test
 
-Two layers. A JUnit 5 suite (`useJUnitPlatform()`, 92 test methods under
+Two layers. A JUnit 5 suite (`useJUnitPlatform()`, 17 `*Test.java` classes under
 `src/test/java/`) gates the deterministic hydrology math:
 
 ```
 gradle test                   # JUnit 5 golden suite
 ```
 
-**The suite compiles and runs again** as of `0876f01` — the `SpatialIndexCorrectnessGoldenTest`
-call to the deleted `FractalTerrainConfig.maxNativeWidth()` that used to break `:compileTestJava` has
-been fixed. The pre-breakage 20-test failure breakdown that stood here is gone; it described a much
-smaller suite and never covered the four test classes the Rosgen work added.
+**The suite does NOT compile** as of `1d32c85` (verified 2026-08-17) — `gradle build` fails at
+`:compileTestJava` with 32 errors, while `compileJava`, `compileClientJava` and `spotlessCheck` all pass.
+The errors live in four test files referencing symbols absent from `src/main`: `NearestChannelSampleTest`,
+`BlendMinTest`, `PolylineChordErrorTest` want a deleted `NearestChannelSample` record and a 3-arg
+`HydrologyProfileInprinter.sampleNearestChannel` returning it (the code now has a 5-arg `void` one);
+`SpatialIndexCorrectnessGoldenTest` wants `RosgenProfile.riverInfluence(double)`, which does not exist.
 
-**Baseline measured 2026-08-13 at `0876f01`: 92 tests, 15 failed, 3 skipped.** The 15:
+Deleting those four files locally is what lets the suite run. **Baseline with them removed, measured
+2026-08-17 at `1d32c85`: 74 tests, 19 failed, 1 skipped.** The 19, all pre-existing:
 
-> `RosgenKeyTest` (6), `ChannelGeometryTest` (3), `LocalRiverGoldenTest` (2), `MeandersGoldenTest` (2),
-> `GlobalRiverGoldenTest` (1), `ReachMetricsSamplerTest` (1). All are stale fixtures or uncalibrated
-> constants on an in-flight branch, not fresh breakage.
+> `RosgenKeyTest` (6), `ConfluencePrimitiveTest` (4), `ChannelGeometryTest` (3), `LocalRiverGoldenTest` (2),
+> `MeandersGoldenTest` (2), `GlobalRiverGoldenTest` (1), `ReachMetricsSamplerTest` (1).
 
 Re-measure before blaming your own change: build a worktree at `HEAD`, copy `libs/onnxruntime/teste.jar`
 into it (`libs/` is git-ignored, and without it you get ~132 phantom errors), and run `gradle test`
-there. Comparing the *actual* values in `build/reports/tests/test/classes/*.html` — not just which tests
-fail — is what proves a refactor left generation output untouched.
+there. Comparing the *actual failure messages* in `build/test-results/test/*.xml` — not just which test
+names fail — is what proves a refactor left generation output untouched.
 
 Manual harnesses run as `JavaExec` tasks pointing at `main()` classes in `debug/tests/`:
 
@@ -79,6 +83,7 @@ gradle localRiverTest         # local riverUnit network + PNG dumps
 gradle meandersTest           # meander relaxation
 gradle spatialIndexBenchmark  # spatial-index microbench
 gradle pipelineTest           # NOT a pipeline test — samples nvidia-smi VRAM only
+gradle captureSelectionTest   # stream-capture selection fixtures, no JUnit suite required
 ```
 
 When adding a harness, add a matching `tasks.register('<name>', JavaExec)` entry in `build.gradle`.

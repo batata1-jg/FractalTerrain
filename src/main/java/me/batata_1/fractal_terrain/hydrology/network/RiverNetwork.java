@@ -757,6 +757,7 @@ public final class RiverNetwork {
 
         // Phase 2: one classification pass over the whole graph.
         if (typer != null) typer.prepare(this);
+        final Centreline centreline = new Centreline(this);
 
         for (Endpoint en : nodes.values()) {
             if (en.type == Endpoint.Type.SOURCE) HydrologicalFeature.SOURCE.addPrimitives(offset, primitives, en);
@@ -767,7 +768,7 @@ public final class RiverNetwork {
         }
 
         for (Channel ch : emitting) {
-            HydrologicalFeature.RIVER.addPrimitives(offset, primitives, typer, ch);
+            HydrologicalFeature.RIVER.addPrimitives(offset, primitives, typer, ch, centreline);
         }
 
         for (RemovedPath rp : removedPaths) {

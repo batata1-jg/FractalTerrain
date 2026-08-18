@@ -4,7 +4,6 @@ import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
-import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive.RosgenType;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
 import org.slf4j.Logger;
@@ -151,7 +150,6 @@ public enum RosgenProfile implements HydrologyProfile {
         }
     };
 
-
     // ---- Horizontal extents (type-dependent; shared placeholder law, override per constant) ----
     private static final Logger LOG = LoggerFactory.getLogger(RosgenProfile.class);
 
@@ -190,14 +188,30 @@ public enum RosgenProfile implements HydrologyProfile {
 
     /** The raw bed trench, before {@link HydrologicalPrimitive#h} fades it over its footprint. */
     public double delta(long randSeed, double signedPerpDist, double width, double curvature) {
-        final double floodPlainLen = floodPlainLength(width);
-        final double marginLen = width / 2;
-        final double perpDist = Math.abs(signedPerpDist);
-        final double bedContribution = bedDelta(
+        return delta(
                 randSeed,
-                signedPerpDist / marginLen,
+                signedPerpDist,
+                floodPlainLength(width),
+                width / 2,
                 FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depthForWidth(width),
                 curvature);
+    }
+
+    /**
+     * {@code delta} with the width-invariant extents pre-computed. Exists so a per-column carve loop can
+     * hoist {@link #floodPlainLength}, the margin length and the channel depth out of the loop instead of
+     * recomputing them once per column for every column of the same primitive.
+     */
+    public double delta(
+            long randSeed,
+            double signedPerpDist,
+            double floodPlainLen,
+            double marginLen,
+            double depth,
+            double curvature) {
+        final double width = marginLen * 2;
+        final double perpDist = Math.abs(signedPerpDist);
+        final double bedContribution = bedDelta(randSeed, signedPerpDist / marginLen, depth, curvature);
         final double floodPlainContribution = floodPlainDelta(
                 randSeed,
                 signedPerpDist > 0

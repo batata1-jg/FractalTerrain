@@ -12,7 +12,7 @@ public class Interpolation {
     private final Function<int[], Float> f;
 
     public static double lerp(double start, double end, double weight) {
-        return start *weight + end * (1-weight);
+        return start * weight + end * (1 - weight);
     }
 
     public Interpolation(final float interpolationScale, final Function<int[], Float> f) {

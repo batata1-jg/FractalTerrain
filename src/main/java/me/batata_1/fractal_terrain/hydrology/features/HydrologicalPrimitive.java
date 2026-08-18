@@ -6,8 +6,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.function.Supplier;
-
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
+import me.batata_1.fractal_terrain.hydrology.network.Centreline;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
@@ -35,7 +35,6 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
 
     /** Probe {@code Storage} uses to decide the index is persistable; any primitive type would serve. */
     HydrologicalPrimitive PROTOTYPE = new RiverPrimitive(new double[] {0.0, 0.0}, 0, null, null, 0, 0, 0, 0);
-
 
     /** Deliberately small, so a feature with no profile yet barely perturbs the terrain. */
     double DEFAULT_RADIUS = 2.0;
@@ -81,8 +80,6 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
 
     /** The primitive's own cross-section, layered onto what the shell carve already cut. Returning
      *  {@code elevAtPixel} unchanged means the primitive adds no detail of its own. */
-
-
     double w(double[] pt);
 
     double d(double[] pt);
@@ -137,6 +134,7 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
             public void addPrimitives(double[] offset, List<HydrologicalPrimitive> out, Object... args) {
                 ChannelTyper typer = (ChannelTyper) args[0];
                 Channel ch = (Channel) args[1];
+                Centreline centreline = (Centreline) args[2];
                 RiverPrimitive.RosgenType[] types = typer.typesFor(ch);
                 for (int i = 0; i < ch.numPts(); i++) {
                     final double width = ch.widthAt(i);
@@ -149,7 +147,7 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
                             coords,
                             HydrologyTuning.maxInfluence(width),
                             types[i],
-                            ch.spline.normal(i),
+                            centreline.normalAt(ch, i),
                             ch.spline.curvature(i),
                             width,
                             ch.bedElev(i),

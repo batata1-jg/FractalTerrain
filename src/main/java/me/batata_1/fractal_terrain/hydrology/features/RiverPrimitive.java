@@ -84,7 +84,7 @@ public record RiverPrimitive(
     public double h(double signedDist) {
         if (normal == null) return elevation;
         final RosgenProfile profile = (RosgenProfile) getProfile();
-        return elevation + profile.delta(hashCode(), signedDist, width, curvature);
+        return elevation + profile.delta(ids(), signedDist, width, curvature);
     }
 
     @Override
@@ -176,12 +176,15 @@ public record RiverPrimitive(
         throw new IllegalStateException("River Primitive uses angle cosines and sines directly");
     }
 
+    /** Local +X is the channel tangent {@code (nz, -nx)}, so {@link #getLength} runs along the flow. */
     public double getCosAngle() {
         return normal[1];
     }
 
+    /** Negated: the tangent is {@code normal} rotated -90 degrees, and dropping the sign mirrors the
+     *  footprint rather than rotating it, throwing every inherited box test off by twice the bearing. */
     public double getSinAngle() {
-        return normal[0];
+        return -normal[0];
     }
 
     @Override

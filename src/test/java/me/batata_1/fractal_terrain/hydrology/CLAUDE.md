@@ -17,6 +17,7 @@ pass/fail baseline — several goldens and Rosgen cases fail pre-existing.
 | Directory   | What                                            | When to read                                    |
 | ----------- | ----------------------------------------------- | ----------------------------------------------- |
 | `meanders/` | Meander relaxation + network-seam goldens       | Changing relaxation, the view seam, or capture  |
+| `network/`  | `Centreline.normalAt` cross-section normal gates | Changing the cross-section stencil or junction hop rules |
 | `rosgen/`   | Rosgen key, sampler and classifier-order tests  | Changing thresholds, transects, or graph order  |
 | `features/` | `RiverPrimitive` channel/knot id bit-packing    | Changing the packed `ids` layout or knot adjacency |
 | `profile/`  | Bed-carve geometry: blend-min, nearest-channel sample, polyline chord error | Changing the carve blend, foot-point sampling, or polyline approximation |

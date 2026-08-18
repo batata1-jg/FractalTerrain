@@ -17,8 +17,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Supplier;
-
-import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -82,7 +80,7 @@ public class Storage<T extends Persistable<T>> {
             prototype.serialize();
             return true;
         } catch (UnsupportedOperationException e) {
-            LOG.info("{} not serializable",prototype.getClass().getSimpleName());
+            LOG.info("{} not serializable", prototype.getClass().getSimpleName());
             return false;
         }
     }

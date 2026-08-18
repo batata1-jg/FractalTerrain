@@ -5,50 +5,55 @@
 Two carve stages turn the hydrological-primitive index into elevation edits, plus one painter that turns the
 result into placed water. Both carve stages are active: the tile-level shell carve runs inside
 `LocalRiverProvider.buildTile` (twice — see `hydrology/README.md`), and the per-pixel bed carve runs from
-`PopulateNoiseStep`, which per column resolves the nearest channel and calls
-`NearestChannelSample.carveInto` during chunk fill.
+`PopulateNoiseStep.fineGrainedPrimitivePass`, which prefetches every primitive in reach once per chunk and
+then, per column, blends across all of them by distance rather than resolving a single nearest channel.
 
 ## Architecture
 
 **Shell carve** (`HydrologyProfileInprinter.carveRiverShells`, static): per padded-tile pixel, stabs an
 R-tree over the primitives it was handed, keeps every candidate whose influence circle contains the pixel, and
-overwrites the pixel with the **distance-weighted average** of those primitives'
-`HydrologyProfile.shellElevation` values, weighted `1 - radialDist/influenceRadius`. There is no
-nearest-wins rule: at a confluence the overlapping channels blend rather than one winning outright.
+overwrites the pixel with the **weighted average** of `river.h(river.d(pixel))` across those primitives,
+weighted by `river.w(pixel)` — the same per-Rosgen-type cross-section (`RosgenProfile.delta`) the bed carve
+below reads, not `HydrologyProfile.shellElevation` (still defined on the interface, but with no caller
+anywhere in `src/main`). There is no nearest-wins rule: at a confluence the overlapping channels blend
+rather than one winning outright.
 
-The buffer's current elevation is sampled once per pixel *before* the primitive loop, so every contributing
-primitive sees the same `curElev` and the result does not depend on primitive order. Pixels with negative ambient
-elevation (ocean) are skipped. It reads and writes the same buffer, so repeated calls compound —
-`buildTile` relies on this to shape the drainage field before the local trace, then to carve local
-shells in afterward.
+The buffer's current elevation is sampled once per pixel *before* the primitive loop (as `ambient`, gating
+the ocean skip below), and the weighted-average accumulation across primitives is a running sum, so the
+result does not depend on primitive order. Pixels with negative ambient elevation (ocean) are skipped. It
+reads and writes the same buffer, so repeated calls compound — `buildTile` relies on this to shape the
+drainage field before the local trace, then to carve local shells in afterward.
 
-**Bed carve** (`HydrologyProfileInprinter.sampleNearestChannel` → `NearestChannelSample.carveInto`):
-resolves **one** channel per point rather than merging many. `resolveNearestPrimitiveIndex` picks the
-nearest `RiverPrimitive` knot; `sampleNearestChannel` then projects the point onto the two-segment
-polyline through that knot and its knot-adjacent neighbours, and reads width, curvature, bed elevation and
-Rosgen type **at the foot point on the centreline** rather than at the knot. The result is a single
-`NearestChannelSample` — one coherent cross-section instead of several knots' disagreeing tangent-line
-distances.
+**Bed carve** (`PopulateNoiseStep.fineGrainedPrimitivePass`, fed by `HydrologyProfileInprinter.prefetchChunk`):
+blends across **every** contributing primitive in one running merge rather than resolving a single nearest
+channel. `prefetchChunk` queries the R-tree once per chunk (chunk center plus half-diagonal radius, in the
+relief-pixel frame) and sorts the result with `HydrologicalPrimitive.comparator`, which orders by
+feature-type ordinal first — every `RiverPrimitive` sorts before any other feature type. The per-column loop
+walks that sorted list and `break`s at the first non-`RiverPrimitive` entry; the break only lands at the true
+end of the river run because of that sort order, not because the loop tracks position itself.
 
-`carveInto` is then `min(ambient, bedElevation + RosgenProfile.delta(...))`. It needs no influence radius:
-outside the floodplain the profile is a cone rising away from the channel, so the min returns ambient
-wherever that cone clears it. A knot with no knot-adjacent neighbour in range falls back to its own tangent
-line (`isolatedKnotSample`), which is the correct answer for an isolated knot, not a degraded one.
+For each `RiverPrimitive` whose `containsPoint` covers the column, the loop keeps a running `smoothedMinDist`
+(seeded at 64) and blends `mergedElevation` toward `min(river.h(river.d(point)), ambientElevation)` with
+`weight = smoothStep(-1, 1, (smoothedMinDist - dist) / 0.1)` — a soft "closest primitive wins, nearby
+competitors blend in" accumulation driven by iteration order rather than an explicit nearest-channel query.
+`river.d(point)` is the signed distance from `point` to the primitive along its stored `normal`;
+`river.h(signedDist)` adds `RosgenProfile.delta(...)` to the primitive's base `elevation`. The loop also
+computes an `influenceWeight` from `river.w(point)`, but `weight` is `smoothDistWeight * 1`: `influenceWeight`
+has no effect on the merge as the loop is currently written.
 
-Only `RiverPrimitive` participates: `sampleNearestChannel` returns `null` for any other feature type, and
-`PopulateNoiseStep` writes a zero river-difference in that case. `prefetchChunk`/`PrefetchedPrimitives`
-still amortize the R-tree query so one query serves every block of a chunk.
+Only `RiverPrimitive` participates: any other feature type in the prefetched list ends the loop via the
+`break` above before it can contribute, so it never reaches `containsPoint`/`h`/`d`. A column no
+`RiverPrimitive` covers keeps `mergedElevation == ambientElevation`, so `Types.RIVER_DIFFERENCE` comes out
+zero for it.
 
-`resolveNearestPrimitiveIndex`, `sampleNearestChannel`, and `NearestChannelSample.carveInto` are invoked
-once per column from `PopulateNoiseStep`'s per-chunk loop (256 calls/chunk, every chunk generated), so
-they sit below this repo's hot/cold line of abstraction (root `ARCHITECTURE.md`): no heap allocation, no
-new abstraction layers, scratch reuse over fresh allocation. `NearestChannelSample` itself is a `record`
-returned once per column rather than a scratch buffer — treat that allocation as the accepted cost of the
-current design, not a pattern to copy elsewhere on this path.
+`prefetchChunk` and the per-column loop run once per chunk and once per column respectively (256 column
+calls/chunk, every chunk generated), so both sit below this repo's hot/cold line of abstraction (root
+`ARCHITECTURE.md`): no heap allocation, no new abstraction layers, the scratch `mutablePt` reused across
+columns rather than allocated per column.
 
 **`ZoneCategory` is currently reserved, not live.** No carve path reads it: `HydrologyProfile.categoryAt`
 and `zoneWeight` no longer exist, and the zone-priority merge they drove was replaced by the
-single-nearest-channel carve above. The enum and the `WATERFALL`/`LAKE_BED` reservations referenced from
+distance-weighted blends both carve stages run above. The enum and the `WATERFALL`/`LAKE_BED` reservations referenced from
 `WaterfallPrimitive` and `OxbowLakePrimitive` javadoc remain as the intended home for those feature types
 once they grow real profiles.
 
@@ -72,12 +77,15 @@ wherever a reach's width is the same, independent of what terrain it cuts throug
 design, not a bug in a specific `RosgenProfile` constant.
 
 **Only `RosgenProfile.A` overrides everything a type needs.** `B`, `C`, `D`, `E`, `F`, `G`, `Aa` each
-override a subset of `floodPlainLength`/`riverInfluence`/`bedDelta`/`floodPlainDelta`; `DA` overrides
+override a subset of `floodPlainLength`/`bedDelta`/`floodPlainDelta`/`valleyDelta`; `DA` overrides
 nothing and silently falls back to every enum-level default. A primitive with a `null` `rosgenType` (untyped
-— e.g. emitted by a `null` `ChannelTyper`) is coalesced to `RosgenType.A` by every consumer
-(`NearestChannelSample.carveInto`, `RiverPrimitive.getProfile`), not left unhandled.
+— e.g. emitted by a `null` `ChannelTyper`) is coalesced to `RosgenType.A` by `RiverPrimitive.getProfile()`,
+the only place `rosgenType` resolves to a profile, not left unhandled.
 
-**The bed carve currently uses a hard `min`, not the blended one.** `NearestChannelSample.carveInto`
-calls `Math.min` directly; the `RosgenProfile.blendMin(…, CARVE_BLEND_RANGE)` call that rounds the rim
-where the valley cone meets untouched ground is commented out beside it, leaving `CARVE_BLEND_RANGE`
-unread. Expect a visible crease at the carve boundary until that line is restored.
+**The bed carve currently uses a hard `min`, not the blended one.**
+`PopulateNoiseStep.fineGrainedPrimitivePass` computes `Math.min(river.h(river.d(point)), ambientElevation)`
+directly for each contributing primitive; only the distance-based `weight` blends across primitives, never
+`RosgenProfile.blendMin` — the smooth minimum that would round the rim where the valley cone meets untouched
+ground. `blendMin` still exists on `RosgenProfile`, but has no caller anywhere in `src/main`; the
+`CARVE_BLEND_RANGE` constant it would need is gone entirely, not merely unread. Expect a visible crease at
+the carve boundary until `blendMin` is wired back in.

@@ -9,6 +9,7 @@ import java.util.Map;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive.RosgenType;
+import me.batata_1.fractal_terrain.hydrology.network.Centreline;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
@@ -32,6 +33,7 @@ public final class ReachRosgenClassifier implements ChannelTyper {
     private static final Logger LOG = LoggerFactory.getLogger(ReachRosgenClassifier.class);
     private final ReachMetricsSampler sampler;
     private final Map<Integer, RosgenType[]> typesByChannelId = new HashMap<>();
+    private Centreline centreline;
 
     /** @param elev <b>raw</b> decoded elevation — never a carved buffer */
     public ReachRosgenClassifier(float[] elev, int gridSize) {
@@ -40,6 +42,7 @@ public final class ReachRosgenClassifier implements ChannelTyper {
 
     @Override
     public void prepare(RiverNetwork network) {
+        this.centreline = new Centreline(network);
         typesByChannelId.clear();
         for (Channel ch : orderDownstreamFirst(network)) {
             typesByChannelId.put(ch.channelId, classifyChannel(ch, seedFor(ch, network)));
@@ -177,15 +180,15 @@ public final class ReachRosgenClassifier implements ChannelTyper {
         final double bedElev = sampler.elevAt(ch.spline.sample(mid));
         final double slope = sampler.slope(pts, arcLength, from, to);
 
-        // spline.normal never returns null: VectorOps.normalize returns a zero vector, not null, when the
-        // tangent degenerates (duplicate consecutive spline points), and perpendicular preserves that. A
+        // centreline.normalAt never returns null: VectorOps.normalize returns a zero vector, not null, when
+        // the tangent degenerates (duplicate consecutive spline points), and perpendicular preserves that. A
         // zero normal makes the transect resample the same pixel at every step, so it must be caught
         // here rather than walked.
         // TODO: 1.0 is a placeholder. ER = 1 means fully entrenched, which sends a degenerate reach to
         // F/G — visible types, deliberately, so the case shows up in the type PNG instead of hiding in
         // the C/E majority. Once the type mix is calibrated (P1), decide whether a degenerate reach
         // should instead inherit its downstream neighbour's type or be dropped from classification.
-        double[] normal = ch.spline.normal(mid);
+        double[] normal = centreline.normalAt(ch, (int) mid);
         if (isDegenerate(normal)) {
             LOG.warn("degenerate");
         }

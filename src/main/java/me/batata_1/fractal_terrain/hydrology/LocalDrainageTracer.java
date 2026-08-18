@@ -87,10 +87,8 @@ final class LocalDrainageTracer {
 
                 final double[] curNodePos =
                         new double[] {Math.floorDiv(current, PADDED) + 0.5, (current % PADDED) + 0.5};
-                if (nodeIndex[current] == -1
-                        && nodeIndex[next] == -1
-                        && !sources.containsPointInCircle(curNodePos, 3.0)
-                     //   && !globalRiversPosition.anyContaining(curNodePos, acceptanceTest)
+                if (nodeIndex[current] == -1 && nodeIndex[next] == -1 && !sources.containsPointInCircle(curNodePos, 3.0)
+                //   && !globalRiversPosition.anyContaining(curNodePos, acceptanceTest)
                 ) {
                     nodeIndex[current] = net.addNode(curNodePos, Endpoint.Type.SOURCE, -1, flow[current], -1);
                     sources.insertPoint(new CoordPoint(curNodePos));
@@ -110,7 +108,7 @@ final class LocalDrainageTracer {
                         net.addDirectedEdge(primitive.id(), nodeIndex[next]);
                         net.addDirectedEdge(nodeIndex[next], primitive.id());
                     }
-                    if((!nearbyGlobal.isEmpty())||isDrain) inDegree[next] = -1;
+                    if ((!nearbyGlobal.isEmpty()) || isDrain) inDegree[next] = -1;
                 }
                 if (nodeIndex[current] != -1) net.addDirectedEdge(nodeIndex[current], nodeIndex[next]);
             }
@@ -135,7 +133,8 @@ final class LocalDrainageTracer {
         final double[] flow = net.accumulateAndCorrectFlow();
         final GlobalRiverPrimitive[] globalRivers = new GlobalRiverPrimitive[net.size()];
         for (int id = 0; id < net.size(); id++) {
-            globalRivers[id] = new GlobalRiverPrimitive(net.pos(id), Math.min(3,maxInfluence(widthFromFlow(flow[id]))), id);
+            globalRivers[id] =
+                    new GlobalRiverPrimitive(net.pos(id), Math.min(3, maxInfluence(widthFromFlow(flow[id]))), id);
         }
         return Arrays.stream(globalRivers).toList();
     }
