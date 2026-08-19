@@ -1,16 +1,12 @@
 # profile/ (test)
 
-Targets bed-carve geometry from a design `src/main` no longer has. All three files below reference the
-deleted `NearestChannelSample` record — two by calling the deleted 3-arg
-`HydrologyProfileInprinter.sampleNearestChannel(...)` that used to return it (current `sampleNearestChannel`
-is a void 5-arg method), one (`BlendMinTest`) by constructing `NearestChannelSample` directly — so all
-three break `:compileTestJava`. See `../CLAUDE.md` "Status" for the suite-wide count. Kept on disk and
-indexed here because they are real files, not because any of them gate anything today.
+Gates `computeRiverGrid`, the single lattice carve both the tile shell and the per-chunk bed run
+through. Fixtures use resolution 1.0 with a `(1,0)` normal so every sampled perpendicular lands
+exactly on a LUT entry and the linear interpolation is exact.
 
 ## Files
 
-| File                           | What                                                                                  | When to read                                                          |
-| ------------------------------ | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `NearestChannelSampleTest.java`| **Broken — calls the deleted 3-arg `sampleNearestChannel(...)`.** Intended to gate foot-point sampling: exact perpendicular on a straight reach, sign agreement with the knot tangent line, downstream-oriented interpolation, cross-channel and non-consecutive-knot fallbacks | Restoring or replacing bed-carve sampling test coverage |
-| `BlendMinTest.java`            | **Broken — constructs the deleted `NearestChannelSample` record.** Intended to gate `RosgenProfile.blendMin`'s contract: exact `min` outside the range, never above the hard min, continuous at the boundary, symmetric, and a river never raises terrain | Restoring `blendMin` test coverage; `blendMin` itself still exists on `RosgenProfile` and compiles fine — only this test's fixtures are dead |
-| `PolylineChordErrorTest.java`  | **Broken — calls the deleted 3-arg `sampleNearestChannel(...)`.** Intended to bound two-segment polyline error against an analytic arc, justifying not rebuilding the quintic | Restoring polyline-approximation test coverage |
+| File                          | What                                                                                  | When to read                                                          |
+| ----------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `ComputeRiverGridTest.java`   | The merge law and its guards: centre carved to the profile surface, points outside the footprint untouched, nearer-primitive-wins regardless of elevation or list order, buffer reseeding between calls, the stop-at-first-non-river index it reports, tangent-less primitives skipped, LUT length across a full-diagonal primitive, un-normalised water lane, and which primitive the `typeMask` follows | Changing the distance recurrence, the `d` footprint scale, buffer reuse, the river-run stop rule, or what gets stamped into `Types.RIVER_TYPE` |
+| `SampleCrossSectionTest.java` | The per-primitive cross-section LUT: every entry equals `RosgenProfile.delta` at its anchored perp distance, nothing is written past `n` in the oversized scratch array, and a negative `baseIdx` samples the far bank rather than the centre | Changing `sampleCrossSection`, the perp-lattice anchoring, or the scratch-buffer contract |

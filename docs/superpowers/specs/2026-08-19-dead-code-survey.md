@@ -1,7 +1,8 @@
 # Dead-code survey — 2026-08-19
 
 Reachability inventory of `src/main`, taken at `6a7086e` (branch `feature/hydrology`).
-**Nothing has been deleted.** Every row is a recommendation awaiting a decision.
+**Superseded — acted on in `06a15dd` (2026-08-19)**, which deleted the surveyed classes. At the time
+of writing nothing had been deleted and every row was a recommendation awaiting a decision.
 
 ## Method
 

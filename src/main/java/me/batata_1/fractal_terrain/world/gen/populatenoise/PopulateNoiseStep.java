@@ -33,7 +33,7 @@ public class PopulateNoiseStep {
     /** One instance of this class serves every chunk-generation thread, so the carve buffers cannot be fields. */
     private static final ThreadLocal<HydrologyProfileInprinter.GridBuffers> BUFFERS = ThreadLocal.withInitial(() -> {
         final HydrologyProfileInprinter.GridBuffers buffers = new HydrologyProfileInprinter.GridBuffers();
-        buffers.ensure(COLUMNS, HydrologyProfileInprinter.maxLutLen(GRID_SIZE, GRID_RESOLUTION));
+        buffers.ensure(GRID_SIZE, HydrologyProfileInprinter.maxLutLen(GRID_SIZE, GRID_RESOLUTION));
         return buffers;
     });
 
@@ -81,8 +81,10 @@ public class PopulateNoiseStep {
                 buffers.typeMask,
                 buffers.dist,
                 buffers.lut,
-                buffers.perp,
-                buffers.tang,
+                buffers.perpRow,
+                buffers.perpCol,
+                buffers.tangRow,
+                buffers.tangCol,
                 interpolatedElevs);
 
         for (int pos = 0; pos < COLUMNS; pos++) {

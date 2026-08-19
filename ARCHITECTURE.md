@@ -5,8 +5,9 @@ System overview for `FractalTerrain` post the 2026-07 code-hygiene refactor. Pac
 
 > **The `feature/hydrology` branch is mid-rework and some stages are switched off.** The per-pixel
 > hydrology carve stack is active: `PopulateNoiseStep.updateToFinalElev` reads each column's real
-> per-column relief and refines it through `NearestChannelSample.carveInto` before writing
-> `ELEVATION`, so `Types.RIVER_DIFFERENCE` is not uniformly `0`. Biome decoration is still
+> per-column relief and refines it through the lattice carve (`fineGrainedPrimitivePass` →
+> `HydrologyProfileInprinter.computeRiverGrid`) before writing `ELEVATION`, so
+> `Types.RIVER_DIFFERENCE` is not uniformly `0`. Biome decoration is still
 > unconditionally disabled by a debug flag. See "Current debug state" below for the exact per-flag state
 > (including the surface step, which currently runs) before assuming any generation behaviour described
 > here is observable in-game.
@@ -95,36 +96,40 @@ consumed by `world/gen/`. `GlobalRiverProvider.java` is independent of `LocalRiv
 its own 64×64-coarse-px tiles directly (coarse-px addressed, not the 512-native-px tile grid — see
 Coordinate frames).
 
-**Hydrology carve pipeline.** `RosgenProfile` defines a feature's *reference* elevation as the bank.
-Two carve stages exist and both are live:
+**Hydrology carve pipeline.** Both carve stages run the *same* function —
+`HydrologyProfileInprinter.computeRiverGrid` — over their own lattice. There is one merge law, not two.
+`hydrology/profile/README.md` is the authority on its mechanics; the summary here is only enough to
+place it in the pipeline.
 
-1. **Tile-level shell carve** (`HydrologyProfileInprinter.carveRiverShells`, static). For each pixel of the
-   padded tile buffer it stabs an R-tree built over the primitives it was handed and collects **every** primitive
-   whose influence circle actually contains the pixel, not just the nearest. Each contributing primitive
-   supplies `HydrologyProfile.shellElevation(primitive, radialDist, curElev)` — for a `RiverPrimitive`,
-   `RosgenProfile` delegates this to `riverInfluenceElevation`: a lerp holding the primitive's reference
-   elevation out to `floodPlainLength` and released back to the buffer's current value at
-   `riverInfluence` — and the pixel is overwritten with the distance-weighted **average** across all of
-   them. There is no nearest-wins rule and no pristine ambient snapshot, so at a confluence overlapping
-   primitives blend rather than one profile winning outright. Pixels with a negative ambient elevation (ocean)
-   are skipped. The carve reads and writes the same buffer, so the two passes per tile compound.
-2. **Per-pixel bed carve** (`HydrologyProfileInprinter.resolveNearestPrimitiveIndex` +
-   `sampleNearestChannel` → `NearestChannelSample.carveInto`), invoked from `PopulateNoiseStep` during
-   chunk fill and written into `Types.RIVER_DIFFERENCE`. This stage resolves **one** channel per point
-   rather than merging many: it takes the nearest `RiverPrimitive` knot, projects the point onto the
-   two-segment polyline through that knot and its knot-adjacent neighbours, and reads width, curvature,
-   bed elevation and Rosgen type at the **foot point on the centreline** — one coherent cross-section
-   instead of several knots' disagreeing tangent-line distances. `carveInto` is then
-   `min(ambient, bedElevation + RosgenProfile.delta(...))`, which needs no influence radius because
-   outside the floodplain the profile is a cone rising away from the channel. Only `RiverPrimitive`
-   participates; any other feature type yields a `null` sample and a zero difference.
-   `HydrologyProfilePainter` reads the resulting `RIVER_DIFFERENCE` to place river water.
+`computeRiverGrid` merges every river primitive touching a lattice into one `(height, water, weight)`
+triple per lattice point plus the nearest primitive's packed family/Rosgen type in a parallel
+`long[]` mask. It is **ambient-free** — it never reads the caller's current elevation, only writes its
+own merged surface — so each call site recovers its result with one blend,
+`(1 - w) * ambient + w * min(h, ambient)`. That makes both stages **cut-only**: neither can raise
+terrain. Per primitive it tabulates a cross-section LUT once (`RosgenProfile.sampleCrossSection`,
+anchored on a shared integer perp-lattice index) and walks only the cells its footprint reaches, instead
+of re-evaluating `RosgenProfile.delta`'s branchy per-region logic per point.
 
-   The `ZoneCategory` priority merge that previously drove this stage (`WATERFALL` > `BED` > `LAKE_BED` >
-   `FLOODPLAIN` > `INFLUENCE`, averaging within a zone and switching hard between zones) is **gone**:
-   `HydrologyProfile.categoryAt`/`zoneWeight` and `RosgenProfile.riverAreaDelta` no longer exist, and the
-   per-feature `h(pt, elevAtPixel)` contributions are no longer consulted by the bed carve. `ZoneCategory`
-   itself survives only as a reservation for feature types that have yet to grow real profiles.
+The two call sites:
+
+1. **Tile-level shell carve** (`HydrologyProfileInprinter.carveRiverShells`), over the 514×514 padded
+   tile, called from `LocalRiverProvider.buildTile` to shape the drainage field the local trace reads.
+   It reads and writes the same buffer and skips pixels with negative ambient elevation (ocean), so the
+   two passes per tile compound.
+2. **Per-chunk bed carve** (`PopulateNoiseStep.fineGrainedPrimitivePass`), over the chunk's 16×16
+   lattice, written into `Types.RIVER_DIFFERENCE` plus `Types.WATER_HEIGHT` and `Types.RIVER_TYPE`.
+   It is fed by `HydrologyProfileInprinter.prefetchChunk`, which stabs the R-tree **once per chunk**
+   (chunk centre plus half-diagonal radius, relief-pixel frame) and sorts by
+   `HydrologicalPrimitive.comparator` — the ordering `computeRiverGrid` requires, and what lets it stop
+   at the first non-`RiverPrimitive` entry. `HydrologyProfilePainter` reads `RIVER_DIFFERENCE` back to
+   place river water.
+
+Superseded designs, so old comments and commits read correctly: the shell's per-pixel R-tree stab and
+distance-weighted average over `HydrologyProfile.shellElevation`/`riverInfluenceElevation`; the bed's
+`resolveNearestPrimitiveIndex` + `sampleNearestChannel` → `NearestChannelSample.carveInto` polyline
+foot-point sample; and, before that, the `ZoneCategory` priority merge (`WATERFALL` > `BED` >
+`LAKE_BED` > `FLOODPLAIN` > `INFLUENCE`). None of those symbols exist any more. `ZoneCategory` itself
+survives only as a reservation for feature types that have yet to grow real profiles.
 
 `HydrologyTuning.MAX_LOCAL_WIDTH` is retained but unread by live code, not even through the
 `FractalTerrainConfig` facade re-export.
@@ -401,11 +406,14 @@ that an allocation-avoiding or abstraction-skipping pattern is deliberate, not a
   cache; if you need a mutable copy, use `slice`/`copyRange`, which allocate a fresh tensor. Note the
   freeze does **not** guard the `public final data` array — this invariant is a convention the compiler
   will not enforce for you.
-- **The hydrology carve is order-dependent.** `carveRiverShells` reads and writes one shared buffer and
-  averages every primitive whose influence circle reaches a given pixel, so carve results depend on how many
-  passes have run and on which primitives were in the graph at the time. `buildTile` runs it twice by design.
-  Adding, reordering or deduplicating those passes changes terrain output — it is not a refactor-safe
-  region.
+- **The hydrology carve is order-dependent, at two levels.** *Across passes:* `carveRiverShells` reads
+  and writes one shared buffer, so results depend on how many passes have run and which primitives were
+  in the graph at the time; `buildTile` runs it twice by design, and adding, reordering or deduplicating
+  those passes changes terrain output. *Within a pass:* `computeRiverGrid` is a sequential
+  smoothed-min-distance recurrence over the primitive list, so its input MUST already be sorted by
+  `HydrologicalPrimitive.comparator` — that sort is what puts every `RiverPrimitive` first and lets the
+  loop stop at the first non-river entry, and it also fixes how near-equidistant competitors blend.
+  Neither level is a refactor-safe region.
 - **`RiverNetwork`/`QuadTree` reuse is per-tile and single-threaded.** `GlobalNetworkBuilder` builds and
   returns a fresh `RiverNetwork` purely from its parameters; `LocalDrainageTracer` then mutates
   that same network in place to attach the local subgraph (`traceLocalNetwork` returns nothing) — both are
@@ -416,55 +424,55 @@ that an allocation-avoiding or abstraction-skipping pattern is deliberate, not a
 
 ## Testing stance
 
-**Deterministic layers have a golden gate — but the suite does not currently compile.**
-`src/test/java/me/batata_1/fractal_terrain/` (JUnit 5, `gradle test`, configured `useJUnitPlatform()` in
-`build.gradle`) holds 10 test classes with 56 `@Test`/`@ParameterizedTest` methods total. As of this
-writing, `gradle test` fails at `:compileTestJava`:
+**Deterministic layers have a golden gate; the gate is currently red.**
+`src/test/java/me/batata_1/fractal_terrain/` (JUnit 5, `gradle test`, `useJUnitPlatform()` in
+`build.gradle`) holds 15 test classes. Measured 2026-08-19 at `06a15dd` plus the working-tree changes to
+`HydrologyProfileInprinter.java`, `PopulateNoiseStep.java` and `ComputeRiverGridTest.java`:
+**90 tests, 20 failed, 1 skipped.** The suite compiles — earlier revisions of this document recorded a
+`:compileTestJava` break, which is resolved; the four test classes that caused it
+(`NearestChannelSampleTest`, `BlendMinTest`, `PolylineChordErrorTest`,
+`SpatialIndexCorrectnessGoldenTest`) were deleted rather than repaired, along with
+`RiverPrimitiveIdsTest`.
 
-```
-SpatialIndexCorrectnessGoldenTest.java:49: error: cannot find symbol
-  symbol:   method maxNativeWidth()
-  location: class FractalTerrainConfig
-```
-
-Commit `ea43e40` ("changed tracer") deleted the `FractalTerrainConfig.maxNativeWidth()` facade method and
-migrated `SpatialIndexBenchmark.java:118` to call `HydrologyTuning.maxNativeWidth()` directly, but did not
-migrate this test's call site. **No test in the suite currently runs.** The pass/fail numbers below
-predate that breakage and cannot be reproduced until the call site is fixed — treat them as a pre-breakage
-record, not current state.
-
-| Test | Covers | Status (pre-breakage record) |
+| Test | Covers | Status |
 | ---- | ------ | ------ |
-| `hydrology/GlobalRiverGoldenTest.java` | `GlobalRiverProvider`'s per-tile pipeline via `computeTileForTest` | 1 of 2 failing — tile checksum does not match the captured golden |
-| `hydrology/LocalRiverGoldenTest.java` | `LocalRiverProvider`'s local-network trace via `traceLocalNetworkForTest` | **4 of 4 failing — `ArrayIndexOutOfBoundsException: Index 262144 out of bounds for length 262144`** |
-| `hydrology/meanders/MeandersGoldenTest.java` | `Meanders`/`RiverNetwork` collision semantics + a migration golden | 7 methods (6 active, 1 `@Disabled`) — 2 of 6 active failing |
-| `hydrology/meanders/RiverNetworkSeamGoldenTest.java` | The canonical↔atomic seam round trip (`viewAtomic`/`accumulateAndCorrectFlow`/`update`) | 4 passing |
-| `hydrology/SpatialIndexCorrectnessGoldenTest.java` | R-tree query correctness against brute force over a synthetic primitive set | 1 of 2 failing — hit-set-size checksum mismatch |
+| `hydrology/GlobalRiverGoldenTest.java` | `GlobalRiverProvider`'s per-tile pipeline via `computeTileForTest` | 1 of 2 failing — tile checksum drifted from the captured golden |
+| `hydrology/LocalRiverGoldenTest.java` | `LocalRiverProvider`'s local trace via `traceLocalNetworkForTest` | 2 of 4 failing — "synthetic field produced no local channels: fixture is degenerate" |
+| `hydrology/ChannelGeometryTest.java` | Width-to-depth law (`depthForWidth`, ratio floor, exponent) | 3 of 5 failing — the pinned constants no longer match the law |
+| `hydrology/features/ConfluencePrimitiveTest.java` | Junction arm bracketing, blend, `w` falloff, wire round-trip | 4 of 9 failing — numeric drift in the blend and falloff |
+| `hydrology/features/HydrologicalFeaturePackTest.java` | The family/sub-type long stamped into `Types.RIVER_TYPE` | 4 passing |
+| `hydrology/profile/ComputeRiverGridTest.java` | The lattice carve's merge law, footprint scale, buffer reuse, type mask | 12 passing |
+| `hydrology/profile/SampleCrossSectionTest.java` | The per-primitive cross-section LUT and its scratch-buffer contract | 3 passing |
+| `hydrology/meanders/MeandersGoldenTest.java` | `Meanders`/`RiverNetwork` collision semantics + a migration golden | 2 of 6 active failing, 1 `@Disabled` (see below) |
+| `hydrology/meanders/RiverNetworkSeamGoldenTest.java` | The canonical↔atomic seam round trip | 4 passing |
+| `hydrology/network/CentrelineTest.java` | `Centreline.normalAt` stencil, source one-sidedness, junction tie-break | 1 of 3 failing — wedged-channel normal off the true through-direction |
+| `hydrology/rosgen/RosgenKeyTest.java` | `RosgenKey`'s Level-I decision key, one case per type plus ordering | 6 of 17 failing — type boundaries disagree (E→C, G→F, C→B) |
+| `hydrology/rosgen/ReachRosgenClassifierTest.java` | Reach segmentation + downstream-first graph walk | 6 passing |
+| `hydrology/rosgen/ReachMetricsSamplerTest.java` | Raster sampling against hand-derived analytic answers | 1 of 5 failing — slope off by ~2.7× |
+| `math/VectorOpsProjectionTest.java` | `VectorOps.projectPointOntoSegment` clamping and bank sign | 8 passing |
 | `ml/pipeline/PipelineSessionReloadRaceTest.java` | MUST-1 — the reload-race regression (see above) | 1 passing |
-| `hydrology/ChannelGeometryTest.java` | Channel cross-section geometry laws (width/depth ratio, width-depth exponent) | 5 methods — added after last doc sync (Rosgen commits); no pre-breakage baseline recorded here |
-| `hydrology/rosgen/RosgenKeyTest.java` | `RosgenKey`'s Level-I decision key — table-driven exact input/output pairs, one case per type plus ordering cases | 17 methods — added after last doc sync; no pre-breakage baseline recorded here |
-| `hydrology/rosgen/ReachRosgenClassifierTest.java` | Reach segmentation + the downstream-first graph classification walk | 6 methods — added after last doc sync; no pre-breakage baseline recorded here |
-| `hydrology/rosgen/ReachMetricsSamplerTest.java` | `ReachMetricsSampler`'s raster sampling against hand-derived analytic answers | 8 methods — added after last doc sync; no pre-breakage baseline recorded here |
 
-Each headless golden test drives the exact production code path over a synthetic seeded fixture (no
-ONNX dependency), so a divergence in the deterministic hydrology math fails `gradle test` immediately —
-once the suite compiles again.
+Each headless golden drives the exact production code path over a synthetic seeded fixture (no ONNX
+dependency), so a divergence in the deterministic hydrology math fails `gradle test` immediately.
 
-**The pre-breakage baseline was: 20 tests, 8 failing, 1 skipped.** That count predates both the compile
-break above and the four Rosgen-era classes now in the table (`ChannelGeometryTest`, `RosgenKeyTest`,
-`ReachRosgenClassifierTest`, `ReachMetricsSamplerTest`) — it is historical record only, not a live target.
-Do not attribute a currently red or currently non-compiling `gradle test` to your own change without
-checking against this record first. The historical failures were three distinct kinds:
+**Every failure above is pre-existing, and the baseline is a claim to re-verify, not a fact** — this
+suite has broken and been repaired several times. Do not attribute a red `gradle test` to your own
+change without re-measuring at `HEAD` first, and compare the *failure messages* in
+`build/test-results/test/*.xml`, not just which test names fail. A worktree needs
+`libs/onnxruntime/teste.jar` copied in (`libs/` is git-ignored) or the build reports ~132 phantom errors.
 
-- **Four `LocalRiverGoldenTest` errors** — `262144` is exactly `512²`, so the local-network trace indexes
-  one past the end of a `GRID×GRID` buffer. A genuine out-of-bounds in the traced path, not a stale
-  expectation.
-- **Two checksum mismatches** (`GlobalRiverGoldenTest`, `SpatialIndexCorrectnessGoldenTest`) — the
-  captured goldens do not describe what the code now computes. Whether the code or the golden is wrong
-  is unresolved; do not re-capture without deciding that first.
-- **Two `MeandersGoldenTest` failures** (`independentCrossingsAreNotMerged`,
-  `meandersGoldenSignatureMatchesCapturedFixture`) — the collision pass and the migration signature
-  disagree with what the fixtures assert.
+The failures fall into three kinds:
+
+- **Constants the tests pin no longer match the code** (`ChannelGeometryTest`, `RosgenKeyTest`,
+  `ReachMetricsSamplerTest`, `ConfluencePrimitiveTest`, `CentrelineTest`). These are stale expectations,
+  not runtime faults — but which side is wrong is undecided in each case, so do not re-baseline by
+  copying the observed value.
+- **A degenerate fixture** (`LocalRiverGoldenTest`) — the synthetic field now yields no local channels
+  at all, so two assertions never reach the behaviour they meant to gate. The fixture needs rebuilding
+  before its result means anything.
+- **Checksum drift** (`GlobalRiverGoldenTest`, `MeandersGoldenTest`) — the captured goldens do not
+  describe what the code computes. Whether code or golden is wrong is unresolved; do not re-capture
+  without deciding that first.
 
 `MeandersGoldenTest.danglingTributaryIsCapturedIntoTrunk` is `@Disabled`, and the reason is a capability
 gap rather than a flaky expectation: capture is driven by `detectCrossings`, which builds its quadtree
@@ -472,16 +480,3 @@ from `RiverNetwork.channels`, so only a **canonical** `Channel` can be found cro
 tributary cannot be expressed as one — `update()`'s chain walk calls `onlyOutgoing()` on every non-drain
 node, and a dangling end has no outgoing edge — and one added through the atomic view has no `Channel` at
 all. Restoring the test needs a supported way to attach a dangling canonical channel.
-
-**The diffusion half has no automated behavior gate — and no manual one either.** Despite its name and
-its `pipelineTest` Gradle task, `debug/tests/PipelineTest.java` does **not** exercise `WorldPipeline`:
-its `main()` never touches the pipeline, `ModelAssetManager`, or any inference code. It samples
-`nvidia-smi` for a couple of seconds around a monitor thread that is interrupted almost immediately —
-effectively a VRAM-baseline probe. Nothing in the repo verifies diffusion output, manually or otherwise.
-
-The `WorldPipeline` split (M-009) and MUST-1/MUST-3 were instead verified by mechanical, math-identical
-extraction plus focused review — so treat any change to `CoarseStage`/`LatentStage`/`DecoderStage`/
-`ClimateProvider` as unguarded: no test will catch a silent numeric regression there, and `pipelineTest`
-will pass regardless. The other manual harnesses (`globalRiverTest`, `localRiverTest`, `meandersTest`,
-`spatialIndexBenchmark`) do real work, keeping PNG/visual debug dumps for the same tiles the golden tests
-assert numerically.

@@ -73,19 +73,26 @@ public final class HydrologyProfileInprinter {
         public long[] typeMask = new long[0];
         public float[] dist = new float[0];
         public float[] lut = new float[0];
-        /** Scratch: the carve's across-flow projection, so no primitive allocates one per call. */
-        public double[] perp = new double[0];
-        /** Scratch: the carve's along-flow projection, so no primitive allocates one per call. */
-        public double[] tang = new double[0];
+        /** Scratch: the row half of each lattice point's across-flow projection. */
+        public double[] perpRow = new double[0];
+        /** Scratch: the column half of each lattice point's across-flow projection. */
+        public double[] perpCol = new double[0];
+        /** Scratch: the row half of each lattice point's along-flow projection. */
+        public double[] tangRow = new double[0];
+        /** Scratch: the column half of each lattice point's along-flow projection. */
+        public double[] tangCol = new double[0];
 
         /** Grows any buffer that is too small. Never shrinks — the carve fills only the range it uses. */
-        public void ensure(int points, int lutLen) {
+        public void ensure(int gridSize, int lutLen) {
+            final int points = gridSize * gridSize;
             if (acc.length < 3 * points) acc = new float[3 * points];
             if (typeMask.length < points) typeMask = new long[points];
             if (dist.length < points) dist = new float[points];
             if (lut.length < lutLen) lut = new float[lutLen];
-            if (perp.length < points) perp = new double[points];
-            if (tang.length < points) tang = new double[points];
+            if (perpRow.length < gridSize) perpRow = new double[gridSize];
+            if (perpCol.length < gridSize) perpCol = new double[gridSize];
+            if (tangRow.length < gridSize) tangRow = new double[gridSize];
+            if (tangCol.length < gridSize) tangCol = new double[gridSize];
         }
     }
 
@@ -115,8 +122,10 @@ public final class HydrologyProfileInprinter {
             long[] typeMask,
             float[] dist,
             float[] lut,
-            double[] perp,
-            double[] tang,
+            double[] perpRow,
+            double[] perpCol,
+            double[] tangRow,
+            double[] tangCol,
             float[] elevs) {
         final int points = gridSize * gridSize;
         Arrays.fill(acc, 0, 3 * points, 0f);
@@ -125,7 +134,21 @@ public final class HydrologyProfileInprinter {
 
         int stop = 0;
         while (stop < primitives.size() && primitives.get(stop) instanceof RiverPrimitive river) {
-            carvePrimitive(river, startX, startZ, resolution, gridSize, acc, typeMask, dist, lut, perp, tang, elevs);
+            carvePrimitive(
+                    river,
+                    startX,
+                    startZ,
+                    resolution,
+                    gridSize,
+                    acc,
+                    typeMask,
+                    dist,
+                    lut,
+                    perpRow,
+                    perpCol,
+                    tangRow,
+                    tangCol,
+                    elevs);
             stop++;
         }
 
@@ -150,8 +173,10 @@ public final class HydrologyProfileInprinter {
             long[] typeMask,
             float[] dist,
             float[] lut,
-            double[] perp,
-            double[] tang,
+            double[] perpRow,
+            double[] perpCol,
+            double[] tangRow,
+            double[] tangCol,
             float[] elevs) {
         final double[] normal = river.normal();
         // A null normal has no tangent -- river.h() returns flat elevation and the projection would NPE.
@@ -208,34 +233,36 @@ public final class HydrologyProfileInprinter {
         profile.sampleCrossSection(
                 lut, n, resolution, baseIdx, seed, elevation, floodPlainLen, marginLen, depth, curvature);
 
-        // :PERF: projections tabulated over the clipped box up front; the merge below then carries no
-        // running accumulator, so every lattice point is evaluated from its own coordinates.
+        // :PERF: both projections are affine, so each splits into a row term and a column term; tabulating
+        // the two axes costs 2 * gridSize entries and lets the merge rebuild any point with one add.
         for (int row = rowMin; row <= rowMax; row++) {
             final double ddx = (startX + row * resolution) - cx;
-            final double perpRow = nx * ddx;
-            final double tangRow = nz * ddx;
-            final int rowBase = row * gridSize;
-            for (int col = colMin; col <= colMax; col++) {
-                final double ddz = (startZ + col * resolution) - cz;
-                perp[rowBase + col] = perpRow + nz * ddz;
-                tang[rowBase + col] = tangRow - nx * ddz;
-            }
+            perpRow[row] = nx * ddx;
+            tangRow[row] = nz * ddx;
+        }
+        for (int col = colMin; col <= colMax; col++) {
+            final double ddz = (startZ + col * resolution) - cz;
+            perpCol[col] = nz * ddz;
+            tangCol[col] = -nx * ddz;
         }
 
         final double invLen = 1.0 / influenceLen;
         final double invWidth = 1.0 / influenceWidth;
         for (int row = rowMin; row <= rowMax; row++) {
             final int rowBase = row * gridSize;
+            final double perpAtRow = perpRow[row];
+            final double tangAtRow = tangRow[row];
             for (int col = colMin; col <= colMax; col++) {
                 final int i = rowBase + col;
-                final double p = perp[i];
+                final double perp = perpAtRow + perpCol[col];
+                final double tang = tangAtRow + tangCol[col];
                 // How far the footprint rectangle must be scaled to swallow the point: 1 exactly at the
                 // rim, so the recurrence ranks primitives by rectangle penetration, not radial distance.
-                final double d = Math.max(Math.abs(tang[i]) * invLen, Math.abs(p) * invWidth);
+                final double d = Math.max(Math.abs(tang) * invLen, Math.abs(perp) * invWidth);
                 final double mask = d <= 1.0 ? 1.0 : 0.0;
                 final double t = Math.clamp(((dist[i] - d) / SMOOTH_STEP_DIVISOR + 1) * 0.5, 0, 1);
                 final double w = t * t * (3.0 - 2.0 * t) * mask;
-                final double f = p * invStep - baseIdx;
+                final double f = perp * invStep - baseIdx;
                 // Clamped for safety only: mask already zeroes anything out of band, but the branch-free
                 // body still evaluates h for those lanes.
                 final int i0 = Math.clamp((int) f, 0, n - 2);
@@ -268,7 +295,7 @@ public final class HydrologyProfileInprinter {
         if (primitives.isEmpty()) return;
         final int points = paddedSize * paddedSize;
         final GridBuffers buffers = SHELL_BUFFERS.get();
-        buffers.ensure(points, maxLutLen(paddedSize, 1.0));
+        buffers.ensure(paddedSize, maxLutLen(paddedSize, 1.0));
         final float[] acc = buffers.acc;
 
         computeRiverGrid(
@@ -281,8 +308,10 @@ public final class HydrologyProfileInprinter {
                 buffers.typeMask,
                 buffers.dist,
                 buffers.lut,
-                buffers.perp,
-                buffers.tang,
+                buffers.perpRow,
+                buffers.perpCol,
+                buffers.tangRow,
+                buffers.tangCol,
                 null);
 
         for (int i = 0; i < points; i++) {

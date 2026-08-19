@@ -1,9 +1,10 @@
 # docs/
 
-Offline mirror of Minecraft Wiki world-generation pages, converted to Markdown. Reference material
-only — nothing here is FractalTerrain's own documentation.
+Offline mirror of Minecraft Wiki world-generation pages, converted to Markdown, plus this project's
+own dated planning artifacts under `superpowers/`. Every `.md` at this level is scraped reference
+material, not FractalTerrain's documentation.
 
-**Scraped content — never edit directly.** Regenerate instead (see Regenerate below). Every file is
+**Scraped content at this level — never edit directly.** Regenerate instead (see Regenerate below). Every file is
 verbatim wiki prose; local edits are lost on the next scrape and diverge from the upstream revision
 recorded in each file's header.
 
@@ -92,6 +93,13 @@ the page is guaranteed accurate.
 | `world-seed.md`            | How seeds are parsed and used to derive generation randomness | Seed handling, determinism, reproducing a world   | 0  |
 | `anomalous-world-seeds.md` | Known degenerate/special-case seeds                      | Picking test seeds, explaining odd generation         | 0  |
 | `data-pack.md`             | Data pack layout, pack format versions, load order       | Packaging worldgen JSON, resolving pack_format issues | 21 |
+
+## Subdirectories
+
+| Directory       | What                                                                     | When to read                                                      |
+| --------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| `superpowers/`  | This project's own dated plans and specs, written by the planning skills  | Picking up prior design work, checking what a past plan committed to |
+| `__pycache__/`  | Python bytecode from `scrape.py`. Generated                              | Never edit directly                                                |
 
 ## Regenerate
 

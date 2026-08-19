@@ -25,7 +25,7 @@ deep-learning diffusion model, plus a procedural hydrology (riverUnit) system.
 | `gradle/` | Gradle wrapper config (no checked-in `gradlew`)   | Matching a local `gradle` to the wrapper version        |
 | `libs/`   | Local jar dependencies                            | Adding/updating a local dependency                      |
 | `run/`    | Dev Minecraft working dir; `run/debug` dumps      | Inspecting generated worlds and debug PNG/TIFF output   |
-| `docs/`   | Scraped Minecraft Wiki world-generation reference (36 pages). Generated — do not edit | Vanilla worldgen semantics: surface rules, density functions, biomes, features, carvers |
+| `docs/`   | Scraped Minecraft Wiki worldgen reference (36 pages, generated — do not edit), plus `superpowers/` dated plans and specs | Vanilla worldgen semantics: surface rules, density functions, biomes, features, carvers; or prior design work |
 | `.claude/`| Agent skills + doc/code conventions. Git-ignored, local-only | **Writing any docstring or comment** (`conventions/documentation.md` "Tier 3"), doc conventions, skill definitions |
 | `build/`  | Gradle build output. Generated — do not edit      | Never edit directly                                     |
 | `logs/`   | Runtime logs. Generated — do not edit             | Never edit directly                                     |
@@ -50,30 +50,27 @@ There is no checked-in `gradlew` wrapper — invoke Gradle via your IDE or a loc
 
 ## Test
 
-Two layers. A JUnit 5 suite (`useJUnitPlatform()`, 17 `*Test.java` classes under
+Two layers. A JUnit 5 suite (`useJUnitPlatform()`, 15 `*Test.java` classes under
 `src/test/java/`) gates the deterministic hydrology math:
 
 ```
 gradle test                   # JUnit 5 golden suite
 ```
 
-**The suite does NOT compile** as of `1d32c85` (verified 2026-08-17) — `gradle build` fails at
-`:compileTestJava` with 32 errors, while `compileJava`, `compileClientJava` and `spotlessCheck` all pass.
-The errors live in four test files referencing symbols absent from `src/main`: `NearestChannelSampleTest`,
-`BlendMinTest`, `PolylineChordErrorTest` want a deleted `NearestChannelSample` record and a 3-arg
-`HydrologyProfileInprinter.sampleNearestChannel` returning it (the code now has a 5-arg `void` one);
-`SpatialIndexCorrectnessGoldenTest` wants `RosgenProfile.riverInfluence(double)`, which does not exist.
-
-Deleting those four files locally is what lets the suite run. **Baseline with them removed, measured
-2026-08-17 at `1d32c85`: 74 tests, 19 failed, 1 skipped.** The 19, all pre-existing:
+**Baseline, measured 2026-08-19** at `06a15dd` plus the working-tree changes to
+`HydrologyProfileInprinter.java`, `PopulateNoiseStep.java` and `ComputeRiverGridTest.java`:
+the suite **compiles**, and `gradle test` reports **90 tests, 20 failed, 1 skipped**. The 20, all
+pre-existing:
 
 > `RosgenKeyTest` (6), `ConfluencePrimitiveTest` (4), `ChannelGeometryTest` (3), `LocalRiverGoldenTest` (2),
-> `MeandersGoldenTest` (2), `GlobalRiverGoldenTest` (1), `ReachMetricsSamplerTest` (1).
+> `MeandersGoldenTest` (2), `GlobalRiverGoldenTest` (1), `ReachMetricsSamplerTest` (1), `CentrelineTest` (1).
 
-Re-measure before blaming your own change: build a worktree at `HEAD`, copy `libs/onnxruntime/teste.jar`
-into it (`libs/` is git-ignored, and without it you get ~132 phantom errors), and run `gradle test`
-there. Comparing the *actual failure messages* in `build/test-results/test/*.xml` — not just which test
-names fail — is what proves a refactor left generation output untouched.
+The suite has broken and been repaired several times; treat any quoted baseline, including this one, as
+a claim to re-verify rather than a fact. Re-measure before blaming your own change: build a worktree at
+`HEAD`, copy `libs/onnxruntime/teste.jar` into it (`libs/` is git-ignored, and without it you get ~132
+phantom errors), and run `gradle test` there. Comparing the *actual failure messages* in
+`build/test-results/test/*.xml` — not just which test names fail — is what proves a refactor left
+generation output untouched.
 
 Manual harnesses run as `JavaExec` tasks pointing at `main()` classes in `debug/tests/`:
 
