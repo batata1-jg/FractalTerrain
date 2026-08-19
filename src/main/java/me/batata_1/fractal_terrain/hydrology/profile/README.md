@@ -2,54 +2,57 @@
 
 ## Overview
 
-Two carve stages turn the hydrological-primitive index into elevation edits, plus one painter that turns the
-result into placed water. Both carve stages are active: the tile-level shell carve runs inside
-`LocalRiverProvider.buildTile` (twice — see `hydrology/README.md`), and the per-pixel bed carve runs from
-`PopulateNoiseStep.fineGrainedPrimitivePass`, which prefetches every primitive in reach once per chunk and
-then, per column, blends across all of them by distance rather than resolving a single nearest channel.
+One function, `HydrologyProfileInprinter.computeRiverGrid`, turns the hydrological-primitive index into
+elevation edits for both carve stages, plus one painter that turns the result into placed water. The
+tile-level shell carve runs inside `LocalRiverProvider.buildTile`, once per tile build; the per-chunk bed
+carve runs from `PopulateNoiseStep.fineGrainedPrimitivePass`, which prefetches every primitive in reach
+once per chunk and then calls `computeRiverGrid` over the chunk's lattice.
 
 ## Architecture
 
-**Shell carve** (`HydrologyProfileInprinter.carveRiverShells`, static): per padded-tile pixel, stabs an
-R-tree over the primitives it was handed, keeps every candidate whose influence circle contains the pixel, and
-overwrites the pixel with the **weighted average** of `river.h(river.d(pixel))` across those primitives,
-weighted by `river.w(pixel)` — the same per-Rosgen-type cross-section (`RosgenProfile.delta`) the bed carve
-below reads, not `HydrologyProfile.shellElevation` (still defined on the interface, but with no caller
-anywhere in `src/main`). There is no nearest-wins rule: at a confluence the overlapping channels blend
-rather than one winning outright.
+**`computeRiverGrid`** merges every river primitive touching a lattice into one `(height, water, weight)`
+triple per lattice point in a caller-supplied `float[] acc`, plus the nearest primitive's packed type in a
+parallel `long[] typeMask`. It is ambient-free: it never reads the caller's current elevation, only writes
+its own merged surface. Both carve stages call it against their own lattice — the shell over the
+514x514 padded tile, the bed over the chunk's 16x16 grid — so there is one merge law instead of two, and
+the R-tree the shell used to stab once per pixel is gone entirely. For each primitive the loop tabulates a
+cross-section lookup table once (`RosgenProfile.sampleCrossSection`, anchored on an integer perp-lattice
+index shared by every primitive), then walks only the lattice cells its influence radius can reach,
+interpolating the LUT instead of re-evaluating `RosgenProfile.delta`'s branchy per-region logic at every
+point.
 
-The buffer's current elevation is sampled once per pixel *before* the primitive loop (as `ambient`, gating
-the ocean skip below), and the weighted-average accumulation across primitives is a running sum, so the
-result does not depend on primitive order. Pixels with negative ambient elevation (ocean) are skipped. It
-reads and writes the same buffer, so repeated calls compound — `buildTile` relies on this to shape the
-drainage field before the local trace, then to carve local shells in afterward.
+**Merge law.** Both stages run the bed's original sequential smoothed-min-distance recurrence: a running
+per-lattice-point `dist[i]` seeded at 64 relief-pixels, updated per primitive by a smoothstep of
+`(dist[i] - d)` where `d` is the distance to that primitive, and the `(height, water, weight)` triple
+blended toward the current primitive with that same weight — "closest primitive wins, nearby competitors
+blend in," driven by primitive order rather than an explicit nearest-channel query. `primitives` MUST
+already be sorted by `HydrologicalPrimitive.comparator`, which orders by feature-type ordinal first —
+every `RiverPrimitive` sorts before any other feature type. `computeRiverGrid` walks that sorted list and
+stops at the first non-`RiverPrimitive` entry, returning that index for a later family pass to resume
+from; the stop only lands at the true end of the river run because of the sort order, not because the
+loop tracks position itself. The shell previously averaged every primitive whose influence circle reached
+a pixel, weighted by `river.w(pixel)`; it now inherits the bed's distance recurrence and loses that
+per-primitive footprint weighting — there is still no nearest-wins rule (nearby primitives blend rather
+than one winning outright), but the weighting driving that blend is distance alone.
 
-**Bed carve** (`PopulateNoiseStep.fineGrainedPrimitivePass`, fed by `HydrologyProfileInprinter.prefetchChunk`):
-blends across **every** contributing primitive in one running merge rather than resolving a single nearest
-channel. `prefetchChunk` queries the R-tree once per chunk (chunk center plus half-diagonal radius, in the
-relief-pixel frame) and sorts the result with `HydrologicalPrimitive.comparator`, which orders by
-feature-type ordinal first — every `RiverPrimitive` sorts before any other feature type. The per-column loop
-walks that sorted list and `break`s at the first non-`RiverPrimitive` entry; the break only lands at the true
-end of the river run because of that sort order, not because the loop tracks position itself.
+**Cut-only.** `computeRiverGrid`'s output `h` is a pure weighted blend with no ambient clamp folded in.
+Each call site recovers its carved elevation as `(1 - w) * ambient + w * min(h, ambient)`, applying the
+`min` once against the merged height rather than per contributing primitive. Both stages are therefore
+cut-only: neither can raise terrain above ambient. The shell previously could — it overwrote a pixel with
+a weighted average that might sit above ambient — but that is no longer possible.
 
-For each `RiverPrimitive` whose `containsPoint` covers the column, the loop keeps a running `smoothedMinDist`
-(seeded at 64) and blends `mergedElevation` toward `min(river.h(river.d(point)), ambientElevation)` with
-`weight = smoothStep(-1, 1, (smoothedMinDist - dist) / 0.1)` — a soft "closest primitive wins, nearby
-competitors blend in" accumulation driven by iteration order rather than an explicit nearest-channel query.
-`river.d(point)` is the signed distance from `point` to the primitive along its stored `normal`;
-`river.h(signedDist)` adds `RosgenProfile.delta(...)` to the primitive's base `elevation`. The loop also
-computes an `influenceWeight` from `river.w(point)`, but `weight` is `smoothDistWeight * 1`: `influenceWeight`
-has no effect on the merge as the loop is currently written.
+**LUT residual.** The cross-section LUT is anchored on an integer perp-lattice index and interpolated
+linearly, so it smears the `RosgenProfile` margin discontinuity (`perpDist <= marginLen -> -10`) across
+one lattice cell — one block wide in the bed path, one pixel wide in the shell path. Accepted, not an
+oversight; revisit if bed rims read as unexpectedly soft.
 
-Only `RiverPrimitive` participates: any other feature type in the prefetched list ends the loop via the
-`break` above before it can contribute, so it never reaches `containsPoint`/`h`/`d`. A column no
-`RiverPrimitive` covers keeps `mergedElevation == ambientElevation`, so `Types.RIVER_DIFFERENCE` comes out
-zero for it.
-
-`prefetchChunk` and the per-column loop run once per chunk and once per column respectively (256 column
-calls/chunk, every chunk generated), so both sit below this repo's hot/cold line of abstraction (root
-`ARCHITECTURE.md`): no heap allocation, no new abstraction layers, the scratch `mutablePt` reused across
-columns rather than allocated per column.
+**Call sites.** `HydrologyProfileInprinter.carveRiverShells` reads and writes the same padded-tile buffer,
+skipping pixels with negative ambient elevation (ocean); `LocalRiverProvider.buildTile` calls it once per
+tile build, to shape the drainage field the local trace reads. `PopulateNoiseStep.fineGrainedPrimitivePass`
+carves the bed and, from `computeRiverGrid`'s water lane and type mask, also populates
+`Types.WATER_HEIGHT` and `Types.RIVER_TYPE`. It is fed by `HydrologyProfileInprinter.prefetchChunk`, which
+queries the R-tree once per chunk (chunk center plus half-diagonal radius, in the relief-pixel frame) and
+sorts the result with `HydrologicalPrimitive.comparator` — the ordering `computeRiverGrid` requires.
 
 **`ZoneCategory` is currently reserved, not live.** No carve path reads it: `HydrologyProfile.categoryAt`
 and `zoneWeight` no longer exist, and the zone-priority merge they drove was replaced by the
@@ -82,10 +85,10 @@ nothing and silently falls back to every enum-level default. A primitive with a 
 — e.g. emitted by a `null` `ChannelTyper`) is coalesced to `RosgenType.A` by `RiverPrimitive.getProfile()`,
 the only place `rosgenType` resolves to a profile, not left unhandled.
 
-**The bed carve currently uses a hard `min`, not the blended one.**
-`PopulateNoiseStep.fineGrainedPrimitivePass` computes `Math.min(river.h(river.d(point)), ambientElevation)`
-directly for each contributing primitive; only the distance-based `weight` blends across primitives, never
-`RosgenProfile.blendMin` — the smooth minimum that would round the rim where the valley cone meets untouched
-ground. `blendMin` still exists on `RosgenProfile`, but has no caller anywhere in `src/main`; the
+**Both carve stages use a hard `min`, not the blended one.** `computeRiverGrid` merges every contributing
+primitive into one height `H` per lattice point with no ambient clamp; each call site then applies
+`Math.min(H, ambient)` once, against the merged height, rather than per primitive. Neither stage calls
+`RosgenProfile.blendMin` — the smooth minimum that would round the rim where the valley cone meets
+untouched ground. `blendMin` still exists on `RosgenProfile`, but has no caller anywhere in `src/main`; the
 `CARVE_BLEND_RANGE` constant it would need is gone entirely, not merely unread. Expect a visible crease at
 the carve boundary until `blendMin` is wired back in.

@@ -355,8 +355,8 @@ bands, in order of increasing cost:
 
 **Hot sites in this repo:**
 
-- `world/gen/populatenoise/PopulateNoiseStep.java` `fineGrainedPrimitivePass`, the `dx`/`dz` double loop
-  at lines 56–102 — runs 256 times per chunk, for every chunk generated.
+- `world/gen/populatenoise/PopulateNoiseStep.java` `fineGrainedPrimitivePass`, the per-column blend loop
+  at lines 85–96 — runs 256 times per chunk, for every chunk generated.
 - `hydrology/features/HydrologicalPrimitive.java:81–85` — `double h(double[] pt, Object... args)`,
   `double w(double[] pt, Object... args)`, `double d(double[] pt)`, and every implementation
   (`RiverPrimitive`, `ConfluencePrimitive`, `SourcePrimitive`, `DeltaPrimitive`, `WaterfallPrimitive`,
@@ -364,8 +364,6 @@ bands, in order of increasing cost:
   (`HydrologyProfile`/`RosgenProfile`/`DefaultProfile`, `VectorOps`). The `Object... args` varargs on
   `h`/`w` is itself an allocation-per-call hazard — an example of the signature shape this rule warns
   against.
-- `hydrology/profile/HydrologyProfileInprinter.resolveNearestPrimitiveIndex`/`sampleNearestChannel`, and
-  `NearestChannelSample.carveInto` — invoked once per column from that loop.
 
 **Hot-path code that already follows the rule** — the reference patterns to copy:
 
