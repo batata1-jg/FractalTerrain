@@ -1234,7 +1234,14 @@ Expected: `:compileJava`, `:compileClientJava`, `:spotlessCheck` pass.
 
 Run: `gradle test`
 
-Expected: **20 failures still, but `LocalRiverGoldenTest` (2) and `GlobalRiverGoldenTest` (1) now fail
+> **Correction, 2026-08-19 — measured, not predicted.** The goldens do **not** move, because neither
+> reaches `carveRiverShells`. `LocalRiverGoldenTest` drives the `traceLocalNetworkForTest` seam and
+> computes its own drainage, reimplementing `buildTile` rather than calling it; `GlobalRiverGoldenTest`
+> drives `GlobalRiverProvider`, a different provider. The whole suite is byte-identical before and
+> after. **The shell carve therefore ships with no automated coverage** — the only evidence it changed
+> is the PNG harness. See Follow-ups.
+
+Expected (superseded, kept for the record): **20 failures still, but `LocalRiverGoldenTest` (2) and `GlobalRiverGoldenTest` (1) now fail
 with different messages** — different carved elevations, per Behaviour change 2. Diff against the
 baseline:
 
@@ -1367,3 +1374,8 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
   `<clinit>` blocks on `FractalTerrainInstance.current()`. Testing any layer's allocation or accessor
   behaviour needs a generation-context fixture (or lazily-initialised provider references) that this
   repo does not have. Task 5 shipped untested for this reason.
+
+- **The shell carve has no automated coverage.** `carveRiverShells` rewrites generated worlds and no
+  test reaches it — both goldens expected to guard it bypass `buildTile`. A real guard needs either an
+  end-to-end `buildTile` test, or a seam that runs `carveRiverShells` over a fixed primitive list and
+  asserts on the carved buffer. Until then the only check is comparing `run/debug` PNGs by eye.

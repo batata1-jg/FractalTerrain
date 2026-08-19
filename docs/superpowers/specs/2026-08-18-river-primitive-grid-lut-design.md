@@ -465,14 +465,33 @@ locally yields **74 tests, 19 failed, 1 skipped**, distributed as `RosgenKeyTest
 `ConfluencePrimitiveTest` (4), `ChannelGeometryTest` (3), `LocalRiverGoldenTest` (2),
 `MeandersGoldenTest` (2), `GlobalRiverGoldenTest` (1), `ReachMetricsSamplerTest` (1).
 
-Behaviour change 2 means `LocalRiverGoldenTest` and `GlobalRiverGoldenTest` are **expected to move**.
-Compare the actual failure messages in `build/test-results/test/*.xml` against a `HEAD` worktree — a
-worktree needs `libs/onnxruntime/teste.jar` copied in, since `libs/` is git-ignored and its absence
-produces ~132 phantom errors.
+> **Correction, 2026-08-19 — measured, not predicted.** This section originally claimed Behaviour
+> change 2 would make `LocalRiverGoldenTest` and `GlobalRiverGoldenTest` move. **It does not. Neither
+> test reaches `carveRiverShells`, so no automated test covers the shell carve at all.**
+>
+> - `LocalRiverGoldenTest` drives the `@TestOnly` `LocalRiverProvider.traceLocalNetworkForTest` seam
+>   (`LocalRiverGoldenTest.java:86`) and computes its own drainage over its own sink-filled field
+>   (`:57`, "matching `LocalRiverProvider.buildTile`"). It *reimplements* `buildTile`'s pipeline rather
+>   than calling it, and `buildTile` is what invokes the shell carve.
+> - `GlobalRiverGoldenTest` drives `GlobalRiverProvider.computeTileForTest` — a different provider that
+>   never touches `LocalRiverProvider`.
+>
+> So the change that rewrites generated worlds ships **without automated coverage**. The whole suite,
+> all 20 pre-existing failures included, is byte-identical before and after. Do not read that as
+> "nothing changed" — it means the tests cannot see this code.
 
-Visual check: `gradle localRiverTest` and `gradle globalRiverTest` dump PNGs; compare shell shape
-before and after. `gradle runClient` is the only check that exercises behaviour change 4 — water in a
-river channel is not visible in any PNG dump.
+The only evidence that the shell carve changed is visual: `gradle localRiverTest` and
+`gradle globalRiverTest` dump PNGs under `run/debug`. After this change the `local_river` dumps differ
+across flow, mask, elev_first_pass, global_channels, units and rosgen — the shell reads distance-driven
+and cut-only rather than footprint-blended, and a blown-out artifact near a confluence is gone. The
+`global_river` dumps are byte-identical, which is correct: that provider is untouched.
+
+`gradle runClient` is the only check that exercises behaviour change 4 — water in a river channel is
+not visible in any PNG dump.
+
+Closing this coverage gap needs a test that drives `buildTile` end-to-end, or a seam that exposes
+`carveRiverShells` against a fixed primitive list and asserts on the carved buffer. Neither exists;
+see Follow-ups in the implementation plan.
 
 ## Doc updates
 
