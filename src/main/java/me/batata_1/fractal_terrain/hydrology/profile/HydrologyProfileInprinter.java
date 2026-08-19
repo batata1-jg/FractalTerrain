@@ -149,7 +149,9 @@ public final class HydrologyProfileInprinter {
             float[] acc,
             long[] typeMask,
             float[] dist,
-            float[] lut) {
+            float[] lut,
+            float[] elevs
+    ) {
         final int points = gridSize * gridSize;
         Arrays.fill(acc, 0, 3 * points, 0f);
         Arrays.fill(typeMask, 0, points, HydrologicalPrimitive.HydrologicalFeature.NONE);
@@ -157,7 +159,7 @@ public final class HydrologyProfileInprinter {
 
         int stop = 0;
         while (stop < primitives.size() && primitives.get(stop) instanceof RiverPrimitive river) {
-            carvePrimitive(river, startX, startZ, resolution, gridSize, acc, typeMask, dist, lut);
+            carvePrimitive(river, startX, startZ, resolution, gridSize, acc, typeMask, dist, lut,elevs);
             stop++;
         }
 
@@ -181,7 +183,8 @@ public final class HydrologyProfileInprinter {
             float[] acc,
             long[] typeMask,
             float[] dist,
-            float[] lut) {
+            float[] lut,
+            float[] elevs) {
         final double[] normal = river.normal();
         // A null normal has no tangent -- river.h() returns flat elevation and the projection would NPE.
         if (normal == null) return;
@@ -241,14 +244,14 @@ public final class HydrologyProfileInprinter {
             final int rowBase = row * gridSize;
             for (int col = colMin; col <= colMax; col++) {
                 final int i = rowBase + col;
-                final double d = Math.sqrt(tang * tang + perp * perp);
+                final double d = (tang * tang + perp * perp) / (influence*influence);
                 final double mask = Math.abs(tang) <= influence && Math.abs(perp) <= influence ? 1.0 : 0.0;
                 final double t = Math.clamp(((dist[i] - d) / SMOOTH_STEP_DIVISOR + 1) * 0.5, 0, 1);
                 final double w = t * t * (3.0 - 2.0 * t) * mask;
                 // Clamped for safety only: mask already zeroes anything out of band, but the branch-free
                 // body still evaluates h for those lanes.
                 final int i0 = Math.clamp((int) f, 0, n - 2);
-                final double h = lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]);
+                final double h = (elevs!=null) ? Math.min(elevs[i],lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0])):lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]);
 
                 dist[i] = (float) ((1 - w) * dist[i] + w * d);
                 final int a = 3 * i;
@@ -282,7 +285,7 @@ public final class HydrologyProfileInprinter {
         buffers.ensure(points, maxLutLen(paddedSize, 1.0));
         final float[] acc = buffers.acc;
 
-        computeRiverGrid(0, 0, 1.0, paddedSize, primitives, acc, buffers.typeMask, buffers.dist, buffers.lut);
+        computeRiverGrid(0, 0, 1.0, paddedSize, primitives, acc, buffers.typeMask, buffers.dist, buffers.lut, null);
 
         for (int i = 0; i < points; i++) {
             final float ambient = elevation[i];

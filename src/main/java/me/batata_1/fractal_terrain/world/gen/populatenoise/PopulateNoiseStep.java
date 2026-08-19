@@ -80,7 +80,8 @@ public class PopulateNoiseStep {
                 acc,
                 buffers.typeMask,
                 buffers.dist,
-                buffers.lut);
+                buffers.lut,
+                interpolatedElevs);
 
         for (int pos = 0; pos < COLUMNS; pos++) {
             final float ambient = interpolatedElevs[pos];
