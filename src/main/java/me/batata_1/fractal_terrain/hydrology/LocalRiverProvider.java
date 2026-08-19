@@ -163,10 +163,11 @@ public class LocalRiverProvider {
         final float[] carvedElevationGlobal = base[0].clone();
         ChannelElevationAssigner.assign(network, boundaryElev, carvedElevationGlobal);
         LOG.debug("finished first assign() pass");
-        HydrologyProfileInprinter.carveRiverShells(
-                carvedElevationGlobal,
-                collectPrimitives(network, rawElev, 0, 0).toArray(new HydrologicalPrimitive[0]),
-                PADDED);
+        // computeRiverGrid's merge is a sequential recurrence, so the order is load-bearing for
+        // determinism; collectPrimitives does not guarantee it.
+        final List<HydrologicalPrimitive> shellPrimitives = collectPrimitives(network, rawElev, 0, 0);
+        shellPrimitives.sort(HydrologicalPrimitive.comparator);
+        HydrologyProfileInprinter.carveRiverShells(carvedElevationGlobal, shellPrimitives, PADDED);
         // Snapshot here, not at the end: this buffer is the drainage input for the local trace below, so
         // the harness needs it as it stood when step 2 read it.
         if (stages != null) stages.elevationFirstPass = cropToTile(carvedElevationGlobal).data;

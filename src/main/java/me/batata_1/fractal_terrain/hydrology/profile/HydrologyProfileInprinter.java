@@ -9,7 +9,6 @@ import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
 import me.batata_1.fractal_terrain.math.VectorOps;
-import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 
 /**
  * The elevation side of the hydrology profile — where rivers actually cut the terrain.
@@ -271,43 +270,26 @@ public final class HydrologyProfileInprinter {
     // Tile-level shell pre-carve (moved from LocalRiverProvider)
     // -------------------------------------------------------------------------
 
-    /** Slack around the tile grid for the primitive index bounds (primitives may overshoot the pad). */
-    private static final double CARVE_INDEX_SLACK = 64.0;
+    /** One instance of this class serves every tile build, so the carve buffers cannot be fields. */
+    private static final ThreadLocal<GridBuffers> SHELL_BUFFERS = ThreadLocal.withInitial(GridBuffers::new);
 
     /** Carves the valley shell in place. Does not zone — the shell is one broad pull, applied before any
-     *  primitive has a bed to distinguish. Compounds across calls on the same buffer, which
-     *  {@code buildTile} relies on when it carves twice per tile. */
-    public static void carveRiverShells(float[] elevation, HydrologicalPrimitive[] primitives, int paddedSize) {
-        //       carveRiverShellsNearest(elevation, primitives, paddedSize);
-        if (primitives.length == 0) return;
-        final ImmutableRTree<HydrologicalPrimitive> index =
-                new ImmutableRTree<>(Arrays.asList(primitives), HydrologicalPrimitive.PROTOTYPE);
+     *  primitive has a bed to distinguish. Compounds across calls on the same buffer. */
+    public static void carveRiverShells(float[] elevation, List<HydrologicalPrimitive> primitives, int paddedSize) {
+        if (primitives.isEmpty()) return;
+        final int points = paddedSize * paddedSize;
+        final GridBuffers buffers = SHELL_BUFFERS.get();
+        buffers.ensure(points, maxLutLen(paddedSize, 1.0));
+        final float[] acc = buffers.acc;
 
-        double weight = 0;
-        double weightedElev = 0;
-        for (int pi = 0; pi < paddedSize; pi++) {
-            for (int pj = 0; pj < paddedSize; pj++) {
-                final int idx = pi * paddedSize + pj;
-                final float ambient = elevation[idx];
-                if (ambient < 0) continue;
-                final double[] pixel = {pi, pj};
-                final List<HydrologicalPrimitive> nearby = index.queryContaining(pixel);
-                if (nearby.isEmpty()) continue;
-                weight = 0;
-                weightedElev = 0;
-                for (final HydrologicalPrimitive primitive : nearby) {
-                    if (!primitive.containsPoint(pixel)) continue;
-                    if (primitive instanceof RiverPrimitive river) {
-                        final double deltaWeight = river.w(pixel);
-                        weight += deltaWeight;
-                        weightedElev += deltaWeight * river.h(river.d(pixel));
-                    }
-                }
-                if (weight <= 1e-8) continue;
-                final double elev = weightedElev / weight;
-                weight = Math.clamp(weight, 0, 1);
-                elevation[idx] = (float) ((1 - weight) * elevation[idx] + weight * elev);
-            }
+        computeRiverGrid(0, 0, 1.0, paddedSize, primitives, acc, buffers.typeMask, buffers.dist, buffers.lut);
+
+        for (int i = 0; i < points; i++) {
+            final float ambient = elevation[i];
+            if (ambient < 0) continue;
+            final float weight = acc[3 * i + 2];
+            if (weight <= 1e-8f) continue;
+            elevation[i] = (float) ((1 - weight) * ambient + weight * Math.min(acc[3 * i], ambient));
         }
     }
 }
