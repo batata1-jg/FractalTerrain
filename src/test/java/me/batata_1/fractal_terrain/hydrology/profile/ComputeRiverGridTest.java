@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.HydrologicalFeature;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive.RosgenType;
 import org.junit.jupiter.api.Test;
@@ -145,5 +146,56 @@ class ComputeRiverGridTest {
                 0, 0, RES, GRID, List.of(diagonal), b.acc, b.typeMask, b.dist, b.lut);
 
         assertTrue(b.acc[3 * idx(8, 8) + 2] > 0.0f, "the diagonal primitive should still carve");
+    }
+
+    @Test
+    void mergesTheWaterSurfaceWithoutNormalisingIt() {
+        // waterLine(2.0) is -2, so the surface sits two below the primitive's own elevation. The water
+        // lane blends toward a default of 0, which makes the raw accumulator the answer -- no divide.
+        final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
+        final HydrologyProfileInprinter.GridBuffers b = buffers();
+
+        HydrologyProfileInprinter.computeRiverGrid(0, 0, RES, GRID, List.of(river), b.acc, b.typeMask, b.dist, b.lut);
+
+        assertEquals(98.0f, b.acc[3 * idx(8, 8) + 1], 1e-4f, "water surface at the centre");
+        assertEquals(0.0f, b.acc[3 * idx(0, 0) + 1], "water surface out of range");
+    }
+
+    @Test
+    void stampsTheNearestPrimitivesFamilyAndRosgenType() {
+        // RosgenType.C so the packed value is non-zero -- RIVER + A packs to 0L and would not
+        // distinguish a real stamp from an unwritten cell.
+        final RiverPrimitive river = knot(8.0, 100.0, RosgenType.C, 0L);
+        final HydrologyProfileInprinter.GridBuffers b = buffers();
+
+        HydrologyProfileInprinter.computeRiverGrid(0, 0, RES, GRID, List.of(river), b.acc, b.typeMask, b.dist, b.lut);
+
+        final long packed = b.typeMask[idx(8, 8)];
+        assertEquals(HydrologicalFeature.RIVER, HydrologicalFeature.unpack(packed));
+        assertEquals(RosgenType.C.ordinal(), HydrologicalFeature.unpackSub(packed));
+        assertEquals(HydrologicalFeature.NONE, b.typeMask[idx(0, 0)], "nothing reached the corner");
+    }
+
+    @Test
+    void anUnclassifiedReachStampsTheProfileItActuallyCarvedWith() {
+        // A null rosgenType coalesces to A for the carve, so the mask must say A rather than "unknown".
+        final RiverPrimitive river = knot(8.0, 100.0, null, 0L);
+        final HydrologyProfileInprinter.GridBuffers b = buffers();
+
+        HydrologyProfileInprinter.computeRiverGrid(0, 0, RES, GRID, List.of(river), b.acc, b.typeMask, b.dist, b.lut);
+
+        assertEquals(RosgenType.A.ordinal(), HydrologicalFeature.unpackSub(b.typeMask[idx(8, 8)]));
+    }
+
+    @Test
+    void theTypeMaskFollowsTheNearestPrimitiveNotTheFirst() {
+        final RiverPrimitive a = knot(8.0, 100.0, RosgenType.A, 0L);
+        final RiverPrimitive c = knot(9.0, 100.0, RosgenType.C, 1L);
+        final HydrologyProfileInprinter.GridBuffers b = buffers();
+
+        HydrologyProfileInprinter.computeRiverGrid(0, 0, RES, GRID, List.of(a, c), b.acc, b.typeMask, b.dist, b.lut);
+
+        assertEquals(RosgenType.C.ordinal(), HydrologicalFeature.unpackSub(b.typeMask[idx(9, 8)]));
+        assertEquals(RosgenType.A.ordinal(), HydrologicalFeature.unpackSub(b.typeMask[idx(7, 8)]));
     }
 }

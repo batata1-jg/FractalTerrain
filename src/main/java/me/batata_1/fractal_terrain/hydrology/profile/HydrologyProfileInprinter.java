@@ -227,6 +227,9 @@ public final class HydrologyProfileInprinter {
         final double floodPlainLen = profile.floodPlainLength(width);
         final double marginLen = width / 2;
         final double depth = FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depthForWidth(width);
+        final float waterSurface = (float) (elevation + HydrologicalPrimitive.waterLine(width));
+        final long packed = HydrologicalPrimitive.HydrologicalFeature.RIVER.pack(
+                RiverPrimitive.RosgenType.orDefault(river.rosgenType()).ordinal());
         profile.sampleCrossSection(
                 lut, n, resolution, baseIdx, seed, elevation, floodPlainLen, marginLen, depth, curvature);
 
@@ -251,6 +254,10 @@ public final class HydrologyProfileInprinter {
                 dist[i] = (float) ((1 - w) * dist[i] + w * d);
                 final int a = 3 * i;
                 acc[a] = (float) ((1 - w) * acc[a] + w * h);
+                acc[a + 1] = (float) ((1 - w) * acc[a + 1] + w * waterSurface);
+                // Whoever owns the majority of the blend owns the type. With SMOOTH_STEP_DIVISOR at 0.1
+                // the weight is a near-hard selector, so this is the true nearest bar a 0.1-wide band.
+                typeMask[i] = w > 0.5 ? packed : typeMask[i];
                 acc[a + 2] = (float) (acc[a + 2] + w * (1 - acc[a + 2]));
 
                 perp += nz * resolution;
