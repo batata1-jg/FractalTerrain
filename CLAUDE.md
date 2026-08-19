@@ -122,10 +122,6 @@ re-read what is already in context.
 
 Implementation is delegated, not done in the main thread.
 
-- **Code** — dispatch the `developer` subagent (`.claude/agents/developer.md`).
-- **Docs** — `CLAUDE.md`, `README.md`, `ARCHITECTURE.md`, docstrings, comments: dispatch the
-  `technical-writer` subagent. Brief it to change only what the briefing names; no opportunistic
-  rewrites of surrounding text.
 - Trivial exception: a one- or two-line mechanical edit the user already specified exactly, or a
   revert. Say when you skip delegation and why.
 

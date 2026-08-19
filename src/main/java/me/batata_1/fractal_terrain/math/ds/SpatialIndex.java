@@ -34,4 +34,16 @@ public interface SpatialIndex<EntryType> {
             throw new IllegalStateException(name + " must be 2-D, got rank " + point.size());
         }
     }
+
+    /**
+     * Rejects a non-finite input coordinate pair, which would corrupt every bounds compare the build
+     * and the query descent make. Shared by the immutable indexes so what they accept at construction
+     * cannot drift apart; {@code indexName} and {@code entry} name the rejecting index and the culprit.
+     */
+    static void requireFinite(double x, double z, String indexName, Object entry) {
+        if (!Double.isFinite(x) || !Double.isFinite(z)) {
+            throw new IllegalArgumentException(
+                    indexName + " input has non-finite coordinates (" + x + ", " + z + "): " + entry);
+        }
+    }
 }

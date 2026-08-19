@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
+import me.batata_1.fractal_terrain.config.TensorLayout;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
@@ -116,6 +117,8 @@ public class LocalRiverProvider {
         return pending.computeIfAbsent(new TileKey(new int[] {tileX, tileZ}), k -> buildTile(tileX, tileZ, null));
     }
 
+    /** The primitives store is keyed rank-2 {@code {tileX, tileZ}} — no channel axis, so its axes are
+     *  not {@link TensorLayout}-indexed, unlike the rank-3 carved key below. */
     private ImmutableRTree<HydrologicalPrimitive> buildPrimitivesTile(TileKey key) {
         final int tileX = key.get(0);
         final int tileZ = key.get(1);
@@ -128,8 +131,8 @@ public class LocalRiverProvider {
     }
 
     private FloatTensor buildCarvedTile(TileKey key) {
-        final int tileX = key.get(1);
-        final int tileZ = key.get(2);
+        final int tileX = key.get(TensorLayout.X);
+        final int tileZ = key.get(TensorLayout.Z);
         final TileResult result = buildOnce(tileX, tileZ);
         final int[] primitivesKey = {tileX, tileZ};
         final CompletableFuture<ImmutableRTree<HydrologicalPrimitive>> claim =

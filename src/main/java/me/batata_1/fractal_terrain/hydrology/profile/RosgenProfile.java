@@ -226,6 +226,29 @@ public enum RosgenProfile implements HydrologyProfile {
         return valleyContribution;
     }
 
+    /**
+     * Tabulates this profile's cross-section into {@code lut}: {@code lut[i]} is the channel surface at
+     * signed perpendicular distance {@code (baseIdx + i) * step}, with the primitive's base elevation
+     * folded in. Runs once per primitive per grid, so the branchy per-region logic in {@link #delta}
+     * leaves the per-lattice-point loop entirely.
+     */
+    public void sampleCrossSection(
+            float[] lut,
+            int n,
+            double step,
+            int baseIdx,
+            long seed,
+            double elevation,
+            double floodPlainLen,
+            double marginLen,
+            double depth,
+            double curvature) {
+        for (int i = 0; i < n; i++) {
+            lut[i] =
+                    (float) (elevation + delta(seed, (baseIdx + i) * step, floodPlainLen, marginLen, depth, curvature));
+        }
+    }
+
     // range [-1,0] -> [-floodPlainLen,-marginLen] ;
     // range [0,1] -> [marginLen,floodPlainLen] ;
     protected double floodPlainDelta(
