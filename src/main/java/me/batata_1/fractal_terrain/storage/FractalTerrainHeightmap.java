@@ -5,7 +5,6 @@ import static me.batata_1.fractal_terrain.FractalTerrainInstance.getReliefProvid
 
 import java.util.function.Function;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
-import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import net.minecraft.world.level.ChunkPos;
 
@@ -50,7 +49,14 @@ public record FractalTerrainHeightmap(Object[] data) {
         // (PopulateNoiseStep#fineGrainedPrimitivePass) as carve(x,z) − pre-carve elevation. Negative where the
         // river carved below the original terrain; the surface painter places water there.
         RIVER_DIFFERENCE(pos -> new float[1 << 8]),
-        RIVER_TYPE(pos -> new HydrologicalPrimitive.HydrologicalFeature[1 << 8]) {},
+        // :SCHEMA: packed by HydrologicalFeature.pack -- family in the high word, sub-type in the low.
+        // Recomputed per chunk rather than persisted, so the layout is free to change.
+        RIVER_TYPE(pos -> new long[1 << 8]) {
+            @Override
+            public float get(Object payload, int localX, int localZ) {
+                throw new UnsupportedOperationException("RIVER_TYPE is a long[]; read the raw payload");
+            }
+        },
 
         WATER_HEIGHT(pos -> new float[1 << 8]),
         ;
