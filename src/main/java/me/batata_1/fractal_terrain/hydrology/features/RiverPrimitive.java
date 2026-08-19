@@ -27,34 +27,14 @@ public record RiverPrimitive(
         double curvature,
         double width,
         double elevation,
-        long ids)
+        long seed)
         implements SpatialIndexRotatedRectangle, HydrologicalPrimitive {
 
-    static final RiverPrimitive PROTOTYPE = new RiverPrimitive(new double[] {0.0, 0.0}, 0, null, null, 0, 0, 0, 0);
+    static final RiverPrimitive PROTOTYPE = new RiverPrimitive(new double[] {0.0, 0.0}, 0, null, null, 0, 0, 0,0);
 
     @Override
     public HydrologicalFeature getType() {
         return HydrologicalFeature.RIVER;
-    }
-
-    /** Which channel this knot belongs to — the high word of {@link #ids}. */
-    public int channelId() {
-        return (int) (ids >>> 32);
-    }
-
-    /** Position along the channel's spline — the low word of {@link #ids}. */
-    public int knotIndex() {
-        return (int) ids;
-    }
-
-    /**
-     * Whether two knots are genuinely consecutive on one channel.
-     *
-     * <p>Adjacency in the prefetched list does not imply this: a spatial query returns a looping
-     * meander as several non-consecutive runs, and joining across a gap would fabricate a segment.
-     */
-    public boolean isKnotAdjacentTo(RiverPrimitive other) {
-        return channelId() == other.channelId() && Math.abs(knotIndex() - other.knotIndex()) == 1;
     }
 
     /** Channel-membership test driving {@code HydrologyProfilePainter.insideChannel}. */
@@ -84,7 +64,7 @@ public record RiverPrimitive(
     public double h(double signedDist) {
         if (normal == null) return elevation;
         final RosgenProfile profile = (RosgenProfile) getProfile();
-        return elevation + profile.delta(ids(), signedDist, width, curvature);
+        return elevation + profile.delta(seed, signedDist, width, curvature);
     }
 
     @Override
@@ -126,7 +106,6 @@ public record RiverPrimitive(
         buf.putDouble(influence);
         buf.putDouble(width);
         buf.putDouble(elevation);
-        buf.putLong(ids);
         return buf.array();
     }
 
@@ -141,8 +120,7 @@ public record RiverPrimitive(
         final double r = buf.getDouble();
         final double w = buf.getDouble();
         final double e = buf.getDouble();
-        final long id = buf.getLong();
-        return new RiverPrimitive(coords, r, rosgen, normalVec, curvature, w, e, id);
+        return new RiverPrimitive(coords, r, rosgen, normalVec, curvature, w, e, computeHashCode(rosgen,w,e,coords,normalVec));
     }
 
     // Records compare array components by reference; these compare contents instead.
@@ -159,11 +137,16 @@ public record RiverPrimitive(
 
     @Override
     public int hashCode() {
+        return Math.toIntExact(seed);
+    }
+
+    private static long computeHashCode(RosgenType rosgenType,double width, double elevation ,double[] coord ,double[] normal) {
         int result = Objects.hash(rosgenType, width, elevation);
         result = 31 * result + Arrays.hashCode(coord);
         result = 31 * result + Arrays.hashCode(normal);
         return result;
     }
+
 
     @Override
     public String toString() {

@@ -5,6 +5,7 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
+import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
@@ -145,7 +146,7 @@ public class PopulateNoiseStep {
         final double curvature = river.curvature();
         final double elevation = river.elevation();
         final RosgenProfile profile = (RosgenProfile) river.getProfile();
-        final long seed = river.ids();
+        final long seed = 0;
         final double floodPlainLen = profile.floodPlainLength(width);
         final double marginLen = width / 2;
         final double depth = FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depthForWidth(width);
@@ -167,7 +168,7 @@ public class PopulateNoiseStep {
                 final double influenceWeight = FULL_WEIGHT;
 
                 final double dist = Math.sqrt(ddx * ddx + ddz * ddz);
-                final double t = Math.clamp(((smoothedMinDist[pos] - dist) / SMOOTH_STEP_DIVISOR + 1) * 0.5, 0, 1);
+                final double t = Math.clamp(((smoothedMinDist[pos] - dist) / HydrologyTuning.PRIMITIVE_BLEND_STRENGTH + 1) * 0.5, 0, 1);
                 final double weight = (t * t * (3.0 - 2.0 * t)) * influenceWeight;
                 if (weight == 0) continue;
 

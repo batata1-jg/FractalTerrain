@@ -62,12 +62,7 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
 
     @Override
     public @NotNull Holder<Biome> getNoiseBiome(int x, int y, int z, Climate.@NotNull Sampler noise) {
-        //           Climate.TargetPoint t = new Climate.TargetPoint(0,0,0,0,0,0);
-        ////         LOG.debug("getBiome({}, {}, {}, {})", x, y, z, noise);
-        ////                throw new RuntimeException("Not implemented");
-        //          return this.getNoiseBiome(t);
-        return this.getNoiseBiome(
-                FractalTerrainInstance.getBiomeProvider().sampler.sample(x, y, z));
+        return super.getNoiseBiome(x,y,z,FractalTerrainInstance.getBiomeProvider().sampler);
     }
 
     @Override
