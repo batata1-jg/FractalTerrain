@@ -49,8 +49,8 @@ public record FractalTerrainHeightmap(Object[] data) {
         // (PopulateNoiseStep#fineGrainedPrimitivePass) as carve(x,z) − pre-carve elevation. Negative where the
         // river carved below the original terrain; the surface painter places water there.
         RIVER_DIFFERENCE(pos -> new float[1 << 8]),
-        // :SCHEMA: packed by HydrologicalFeature.pack -- family in the high word, sub-type in the low.
-        // Recomputed per chunk rather than persisted, so the layout is free to change.
+        // :SCHEMA: packed by HydrologicalFeature.pack, family in the high word, sub-type in the low; recomputed per
+        // chunk, not persisted, so the layout is free to change.
         RIVER_TYPE(pos -> new long[1 << 8]) {
             @Override
             public float get(Object payload, int localX, int localZ) {
