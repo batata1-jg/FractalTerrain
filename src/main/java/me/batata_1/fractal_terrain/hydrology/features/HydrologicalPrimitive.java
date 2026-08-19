@@ -267,6 +267,28 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
         /** {@code values()} without the defensive copy; indexed by the on-disk type tag. */
         private static final HydrologicalFeature[] VALUES = values();
 
+        /** What a lattice cell holds when no primitive reached it. Not {@code 0L} — that is a valid
+         *  packed value ({@code RIVER} + {@code RosgenType.A}), so a zero-filled buffer would read as river. */
+        public static final long NONE = -1L;
+
+        /** Packs this family with a family-specific sub-classification into one lattice cell. Same split as
+         *  {@link RiverPrimitive#ids}: family in the high word, sub-type in the low. */
+        public long pack(int subOrdinal) {
+            return (((long) ordinal()) << 32) | (subOrdinal & 0xFFFFFFFFL);
+        }
+
+        /** The family in a {@link #pack}ed cell, or {@code null} for {@link #NONE}. */
+        @Nullable
+        public static HydrologicalFeature unpack(long packed) {
+            final int ordinal = (int) (packed >>> 32);
+            return ordinal < 0 || ordinal >= VALUES.length ? null : VALUES[ordinal];
+        }
+
+        /** The family-specific sub-classification in a {@link #pack}ed cell. */
+        public static int unpackSub(long packed) {
+            return (int) packed;
+        }
+
         /** A supplier, because a direct instance would need to exist before this enum initialises. */
         private final @Nullable Supplier<HydrologicalPrimitive> prototypeSupplier;
 
