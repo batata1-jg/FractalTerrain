@@ -46,45 +46,7 @@ public final class HydrologyProfileInprinter {
      * <p>Measures against the two-segment polyline through the nearest knot rather than the quintic:
      * the primitives carry no velocity or acceleration, so the true curve cannot be rebuilt here.
      */
-    public static void sampleNearestChannel(
-            List<HydrologicalPrimitive> primitives,
-            int nearestPrimitiveIndex,
-            double[] point,
-            float[] indexWeightDistance,
-            double[] projection) {
-        if (nearestPrimitiveIndex < 0 || nearestPrimitiveIndex >= primitives.size()) return;
-        if (!(primitives.get(nearestPrimitiveIndex) instanceof RiverPrimitive nearestKnot)) return;
 
-        int otherIndex = -1;
-        double nearestWeight = 1.0;
-        double bestDist = Double.MAX_VALUE;
-
-        for (int offset = -1; offset <= 1; offset += 2) {
-            final int neighbourIndex = nearestPrimitiveIndex + offset;
-            if (neighbourIndex < 0 || neighbourIndex >= primitives.size()) continue;
-            if (!(primitives.get(neighbourIndex) instanceof RiverPrimitive neighbour)) continue;
-            if (!nearestKnot.isKnotAdjacentTo(neighbour)) continue;
-            // Always orient the segment downstream, so segParam interpolates from the lower knot up.
-            final boolean neighbourIsUpstream = neighbour.knotIndex() < nearestKnot.knotIndex();
-            final RiverPrimitive start = neighbourIsUpstream ? neighbour : nearestKnot;
-            final RiverPrimitive end = neighbourIsUpstream ? nearestKnot : neighbour;
-            VectorOps.projectPointOntoSegment(point, start.coord(), end.coord(), projection);
-            if (Math.abs(projection[1]) >= Math.abs(bestDist)) continue;
-            bestDist = projection[1];
-            // segParam runs start -> end, so the nearest knot's share of it is segParam only when the
-            // neighbour is the upstream end of the segment.
-            nearestWeight = neighbourIsUpstream ? projection[0] : 1.0 - projection[0];
-            otherIndex = neighbourIndex;
-        }
-
-        // A knot with no knot-adjacent neighbour in range influences the point alone, so its tangent
-        // line is the correct answer — not a degraded one — and the whole lerpWeight is its own.
-        if (otherIndex == -1) return;
-
-        indexWeightDistance[0] = Float.intBitsToFloat(otherIndex);
-        indexWeightDistance[1] = (float) nearestWeight;
-        indexWeightDistance[2] = (float) bestDist;
-    }
 
     // -------------------------------------------------------------------------
     // Lattice carve (shared by the bed and shell stages)

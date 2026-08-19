@@ -40,6 +40,7 @@ import net.minecraft.world.level.levelgen.structure.Structure;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
+import org.spongepowered.asm.mixin.Mixin;
 
 public final class FractalTerrainChunkGenerator extends ChunkGenerator {
 
@@ -441,5 +442,9 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
             LOG.info(" chunkNoise sampler of 0 ,0 : {}", chunkNoiseSampler);
             LOG.info(" chunkNoise sampler estiate H : {}", chunkNoiseSampler.preliminarySurfaceLevel(0, 0));
         }
+    }
+
+    public Holder<NoiseGeneratorSettings> generatorSettings() {
+        return settings;
     }
 }
