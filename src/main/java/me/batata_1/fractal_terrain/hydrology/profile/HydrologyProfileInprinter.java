@@ -104,6 +104,10 @@ public final class HydrologyProfileInprinter {
      * rather than four. Deliberately not a parameter of the carve itself — see the design spec's
      * "Why no scratch class": a second primitive family needs its own {@code acc} against the same grid.
      *
+     * <p>{@code acc} holds (height, water, weight) triples; {@code typeMask} the nearest primitive's
+     * packed type. Ambient-free by construction: a caller recovers its carved elevation as
+     * {@code (1 - w) * ambient + w * min(h, ambient)}.
+     *
      * <p>Not thread-safe by construction. Chunk generation is multithreaded, so each thread owns one.
      */
     public static final class GridBuffers {
@@ -122,7 +126,8 @@ public final class HydrologyProfileInprinter {
     }
 
     /** Longest cross-section table any primitive can need on this grid: a primitive cannot span more
-     *  perp than the grid's diagonal, nor more than its own influence diameter. */
+     *  perp than the grid's diagonal, nor its own influence diameter. Assumes influence is capped at
+     *  {@link HydrologyTuning#MAX_INFLUENCE_RADIUS}; unenforced by the constructor. */
     public static int maxLutLen(int gridSize, double resolution) {
         final int diagonal = (int) Math.ceil((gridSize - 1) * Math.sqrt(2.0));
         final int influence = (int) Math.ceil(2 * HydrologyTuning.MAX_INFLUENCE_RADIUS / resolution);
@@ -130,16 +135,11 @@ public final class HydrologyProfileInprinter {
     }
 
     /**
-     * Merges every river primitive into a lattice of (height, water, weight) triples in {@code acc},
-     * plus the nearest primitive's packed type in {@code typeMask}. Ambient-free by construction: a
-     * caller recovers its carved elevation as {@code (1 - w) * ambient + w * min(h, ambient)}.
+     * Merges every river primitive into a lattice of (height, water, weight) triples in {@code acc}.
+     * {@code primitives} MUST be sorted by {@link HydrologicalPrimitive#comparator} — the merge is a
+     * sequential recurrence, so order is load-bearing for determinism.
      *
-     * <p>{@code primitives} MUST be sorted by {@link HydrologicalPrimitive#comparator}. The merge is a
-     * sequential recurrence, so order is load-bearing for determinism, and the loop stops at the first
-     * non-{@link RiverPrimitive} entry — which lands at the true end of the river run only because that
-     * comparator orders by feature-type ordinal first.
-     *
-     * @return the index of that first non-river primitive, where a later family pass resumes
+     * @return the index of the first non-river primitive, where a later family pass resumes
      */
     public static int computeRiverGrid(
             double startX,

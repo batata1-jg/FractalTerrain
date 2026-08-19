@@ -76,6 +76,20 @@ class ComputeRiverGridTest {
     }
 
     @Test
+    void theNearerPrimitiveWinsEvenWhenProcessedFirstWithTheLowerElevation() {
+        // Deconfounds distance from list order and from elevation: nearer is FIRST and LOWER here, so a
+        // last-wins or higher-wins implementation would report 190 (from farther) instead of 90 (nearer).
+        final RiverPrimitive nearer = knot(9.0, 100.0, RosgenType.A, 0L);
+        final RiverPrimitive farther = knot(8.0, 200.0, RosgenType.A, 1L);
+        final HydrologyProfileInprinter.GridBuffers b = buffers();
+
+        HydrologyProfileInprinter.computeRiverGrid(
+                0, 0, RES, GRID, List.of(nearer, farther), b.acc, b.typeMask, b.dist, b.lut);
+
+        assertEquals(90.0f, b.acc[3 * idx(9, 8)], 1e-4f);
+    }
+
+    @Test
     void reseedsSoASecondCallDoesNotCompound() {
         final HydrologyProfileInprinter.GridBuffers b = buffers();
         final List<HydrologicalPrimitive> one = List.of(knot(8.0, 100.0, RosgenType.A, 0L));
