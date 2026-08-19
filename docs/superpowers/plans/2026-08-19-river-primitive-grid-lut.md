@@ -44,10 +44,17 @@ R-tree in the shell path disappears entirely.
 ## Test baseline
 
 The JUnit suite does **not** compile at `1d32c85`. Task 0 fixes that. After Task 0 the baseline is
-**74 tests, 19 failed, 1 skipped**:
+**77 tests, 20 failed, 1 skipped**, measured at `def61ea` on 2026-08-19:
 
 > `RosgenKeyTest` (6), `ConfluencePrimitiveTest` (4), `ChannelGeometryTest` (3), `LocalRiverGoldenTest` (2),
-> `MeandersGoldenTest` (2), `GlobalRiverGoldenTest` (1), `ReachMetricsSamplerTest` (1)
+> `MeandersGoldenTest` (2), `GlobalRiverGoldenTest` (1), `ReachMetricsSamplerTest` (1), `CentrelineTest` (1)
+
+Root `CLAUDE.md` records 74/19/1 from 2026-08-17 at `1d32c85`. That count is stale: `CentrelineTest`
+changed in `354acd4`, adding three tests of which
+`wedgedShortChannelNormalMatchesTrueThroughDirectionNotItsOwnChord` fails. It asserts which stencil
+`Centreline.normalAt` walks — the normal's *direction*. `normalAt` still returns
+`perpendicular(normalize(...))`, so the unit-length invariant this plan's `d = sqrt(tang² + perp²)`
+depends on is intact, and the failure is unrelated to this work.
 
 Every task after Task 0 must leave that set unchanged **except Task 7**, where `LocalRiverGoldenTest`
 and `GlobalRiverGoldenTest` are expected to move (spec Behaviour change 2). Compare the *failure
@@ -125,11 +132,12 @@ git rm src/test/java/me/batata_1/fractal_terrain/hydrology/profile/NearestChanne
 gradle test
 ```
 
-Expected: the run FAILS overall, reporting **74 tests, 19 failed, 1 skipped**. That is the baseline, not
+Expected: the run FAILS overall. (Measured outcome: **77 tests, 20 failed, 1 skipped** — see the Test
+baseline section for why this task's expectation of 74/19/1 was stale.) That is the baseline, not
 a regression. Save the evidence for later comparison:
 
 ```bash
-cp -r build/test-results/test /tmp/baseline-test-results
+cp -r build/test-results/test .superpowers/sdd/2026-08-19-river-primitive-grid-lut/baseline-test-results
 ```
 
 If the counts differ from 74/19/1, STOP and report the actual numbers — every later task compares
@@ -778,9 +786,9 @@ the anchoring is what makes `f` land exactly on an integer at perp 0.
 - [ ] **Step 5: Confirm the suite baseline is unmoved**
 
 Run: `gradle test`
-Expected: **88 tests, 19 failed, 1 skipped** — the Task 0 baseline of 74, plus Task 1's 4, Task 2's 3
-and this task's 7, with the same 19 failures. Compare `build/test-results/test/*.xml` against
-`/tmp/baseline-test-results` for the failure *messages*.
+Expected: **91 tests, 20 failed, 1 skipped** — the Task 0 baseline of 77, plus Task 1's 4, Task 2's 3
+and this task's 7, with the same 20 failures. Compare `build/test-results/test/*.xml` against the saved
+baseline for the failure *messages*.
 
 - [ ] **Step 6: Format and commit**
 
@@ -1111,7 +1119,7 @@ Expected: BUILD SUCCESSFUL apart from the pre-existing test failures. `:compileJ
 - [ ] **Step 5: Confirm the suite baseline is unmoved**
 
 Run: `gradle test`
-Expected: the same 19 failures with the same messages as `/tmp/baseline-test-results`. This task must
+Expected: the same 20 failures with the same messages as the saved baseline. This task must
 not move the golden tests — they exercise `LocalRiverProvider`/`GlobalNetworkBuilder`, not
 `PopulateNoiseStep`. **If a golden test moves here, STOP and report:** it means the bed path is
 reachable from the goldens and the change is bigger than the spec assumed.
@@ -1212,12 +1220,12 @@ Expected: `:compileJava`, `:compileClientJava`, `:spotlessCheck` pass.
 
 Run: `gradle test`
 
-Expected: **19 failures still, but `LocalRiverGoldenTest` (2) and `GlobalRiverGoldenTest` (1) now fail
+Expected: **20 failures still, but `LocalRiverGoldenTest` (2) and `GlobalRiverGoldenTest` (1) now fail
 with different messages** — different carved elevations, per Behaviour change 2. Diff against the
 baseline:
 
 ```bash
-diff -r /tmp/baseline-test-results build/test-results/test | head -60
+diff -r .superpowers/sdd/2026-08-19-river-primitive-grid-lut/baseline-test-results build/test-results/test | head -60
 ```
 
 Every message change must be in `LocalRiverGoldenTest` or `GlobalRiverGoldenTest`. **If any other test's
