@@ -474,14 +474,16 @@ public class ClimateToBiomeTransformer {
             TempBand band) {
         float tStdTemp = (tStd / TEMP_TSTD_DIV) * TEMP_TSTD_W;
         if (band == TempBand.COOL || band == TempBand.COLD || band == TempBand.FROZEN) tStdTemp = -tStdTemp;
-        float tempBand;
-        if (band == TempBand.HOT && precip < HOT_PRECIP_MAX) tempBand = TEMP_T_HOT;
-        else tempBand = TEMP_T_WARM; // if it is very humid, then jungle
-        if (band == TempBand.WARM) tempBand = TEMP_T_WARM;
-        if (band == TempBand.TEMPERATE) tempBand = TEMP_T_TEMPERATE;
-        if (band == TempBand.COOL) tempBand = TEMP_T_COOL;
-        if (band == TempBand.COLD) tempBand = TEMP_T_COLD;
-        if (band == TempBand.FROZEN) tempBand = TEMP_T_FROZEN;
+        // if it is very humid, then jungle
+        float tempBand =
+                switch (band) {
+                    case HOT -> precip < HOT_PRECIP_MAX ? TEMP_T_HOT : TEMP_T_WARM;
+                    case WARM -> TEMP_T_WARM;
+                    case TEMPERATE -> TEMP_T_TEMPERATE;
+                    case COOL -> TEMP_T_COOL;
+                    case COLD -> TEMP_T_COLD;
+                    case FROZEN -> TEMP_T_FROZEN;
+                };
         float elevationFactor = TEMP_ELEV_W1 * TEMP_ELEV_W2 * Math.max(0, elevVal);
         float normTemp = temperatureSpline.sample(temp);
 

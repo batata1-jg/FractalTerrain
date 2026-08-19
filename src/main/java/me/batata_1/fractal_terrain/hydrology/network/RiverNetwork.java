@@ -250,8 +250,8 @@ public final class RiverNetwork {
                 }
                 final Endpoint ep = nodes.get(endpointNodeId);
                 final boolean boundary = ep.type == Endpoint.Type.SOURCE || ep.type == Endpoint.Type.DRAIN;
-                // ownFlow: SOURCE carries its captured seed (ep.sourceFlow); DRAIN/JUNCTION carry the
-                // per-cell constant. anchorFlow: DRAIN carries its anchor (ep.sourceFlow), else unused.
+                // ownFlow: SOURCE carries its captured seed (ep.boundaryFlow); DRAIN/JUNCTION carry the
+                // per-cell constant. anchorFlow: DRAIN carries its anchor (ep.boundaryFlow), else unused.
                 final double ownFlow = (ep.type == Endpoint.Type.SOURCE) ? ch.flow[0] : FLOW_PER_CELL;
                 final double anchorFlow = (ep.type == Endpoint.Type.DRAIN) ? ch.flow[ch.flow.length - 1] : -1;
                 final int atomicId =
@@ -395,8 +395,8 @@ public final class RiverNetwork {
         final Endpoint ep = new Endpoint(canonicalId, type, pos.clone());
         // Restore the carried seed/anchor so a subsequent viewAtomic() reads the same ownFlow/anchorFlow
         // (keeps the seam round trip idempotent for flow, mirroring the SOURCE/DRAIN id preservation).
-        if (type == Endpoint.Type.SOURCE) ep.sourceFlow = atomic.ownFlow(atomicId);
-        else if (type == Endpoint.Type.DRAIN) ep.sourceFlow = atomic.anchorFlow(atomicId);
+        if (type == Endpoint.Type.SOURCE) ep.boundaryFlow = atomic.ownFlow(atomicId);
+        else if (type == Endpoint.Type.DRAIN) ep.boundaryFlow = atomic.anchorFlow(atomicId);
         nodes.put(canonicalId, ep);
         return ep;
     }

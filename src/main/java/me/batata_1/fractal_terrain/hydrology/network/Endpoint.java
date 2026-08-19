@@ -24,7 +24,7 @@ public class Endpoint {
     public double[] coord;
 
     /** Boundary flow carried across the canonical/atomic seam: seed on SOURCE, anchor on DRAIN. */
-    public double sourceFlow = 0.0;
+    public double boundaryFlow = 0.0;
 
     /** Bed elevation filled by {@code ChannelElevationAssigner}; the carve reads {@link Channel#bedElevations} instead. */
     public double elevation = Double.NaN;
@@ -51,6 +51,6 @@ public class Endpoint {
 
     @Override
     public String toString() {
-        return "Node{" + id + " " + type + " in=" + incoming + " out=" + outgoing + "}";
+        return "Endpoint{" + id + " " + type + " in=" + incoming + " out=" + outgoing + "}";
     }
 }

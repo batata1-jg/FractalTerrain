@@ -87,12 +87,11 @@ public record RiverPrimitive(
 
     @Override
     public long primitiveByteSize() {
-        // rosgen tag + coord + normal + radius + width + elevation
+        // rosgen tag + coord + normal + curvature + influence + width + elevation
         return Integer.BYTES
                 + PrimitiveCodec.coordByteSize(coord)
                 + PrimitiveCodec.coordByteSize(normal)
-                + 4L * Double.BYTES
-                + Long.BYTES;
+                + 4L * Double.BYTES;
     }
 
     @Override

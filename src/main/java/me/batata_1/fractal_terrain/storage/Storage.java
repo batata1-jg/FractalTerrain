@@ -191,7 +191,10 @@ public class Storage<T extends Persistable<T>> {
     public T getEntry(TileKey key) {
         try {
             return fetchEntry(key).get();
-        } catch (InterruptedException | ExecutionException e) {
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e + " at key:" + key.toString());
+        } catch (ExecutionException e) {
             throw new RuntimeException(e + " at key:" + key.toString());
         }
     }

@@ -44,7 +44,10 @@ public abstract class RockStrata {
     public int getCurLayer(double[] args, double y) {
         try {
             return (int) Math.floor((y - settings.layer_function().get().apply(args)) / settings.layerSpacing());
-        } catch (InterruptedException | ExecutionException e) {
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e);
+        } catch (ExecutionException e) {
             throw new RuntimeException(e);
         }
     }
@@ -58,7 +61,10 @@ public abstract class RockStrata {
             final double y0 = settings.layer_function().get().apply(args);
             final int curLayer = (int) Math.floor((y - y0) / settings.layerSpacing());
             return y0 + settings.layerSpacing() * curLayer;
-        } catch (InterruptedException | ExecutionException e) {
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e);
+        } catch (ExecutionException e) {
             throw new RuntimeException(e);
         }
     }

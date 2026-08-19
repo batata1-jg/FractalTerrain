@@ -269,7 +269,10 @@ public abstract class InfiniteTensor {
             for (CompletableFuture<FloatTensor> f : lost) {
                 try {
                     f.get();
-                } catch (InterruptedException | ExecutionException e) {
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException(e);
+                } catch (ExecutionException e) {
                     throw new RuntimeException(e);
                 }
             }

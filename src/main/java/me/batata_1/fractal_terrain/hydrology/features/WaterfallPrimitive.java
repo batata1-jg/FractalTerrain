@@ -1,9 +1,7 @@
 package me.batata_1.fractal_terrain.hydrology.features;
 
 import me.batata_1.fractal_terrain.hydrology.profile.DefaultProfile;
-import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.ZoneCategory;
-import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
 
 /**
  * A vertical drop in a channel: the lip and the plunge below it.
@@ -14,48 +12,13 @@ import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
  * {@link ZoneCategory#BED} for it, so once this record grows a profile that claims that zone the drop
  * will win over the channel bed running into it with no change on the carve side.
  */
-public record WaterfallPrimitive(double[] coord) implements HydrologicalPrimitive, SpatialIndexCircle {
+public record WaterfallPrimitive(double[] coord) implements PositionOnlyPrimitive {
 
     static final WaterfallPrimitive PROTOTYPE = new WaterfallPrimitive(new double[] {0.0, 0.0});
 
     @Override
-    public double[] getCenter() {
-        return coord;
-    }
-
-    @Override
-    public double getRadius() {
-        return DEFAULT_RADIUS;
-    }
-
-    @Override
     public HydrologicalFeature getType() {
         return HydrologicalFeature.WATERFALL;
-    }
-
-    @Override
-    public HydrologyProfile getProfile() {
-        return DefaultProfile.INSTANCE;
-    }
-
-    @Override
-    public double w(double[] pt) {
-        return 0;
-    }
-
-    @Override
-    public double d(double[] pt) {
-        return 0;
-    }
-
-    @Override
-    public long primitiveByteSize() {
-        return PrimitiveCodec.coordByteSize(coord);
-    }
-
-    @Override
-    public byte[] serializePrimitive() {
-        return PrimitiveCodec.writeCoord(coord);
     }
 
     @Override

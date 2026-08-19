@@ -1,8 +1,6 @@
 package me.batata_1.fractal_terrain.hydrology.features;
 
 import me.batata_1.fractal_terrain.hydrology.profile.DefaultProfile;
-import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
-import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
 
 /**
  * The head of a channel — the spring or seep a river starts at.
@@ -12,48 +10,13 @@ import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
  * point of the river it heads, not an independent feature: the network still stamps
  * {@link HydrologicalFeature#SOURCE} on the first point of a channel that begins at a source node.
  */
-public record SourcePrimitive(double[] coord) implements HydrologicalPrimitive, SpatialIndexCircle {
+public record SourcePrimitive(double[] coord) implements PositionOnlyPrimitive {
 
     static final SourcePrimitive PROTOTYPE = new SourcePrimitive(new double[] {0.0, 0.0});
 
     @Override
-    public double[] getCenter() {
-        return coord;
-    }
-
-    @Override
-    public double getRadius() {
-        return DEFAULT_RADIUS;
-    }
-
-    @Override
     public HydrologicalFeature getType() {
         return HydrologicalFeature.SOURCE;
-    }
-
-    @Override
-    public HydrologyProfile getProfile() {
-        return DefaultProfile.INSTANCE;
-    }
-
-    @Override
-    public double w(double[] pt) {
-        return 0;
-    }
-
-    @Override
-    public double d(double[] pt) {
-        return 0;
-    }
-
-    @Override
-    public long primitiveByteSize() {
-        return PrimitiveCodec.coordByteSize(coord);
-    }
-
-    @Override
-    public byte[] serializePrimitive() {
-        return PrimitiveCodec.writeCoord(coord);
     }
 
     @Override

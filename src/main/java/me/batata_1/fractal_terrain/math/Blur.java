@@ -53,7 +53,11 @@ public class Blur {
                 }
             }
             return (float) (resp / 9);
-        } catch (InterruptedException | ExecutionException e) {
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LOGGER.error("future not completed?");
+            throw new RuntimeException(e);
+        } catch (ExecutionException e) {
             LOGGER.error("future not completed?");
             throw new RuntimeException(e);
         }

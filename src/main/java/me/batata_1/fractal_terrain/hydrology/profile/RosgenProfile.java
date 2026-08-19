@@ -221,7 +221,7 @@ public enum RosgenProfile implements HydrologyProfile {
                 floodPlainLen,
                 curvature);
         final double valleyContribution = valleyDelta(perpDist - floodPlainLen);
-        if (perpDist <= marginLen) return -10;
+        if (perpDist <= marginLen) return bedContribution;
         if (perpDist <= floodPlainLen) return floodPlainContribution;
         return valleyContribution;
     }
