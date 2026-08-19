@@ -933,7 +933,20 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 **Files:**
 - Modify: `src/main/java/me/batata_1/fractal_terrain/storage/FractalTerrainHeightmap.java:53`
-- Test: `src/test/java/me/batata_1/fractal_terrain/storage/RiverTypeLayerTest.java` (create)
+
+> **Correction, 2026-08-19: this task ships NO test.** An earlier revision specified
+> `RiverTypeLayerTest`, asserting on `Types.RIVER_TYPE.creator()`. That test cannot exist. Any static
+> reference to `Types` forces `FractalTerrainHeightmap$Types.<clinit>`, which evaluates every constant's
+> initializer — including `EROSION(getBiomeProvider()::fillErosion)` and
+> `WEIRDNESS(getBiomeProvider()::fillWeirdness)`, whose method references call `getBiomeProvider()`
+> eagerly. That reaches `FractalTerrainInstance.current()`, which blocks on a `CompletableFuture.get()`
+> for a generation context no unit test has. The test worker parks forever and hangs the whole suite —
+> observed, then confirmed by thread dump. `RiverTypeLayerTest` was the first test in this repo ever to
+> touch `FractalTerrainHeightmap`, which is why the hazard was latent.
+>
+> The retype is verified instead by: `:compileJava` + `:compileTestJava`, the grep in Step 5 proving no
+> other consumer exists, and Task 6's real use of the layer. Covering `Types` properly would need a
+> generation-context fixture, which this repo has no harness for — noted in Follow-ups.
 
 **Interfaces:**
 - Consumes: `HydrologicalFeature.NONE` (Task 1).
@@ -1349,3 +1362,8 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - **Restore a real `SMOOTH_STEP_DIVISOR`.** At 0.1 it is a hard 0/1 selector. Restoring
   `HydrologyTuning.PRIMITIVE_BLEND_STRENGTH` makes the type mask fuzzy and the water lane fade at the
   influence fringe at the same time; both are documented in the spec's Known residuals.
+
+- **A `Types` test fixture.** `FractalTerrainHeightmap.Types` cannot be touched from a unit test: its
+  `<clinit>` blocks on `FractalTerrainInstance.current()`. Testing any layer's allocation or accessor
+  behaviour needs a generation-context fixture (or lazily-initialised provider references) that this
+  repo does not have. Task 5 shipped untested for this reason.
