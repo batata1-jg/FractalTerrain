@@ -609,8 +609,9 @@ Add a new section above the existing "Tile-level shell pre-carve" section:
 /** Per-lattice-point "no primitive seen yet" distance, in relief-pixels. */
 public static final double UNSET_MIN_DIST = 64;
 
-/** Blend width of the distance smoothstep. At 0.1 the weight is effectively a hard 0/1 selector;
- *  HydrologyTuning.PRIMITIVE_BLEND_STRENGTH is what belongs here once the real blend is restored. */
+// Testing override: at 0.1 this collapses the distance blend to a near-hard 0/1 selector. Restoring
+// the real blend needs HydrologyTuning.PRIMITIVE_BLEND_STRENGTH in its place.
+/** Blend width of the distance smoothstep, in relief-pixels. */
 public static final double SMOOTH_STEP_DIVISOR = 0.1;
 
 /**
