@@ -31,8 +31,7 @@ public final class HydrologyProfileInprinter {
     // Per-pixel refinement (zone-priority merge)
     // -------------------------------------------------------------------------
 
-    /** Amortizes the influence query across a whole chunk — one tree query per chunk rather than one
-     *  per block. Feed the result to {@link #sampleNearestChannel}. */
+
     public List<HydrologicalPrimitive> prefetchChunk(double centerPixelX, double centerPixelZ, double chunkRadiusPx) {
         var primitives = localRiver.queryInfluence(new double[] {centerPixelX, centerPixelZ}, chunkRadiusPx);
         primitives.sort(HydrologicalPrimitive.comparator);
@@ -187,7 +186,7 @@ public final class HydrologyProfileInprinter {
         final double curvature = river.curvature();
         final double elevation = river.elevation();
         final RosgenProfile profile = (RosgenProfile) river.getProfile();
-        final long seed = river.ids();
+        final long seed = river.seed();
         final double floodPlainLen = profile.floodPlainLength(width);
         final double marginLen = width / 2;
         final double depth = FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depthForWidth(width);
