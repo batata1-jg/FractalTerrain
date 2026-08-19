@@ -30,7 +30,7 @@ public record RiverPrimitive(
         long seed)
         implements SpatialIndexRotatedRectangle, HydrologicalPrimitive {
 
-    static final RiverPrimitive PROTOTYPE = new RiverPrimitive(new double[] {0.0, 0.0}, 0, null, null, 0, 0, 0,0);
+    static final RiverPrimitive PROTOTYPE = new RiverPrimitive(new double[] {0.0, 0.0}, 0, null, null, 0, 0, 0, 0);
 
     @Override
     public HydrologicalFeature getType() {
@@ -120,7 +120,8 @@ public record RiverPrimitive(
         final double r = buf.getDouble();
         final double w = buf.getDouble();
         final double e = buf.getDouble();
-        return new RiverPrimitive(coords, r, rosgen, normalVec, curvature, w, e, computeHashCode(rosgen,w,e,coords,normalVec));
+        return new RiverPrimitive(
+                coords, r, rosgen, normalVec, curvature, w, e, computeHashCode(rosgen, w, e, coords, normalVec));
     }
 
     // Records compare array components by reference; these compare contents instead.
@@ -140,13 +141,13 @@ public record RiverPrimitive(
         return Math.toIntExact(seed);
     }
 
-    private static long computeHashCode(RosgenType rosgenType,double width, double elevation ,double[] coord ,double[] normal) {
+    private static long computeHashCode(
+            RosgenType rosgenType, double width, double elevation, double[] coord, double[] normal) {
         int result = Objects.hash(rosgenType, width, elevation);
         result = 31 * result + Arrays.hashCode(coord);
         result = 31 * result + Arrays.hashCode(normal);
         return result;
     }
-
 
     @Override
     public String toString() {

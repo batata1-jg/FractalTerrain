@@ -40,7 +40,6 @@ import net.minecraft.world.level.levelgen.structure.Structure;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
-import org.spongepowered.asm.mixin.Mixin;
 
 public final class FractalTerrainChunkGenerator extends ChunkGenerator {
 

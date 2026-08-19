@@ -9,7 +9,6 @@ vectors, and biome-band ranges.
 | -------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------- |
 | `Blur.java`                | Gaussian blur kernels (bounded sigma)                                   | Smoothing a field                                  |
 | `DifferenceOfGaussians.java` | DoG band-pass over a tensor (coarse-tile sized)                       | Edge/ridge band-pass, residual DoG                 |
-| `Gradients.java`           | Sobel kernel constants; both methods are `private` and unused (dead code) | N/A — not wired to any caller currently          |
 | `Interpolation.java`       | Bilinear/smoothstep interpolation over a sampled function              | Upsampling a field                                 |
 | `MaskedOps.java`           | Mask-weighted blend operations                                         | Alpha-blending two fields                          |
 | `FieldLinePlacer.java`     | Rasterizes ridge/valley point sets into a field-line image             | Generating field lines for skeletonization         |

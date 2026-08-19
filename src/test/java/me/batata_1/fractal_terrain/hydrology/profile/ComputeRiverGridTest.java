@@ -41,7 +41,8 @@ class ComputeRiverGridTest {
         final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
         final HydrologyProfileInprinter.GridBuffers b = buffers();
 
-        HydrologyProfileInprinter.computeRiverGrid(0, 0, RES, GRID, List.of(river), b.acc, b.typeMask, b.dist, b.lut, null);
+        HydrologyProfileInprinter.computeRiverGrid(
+                0, 0, RES, GRID, List.of(river), b.acc, b.typeMask, b.dist, b.lut, b.perp, b.tang, null);
 
         // perp == 0 and tang == 0 at (8, 8): the primitive owns the cell outright.
         final int centre = idx(8, 8);
@@ -55,7 +56,8 @@ class ComputeRiverGridTest {
         final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
         final HydrologyProfileInprinter.GridBuffers b = buffers();
 
-        HydrologyProfileInprinter.computeRiverGrid(0, 0, RES, GRID, List.of(river), b.acc, b.typeMask, b.dist, b.lut, null);
+        HydrologyProfileInprinter.computeRiverGrid(
+                0, 0, RES, GRID, List.of(river), b.acc, b.typeMask, b.dist, b.lut, b.perp, b.tang, null);
 
         // influence is 5, so (0, 0) is out of range on both axes.
         final int corner = idx(0, 0);
@@ -71,7 +73,8 @@ class ComputeRiverGridTest {
         final RiverPrimitive b2 = knot(9.0, 200.0, RosgenType.A, 1L);
         final HydrologyProfileInprinter.GridBuffers b = buffers();
 
-        HydrologyProfileInprinter.computeRiverGrid(0, 0, RES, GRID, List.of(a, b2), b.acc, b.typeMask, b.dist, b.lut, null);
+        HydrologyProfileInprinter.computeRiverGrid(
+                0, 0, RES, GRID, List.of(a, b2), b.acc, b.typeMask, b.dist, b.lut, b.perp, b.tang, null);
 
         assertEquals(190.0f, b.acc[3 * idx(9, 8)], 1e-4f);
     }
@@ -85,7 +88,7 @@ class ComputeRiverGridTest {
         final HydrologyProfileInprinter.GridBuffers b = buffers();
 
         HydrologyProfileInprinter.computeRiverGrid(
-                0, 0, RES, GRID, List.of(nearer, farther), b.acc, b.typeMask, b.dist, b.lut, null);
+                0, 0, RES, GRID, List.of(nearer, farther), b.acc, b.typeMask, b.dist, b.lut, b.perp, b.tang, null);
 
         assertEquals(90.0f, b.acc[3 * idx(9, 8)], 1e-4f);
     }
@@ -95,9 +98,11 @@ class ComputeRiverGridTest {
         final HydrologyProfileInprinter.GridBuffers b = buffers();
         final List<HydrologicalPrimitive> one = List.of(knot(8.0, 100.0, RosgenType.A, 0L));
 
-        HydrologyProfileInprinter.computeRiverGrid(0, 0, RES, GRID, one, b.acc, b.typeMask, b.dist, b.lut, null);
+        HydrologyProfileInprinter.computeRiverGrid(
+                0, 0, RES, GRID, one, b.acc, b.typeMask, b.dist, b.lut, b.perp, b.tang, null);
         final float first = b.acc[3 * idx(8, 8)];
-        HydrologyProfileInprinter.computeRiverGrid(0, 0, RES, GRID, one, b.acc, b.typeMask, b.dist, b.lut, null);
+        HydrologyProfileInprinter.computeRiverGrid(
+                0, 0, RES, GRID, one, b.acc, b.typeMask, b.dist, b.lut, b.perp, b.tang, null);
 
         assertEquals(first, b.acc[3 * idx(8, 8)], "buffers are reused across calls and must be reseeded");
     }
@@ -110,7 +115,7 @@ class ComputeRiverGridTest {
         final HydrologyProfileInprinter.GridBuffers b = buffers();
 
         final int stop = HydrologyProfileInprinter.computeRiverGrid(
-                0, 0, RES, GRID, List.of(river, source), b.acc, b.typeMask, b.dist, b.lut, null);
+                0, 0, RES, GRID, List.of(river, source), b.acc, b.typeMask, b.dist, b.lut, b.perp, b.tang, null);
 
         assertEquals(1, stop, "the river run ends at index 1");
     }
@@ -123,7 +128,7 @@ class ComputeRiverGridTest {
         final HydrologyProfileInprinter.GridBuffers b = buffers();
 
         HydrologyProfileInprinter.computeRiverGrid(
-                0, 0, RES, GRID, List.of(noNormal), b.acc, b.typeMask, b.dist, b.lut, null);
+                0, 0, RES, GRID, List.of(noNormal), b.acc, b.typeMask, b.dist, b.lut, b.perp, b.tang, null);
 
         assertEquals(0.0f, b.acc[3 * idx(8, 8) + 2]);
     }
@@ -143,7 +148,7 @@ class ComputeRiverGridTest {
         final HydrologyProfileInprinter.GridBuffers b = buffers();
 
         HydrologyProfileInprinter.computeRiverGrid(
-                0, 0, RES, GRID, List.of(diagonal), b.acc, b.typeMask, b.dist, b.lut, null);
+                0, 0, RES, GRID, List.of(diagonal), b.acc, b.typeMask, b.dist, b.lut, b.perp, b.tang, null);
 
         assertTrue(b.acc[3 * idx(8, 8) + 2] > 0.0f, "the diagonal primitive should still carve");
     }
@@ -155,7 +160,8 @@ class ComputeRiverGridTest {
         final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
         final HydrologyProfileInprinter.GridBuffers b = buffers();
 
-        HydrologyProfileInprinter.computeRiverGrid(0, 0, RES, GRID, List.of(river), b.acc, b.typeMask, b.dist, b.lut, null);
+        HydrologyProfileInprinter.computeRiverGrid(
+                0, 0, RES, GRID, List.of(river), b.acc, b.typeMask, b.dist, b.lut, b.perp, b.tang, null);
 
         assertEquals(98.0f, b.acc[3 * idx(8, 8) + 1], 1e-4f, "water surface at the centre");
         assertEquals(0.0f, b.acc[3 * idx(0, 0) + 1], "water surface out of range");
@@ -168,7 +174,8 @@ class ComputeRiverGridTest {
         final RiverPrimitive river = knot(8.0, 100.0, RosgenType.C, 0L);
         final HydrologyProfileInprinter.GridBuffers b = buffers();
 
-        HydrologyProfileInprinter.computeRiverGrid(0, 0, RES, GRID, List.of(river), b.acc, b.typeMask, b.dist, b.lut, null);
+        HydrologyProfileInprinter.computeRiverGrid(
+                0, 0, RES, GRID, List.of(river), b.acc, b.typeMask, b.dist, b.lut, b.perp, b.tang, null);
 
         final long packed = b.typeMask[idx(8, 8)];
         assertEquals(HydrologicalFeature.RIVER, HydrologicalFeature.unpack(packed));
@@ -182,7 +189,8 @@ class ComputeRiverGridTest {
         final RiverPrimitive river = knot(8.0, 100.0, null, 0L);
         final HydrologyProfileInprinter.GridBuffers b = buffers();
 
-        HydrologyProfileInprinter.computeRiverGrid(0, 0, RES, GRID, List.of(river), b.acc, b.typeMask, b.dist, b.lut, null);
+        HydrologyProfileInprinter.computeRiverGrid(
+                0, 0, RES, GRID, List.of(river), b.acc, b.typeMask, b.dist, b.lut, b.perp, b.tang, null);
 
         assertEquals(RosgenType.A.ordinal(), HydrologicalFeature.unpackSub(b.typeMask[idx(8, 8)]));
     }
@@ -193,7 +201,8 @@ class ComputeRiverGridTest {
         final RiverPrimitive c = knot(9.0, 100.0, RosgenType.C, 1L);
         final HydrologyProfileInprinter.GridBuffers b = buffers();
 
-        HydrologyProfileInprinter.computeRiverGrid(0, 0, RES, GRID, List.of(a, c), b.acc, b.typeMask, b.dist, b.lut, null);
+        HydrologyProfileInprinter.computeRiverGrid(
+                0, 0, RES, GRID, List.of(a, c), b.acc, b.typeMask, b.dist, b.lut, b.perp, b.tang, null);
 
         assertEquals(RosgenType.C.ordinal(), HydrologicalFeature.unpackSub(b.typeMask[idx(9, 8)]));
         assertEquals(RosgenType.A.ordinal(), HydrologicalFeature.unpackSub(b.typeMask[idx(7, 8)]));

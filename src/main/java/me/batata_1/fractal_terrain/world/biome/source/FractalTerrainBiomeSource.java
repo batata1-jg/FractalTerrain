@@ -62,7 +62,7 @@ public class FractalTerrainBiomeSource extends MultiNoiseBiomeSource {
 
     @Override
     public @NotNull Holder<Biome> getNoiseBiome(int x, int y, int z, Climate.@NotNull Sampler noise) {
-        return super.getNoiseBiome(x,y,z,FractalTerrainInstance.getBiomeProvider().sampler);
+        return super.getNoiseBiome(x, y, z, FractalTerrainInstance.getBiomeProvider().sampler);
     }
 
     @Override

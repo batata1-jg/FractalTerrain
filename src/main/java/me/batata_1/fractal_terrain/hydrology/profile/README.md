@@ -21,9 +21,18 @@ index shared by every primitive), then walks only the lattice cells its influenc
 interpolating the LUT instead of re-evaluating `RosgenProfile.delta`'s branchy per-region logic at every
 point.
 
+**`d` is a rectangle scale, not a radius.** Each primitive's footprint is the rotated rectangle the spatial
+index stores it under — `influenceLen` along the flow tangent, `influenceWidth` across it. `d` is the factor
+that rectangle must be scaled by to contain the lattice point,
+`max(|tang| / influenceLen, |perp| / influenceWidth)`, so `d <= 1` is exactly "inside the footprint" and one
+comparison serves as both the rank and the in-band mask. It is dimensionless: `UNSET_MIN_DIST` and the
+`SMOOTH_STEP_DIVISOR` blend width are read against that normalised scale, not against relief-pixels. Both
+half-extents come from `RiverPrimitive.getLength()` / `getWidth()`, so a primitive indexed under a
+non-square rectangle carves the shape it was indexed under; today both return `influence * 2`.
+
 **Merge law.** Both stages run the bed's original sequential smoothed-min-distance recurrence: a running
-per-lattice-point `dist[i]` seeded at 64 relief-pixels, updated per primitive by a smoothstep of
-`(dist[i] - d)` where `d` is the distance to that primitive, and the `(height, water, weight)` triple
+per-lattice-point `dist[i]` seeded at 64, updated per primitive by a smoothstep of
+`(dist[i] - d)`, and the `(height, water, weight)` triple
 blended toward the current primitive with that same weight — "closest primitive wins, nearby competitors
 blend in," driven by primitive order rather than an explicit nearest-channel query. `primitives` MUST
 already be sorted by `HydrologicalPrimitive.comparator`, which orders by feature-type ordinal first —

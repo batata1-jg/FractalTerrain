@@ -11,10 +11,8 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
-import net.fabricmc.fabric.api.event.registry.DynamicRegistryView;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
@@ -26,13 +24,6 @@ public class FractalTerrain implements ModInitializer {
 
     private static final Logger LOG = getLogger(FractalTerrain.class);
 
-    private static void addListenerForDynamic(
-            DynamicRegistryView registryView, ResourceKey<? extends Registry<?>> key) {
-
-        registryView.registerEntryAdded(key, (rawId, id, object) -> {
-            LOG.info("Loaded entry of {}: {} = {}", key, id, object);
-        });
-    }
     // TODO: usar FabricLoader.getInstance().isDevelopmentEnvironment();
     @Override
     public void onInitialize() {

@@ -17,7 +17,6 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeManager;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.BlockColumn;
 import net.minecraft.world.level.chunk.ChunkAccess;
@@ -116,14 +115,6 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
         return depth;
     }
 
-    static final BlockState GRASS_BLOCK = Blocks.GRASS_BLOCK.defaultBlockState();
-    static final BlockState DIRT = Blocks.DIRT.defaultBlockState();
-
-    private BlockState sedimentStrata(int x, int z, int distFromSurface, int surfaceHeight) {
-        if (distFromSurface == surfaceHeight) return GRASS_BLOCK;
-        return DIRT;
-    }
-
     public void buildSurface(
             RandomState noiseConfig,
             BiomeManager biomeAccess,
@@ -216,10 +207,5 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
 
     protected double getSurfaceSecondary(int blockX, int blockZ) {
         return this.surfaceSecondaryNoise.getValue((double) blockX, (double) 0.0F, (double) blockZ);
-    }
-
-    // nem ar nem agua / lava
-    private boolean isStone(BlockState state) {
-        return !state.isAir() && state.getFluidState().isEmpty();
     }
 }

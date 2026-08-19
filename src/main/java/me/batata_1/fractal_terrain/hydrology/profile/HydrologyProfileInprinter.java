@@ -8,7 +8,6 @@ import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
-import me.batata_1.fractal_terrain.math.VectorOps;
 
 /**
  * The elevation side of the hydrology profile — where rivers actually cut the terrain.
@@ -31,7 +30,6 @@ public final class HydrologyProfileInprinter {
     // Per-pixel refinement (zone-priority merge)
     // -------------------------------------------------------------------------
 
-
     public List<HydrologicalPrimitive> prefetchChunk(double centerPixelX, double centerPixelZ, double chunkRadiusPx) {
         var primitives = localRiver.queryInfluence(new double[] {centerPixelX, centerPixelZ}, chunkRadiusPx);
         primitives.sort(HydrologicalPrimitive.comparator);
@@ -46,12 +44,12 @@ public final class HydrologyProfileInprinter {
      * the primitives carry no velocity or acceleration, so the true curve cannot be rebuilt here.
      */
 
-
     // -------------------------------------------------------------------------
     // Lattice carve (shared by the bed and shell stages)
     // -------------------------------------------------------------------------
 
-    /** Per-lattice-point "no primitive seen yet" distance, in relief-pixels. */
+    /** Per-lattice-point "no primitive seen yet" distance, as a footprint scale factor. Any value above
+     *  1 sits outside every primitive's rectangle, so the first primitive to reach a point wins outright. */
     public static final double UNSET_MIN_DIST = 64;
 
     // Testing override: at 0.1 this collapses the distance blend to a near-hard 0/1 selector. Restoring
@@ -75,6 +73,10 @@ public final class HydrologyProfileInprinter {
         public long[] typeMask = new long[0];
         public float[] dist = new float[0];
         public float[] lut = new float[0];
+        /** Scratch: the carve's across-flow projection, so no primitive allocates one per call. */
+        public double[] perp = new double[0];
+        /** Scratch: the carve's along-flow projection, so no primitive allocates one per call. */
+        public double[] tang = new double[0];
 
         /** Grows any buffer that is too small. Never shrinks — the carve fills only the range it uses. */
         public void ensure(int points, int lutLen) {
@@ -82,6 +84,8 @@ public final class HydrologyProfileInprinter {
             if (typeMask.length < points) typeMask = new long[points];
             if (dist.length < points) dist = new float[points];
             if (lut.length < lutLen) lut = new float[lutLen];
+            if (perp.length < points) perp = new double[points];
+            if (tang.length < points) tang = new double[points];
         }
     }
 
@@ -111,8 +115,9 @@ public final class HydrologyProfileInprinter {
             long[] typeMask,
             float[] dist,
             float[] lut,
-            float[] elevs
-    ) {
+            double[] perp,
+            double[] tang,
+            float[] elevs) {
         final int points = gridSize * gridSize;
         Arrays.fill(acc, 0, 3 * points, 0f);
         Arrays.fill(typeMask, 0, points, HydrologicalPrimitive.HydrologicalFeature.NONE);
@@ -120,7 +125,7 @@ public final class HydrologyProfileInprinter {
 
         int stop = 0;
         while (stop < primitives.size() && primitives.get(stop) instanceof RiverPrimitive river) {
-            carvePrimitive(river, startX, startZ, resolution, gridSize, acc, typeMask, dist, lut,elevs);
+            carvePrimitive(river, startX, startZ, resolution, gridSize, acc, typeMask, dist, lut, perp, tang, elevs);
             stop++;
         }
 
@@ -145,21 +150,28 @@ public final class HydrologyProfileInprinter {
             long[] typeMask,
             float[] dist,
             float[] lut,
+            double[] perp,
+            double[] tang,
             float[] elevs) {
         final double[] normal = river.normal();
         // A null normal has no tangent -- river.h() returns flat elevation and the projection would NPE.
         if (normal == null) return;
         final double nx = normal[0], nz = normal[1];
         final double cx = river.coord()[0], cz = river.coord()[1];
-        final double influence = river.influence();
+        // Half-extents of the primitive's footprint rectangle: along the flow tangent (nz, -nx), and across
+        // it along the normal. Read from the same accessors the spatial index stabs, so a primitive whose
+        // rectangle stops being square carves the shape it was indexed under.
+        final double influenceLen = river.getLength() * 0.5;
+        final double influenceWidth = river.getWidth() * 0.5;
 
         // :PERF: conservative AABB clip; floor/ceil so a too-wide range is harmless while a too-narrow one
         // would silently drop carve -- the exact containment test still runs per lattice point.
-        final double halfExtent = influence * (Math.abs(nx) + Math.abs(nz));
-        final long rowLo = (long) Math.floor((cx - halfExtent - startX) / resolution);
-        final long rowHi = (long) Math.ceil((cx + halfExtent - startX) / resolution);
-        final long colLo = (long) Math.floor((cz - halfExtent - startZ) / resolution);
-        final long colHi = (long) Math.ceil((cz + halfExtent - startZ) / resolution);
+        final double halfExtentX = influenceLen * Math.abs(nz) + influenceWidth * Math.abs(nx);
+        final double halfExtentZ = influenceLen * Math.abs(nx) + influenceWidth * Math.abs(nz);
+        final long rowLo = (long) Math.floor((cx - halfExtentX - startX) / resolution);
+        final long rowHi = (long) Math.ceil((cx + halfExtentX - startX) / resolution);
+        final long colLo = (long) Math.floor((cz - halfExtentZ - startZ) / resolution);
+        final long colHi = (long) Math.ceil((cz + halfExtentZ - startZ) / resolution);
         if (rowHi < 0 || rowLo > gridSize - 1 || colHi < 0 || colLo > gridSize - 1) return;
         final int rowMin = (int) Math.max(rowLo, 0);
         final int rowMax = (int) Math.min(rowHi, gridSize - 1);
@@ -174,8 +186,8 @@ public final class HydrologyProfileInprinter {
         final double p01 = nx * (x0 - cx) + nz * (z1 - cz);
         final double p10 = nx * (x1 - cx) + nz * (z0 - cz);
         final double p11 = nx * (x1 - cx) + nz * (z1 - cz);
-        final double perpMin = Math.max(Math.min(Math.min(p00, p01), Math.min(p10, p11)), -influence);
-        final double perpMax = Math.min(Math.max(Math.max(p00, p01), Math.max(p10, p11)), influence);
+        final double perpMin = Math.max(Math.min(Math.min(p00, p01), Math.min(p10, p11)), -influenceWidth);
+        final double perpMax = Math.min(Math.max(Math.max(p00, p01), Math.max(p10, p11)), influenceWidth);
         if (perpMin > perpMax) return;
 
         final double invStep = 1.0 / resolution;
@@ -196,23 +208,40 @@ public final class HydrologyProfileInprinter {
         profile.sampleCrossSection(
                 lut, n, resolution, baseIdx, seed, elevation, floodPlainLen, marginLen, depth, curvature);
 
+        // :PERF: projections tabulated over the clipped box up front; the merge below then carries no
+        // running accumulator, so every lattice point is evaluated from its own coordinates.
         for (int row = rowMin; row <= rowMax; row++) {
             final double ddx = (startX + row * resolution) - cx;
-            final double ddz0 = (startZ + colMin * resolution) - cz;
-            double perp = nx * ddx + nz * ddz0;
-            double tang = ddx * nz - ddz0 * nx;
-            double f = perp * invStep - baseIdx;
+            final double perpRow = nx * ddx;
+            final double tangRow = nz * ddx;
+            final int rowBase = row * gridSize;
+            for (int col = colMin; col <= colMax; col++) {
+                final double ddz = (startZ + col * resolution) - cz;
+                perp[rowBase + col] = perpRow + nz * ddz;
+                tang[rowBase + col] = tangRow - nx * ddz;
+            }
+        }
+
+        final double invLen = 1.0 / influenceLen;
+        final double invWidth = 1.0 / influenceWidth;
+        for (int row = rowMin; row <= rowMax; row++) {
             final int rowBase = row * gridSize;
             for (int col = colMin; col <= colMax; col++) {
                 final int i = rowBase + col;
-                final double d = (tang * tang + perp * perp) / (influence*influence);
-                final double mask = Math.abs(tang) <= influence && Math.abs(perp) <= influence ? 1.0 : 0.0;
+                final double p = perp[i];
+                // How far the footprint rectangle must be scaled to swallow the point: 1 exactly at the
+                // rim, so the recurrence ranks primitives by rectangle penetration, not radial distance.
+                final double d = Math.max(Math.abs(tang[i]) * invLen, Math.abs(p) * invWidth);
+                final double mask = d <= 1.0 ? 1.0 : 0.0;
                 final double t = Math.clamp(((dist[i] - d) / SMOOTH_STEP_DIVISOR + 1) * 0.5, 0, 1);
                 final double w = t * t * (3.0 - 2.0 * t) * mask;
+                final double f = p * invStep - baseIdx;
                 // Clamped for safety only: mask already zeroes anything out of band, but the branch-free
                 // body still evaluates h for those lanes.
                 final int i0 = Math.clamp((int) f, 0, n - 2);
-                final double h = (elevs!=null) ? Math.min(elevs[i],lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0])):lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]);
+                final double h = (elevs != null)
+                        ? Math.min(elevs[i], lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]))
+                        : lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]);
 
                 dist[i] = (float) ((1 - w) * dist[i] + w * d);
                 final int a = 3 * i;
@@ -222,10 +251,6 @@ public final class HydrologyProfileInprinter {
                 // the weight is a near-hard selector, so this is the true nearest bar a 0.1-wide band.
                 typeMask[i] = w > 0.5 ? packed : typeMask[i];
                 acc[a + 2] = (float) (acc[a + 2] + w * (1 - acc[a + 2]));
-
-                perp += nz * resolution;
-                tang -= nx * resolution;
-                f += nz;
             }
         }
     }
@@ -246,7 +271,19 @@ public final class HydrologyProfileInprinter {
         buffers.ensure(points, maxLutLen(paddedSize, 1.0));
         final float[] acc = buffers.acc;
 
-        computeRiverGrid(0, 0, 1.0, paddedSize, primitives, acc, buffers.typeMask, buffers.dist, buffers.lut, null);
+        computeRiverGrid(
+                0,
+                0,
+                1.0,
+                paddedSize,
+                primitives,
+                acc,
+                buffers.typeMask,
+                buffers.dist,
+                buffers.lut,
+                buffers.perp,
+                buffers.tang,
+                null);
 
         for (int i = 0; i < points; i++) {
             final float ambient = elevation[i];

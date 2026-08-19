@@ -21,12 +21,11 @@ See the repo-root `ARCHITECTURE.md` for how the pipeline, providers, and coordin
 | `hydrology/`      | River network tracing, carving, and per-tile hydrology providers | River generation, drainage, meanders, carve profiles            |
 | `relief/`         | Decoder-residual relief provider + rock strata                   | Terrain elevation decode, rock layering                         |
 | `world/`          | Biome classification, biome source, chunk/surface generation     | Biome params, chunk fill, surface rules, vegetation             |
-| `noise/`          | Noise samplers (FastNoiseLite dispatcher, simplex, voronoi, RNG) | Sampling noise, portable RNG matching Python, noise strategies  |
-| `math/`           | Numeric helpers: blur, gradients, splines, vectors, spatial index | Image ops, contour/skeleton tracing, spatial queries            |
+| `noise/`          | Noise samplers (FastNoiseLite dispatcher, simplex, RNG)          | Sampling noise, portable RNG matching Python, noise strategies  |
+| `math/`           | Numeric helpers: blur, splines, vectors, spatial index           | Image ops, contour/skeleton tracing, spatial queries            |
 | `infinitetensor/` | Tiled infinite-tensor abstraction over `Storage`                 | Slicing/accumulating windowed tensors, frozen cache tensors     |
 | `storage/`        | Tile cache + disk persistence, heightmap cache, tile keys        | Cache lookups, persistence format, freeze/publication boundary  |
 | `mixin/`          | SpongePowered mixins into vanilla worldgen                       | Hooking surface rules, feature placement, terrablender          |
 | `debug/`          | Logging facade + PNG/TIFF visualizers + manual `main()` harnesses | Logging setup, dumping debug imagery, running manual tests      |
-| `registry/`       | Registry-key + settings scaffolding                              | Adding registry keys or settings (currently minimal stubs)      |
-| `references/`     | Mod ID, identifier/translate helpers, screen-handler stub        | Building resource locations, translation keys                   |
-| `terrablender/`   | Terrablender integration entry point (stub)                      | Terrablender biome region setup                                 |
+| `registry/`       | Settings scaffolding                                              | Adding settings (currently minimal stubs)                       |
+| `references/`     | Mod ID, identifier/translate helpers                              | Building resource locations, translation keys                   |

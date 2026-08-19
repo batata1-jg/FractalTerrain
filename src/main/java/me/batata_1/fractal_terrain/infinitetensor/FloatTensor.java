@@ -296,13 +296,6 @@ public class FloatTensor implements Persistable<FloatTensor> {
         }
     }
 
-    private void checkShapes(int[] arr) {
-        if (!Arrays.equals(this.shape, arr)) {
-            LOG.error("shapes do not match {} {}", this.shape, arr);
-            throw new RuntimeException();
-        }
-    }
-
     public float[] getBand(int i, int ch) {
         final int[] coords = new int[shape.length];
         Arrays.fill(coords, 0);
