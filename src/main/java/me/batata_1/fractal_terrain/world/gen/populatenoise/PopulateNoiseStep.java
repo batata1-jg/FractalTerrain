@@ -87,10 +87,10 @@ public class PopulateNoiseStep {
             final float weight = acc[3 * pos + 2];
             // acc[3 * pos] is already normalised, so the blend does not divide again. The min is what
             // keeps the carve cut-only; it is applied once here rather than per primitive.
-            final double merged =
-                    weight > 0 ? (1 - weight) * ambient + weight * Math.min(acc[3 * pos], ambient) : ambient;
+            final double merged = weight > 0 ? acc[3 * pos] : ambient;
+             //       weight > 0 ? (1 - weight) * ambient + weight * Math.min(acc[3 * pos], ambient) : ambient;
             riverDifference[pos] = (float) (merged - ambient);
-            waterElev[pos] = weight > 0 ? (float) (acc[3 * pos + 1] + seaLevel - 1) : 0f;
+            waterElev[pos] = weight > 0 ? (acc[3 * pos + 1] + seaLevel - 1) : 0f;
             riverType[pos] = buffers.typeMask[pos];
             interpolatedElevs[pos] = (float) (Math.max(bottom, merged) + seaLevel - 1);
         }
