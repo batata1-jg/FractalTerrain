@@ -95,15 +95,6 @@ public class TensorWindow {
         return res;
     }
 
-    public int[] getSinglePixelIntersection(final double[] coords) {
-        final int n = size.length;
-        final int[] res = new int[n];
-        for (int i = 0; i < n; i++) {
-            res[i] = Math.floorDiv((int) (coords[i] - offset[i]), stride[i]);
-        }
-        return res;
-    }
-
     public int[] getPerWindowCoord(final int[] coords) {
         for (int i = 0; i < coords.length; i++) {
             coords[i] %= stride[i];

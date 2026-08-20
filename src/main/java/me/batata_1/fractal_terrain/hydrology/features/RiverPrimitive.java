@@ -8,6 +8,7 @@ import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexRotatedRectangle;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * One sample of a flowing channel — the reference {@link HydrologicalPrimitive}, the only type with a full
@@ -32,6 +33,25 @@ public record RiverPrimitive(
 
     static final RiverPrimitive PROTOTYPE = new RiverPrimitive(new double[] {0.0, 0.0}, 0, null, null, 0, 0, 0, 0);
 
+    public RiverPrimitive(
+            double[] coord,
+            double influence,
+            RosgenType rosgenType,
+            double[] normal,
+            double curvature,
+            double width,
+            double elevation) {
+        this(
+                coord,
+                influence,
+                rosgenType,
+                normal,
+                curvature,
+                width,
+                elevation,
+                computeHashCode(rosgenType, width, elevation, coord, normal));
+    }
+
     @Override
     public HydrologicalFeature getType() {
         return HydrologicalFeature.RIVER;
@@ -54,31 +74,10 @@ public record RiverPrimitive(
         return RosgenProfile.of(RosgenType.orDefault(rosgenType));
     }
 
-    @Override
-    public double d(double[] pt) {
-        final double nx = normal[0], nz = normal[1];
-        final double dx = pt[0] - coord[0], dz = pt[1] - coord[1];
-        return nx * dx + nz * dz;
-    }
-
     public double h(double signedDist) {
         if (normal == null) return elevation;
         final RosgenProfile profile = (RosgenProfile) getProfile();
         return elevation + profile.delta(seed, signedDist, width, curvature);
-    }
-
-    @Override
-    public double w(double[] pt) {
-        final double dx = pt[0] - coord[0], dz = pt[1] - coord[1];
-        final double nx = normal[0], nz = normal[1];
-        final double length = getLength();
-        final double width = getWidth();
-        final double distanceWidth = d(pt);
-        final double distanceLength = (dx * nz - dz * nx);
-        if (Math.abs(distanceWidth) >= width || Math.abs(distanceLength) >= length) return 0;
-        final double weightWidth = Math.pow(1 - (distanceWidth * distanceWidth) / (width * width), 2);
-        final double weightLength = Math.pow(1 - (distanceLength * distanceLength) / (length * length), 2);
-        return Math.pow(Math.clamp(smoothMin(weightLength, weightWidth, 0.02), 0, 1), 2);
     }
 
     public static double smoothMin(double a, double b, double lambda) {
@@ -119,8 +118,7 @@ public record RiverPrimitive(
         final double r = buf.getDouble();
         final double w = buf.getDouble();
         final double e = buf.getDouble();
-        return new RiverPrimitive(
-                coords, r, rosgen, normalVec, curvature, w, e, computeHashCode(rosgen, w, e, coords, normalVec));
+        return new RiverPrimitive(coords, r, rosgen, normalVec, curvature, w, e);
     }
 
     // Records compare array components by reference; these compare contents instead.
@@ -149,7 +147,7 @@ public record RiverPrimitive(
     }
 
     @Override
-    public String toString() {
+    public @NotNull String toString() {
         return "River[coord=" + Arrays.toString(coord) + ", influence=" + influence + ", rosgenType=" + rosgenType
                 + ", normal=" + Arrays.toString(normal) + ", width=" + width + ", elevation=" + elevation + "]";
     }

@@ -20,8 +20,7 @@ import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.HydrologicalFeature;
-import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
-import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive.RosgenType;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.SurfaceSampler;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import org.jetbrains.annotations.Nullable;
@@ -722,19 +721,12 @@ public final class RiverNetwork {
     // Conversion to the queryable, persistable primitive tree
     // ---------------------------------------------------------------------------------------------
 
-    /** {@link #collectPrimitives(double, double, IntPredicate, ChannelTyper)} untyped: every primitive's {@link
-     *  RiverPrimitive#rosgenType() rosgenType} is null, which callers coalesce to {@link RosgenType#A}. */
-    public List<HydrologicalPrimitive> collectPrimitives(double offsetX, double offsetZ) {
-        return collectPrimitives(offsetX, offsetZ, channelId -> true, null);
-    }
-
-    /** {@link #collectPrimitives(double, double, IntPredicate, ChannelTyper)} over every channel. */
-    public List<HydrologicalPrimitive> collectPrimitives(double offsetX, double offsetZ, @Nullable ChannelTyper typer) {
-        return collectPrimitives(offsetX, offsetZ, channelId -> true, typer);
-    }
-
     public List<HydrologicalPrimitive> collectPrimitives(
-            double offsetX, double offsetZ, IntPredicate channelIdFilter, @Nullable ChannelTyper typer) {
+            double offsetX,
+            double offsetZ,
+            IntPredicate channelIdFilter,
+            @Nullable ChannelTyper typer,
+            SurfaceSampler surface) {
         final List<HydrologicalPrimitive> primitives = new ArrayList<>();
         final double[] offset = new double[] {offsetX, offsetZ};
         // Phase 1: resample every emitting channel. Types depend on neighbouring channels, so every
@@ -768,7 +760,7 @@ public final class RiverNetwork {
         }
 
         for (Channel ch : emitting) {
-            HydrologicalFeature.RIVER.addPrimitives(offset, primitives, typer, ch, centreline);
+            HydrologicalFeature.RIVER.addPrimitives(offset, primitives, typer, ch, centreline, surface);
         }
 
         for (RemovedPath rp : removedPaths) {

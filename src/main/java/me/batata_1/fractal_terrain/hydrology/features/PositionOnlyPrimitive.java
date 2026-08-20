@@ -31,16 +31,6 @@ interface PositionOnlyPrimitive extends HydrologicalPrimitive, SpatialIndexCircl
     }
 
     @Override
-    default double w(double[] pt) {
-        return 0;
-    }
-
-    @Override
-    default double d(double[] pt) {
-        return 0;
-    }
-
-    @Override
     default long primitiveByteSize() {
         return PrimitiveCodec.coordByteSize(coord());
     }

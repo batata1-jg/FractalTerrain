@@ -23,7 +23,8 @@ this cross-fill and can leave one store permanently unpopulated for a tile the o
 **`buildTile` ordering** (load-bearing — see `LocalRiverProvider.buildTile` javadoc for the exact code
 reference):
 
-1. `GlobalNetworkBuilder.build` traces + Meanders-relaxes the global (coarse-arrow) subgraph for this
+1. `GlobalNetworkBuilder.build` traces the global (coarse-arrow) subgraph for this tile, then relaxes it
+   down-gradient with `GradientNetworkRelaxation` (NOT `Meanders`, which has no pipeline caller), over this
    tile's owned 2x2 coarse cells, returning the network plus the boundary-elevation map it accumulated
    for source/drain nodes.
 2. `ChannelElevationAssigner.assign` over the global-only graph, then `HydrologyProfileInprinter
@@ -88,6 +89,6 @@ primitives out of the tile-level shell — both `carveRiverShells` calls are unf
   MUST already be sorted by `HydrologicalPrimitive.comparator` — nearest-primitive-wins holds regardless
   of order, but which near-equidistant competitors blend in, and where the river run ends, do not.
   See `profile/README.md` for the merge law.
-- **The per-tile `RiverNetwork`/`Meanders` graph is per-tile, single-threaded.** See
+- **The per-tile `RiverNetwork` graph is per-tile, single-threaded.** See
   `meanders/README.md` for the full contract; `GlobalNetworkBuilder` and `LocalDrainageTracer` both
   document (and rely on) it.

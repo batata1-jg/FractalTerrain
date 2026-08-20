@@ -31,6 +31,7 @@ from the slope histogram `localRiverTest` dumps before judging any other thresho
 | `MAX_ECCENTRICITY` | Full-strength delta widens along the channel; at the limit it applies unfaded over the whole floodplain disc | Full strength confined to the primitive's own cross-section line; everything else fades |
 | `BRAID_MIN_WIDTH` / `K_BRAID` | Braiding becomes common | Braiding never appears |
 | `ER_MIN_STEPS_PER_SIDE` | A reach at the `MIN_WIDTH` floor has a walk shorter than one step, samples nothing, and reports as unconfined | Step shrinks below useful resolution |
+| `INFLUENCE_DEPTH_FACTOR` | Influence sits on the `MIN_INFLUENCE_RADIUS` floor for most reaches; the carve band is barely wider than the channel and valley walls meet untouched terrain as a step | Influence saturates at `MAX_INFLUENCE_RADIUS` wherever the bed is incised; valleys read as broad bowls and per-pixel carve cost rises with the footprint |
 
 `S_DA` and `DELTA_ELEV` gate anastomosing (`DA`) reaches. Neither is a published Rosgen figure; both were
 introduced so `DA` cannot claim a reach with any real fall or any elevation above near-base-level.
@@ -44,6 +45,10 @@ introduced so `DA` cannot claim a reach with any real fall or any elevation abov
   makes it mean — calibrate `W_REF`, never `WD_NARROW`.
 - `INFLUENCE_BLEND_MULTIPLIER` is dimensionless, not a native-px width. The blend band's actual width is
   `riverInfluence − floodPlainLength`.
+- `INFLUENCE_DEPTH_FACTOR` scales a product, `depth × width`, so it responds to both terms at once and the
+  floor binds harder than the width-only law it replaced: `ChannelElevationAssigner` clamps a bed at or
+  below sampled terrain, making near-zero depth the common case on lowland reaches. Calibrate it against
+  the depth distribution, not against a single channel.
 
 ## Invariants
 

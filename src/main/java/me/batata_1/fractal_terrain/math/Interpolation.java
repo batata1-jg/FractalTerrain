@@ -46,6 +46,14 @@ public class Interpolation {
         return v0 * (1 - fx) + v1 * fx;
     }
 
+    /** Nearest-neighbour sample, edge-clamped like {@link #sampleBilinear}. Serves callers reading a
+     *  field that must not be averaged across its neighbours. */
+    public static double sampleNearest(float[] field, double px, double pz, int side) {
+        final int x = Math.clamp((int) Math.floor(px), 0, side - 1);
+        final int z = Math.clamp((int) Math.floor(pz), 0, side - 1);
+        return field[x * side + z];
+    }
+
     public static double sampleSmoothStep(float[] field, double px, double pz, int side) {
         int x0 = (int) Math.floor(px);
         int z0 = (int) Math.floor(pz);

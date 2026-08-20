@@ -82,27 +82,6 @@ public record ConfluencePrimitive(
         return (absJ * hI + absI * hJ) / sum;
     }
 
-    /** Quartic radial falloff from the junction center, matching the shell blend's degree without a
-     *  square root. */
-    @Override
-    public double w(double[] pt) {
-        if (influence <= 0) return 0;
-        final double dx = pt[0] - coord[0], dz = pt[1] - coord[1];
-        final double u = (dx * dx + dz * dz) / (influence * influence);
-        if (u >= 1) return 0;
-        final double t = 1 - u;
-        return t;
-    }
-
-    /** Signed perpendicular distance to the angularly nearest arm — shares {@link #bracketSample} with
-     *  {@link HydrologicalPrimitive#h} so the two can't disagree. */
-    @Override
-    public double d(double[] pt) {
-        if (angles.length == 0) return 0;
-        final BracketSample bracket = bracketSample(pt);
-        return Math.abs(bracket.dI()) <= Math.abs(bracket.dJ()) ? bracket.dI() : bracket.dJ();
-    }
-
     /** Wetted-channel test against the widest arm's bed half-width, matching {@link
      *  RiverPrimitive#channelContains}. */
     @Override

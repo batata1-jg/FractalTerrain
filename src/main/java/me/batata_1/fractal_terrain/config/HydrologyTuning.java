@@ -112,12 +112,27 @@ public final class HydrologyTuning {
     /** Hard cap on influence radius, bounding both per-pixel carve work and the cross-tile query span. */
     public static final double MAX_INFLUENCE_RADIUS = 64.0f;
 
+    /** Floor on influence radius, load-bearing rather than cosmetic: at zero,
+     *  {@code HydrologyProfileInprinter} divides by the influence half-width and the R-tree indexes the
+     *  primitive under a zero-area rectangle. */
+    public static final double MIN_INFLUENCE_RADIUS = 2.0;
+
+    /** Scale taking a channel's {@code depth × width} to its influence radius. Uncalibrated — see README. */
+    public static final double INFLUENCE_DEPTH_FACTOR = 2.0;
+
     /** Border margin kept clear, wider than the influence radius — see README. */
     public static final double MARGIN_INFLUENCE_FACTOR = 5.0;
 
     public static double maxInfluence(double width) {
-        return Math.clamp(width * 5, 2, MAX_INFLUENCE_RADIUS);
+        return Math.clamp(width * 5, MIN_INFLUENCE_RADIUS, MAX_INFLUENCE_RADIUS);
         // return Math.clamp(0.844803 * Math.pow(width + 0.990178, 1.52681) + 0.167833, 1, MAX_INFLUENCE_RADIUS);
+    }
+
+    /** Influence radius for a channel point whose bed sits {@code deltaElev} below the surface, so a deeply
+     *  incised channel pulls in more terrain than its width alone implies. Callers with no bed elevation
+     *  to hand keep using {@link #maxInfluence(double)}. */
+    public static double maxInfluence(double width, double deltaElev) {
+        return Math.clamp(INFLUENCE_DEPTH_FACTOR * deltaElev * width, MIN_INFLUENCE_RADIUS, MAX_INFLUENCE_RADIUS);
     }
 
     public static double widthFromFlow(double rawFlow) {

@@ -13,7 +13,6 @@ import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
-import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexShape;
 import me.batata_1.fractal_terrain.storage.Persistable;
@@ -77,12 +76,6 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
     /** The profile deciding this primitive's carve zones and shell pull. */
     HydrologyProfile getProfile();
 
-    /** The primitive's own cross-section, layered onto what the shell carve already cut. Returning
-     *  {@code elevAtPixel} unchanged means the primitive adds no detail of its own. */
-    double w(double[] pt);
-
-    double d(double[] pt);
-
     double[] coord();
 
     /** Whether the point is inside open water. Defaults to no, so a wetted type opts in. */
@@ -119,6 +112,17 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
     HydrologicalPrimitive deserializePrimitive(byte[] rawBytes);
 
     /**
+     * Terrain surface elevation at a point, in whatever frame the caller emits primitives from.
+     *
+     * <p>Nested here so the grid stride behind the sample stays with the provider that owns the grid, and
+     * this package keeps needing no frame of its own.
+     */
+    @FunctionalInterface
+    interface SurfaceSampler {
+        double at(double x, double z);
+    }
+
+    /**
      * Feature kinds and the registry mapping each to its record.
      *
      * <p><b>Append only.</b> A constant's ordinal is the on-disk type tag, so reordering or removing one
@@ -134,23 +138,23 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
                 ChannelTyper typer = (ChannelTyper) args[0];
                 Channel ch = (Channel) args[1];
                 Centreline centreline = (Centreline) args[2];
+                SurfaceSampler surface = (SurfaceSampler) args[3];
                 RiverPrimitive.RosgenType[] types = typer.typesFor(ch);
                 for (int i = 0; i < ch.numPts(); i++) {
                     final double width = ch.widthAt(i);
-                    final RosgenProfile profile = RosgenProfile.of(types[i]);
-                    final double[] coords = VectorOps.sub(ch.spline.sample(i), offset);
-                    // TODO: may breaks for multiple channels in diferent tiles.
-                    // TODO: replace influence with delta height / width
-                    final long packedIds = i | (((long) ch.channelId) << 32);
+                    // The sampler reads its own grid, which the offset has not been applied to; only the
+                    // stored coord is shifted into the frame the index is queried in.
+                    final double[] splinePt = ch.spline.sample(i);
+                    final double bedElevation = ch.bedElev(i);
+                    final double delta = Math.max(0, surface.at(splinePt[0], splinePt[1]) - bedElevation);
                     out.add(new RiverPrimitive(
-                            coords,
-                            HydrologyTuning.maxInfluence(width),
+                            VectorOps.sub(splinePt, offset),
+                            HydrologyTuning.maxInfluence(width, delta),
                             types[i],
                             centreline.normalAt(ch, i),
                             ch.spline.curvature(i),
                             width,
-                            ch.bedElev(i),
-                            packedIds));
+                            bedElevation));
                 }
             }
         },
@@ -270,8 +274,6 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
          *  packed value ({@code RIVER} + {@code RosgenType.A}), so a zero-filled buffer would read as river. */
         public static final long NONE = -1L;
 
-        /** Packs this family with a family-specific sub-classification into one lattice cell. Same split as
-         *  {@link RiverPrimitive#ids}: family in the high word, sub-type in the low. */
         public long pack(int subOrdinal) {
             return (((long) ordinal()) << 32) | (subOrdinal & 0xFFFFFFFFL);
         }

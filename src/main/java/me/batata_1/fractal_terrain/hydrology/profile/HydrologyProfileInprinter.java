@@ -151,13 +151,6 @@ public final class HydrologyProfileInprinter {
                     elevs);
             stop++;
         }
-
-        // The height lane accumulates weighted, so it needs one division to become a surface. The water
-        // lane does not: its blend default is 0, and (1 - W) * 0 + W * (acc / W) is the raw accumulator.
-        for (int i = 0; i < points; i++) {
-            final float weight = acc[3 * i + 2];
-            if (weight > 0) acc[3 * i] /= weight;
-        }
         return stop;
     }
 
@@ -277,7 +270,7 @@ public final class HydrologyProfileInprinter {
                 // Whoever owns the majority of the blend owns the type. With SMOOTH_STEP_DIVISOR at 0.1
                 // the weight is a near-hard selector, so this is the true nearest bar a 0.1-wide band.
                 typeMask[i] = w > 0.5 ? packed : typeMask[i];
-                acc[a + 2] = (float) (acc[a + 2] + w * (1 - acc[a + 2]));
+                acc[a + 2] = 1 - Math.clamp(dist[i], 0, 1);
             }
         }
     }
@@ -312,14 +305,14 @@ public final class HydrologyProfileInprinter {
                 buffers.perpCol,
                 buffers.tangRow,
                 buffers.tangCol,
-                null);
+                elevation);
 
         for (int i = 0; i < points; i++) {
             final float ambient = elevation[i];
             if (ambient < 0) continue;
-            final float weight = acc[3 * i + 2];
+            final float weight = Math.clamp(acc[3 * i + 2], 0, 1);
             if (weight <= 1e-8f) continue;
-            elevation[i] = (float) ((1 - weight) * ambient + weight * Math.min(acc[3 * i], ambient));
+            elevation[i] = ((1 - weight) * ambient + weight * acc[3 * i]);
         }
     }
 }

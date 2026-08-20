@@ -25,6 +25,7 @@ import me.batata_1.fractal_terrain.hydrology.rosgen.ReachRosgenClassifier;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingSpatialIndex;
+import me.batata_1.fractal_terrain.math.Interpolation;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 import me.batata_1.fractal_terrain.relief.DecoderChannels;
 import me.batata_1.fractal_terrain.storage.TileKey;
@@ -235,10 +236,16 @@ public class LocalRiverProvider {
     }
 
     /** Packages the graph into primitives, each carrying a Rosgen type. A fresh classifier per call:
-     *  {@code prepare} rebuilds its whole cache anyway, and the two calls see different graphs. */
+     *  {@code prepare} rebuilds its whole cache anyway, and the two calls see different graphs.
+     *  The surface sampler stays in the padded tile frame both call sites hand it pre-offset points in. */
     private static List<HydrologicalPrimitive> collectPrimitives(
             RiverNetwork network, float[] rawElev, double offsetX, double offsetZ) {
-        return network.collectPrimitives(offsetX, offsetZ, new ReachRosgenClassifier(rawElev, PADDED));
+        return network.collectPrimitives(
+                offsetX,
+                offsetZ,
+                channelId -> true,
+                new ReachRosgenClassifier(rawElev, PADDED),
+                (x, z) -> Interpolation.sampleNearest(rawElev, x, z, PADDED));
     }
 
     private FloatTensor cropToTile(float[] padded) {

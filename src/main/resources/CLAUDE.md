@@ -18,4 +18,5 @@ Mod metadata, mixin/accesswidener config, worldgen datapack JSON, and bundled as
 | `data/fractal_terrain/worldgen/`           | Worldgen JSON: `noise_settings`, `world_preset`                  | Editing generation shape, world preset        |
 | `data/fractal_terrain/dimension_type/`     | Overworld dimension-type JSON (height/build limits)              | Changing world height range                    |
 | `data/minecraft/tags/worldgen/`            | Vanilla worldgen tag overrides (world-preset tags)               | Registering the preset into vanilla selection  |
+| `data/terrablender/tags/dimension_type/` | TerraBlender tag opting `fractal_terrain:overworld` into region-based biome placement | Changing which dimensions TerraBlender manages |
 | `assets/fractal_terrain/`                  | `lang/`, `icon.png`, `ml_util/fuzed.onnx` (bundled post-process) | Translations, mod icon, bundled ONNX helper    |

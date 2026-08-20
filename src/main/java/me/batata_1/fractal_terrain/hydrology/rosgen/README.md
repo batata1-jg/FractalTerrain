@@ -94,7 +94,8 @@ headwaters into the reaches below them. Slope-driven variation is intended behav
 - **`ReachMetricsSampler` must be handed raw decoded elevation, never a carved buffer.**
   `carveRiverShells` *creates* the floodplain and writes in place, so measuring entrenchment on its
   output measures `FLOODPLAIN_BASE` and `FLOODPLAIN_WIDTH_FACTOR` — the carve's own tuning constants —
-  instead of the terrain. `Meanders` holds a pre-carve snapshot for exactly this reason.
+  instead of the terrain. `GlobalNetworkBuilder` clones `rawElev` before the first assign and first carve
+  for exactly this reason.
 - **A saturating transect returning `+inf` is correct, not a failure.** It is the right reading for a
   broad flat valley and lands in the slightly-entrenched branch.
 - **Slope is floored at 0.** Beds are propagated monotone non-increasing downstream, so an uphill reach

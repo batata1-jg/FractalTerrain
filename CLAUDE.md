@@ -119,6 +119,10 @@ re-read what is already in context.
 
 Implementation is delegated, not done in the main thread.
 
+- Default: a `general-purpose` agent on Sonnet (Agent tool, `subagent_type: "general-purpose"`,
+  `model: "sonnet"`).
+- Dispatch `developer` only for changes you estimate at 1000+ lines touched, never below: its
+  heavy agent prompt and scripted workflow burn far more tokens, and pay off only at that size.
 - Trivial exception: a one- or two-line mechanical edit the user already specified exactly, or a
   revert. Say when you skip delegation and why.
 

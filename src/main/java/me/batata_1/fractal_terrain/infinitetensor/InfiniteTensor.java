@@ -112,7 +112,7 @@ public abstract class InfiniteTensor {
             }
 
             updateOutput(output, cached, dstRegion, srcRegion);
-            output.addFrom(cached, dstRegion, srcRegion);
+           // output.addFrom(cached, dstRegion, srcRegion);
         });
 
         storage.evictIfNeeded(cacheLimitBytes);

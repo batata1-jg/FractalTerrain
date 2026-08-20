@@ -184,7 +184,6 @@ public final class ReachRosgenClassifier implements ChannelTyper {
         // the tangent degenerates (duplicate consecutive spline points), and perpendicular preserves that. A
         // zero normal makes the transect resample the same pixel at every step, so it must be caught
         // here rather than walked.
-        // TODO: 1.0 is a placeholder. ER = 1 means fully entrenched, which sends a degenerate reach to
         // F/G — visible types, deliberately, so the case shows up in the type PNG instead of hiding in
         // the C/E majority. Once the type mix is calibrated (P1), decide whether a degenerate reach
         // should instead inherit its downstream neighbour's type or be dropped from classification.
@@ -199,7 +198,6 @@ public final class ReachRosgenClassifier implements ChannelTyper {
         return new ReachMetrics(slope, entrenchment, ChannelGeometry.widthDepthRatio(width), width, bedElev);
     }
 
-    /** Entrenchment reported for a reach whose centreline tangent degenerates. See the TODO in {@link #measure}. */
     private static final double DEGENERATE_ENTRENCHMENT = 1.0;
 
     /** Squared length below which a normal counts as degenerate rather than a unit vector. */

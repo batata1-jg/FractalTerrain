@@ -17,9 +17,9 @@ import org.jetbrains.annotations.TestOnly;
  * {@link #migrate}; the resample → migrate → resolve-endpoints → cutoffs → collisions sequence lives
  * here, so two models driven over one graph cannot fall out of step with each other.
  *
- * <p>The {@link RiverNetwork} is injected, not constructed: {@link Meanders} and
- * {@link GradientNetworkRelaxation} are meant to act on the SAME graph in sequence within a single
- * {@code LocalRiverProvider.buildTile} call, which is impossible while one of them owns it privately.
+ * <p>The {@link RiverNetwork} is injected, not constructed: a model is one rule applied to a graph
+ * someone else owns, so several can be driven over the SAME instance in sequence — impossible while one
+ * of them owns it privately. Only {@link GradientNetworkRelaxation} has a pipeline caller today.
  *
  * <p>Every step takes a {@code dx} (native px): it is both the resample spacing and — through
  * {@link HydrologyTuning#maxMigration} — the cap on per-step displacement, so a caller coarsening the

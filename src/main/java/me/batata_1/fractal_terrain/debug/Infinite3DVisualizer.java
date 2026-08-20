@@ -96,20 +96,7 @@ public class Infinite3DVisualizer {
                 double weight = 0;
                 double weightedElev = 0;
                 double distance = 10;
-                for (HydrologicalPrimitive primitive : primitives) {
-                    final var dw = primitive.w(pt);
-                    weight += dw;
-                    weightedElev += dw * 0;
-                    final double dist = Math.clamp(
-                            Math.hypot(
-                                    pt[0] - primitive.coord()[0],
-                                    pt[1] - primitive.coord()[1]),
-                            0.02,
-                            100);
-                    distance += 1 / dist;
-                }
-                if (weight <= 1e-8) return BASE_ELEV;
-                return (int) (1 / distance);
+                return BASE_ELEV;
             }
         },
         DIST_SHORE(10.0f, 1.0f, 5.0f, xz ->
