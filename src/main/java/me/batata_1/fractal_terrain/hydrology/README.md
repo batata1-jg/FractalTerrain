@@ -3,22 +3,23 @@
 ## Overview
 
 `LocalRiverProvider` is the per-tile riverPrimitive pipeline: from the decoded terrain and the global (coarse)
-riverPrimitive network it produces, per 512x512 relief tile, two artifacts from a single `buildTile` pass — a
-spatial index of `HydrologicalPrimitive` influence circles (the queryable network geometry) and a carved,
-sink-filled elevation tensor. The two artifacts describe the same graph and are only cheap to produce
-together, which is why they are built and cached as a pair rather than as two independent providers.
+riverPrimitive network it produces, per 512x512 relief tile, a single artifact from `buildTile` — a
+spatial index of `HydrologicalPrimitive` influence circles (the queryable network geometry). The carved,
+sink-filled elevation `buildTile` computes along the way is an internal input to the drainage trace and
+the two elevation-assignment passes; it is never published, since `ReliefProvider` decodes elevation
+channel 0 itself from the same diffusion residual rather than importing it.
 
 ## Architecture
 
-**Dual-store cache.** `primitives` (a `NonIntersectingSpatialIndex<ImmutableRTree<HydrologicalPrimitive>>`) and
-`carved` (a `NonIntersectingInfiniteTensor`) are backed by `Storage`'s independent per-store cache, but
-both come out of one `buildTile(tileX, tileZ, stages)` call — splitting them into two providers would
-mean tracing/relaxing/carving the network twice. Whichever store is requested first
-(`buildPrimitivesTile`/`buildCarvedTile`) runs `buildTile` under a `pending` single-flight map keyed by
-`TileKey`, then cross-fills the *other* store via that store's own `claimForCompute`/`fulfillClaim` pair
-— so a caller that only ever asks for `getCarvedElev` still populates the primitives index for a later
-caller, without a second compute. Bypassing the claim API (writing into either store directly) breaks
-this cross-fill and can leave one store permanently unpopulated for a tile the other has cached.
+**Single-store cache, 50 MB budget.** `primitives` is a
+`NonIntersectingSpatialIndex<ImmutableRTree<HydrologicalPrimitive>>` backed by `Storage`'s per-store
+cache, with a 50 MB soft cap on cached bytes (`PRIMITIVE_CACHE_LIMIT_BYTES`) enforced through
+`Storage.evictIfNeeded` on every cache miss inside `NonIntersectingSpatialIndex.loadInto`. An evicted
+tile simply falls off `CACHE`; the next `buildPrimitivesTile` call for that key reruns the whole
+`buildTile` pipeline and, if the store is disk-backed, a prior disk-persisted tile is reloaded instead of
+recomputed. There is no cross-store fill to worry about: `buildTile` computes and returns exactly one
+artifact, so a cache miss always means "recompute (or reload) the primitives for this tile," never
+"reconstruct a second store from a first store's result."
 
 **`buildTile` ordering** (load-bearing — see `LocalRiverProvider.buildTile` javadoc for the exact code
 reference):
@@ -37,8 +38,9 @@ reference):
 5. The boundary-elevation map is augmented with the local trace's new `SOURCE`/`DRAIN` nodes, then
    `ChannelElevationAssigner.assign` runs a second time over the now-unified graph.
 9. `RiverNetwork.collectPrimitives` emits every primitive (global and local, one shared feature-id counter,
-   `dx = max(width/2, MIN_CONVERT_SPACING)` resample spacing) into the R-tree; `carveRiverShells` runs a
-   second time; the padded buffer is cropped to the 512x512 tile.
+   `dx = max(width/2, MIN_CONVERT_SPACING)` resample spacing) into the R-tree, which `buildTile` returns
+   directly; `carveRiverShells` runs a second time on the padded buffer, but the buffer itself is never
+   published — cropping it to the 512x512 tile happens only inside the `@TestOnly` `Stages` sink.
 
 Both `carveRiverShells` passes collect primitives *unfiltered*: the first is global-only purely because the
 local network does not exist yet at that point, not because of an explicit filter. `RiverNetwork
@@ -76,11 +78,10 @@ primitives out of the tile-level shell — both `carveRiverShells` calls are unf
 
 ## Invariants
 
-- **The dual-store build depends on `Storage`'s claim API.** `LocalRiverProvider`'s cross-fill (see
-  Architecture) requires computing a tile's primitives and carved elevation together and publishing both
-  through `claimForCompute`/`fulfillClaim`; do not compute one store's tile independently of the other.
-- **`FloatTensor` obtained from `carved` is frozen once cached** — never mutate a tensor read via
-  `getCarvedElev`; take a `slice`/`copyRange` first if a mutable copy is needed.
+- **The primitives store enforces its own byte budget.** `NonIntersectingSpatialIndex.loadInto` calls
+  `Storage.evictIfNeeded(PRIMITIVE_CACHE_LIMIT_BYTES)` as its last statement, after the promise for that
+  key is settled on both the disk-reload and the recompute branch — never on the lock-free cache-hit path
+  (see Architecture).
 - **The hydrology carve is order-dependent, across passes and within one.** `carveRiverShells` reads and
   writes one shared buffer, so results depend on how many carve passes have run and which primitives
   existed in the graph at the time; `buildTile` runs it twice by design (see Architecture), and adding,

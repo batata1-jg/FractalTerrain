@@ -146,10 +146,10 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
                     // stored coord is shifted into the frame the index is queried in.
                     final double[] splinePt = ch.spline.sample(i);
                     final double bedElevation = ch.bedElev(i);
-                    final double delta = Math.max(0, surface.at(splinePt[0], splinePt[1]) - bedElevation);
+                    final double delta = Math.abs(surface.at(splinePt[0], splinePt[1]) - bedElevation);
                     out.add(new RiverPrimitive(
                             VectorOps.sub(splinePt, offset),
-                            HydrologyTuning.maxInfluence(width, delta),
+                            HydrologyTuning.influence(width, delta),
                             types[i],
                             centreline.normalAt(ch, i),
                             ch.spline.curvature(i),
@@ -230,7 +230,7 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
                     curvatures[k] = ch.spline.curvature(jk);
                     rosgenTypes[k] = typer == null ? null : typer.typesFor(ch)[jk];
 
-                    influence = Math.max(influence, HydrologyTuning.maxInfluence(widths[k]));
+                    influence = Math.max(influence, HydrologyTuning.influence(widths[k]));
                     minJunctionBed = Math.min(minJunctionBed, ch.bedElev(jk));
                     if (atStart) {
                         outgoingArm = ch;

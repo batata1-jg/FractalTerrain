@@ -6,24 +6,18 @@ import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.PADDED
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.sampleBilinear;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
-import me.batata_1.fractal_terrain.config.TensorLayout;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
 import me.batata_1.fractal_terrain.hydrology.rosgen.ReachRosgenClassifier;
-import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
-import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingSpatialIndex;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
@@ -39,24 +33,22 @@ import org.slf4j.LoggerFactory;
  * {@code ReliefProvider} downstream; stage math lives in {@link GlobalNetworkBuilder},
  * {@link LocalDrainageTracer} and {@link ChannelElevationAssigner}.
  *
- * <p>Publishes two stores from a single {@link #buildTile} pass so they can never disagree: an index of
- * {@link HydrologicalPrimitive} influence circles answering point-stabbing queries, and carved elevation tiles
- * imported as ReliefProvider's elevation channel. Primitive coords are stamped in the world relief-pixel
- * frame so a hit from a neighbouring tile needs no translation; carved tiles stay tile-local.
+ * <p>Publishes one artifact from {@link #buildTile}: an index of {@link HydrologicalPrimitive} influence
+ * circles answering point-stabbing queries. Primitive coords are stamped in the world relief-pixel frame
+ * so a hit from a neighbouring tile needs no translation.
  */
 public class LocalRiverProvider {
 
     private static final Logger LOG = LoggerFactory.getLogger(LocalRiverProvider.class);
+
+    /** Soft cap on the primitives store's cached bytes; mirrors {@code WorldPipeline.cacheLimitBytes}. */
+    private static final long PRIMITIVE_CACHE_LIMIT_BYTES = 50L * 1024 * 1024;
+
     private final NonIntersectingSpatialIndex<ImmutableRTree<HydrologicalPrimitive>> primitives;
-    private final NonIntersectingInfiniteTensor carved;
-    private final ConcurrentHashMap<TileKey, TileResult> pending = new ConcurrentHashMap<>();
 
     /** Test-only override for the global river source; {@code null} → use the singleton. */
     @TestOnly
     private @Nullable GlobalRiverProvider globalRiverOverride;
-
-    /** Both per-tile artifacts produced by one {@link #buildTile}. */
-    private record TileResult(ImmutableRTree<HydrologicalPrimitive> primitives, FloatTensor carved) {}
 
     public LocalRiverProvider(String path) {
         // The one-primitive prototype index keeps Storage's serializability probe exercising primitive
@@ -69,9 +61,8 @@ public class LocalRiverProvider {
                 "local_river_units_v2",
                 new int[] {GRID, GRID},
                 new ImmutableRTree<>(List.of(), HydrologicalPrimitive.PROTOTYPE),
-                key -> key != null ? buildPrimitivesTile(key) : null);
-        carved = new NonIntersectingInfiniteTensor(
-                path, "local_carved_elev_v2", new int[] {1, GRID, GRID}, this::buildCarvedTile);
+                key -> key != null ? buildPrimitivesTile(key) : null,
+                PRIMITIVE_CACHE_LIMIT_BYTES);
     }
 
     @TestOnly
@@ -98,59 +89,22 @@ public class LocalRiverProvider {
         return (globalRiverOverride != null) ? globalRiverOverride : FractalTerrainInstance.getGlobalRiverProvider();
     }
 
-    /** Clears both per-tile caches (the primitive tree and the carved-elevation tensor). */
+    /** Clears the primitive-index cache. */
     public void clearCaches() {
         primitives.clear();
-        carved.clear();
-        pending.clear();
-    }
-
-    /** The carved+filled elevation tile {@code [1,512,512]} for {@code (tileX, tileZ)} (imported by ReliefProvider). */
-    public FloatTensor getCarvedElev(int tileX, int tileZ) {
-        return carved.getEntry(new int[] {0, tileX, tileZ});
-    }
-
-    // -------------------------------------------------------------------------
-    // Dual-store build (single compute, both stores filled)
-    // -------------------------------------------------------------------------
-
-    private TileResult buildOnce(int tileX, int tileZ) {
-        return pending.computeIfAbsent(new TileKey(new int[] {tileX, tileZ}), k -> buildTile(tileX, tileZ, null));
-    }
-
-    /** The primitives store is keyed rank-2 {@code {tileX, tileZ}} — no channel axis, so its axes are
-     *  not {@link TensorLayout}-indexed, unlike the rank-3 carved key below. */
-    private ImmutableRTree<HydrologicalPrimitive> buildPrimitivesTile(TileKey key) {
-        final int tileX = key.get(0);
-        final int tileZ = key.get(1);
-        final TileResult result = buildOnce(tileX, tileZ);
-        final int[] carvedKey = {0, tileX, tileZ};
-        final CompletableFuture<FloatTensor> claim = carved.claimForCompute(carvedKey);
-        if (claim != null) carved.fulfillClaim(carvedKey, claim, result.carved());
-        pending.remove(new TileKey(new int[] {tileX, tileZ}));
-        return result.primitives();
-    }
-
-    private FloatTensor buildCarvedTile(TileKey key) {
-        final int tileX = key.get(TensorLayout.X);
-        final int tileZ = key.get(TensorLayout.Z);
-        final TileResult result = buildOnce(tileX, tileZ);
-        final int[] primitivesKey = {tileX, tileZ};
-        final CompletableFuture<ImmutableRTree<HydrologicalPrimitive>> claim =
-                primitives.claimForCompute(primitivesKey);
-        if (claim != null) primitives.fulfillClaim(primitivesKey, claim, result.primitives());
-        pending.remove(new TileKey(new int[] {tileX, tileZ}));
-        return result.carved();
     }
 
     // -------------------------------------------------------------------------
     // Core pipeline
     // -------------------------------------------------------------------------
 
-    /** The per-tile pipeline; both cache artifacts come from this one pass, which is what keeps the two
-     *  stores from disagreeing. Step ordering is load-bearing — see the numbered comments in the body.
+    private ImmutableRTree<HydrologicalPrimitive> buildPrimitivesTile(TileKey key) {
+        return buildTile(key.get(0), key.get(1), null);
+    }
+
+    /** The per-tile pipeline. Step ordering is load-bearing — see the numbered comments in the body.
      *  {@code stages} is a test/debug sink; production calls pass {@code null}. */
-    private TileResult buildTile(int tileX, int tileZ, @Nullable Stages stages) {
+    private ImmutableRTree<HydrologicalPrimitive> buildTile(int tileX, int tileZ, @Nullable Stages stages) {
         final GlobalRiverProvider grp = globalRiverProvider();
         final float[][] base = DecoderChannels.decode(tileX, tileZ, PAD); // padded 514, channels 0..6
 
@@ -163,7 +117,6 @@ public class LocalRiverProvider {
 
         final float[] carvedElevationGlobal = base[0].clone();
         ChannelElevationAssigner.assign(network, boundaryElev, carvedElevationGlobal);
-        LOG.debug("finished first assign() pass");
         // computeRiverGrid's merge is a sequential recurrence, so the order is load-bearing for
         // determinism; collectPrimitives does not guarantee it.
         final List<HydrologicalPrimitive> shellPrimitives = collectPrimitives(network, rawElev, 0, 0);
@@ -171,16 +124,14 @@ public class LocalRiverProvider {
         HydrologyProfileInprinter.carveRiverShells(carvedElevationGlobal, shellPrimitives, PADDED);
         // Snapshot here, not at the end: this buffer is the drainage input for the local trace below, so
         // the harness needs it as it stood when step 2 read it.
-        if (stages != null) stages.elevationFirstPass = cropToTile(carvedElevationGlobal).data;
+        if (stages != null) stages.elevationFirstPass = cropToTile(carvedElevationGlobal);
 
         // 2. sink-fill + drainage on the RAW decoded elevation (not yet carved): the local trace no
         //    longer needs a pre-carved valley to route toward the global network -- LOCAL_ATTACH_RADIUS
         //    proximity (not terrain shape) is what joins locals to the graph -- so drainage can be
         //    computed once, up front, and fed straight into the trace.
         final float[] filled = Drainage.fillSinks(carvedElevationGlobal, PADDED, HydrologyTuning.FILL_PADDING);
-        final float[] uniformWeight = new float[PADDED * PADDED];
-        Arrays.fill(uniformWeight, 1f);
-        final int[] drainagePadded = Drainage.computeDrainageDirection(filled, uniformWeight, PADDED);
+        final int[] drainagePadded = Drainage.computeDrainageDirection(filled, PADDED);
 
         // 3. local rivers: trace + attach into the SAME graph as standalone SOURCE-rooted edges (dangling
         //    JUNCTION end, or coast DRAIN), then run the atomic collision pass which reorients + attaches
@@ -219,20 +170,18 @@ public class LocalRiverProvider {
         final ImmutableRTree<HydrologicalPrimitive> primitiveIndex =
                 new ImmutableRTree<>(primitivePoints, HydrologicalPrimitive.PROTOTYPE);
 
-        final FloatTensor carvedTile = cropToTile(base[0]);
-
         if (stages != null) {
             // The local/global channel-id split no longer survives the collision pass (update() re-assigns
             // every channel id — accepted debug-only regression). All channels are reported together;
             // the local-only PNG is intentionally empty.
             stages.channels = network.getChannels();
             stages.localChannels = new ArrayList<>();
-            stages.rawElevation = cropToTile(base[0].clone()).data;
-            stages.carvedElevation = carvedTile.copyRange(0, carvedTile.getSize());
+            stages.rawElevation = cropToTile(base[0]);
+            stages.carvedElevation = cropToTile(carvedElevationGlobal);
             stages.network = network;
             stages.primitiveTree = primitiveIndex;
         }
-        return new TileResult(primitiveIndex, carvedTile);
+        return primitiveIndex;
     }
 
     /** Packages the graph into primitives, each carrying a Rosgen type. A fresh classifier per call:
@@ -248,14 +197,14 @@ public class LocalRiverProvider {
                 (x, z) -> Interpolation.sampleNearest(rawElev, x, z, PADDED));
     }
 
-    private FloatTensor cropToTile(float[] padded) {
+    private static float[] cropToTile(float[] padded) {
         final float[] data = new float[GRID * GRID];
         for (int ix = 0; ix < GRID; ix++) {
             for (int iz = 0; iz < GRID; iz++) {
                 data[ix * GRID + iz] = padded[(PAD + ix) * PADDED + (PAD + iz)];
             }
         }
-        return new FloatTensor(new int[] {1, GRID, GRID}, data);
+        return data;
     }
 
     // -------------------------------------------------------------------------

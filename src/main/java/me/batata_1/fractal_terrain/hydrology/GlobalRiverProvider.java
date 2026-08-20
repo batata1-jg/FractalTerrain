@@ -10,7 +10,6 @@ import static me.batata_1.fractal_terrain.hydrology.Drainage.NEIGHBOR_OFFSET_Z;
 import static me.batata_1.fractal_terrain.hydrology.Drainage.OPPOSITE_DIRECTION;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
@@ -180,10 +179,7 @@ public class GlobalRiverProvider {
         // 5. gradient descent: steepest-descent D4 field over the sink-filled ramped elevation, then a
         //    per-source walk recording outgoing bits along each path until it reaches a coast pixel or a
         //    border outlet. Sink filling guarantees the walk never stalls in an interior depression.
-        final float[] uniformWeight = new float[PADDED_SIDE * PADDED_SIDE];
-        Arrays.fill(uniformWeight, 1f);
-        final int[] drainageDirection =
-                Drainage.computeDrainageDirectionCardinal(rampedElevation, uniformWeight, PADDED_SIDE);
+        final int[] drainageDirection = Drainage.computeDrainageDirectionCardinal(rampedElevation, PADDED_SIDE);
         final int[] arrows = new int[PADDED_SIDE * PADDED_SIDE];
         for (int i = 0; i < PADDED_SIDE; i++) {
             for (int j = 0; j < PADDED_SIDE; j++) {

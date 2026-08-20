@@ -2,9 +2,11 @@
 
 ## Overview
 
-Builds the final per-tile relief tensor (`[RELIEF_CHANNELS=7, 512, 512]`) by combining carved elevation
-imported from the hydrology pipeline with a weight-normalized decode of the diffusion decoder's residual
-channels, plus a Difference-of-Gaussians high-frequency channel.
+Builds the final per-tile relief tensor (`[RELIEF_CHANNELS=7, 512, 512]`) from a weight-normalized decode
+of the diffusion decoder's residual channels — elevation included — plus a Difference-of-Gaussians
+high-frequency channel. `hydrology.LocalRiverProvider` decodes the same residual separately to trace and
+carve rivers, but publishes only its primitive index, not an elevation tensor; the two providers never
+share an elevation buffer.
 
 ## Architecture
 
@@ -16,13 +18,11 @@ directly.
 
 ## Design Decisions
 
-**Why the decode is a stateless shared helper instead of living on one provider.** In the
-`GenerationContext` build order (`global → local → relief → biome`), `ReliefProvider` reads
-`LocalRiverProvider`'s carved elevation (`localRiverProvider().getCarvedElev(...)`) to fill relief
-channel 0. If the decoder-slice decode itself lived as instance state on `ReliefProvider`, and
-`LocalRiverProvider` needed that same decode (it does, for tracing and carving), `LocalRiverProvider`
-would have to depend back on `ReliefProvider` — creating a two-way instance dependency between the two
-providers on top of the one-way `relief → local riverPrimitive` data dependency the build order already has.
-Factoring the decode into a stateless static helper both providers call directly sidesteps that: neither
-provider instance depends on the other's instance, only on the shared pipeline and (for `ReliefProvider`)
-on `LocalRiverProvider`'s carved-elevation output.
+**Why the decode is a stateless shared helper instead of living on one provider.** Both `ReliefProvider`
+and `LocalRiverProvider` need the same decoded decoder slice — `ReliefProvider` to fill its own relief
+channels, `LocalRiverProvider` to trace and carve off its own copy — but neither provider's output feeds
+the other's input, so there is no data dependency between the two providers to hang the decode on. If the
+decode lived as instance state on one provider, the other would have to reach through that provider's
+instance just to obtain a slice it has no other reason to depend on, creating an artificial two-way
+instance dependency. Factoring the decode into a stateless static helper both providers call directly
+sidesteps that: neither provider instance depends on the other's instance, only on the shared pipeline.

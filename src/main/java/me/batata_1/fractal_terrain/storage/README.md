@@ -38,12 +38,12 @@ no bin lock is ever held across a slow load or compute; losers of the race simpl
 `CompletableFuture`.
 
 **`claimForCompute`/`fulfillClaim`/`abandonClaim` is a public claim API, not just an internal helper.**
-`LocalRiverProvider`'s dual-store `buildTile` (primitives-index `Storage` + carved-elevation `Storage`, built
-from one pass) depends on this API to cross-fill its second store without a duplicate compute: it claims
-the second key itself rather than calling a compute function that would recompute work the first store's
-pass already did. Do not bypass `claimForCompute` with a check-then-act pattern (e.g.
-`if (!inStorage(key)) compute()`) — only the atomic `putIfAbsent` inside it guarantees a key is computed at
-most once when many worker threads race for overlapping slices.
+`InfiniteTensor`'s batched compute (`InfiniteTensor.java:221-261`) depends on this API when a batch
+function computes several windows at once: it claims every window's key up front, so a second thread
+requesting one of those windows blocks on the batch's own promise instead of racing to recompute it, then
+settles each claim as the batch result for that window becomes available. Do not bypass `claimForCompute`
+with a check-then-act pattern (e.g. `if (!inStorage(key)) compute()`) — only the atomic `putIfAbsent`
+inside it guarantees a key is computed at most once when many worker threads race for overlapping slices.
 
 ## Invariants
 

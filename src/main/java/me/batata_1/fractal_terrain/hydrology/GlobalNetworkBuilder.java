@@ -73,7 +73,7 @@ final class GlobalNetworkBuilder {
                 int dcx = ccx, dcz = ccz;
                 double[] drain;
                 final double marginInfl =
-                        HydrologyTuning.maxInfluence(Math.max(grp.getWidth(ccx, ccz), HydrologyTuning.MIN_WIDTH));
+                        HydrologyTuning.influence(Math.max(grp.getWidth(ccx, ccz), HydrologyTuning.MIN_WIDTH));
                 if (outDir != -1) {
                     dcx = ccx + Drainage.NEIGHBOR_OFFSET_X[outDir];
                     dcz = ccz + Drainage.NEIGHBOR_OFFSET_Z[outDir];
@@ -237,7 +237,7 @@ final class GlobalNetworkBuilder {
         final double minZ = PAD + b * COARSE_PX;
         final double downstreamBed = Math.max(
                 0, (c.outDirection() != -1) ? grp.getElevation(c.dcx(), c.dcz()) : grp.getElevation(c.ccx(), c.ccz()));
-        final double[] seed = sourceSeed(c.ccx(), c.ccz(), minX, minZ, HydrologyTuning.maxInfluence(width));
+        final double[] seed = sourceSeed(c.ccx(), c.ccz(), minX, minZ, HydrologyTuning.influence(width));
         final int seedNode = addNode(nodeSpecs, seed[0], seed[1], Endpoint.Type.SOURCE);
         boundaryElevByNodeIdx.put(seedNode, Math.max(sampleBilinear(elev, seed[0], seed[1]), downstreamBed));
         edgeSpecs.add(

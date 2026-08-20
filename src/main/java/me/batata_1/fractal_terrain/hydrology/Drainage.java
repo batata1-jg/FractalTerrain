@@ -126,26 +126,24 @@ public class Drainage {
     // Drainage direction
     // ---------------------------------------------------------------------------------------------
 
-    /** The default routing, used by the local network where diagonal channels are wanted.
-     *  {@code elev} is divided by {@code weight} to match the decoder's blend-weight convention. */
-    public static int[] computeDrainageDirection(final float[] elev, final float[] weight, final int gridSize) {
-        return steepestDescent(elev, weight, gridSize, FIRST_DIRECTION_D8);
+    /** The default routing, used by the local network where diagonal channels are wanted. */
+    public static int[] computeDrainageDirection(final float[] elev, final int gridSize) {
+        return steepestDescent(elev, gridSize, FIRST_DIRECTION_D8);
     }
 
     /** Cardinal-only routing for {@code GlobalRiverProvider}, which needs every river cell to have a
      *  single edge-aligned exit so arrows stay consistent across tile borders. */
-    public static int[] computeDrainageDirectionCardinal(final float[] elev, final float[] weight, final int gridSize) {
-        return steepestDescent(elev, weight, gridSize, FIRST_DIRECTION_CARDINAL);
+    public static int[] computeDrainageDirectionCardinal(final float[] elev, final int gridSize) {
+        return steepestDescent(elev, gridSize, FIRST_DIRECTION_CARDINAL);
     }
 
     /** Shared body of the D8 and D4 variants; the start index is what selects between them. */
-    private static int[] steepestDescent(
-            final float[] elev, final float[] weight, final int gridSize, final int firstDirection) {
+    private static int[] steepestDescent(final float[] elev, final int gridSize, final int firstDirection) {
         final int[] drainageDirection = new int[gridSize * gridSize];
         for (int x = 0; x < gridSize; x++) {
             for (int z = 0; z < gridSize; z++) {
                 final int cellIndex = x * gridSize + z;
-                final float cellElevation = normalized(elev, weight, cellIndex);
+                final float cellElevation = elev[cellIndex];
                 float steepestSlope = 0;
                 int steepestDirection = 0;
                 for (int i = firstDirection; i < 8; i++) {
@@ -153,7 +151,7 @@ public class Drainage {
                     if ((x == (gridSize - 1) && NEIGHBOR_OFFSET_X[i] == 1)
                             || (z == (gridSize - 1) && NEIGHBOR_OFFSET_Z[i] == 1)) continue;
                     final int neighborIndex = gridSize * (x + NEIGHBOR_OFFSET_X[i]) + z + NEIGHBOR_OFFSET_Z[i];
-                    final float neighborElevation = normalized(elev, weight, neighborIndex);
+                    final float neighborElevation = elev[neighborIndex];
                     final float slopeToNeighbor = (neighborElevation - cellElevation) / ((i < 4) ? 1.4142f : 1f);
                     if (slopeToNeighbor >= steepestSlope) continue;
                     steepestSlope = slopeToNeighbor;
@@ -163,11 +161,6 @@ public class Drainage {
             }
         }
         return drainageDirection;
-    }
-
-    /** Weight-normalized elevation at {@code cellIndex}, or {@code 0} where the weight is negligible. */
-    private static float normalized(final float[] elev, final float[] weight, final int cellIndex) {
-        return (weight[cellIndex] > 1e-6f) ? (elev[cellIndex] / weight[cellIndex]) : 0f;
     }
 
     // ---------------------------------------------------------------------------------------------

@@ -49,16 +49,26 @@ public class NonIntersectingSpatialIndex<I extends SpatialIndex<?> & Persistable
     private final TensorWindow outWindow;
     private final Function<TileKey, I> entryCreatingFunction;
 
+    /** Soft cap on cached bytes; {@code Long.MAX_VALUE} disables eviction. */
+    private final long cacheLimitBytes;
+
     /** @param prototypeIndex must carry at least one real entry — see the class doc */
     public NonIntersectingSpatialIndex(
-            String path, String name, int[] shape, I prototypeIndex, Function<TileKey, I> entryCreatingFunction) {
+            String path,
+            String name,
+            int[] shape,
+            I prototypeIndex,
+            Function<TileKey, I> entryCreatingFunction,
+            long cacheLimitBytes) {
         super(path, name, shape.length, prototypeIndex);
         this.entryCreatingFunction = entryCreatingFunction;
         this.outWindow = new TensorWindow(shape);
+        this.cacheLimitBytes = cacheLimitBytes;
     }
 
     /** Makes a cache miss recoverable by recomputing, mirroring
-     *  {@link NonIntersectingInfiniteTensor#loadInto}. */
+     *  {@link NonIntersectingInfiniteTensor#loadInto}. Also the only place {@link #cacheLimitBytes} is
+     *  enforced — a cache hit stays on {@link Storage}'s lock-free read path. */
     @Override
     protected void loadInto(TileKey key, CompletableFuture<I> promise) {
         try {
@@ -68,6 +78,10 @@ public class NonIntersectingSpatialIndex<I extends SpatialIndex<?> & Persistable
             persistAndRecord(key, entry);
             promise.complete(entry);
         }
+        // Runs after the promise is settled on both the disk-hit branch (inside super.loadInto) and the
+        // recompute branch above: evicting before promise.complete would drop the in-flight promise from
+        // CACHE and let a racing reader start a duplicate compute.
+        evictIfNeeded(cacheLimitBytes);
     }
 
     /** Receives one overlapping tile's index during {@link #forEachTileWithin}. */

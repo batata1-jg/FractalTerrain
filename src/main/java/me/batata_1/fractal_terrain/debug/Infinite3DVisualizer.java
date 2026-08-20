@@ -63,7 +63,7 @@ public class Infinite3DVisualizer {
                 final double width = 7;
                 primitives.add(new RiverPrimitive(
                         new double[] {256, 256},
-                        HydrologyTuning.maxInfluence(width),
+                        HydrologyTuning.influence(width),
                         RiverPrimitive.RosgenType.C,
                         new double[] {0, 1},
                         0.4,
@@ -71,10 +71,8 @@ public class Infinite3DVisualizer {
                         64,
                         0));
                 primitives.add(new RiverPrimitive(
-                        new double[] {
-                            256 + HydrologyTuning.maxInfluence(width), 256, +HydrologyTuning.maxInfluence(width)
-                        },
-                        HydrologyTuning.maxInfluence(width),
+                        new double[] {256 + HydrologyTuning.influence(width), 256, +HydrologyTuning.influence(width)},
+                        HydrologyTuning.influence(width),
                         RiverPrimitive.RosgenType.C,
                         new double[] {1, 0},
                         0.4,

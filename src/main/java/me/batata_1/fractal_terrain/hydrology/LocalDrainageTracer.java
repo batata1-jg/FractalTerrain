@@ -134,7 +134,7 @@ final class LocalDrainageTracer {
         final GlobalRiverPrimitive[] globalRivers = new GlobalRiverPrimitive[net.size()];
         for (int id = 0; id < net.size(); id++) {
             globalRivers[id] =
-                    new GlobalRiverPrimitive(net.pos(id), Math.min(3, maxInfluence(widthFromFlow(flow[id]))), id);
+                    new GlobalRiverPrimitive(net.pos(id), Math.min(3, influence(widthFromFlow(flow[id]))), id);
         }
         return Arrays.stream(globalRivers).toList();
     }

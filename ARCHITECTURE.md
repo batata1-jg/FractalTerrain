@@ -43,11 +43,11 @@ seed ──► WorldPipeline (JVM-lifetime, me/batata_1/fractal_terrain/ml/pipel
    GenerationContext build order:  global → local → relief → biome
            │
            ├─ GlobalRiverProvider   (hydrology/)  — coarse-px riverPrimitive network per 64×64-coarse tile
-           ├─ LocalRiverProvider    (hydrology/)  — 512-native-px carved elevation + hydrological-primitive index
+           ├─ LocalRiverProvider    (hydrology/)  — 512-native-px hydrological-primitive index
            │     ├─ GlobalNetworkBuilder    — traces/relaxes the global network inside a tile
            │     ├─ LocalDrainageTracer      — local network off the drainage field, attached in place onto that SAME graph
            │     └─ ChannelElevationAssigner — ONE bed-elevation propagation pass over the unified global+local graph
-           ├─ ReliefProvider        (relief/)     — imports carved elevation + decodes residual → [RELIEF_CHANNELS=7,512,512]
+           ├─ ReliefProvider        (relief/)     — decodes residual (elevation included) → [RELIEF_CHANNELS=7,512,512]
            └─ BiomeProvider         (world/biome/) — climate+relief → vanilla biome parameters
                      └─ ClimateVariableTransform (facade) → ClimateToBiomeTransformer
                               ├─ BiomeParameterClassifier
@@ -71,9 +71,9 @@ Every ONNX-facing tensor uses the fixed axis order `CH=0/X=1/Z=2` and the channe
 model-specific constants (means/stds, latent compression, native resolution) from
 `world_pipeline_config.json` so a model swap needs no recompile.
 
-**Hydrology split** (`hydrology/`): `LocalRiverProvider.java` is a thin orchestrator over a dual-store
-cache (an `ImmutableRTree<HydrologicalPrimitive>` spatial index + a carved-elevation `FloatTensor`, filled by
-one `buildTile` call). `buildTile` builds ONE per-tile `RiverNetwork` graph: `GlobalNetworkBuilder.java`
+**Hydrology split** (`hydrology/`): `LocalRiverProvider.java` is a thin orchestrator over a single
+`NonIntersectingSpatialIndex<ImmutableRTree<HydrologicalPrimitive>>` cache (a 50 MB LRU budget), filled by
+one `buildTile` call. `buildTile` builds ONE per-tile `RiverNetwork` graph: `GlobalNetworkBuilder.java`
 traces the global subgraph, relaxes it with `GradientNetworkRelaxation`, and returns the `RiverNetwork`
 together with the pre-carve elevation snapshot and the boundary-elevation map it accumulated; `LocalDrainageTracer.java` then traces the drainage-derived local network and attaches
 every surviving segment directly onto that SAME graph in place, returning nothing. It works through the
@@ -151,8 +151,9 @@ survives only as a reservation for feature types that have yet to grow real prof
    `ChannelElevationAssigner.assign` over the now-unified graph.
 6. `RiverNetwork.collectPrimitives` emitting every primitive (global and local, one shared feature-id counter,
    reading each channel's assigned `Channel.bedElevations`; oxbows/abandoned paths carry no
-   `bedElevations` and fall back to a decoded-terrain sample) → a second `carveRiverShells` → crop to the
-   512×512 tile.
+   `bedElevations` and fall back to a decoded-terrain sample) into the R-tree `buildTile` returns → a
+   second `carveRiverShells` runs on the padded buffer, but the buffer itself is never published; cropping
+   it to the 512×512 tile happens only inside the `@TestOnly` `Stages` debug sink.
 
 Both carve passes collect primitives **unfiltered**. The first is global-only purely by timing — the local
 network does not exist yet — while the second, running after the local trace, carves local shells too.
@@ -160,9 +161,6 @@ network does not exist yet — while the second, running after the local trace, 
 channels, but **nothing calls it**. This matters because local networks are traced with no coarse halo,
 so a local shell can be truncated at this tile's `PAD=1` border and seam against its neighbour; global
 floodplains use the 2×2-cell halo and are unaffected.
-
-The carved-elevation cache store is `local_carved_elev_v2` (renamed from `local_carved_elev`;
-new-worlds-only, old tiles are orphaned and the frontier regenerates under the new name).
 
 **Biome split** (`world/biome/`, M-011): `ClimateVariableTransform.java` is a thin public facade
 preserving the pre-split signature; it forwards to `ClimateToBiomeTransformer.java`, which uses
@@ -190,12 +188,11 @@ compute, so this order is load-bearing:
 | 1 | `GlobalRiverProvider` | `hydrology/` | `WorldPipeline` coarse tensor (via the static `pipeline` field) |
 | 2 | `LocalRiverProvider` | `hydrology/` | `GlobalRiverProvider` (fallback via adapter when no test override), decoder tensor |
 | 2a | `HydrologyProfileInprinter` / `HydrologyProfilePainter` | `hydrology/profile/` | the just-built `LocalRiverProvider` |
-| 3 | `ReliefProvider` | `relief/` | `LocalRiverProvider` (fallback via adapter when no test override), decoder tensor |
+| 3 | `ReliefProvider` | `relief/` | decoder tensor (no data dependency on `LocalRiverProvider`; build order is fixed regardless) |
 | 4 | `BiomeProvider` | `world/biome/` | `ReliefProvider`, `LocalRiverProvider` (both via the adapter), climate from `WorldPipeline` |
 
-`ReliefProvider` and `LocalRiverProvider` also accept a test-only override (`setLocalRiverProvider`,
-`setGlobalRiverProvider`) so golden tests can inject a fixture instead of reaching the production
-singleton — the seam the caller migration (below) is expected to widen into the production path.
+`LocalRiverProvider` also accepts a test-only override (`setGlobalRiverProvider`) so golden tests can
+inject a fixture instead of reaching the production singleton — the seam the caller migration (below) is expected to widen into the production path.
 
 `PopulateNoiseStep`, `FractalTerrainSurfaceSystem`, and `FractalTerrainHeightmapCache` are built after
 the provider graph, reading from it via `FractalTerrainInstance`/`GenerationContext`; they are not part
@@ -399,9 +396,9 @@ that an allocation-avoiding or abstraction-skipping pattern is deliberate, not a
 - **`Storage`/`InfiniteTensor` lock-ordering and CAS single-flight are deliberate.** Reads are lock-free;
   the only lock (`evictionLock`) guards eviction bookkeeping and is never touched by readers
   (`Storage.java:49`). Compute/load claims use an atomic `CACHE.putIfAbsent` (`claimForCompute`,
-  `fetchEntry`) — losers block on the winner's future rather than recomputing. `LocalRiverProvider`'s
-  dual-store build (primitives index + carved elevation from one `buildTile` call) depends on this claim API
-  to cross-fill the second store without a duplicate compute — do not bypass it.
+  `fetchEntry`) — losers block on the winner's future rather than recomputing. `InfiniteTensor`'s batched
+  window claims (`InfiniteTensor.java:221-261`) depend on this claim API to claim a whole window's worth
+  of dependency slices without a duplicate compute — do not bypass it.
 - **`FloatTensor` is frozen once cached** — see MUST-3. Never mutate a tensor obtained from a `Storage`
   cache; if you need a mutable copy, use `slice`/`copyRange`, which allocate a fresh tensor. Note the
   freeze does **not** guard the `public final data` array — this invariant is a convention the compiler

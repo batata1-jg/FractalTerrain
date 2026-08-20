@@ -5,8 +5,8 @@ import static me.batata_1.fractal_terrain.FractalTerrainConfig.X;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.Z;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
+import java.util.Arrays;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
-import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
@@ -18,13 +18,13 @@ import org.slf4j.Logger;
 
 /**
  * Builds final relief tiles ({@code [RELIEF_CHANNELS=7, 512, 512]}). All river handling now lives in
- * {@link LocalRiverProvider}; this provider only decodes the diffusion residual and imports the carved
- * elevation.
+ * {@link LocalRiverProvider}; this provider decodes the diffusion residual, including the elevation
+ * channel — {@link LocalRiverProvider} traces and carves rivers off its own separate decode of the same
+ * residual, but does not publish the carved buffer for this provider to import.
  *
- * <p>Channel layout: {@code [0]} elev (carved+filled, imported from {@link LocalRiverProvider})
- * {@code [1]} blurredElev {@code [2]} gradX {@code [3]} gradY {@code [4]} refinedGrad {@code [5]}
- * lowFreqGrad {@code [6]} res — a Difference-of-Gaussians over the decoded (residual) elevation,
- * extracting high-frequency features.
+ * <p>Channel layout: {@code [0]} elev (decoded from the diffusion residual) {@code [1]} blurredElev
+ * {@code [2]} gradX {@code [3]} gradY {@code [4]} refinedGrad {@code [5]} lowFreqGrad {@code [6]} res —
+ * a Difference-of-Gaussians over the decoded (residual) elevation, extracting high-frequency features.
  */
 public class ReliefProvider {
 
@@ -48,10 +48,6 @@ public class ReliefProvider {
                 path, "final_relief_tiles", new int[] {RELIEF_CHANNELS, INNER, INNER}, this::buildReliefTile);
     }
 
-    private LocalRiverProvider localRiverProvider() {
-        return FractalTerrainInstance.getLocalRiverProvider();
-    }
-
     public NonIntersectingInfiniteTensor getInfiniteTensor() {
         return final_tiles;
     }
@@ -72,10 +68,7 @@ public class ReliefProvider {
     private FloatTensor computeTile(int x, int z, @Nullable Stages stages) {
         final int pixels = INNER * INNER;
 
-        // ch0: carved+filled elevation imported from the local river pipeline.
-        final FloatTensor carved = localRiverProvider().getCarvedElev(x, z);
-
-        // ch1..5 + the DoG source: decode a DoG-haloed slice once.
+        // ch0..5 + the DoG source: decode a DoG-haloed slice once.
         final float[][] base = DecoderChannels.decode(x, z, DOG_PAD);
         final float[] dogPadded =
                 DifferenceOfGaussians.run(base[0], DOG_PADDED, DOG_PADDED, RES_DOG_SIGMA1, RES_DOG_SIGMA2);
@@ -97,7 +90,7 @@ public class ReliefProvider {
 
         final FloatTensor result = new FloatTensor(entries, new int[] {RELIEF_CHANNELS, INNER, INNER});
         if (stages != null) {
-            stages.carvedElevation = carved.copyRange(0, carved.getSize());
+            stages.carvedElevation = Arrays.copyOfRange(entries, 0, pixels);
             stages.base = base;
             stages.result = result;
         }

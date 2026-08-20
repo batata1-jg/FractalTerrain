@@ -1,14 +1,14 @@
 # hydrology/
 
-River-network tracing, carving, and per-tile hydrology providers; see `README.md` for the dual-store
+River-network tracing, carving, and per-tile hydrology providers; see `README.md` for the primitives
 cache design and coordinate frames.
 
 ## Files
 
 | File                            | What                                                                                       | When to read                                                       |
 | ------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
-| `README.md`                     | Dual-store cache design, coordinate frames, the two-pass `buildTile` ordering               | Onboarding to hydrology, changing tile build order or frames        |
-| `LocalRiverProvider.java`       | Thin orchestrator over the 512-native-px tile dual-store cache; `buildTile` is the pipeline | Local riverPrimitive/carve output, tile caching, build ordering, test overrides |
+| `README.md`                     | Single-store cache design, coordinate frames, the `buildTile` ordering                     | Onboarding to hydrology, changing tile build order or frames        |
+| `LocalRiverProvider.java`       | Thin orchestrator over the 512-native-px tile primitives cache; `buildTile` is the pipeline | Local riverPrimitive output, tile caching, build ordering, test overrides |
 | `GlobalRiverProvider.java`      | Coarse-px global riverPrimitive network, caches its own 64×64-coarse-px tiles                        | Global network, coarse-frame addressing, `computeTileForTest`      |
 | `GlobalNetworkBuilder.java`     | Traces/relaxes the global network inside a tile; returns the `RiverNetwork`, the pre-carve elevation snapshot, and the boundary-elevation map | Global-network trace math, coarse↔native tile mapping |
 | `LocalDrainageTracer.java`      | Traces the local network off the drainage field and attaches it in place onto the same graph | Local drainage tracing, attach/drop rules, `traceLocalNetworkForTest` |

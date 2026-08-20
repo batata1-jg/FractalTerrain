@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -56,9 +55,7 @@ class LocalRiverGoldenTest {
 
     /** Steepest-descent drainage over {@code filled}, matching {@code LocalRiverProvider.buildTile}. */
     private static int[] drainageOf(float[] filled) {
-        final float[] uniformWeight = new float[GRID * GRID];
-        Arrays.fill(uniformWeight, 1f);
-        return Drainage.computeDrainageDirection(filled, uniformWeight, GRID);
+        return Drainage.computeDrainageDirection(filled, GRID);
     }
 
     /** Single SOURCE→DRAIN trunk along the valley floor {@link #syntheticElevation} carves, wide enough

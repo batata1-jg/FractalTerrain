@@ -95,20 +95,6 @@ public final class HydrologyTuning {
 
     public static final double MAX_WIDTH = 16f;
 
-    /** Dead: nothing reads this, not even through the {@code FractalTerrainConfig} facade. */
-    public static final double MAX_LOCAL_WIDTH = 6f;
-
-    /** Base of the flat floodplain band; the blend to decoded terrain starts past it. */
-    public static final double FLOODPLAIN_BASE = 0.6f;
-
-    public static final double FLOODPLAIN_WIDTH_FACTOR = 1.0f;
-
-    /** Shapes the elliptical footprint over which a primitive's bed delta fades in. Uncalibrated — see README. */
-    public static final double MAX_ECCENTRICITY = 0.9;
-
-    /** Multiplier taking floodplain half-extent to outer influence radius; sizes the blend band. */
-    public static final double INFLUENCE_BLEND_MULTIPLIER = 2f;
-
     /** Hard cap on influence radius, bounding both per-pixel carve work and the cross-tile query span. */
     public static final double MAX_INFLUENCE_RADIUS = 64.0f;
 
@@ -118,21 +104,24 @@ public final class HydrologyTuning {
     public static final double MIN_INFLUENCE_RADIUS = 2.0;
 
     /** Scale taking a channel's {@code depth × width} to its influence radius. Uncalibrated — see README. */
-    public static final double INFLUENCE_DEPTH_FACTOR = 2.0;
+    public static final double INFLUENCE_DEPTH_FACTOR = 1.0;
 
     /** Border margin kept clear, wider than the influence radius — see README. */
     public static final double MARGIN_INFLUENCE_FACTOR = 5.0;
 
-    public static double maxInfluence(double width) {
+    public static double influence(double width) {
         return Math.clamp(width * 5, MIN_INFLUENCE_RADIUS, MAX_INFLUENCE_RADIUS);
         // return Math.clamp(0.844803 * Math.pow(width + 0.990178, 1.52681) + 0.167833, 1, MAX_INFLUENCE_RADIUS);
     }
 
     /** Influence radius for a channel point whose bed sits {@code deltaElev} below the surface, so a deeply
      *  incised channel pulls in more terrain than its width alone implies. Callers with no bed elevation
-     *  to hand keep using {@link #maxInfluence(double)}. */
-    public static double maxInfluence(double width, double deltaElev) {
-        return Math.clamp(INFLUENCE_DEPTH_FACTOR * deltaElev * width, MIN_INFLUENCE_RADIUS, MAX_INFLUENCE_RADIUS);
+     *  to hand keep using {@link #influence(double)}. */
+    public static double influence(double width, double deltaElev) {
+        return Math.clamp(
+                INFLUENCE_DEPTH_FACTOR * Math.sqrt((deltaElev + 1)) * width,
+                MIN_INFLUENCE_RADIUS,
+                MAX_INFLUENCE_RADIUS);
     }
 
     public static double widthFromFlow(double rawFlow) {
