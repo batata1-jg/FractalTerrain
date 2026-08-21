@@ -104,7 +104,7 @@ public final class HydrologyTuning {
     public static final double MIN_INFLUENCE_RADIUS = 2.0;
 
     /** Scale taking a channel's {@code depth × width} to its influence radius. Uncalibrated — see README. */
-    public static final double INFLUENCE_DEPTH_FACTOR = 1.0;
+    public static final double INFLUENCE_DEPTH_FACTOR = 2.0;
 
     /** Border margin kept clear, wider than the influence radius — see README. */
     public static final double MARGIN_INFLUENCE_FACTOR = 5.0;

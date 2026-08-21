@@ -58,7 +58,7 @@ public class LocalRiverProvider {
         // name is bumped rather than the format version -- old tiles are simply never loaded again.
         primitives = new NonIntersectingSpatialIndex<>(
                 path,
-                "local_river_units_v2",
+                "local_river_units",
                 new int[] {GRID, GRID},
                 new ImmutableRTree<>(List.of(), HydrologicalPrimitive.PROTOTYPE),
                 key -> key != null ? buildPrimitivesTile(key) : null,
@@ -252,17 +252,13 @@ public class LocalRiverProvider {
         return queryInfluence(pt, 0.0);
     }
 
-    // -------------------------------------------------------------------------
-    // Debug access
-    // -------------------------------------------------------------------------
-
-    /** Raw index access for debug rendering ({@code Debug.primitives.see}) and the spatial-index benchmark.
-     *  Primitives carry world relief-pixel coords, so a tile-local renderer must subtract
-     *  {@code (tileX·GRID, tileZ·GRID)}. */
-    @TestOnly
     public ImmutableRTree<HydrologicalPrimitive> getPrimitiveTree(int tileX, int tileZ) {
         return primitives.getEntry(new int[] {tileX, tileZ});
     }
+
+    // -------------------------------------------------------------------------
+    // Debug access
+    // -------------------------------------------------------------------------
 
     @TestOnly
     public Stages debugStages(int tileX, int tileZ) {
