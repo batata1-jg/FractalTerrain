@@ -11,13 +11,13 @@ import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.DebugConfig;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.Drainage;
-import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
-import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
+import me.batata_1.fractal_terrain.hydrology.providers.GlobalRiverProvider;
+import me.batata_1.fractal_terrain.hydrology.providers.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
-import me.batata_1.fractal_terrain.hydrology.meanders.*;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
+import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import me.batata_1.fractal_terrain.hydrology.rosgen.ReachMetricsSampler;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.math.VectorOps;
@@ -78,7 +78,7 @@ public class LocalRiverTest {
         // even if the Meanders build inside debugStages below throws.
         globalRiverNetworkCellProfile(globalRivers, tx, tz);
 
-        final LocalRiverProvider.Stages stages;
+        final RiverProvider.Stages stages;
         try {
             stages = provider.debugStages(tx, tz);
         } catch (RuntimeException e) {
@@ -130,7 +130,7 @@ public class LocalRiverTest {
 
     /** Renders the tile's primitive R-tree via {@link me.batata_1.fractal_terrain.debug.HydrologyPrimitiveVisualizer}
      *  from the already-captured {@code debugStages} (no rebuild), shifting world coords onto this tile's canvas. */
-    private static void dumpPrimitiveTree(LocalRiverProvider.Stages stages, int tx, int tz, String prefix) {
+    private static void dumpPrimitiveTree(RiverProvider.Stages stages, int tx, int tz, String prefix) {
         if (stages.primitiveTree == null) {
             LOG.warn("tile ({},{}): no primitive tree captured — skipping primitive dump", tx, tz);
             return;

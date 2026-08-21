@@ -1,6 +1,6 @@
 package me.batata_1.fractal_terrain.hydrology;
 
-import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.sampleBilinear;
+import static me.batata_1.fractal_terrain.hydrology.providers.HydrologyTileGeometry.sampleBilinear;
 
 import java.util.ArrayDeque;
 import java.util.HashMap;
@@ -22,13 +22,13 @@ import org.slf4j.LoggerFactory;
  * cell, so a whole source→junction→drain path descends to one consistent minimum. Broken topology
  * throws here rather than silently yielding NaN beds downstream.
  */
-final class ChannelElevationAssigner {
+public final class ChannelElevationAssigner {
 
     private static final Logger LOG = LoggerFactory.getLogger(ChannelElevationAssigner.class);
 
     private ChannelElevationAssigner() {}
 
-    static void assign(RiverNetwork network, Map<Integer, Double> boundaryElevByNodeIdx, float[] decodedElev) {
+    public static void assign(RiverNetwork network, Map<Integer, Double> boundaryElevByNodeIdx, float[] decodedElev) {
         for (Endpoint endpoint : network.getNodes()) {
             if (endpoint.type == Endpoint.Type.SOURCE || endpoint.type == Endpoint.Type.DRAIN) {
                 endpoint.elevation = boundaryElevByNodeIdx.getOrDefault(endpoint.id, 0.0);

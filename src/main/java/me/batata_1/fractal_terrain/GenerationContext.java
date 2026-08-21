@@ -2,8 +2,8 @@ package me.batata_1.fractal_terrain;
 
 import java.nio.file.Path;
 import me.batata_1.fractal_terrain.debug.Infinite3DVisualizer;
-import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
-import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
+import me.batata_1.fractal_terrain.hydrology.providers.GlobalRiverProvider;
+import me.batata_1.fractal_terrain.hydrology.providers.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfilePainter;
 import me.batata_1.fractal_terrain.ml.pipeline.WorldPipeline;

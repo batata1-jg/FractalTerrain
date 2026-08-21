@@ -7,7 +7,7 @@ import com.google.common.base.Function;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
-import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
+import me.batata_1.fractal_terrain.hydrology.providers.LocalRiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.math.Interpolation;

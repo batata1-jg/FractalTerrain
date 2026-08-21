@@ -118,8 +118,8 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
      * this package keeps needing no frame of its own.
      */
     @FunctionalInterface
-    interface SurfaceSampler {
-        double at(double x, double z);
+    interface InfluenceSampler {
+        double at(double x, double z,double bedElev,double width);
     }
 
     /**
@@ -138,7 +138,7 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
                 ChannelTyper typer = (ChannelTyper) args[0];
                 Channel ch = (Channel) args[1];
                 Centreline centreline = (Centreline) args[2];
-                SurfaceSampler surface = (SurfaceSampler) args[3];
+                InfluenceSampler influence = (InfluenceSampler) args[3];
                 RiverPrimitive.RosgenType[] types = typer.typesFor(ch);
                 for (int i = 0; i < ch.numPts(); i++) {
                     final double width = ch.widthAt(i);
@@ -146,10 +146,9 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
                     // stored coord is shifted into the frame the index is queried in.
                     final double[] splinePt = ch.spline.sample(i);
                     final double bedElevation = ch.bedElev(i);
-                    final double delta = Math.abs(surface.at(splinePt[0], splinePt[1]) - bedElevation);
                     out.add(new RiverPrimitive(
                             VectorOps.sub(splinePt, offset),
-                            HydrologyTuning.influence(width, delta),
+                            influence.at(splinePt[0],splinePt[1],bedElevation,width),
                             types[i],
                             centreline.normalAt(ch, i),
                             ch.spline.curvature(i),

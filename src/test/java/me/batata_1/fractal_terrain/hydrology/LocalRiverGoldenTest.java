@@ -11,6 +11,8 @@ import java.util.Random;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
+import me.batata_1.fractal_terrain.hydrology.providers.HydrologyTileGeometry;
+import me.batata_1.fractal_terrain.hydrology.providers.LocalRiverProvider;
 import org.junit.jupiter.api.Test;
 
 /**

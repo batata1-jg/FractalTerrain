@@ -3,7 +3,7 @@ package me.batata_1.fractal_terrain.hydrology;
 import static me.batata_1.fractal_terrain.config.DebugConfig.DEBUG_STEPS;
 import static me.batata_1.fractal_terrain.config.HydrologyTuning.*;
 import static me.batata_1.fractal_terrain.hydrology.Drainage.*;
-import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.*;
+import static me.batata_1.fractal_terrain.hydrology.providers.HydrologyTileGeometry.*;
 
 import java.util.*;
 import java.util.function.Predicate;
@@ -12,6 +12,7 @@ import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.network.AtomicView;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
+import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import me.batata_1.fractal_terrain.math.ds.*;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -27,7 +28,7 @@ import org.slf4j.LoggerFactory;
  * <p>A channel is kept only if it stays inside the tile's true boundary or would seam against its
  * neighbour. Global proximity uses a throwaway index since the RiverNetwork quadtree is cleared each step.
  */
-final class LocalDrainageTracer {
+public final class LocalDrainageTracer {
 
     private static final Logger LOG = LoggerFactory.getLogger(LocalDrainageTracer.class);
     private static final Predicate<GlobalRiverPrimitive> acceptanceTest = globalRiverPrimitive -> true;
@@ -45,12 +46,12 @@ final class LocalDrainageTracer {
         }
     }
 
-    static void traceLocalNetwork(
+    public static void traceLocalNetwork(
             int[] drainage,
             float[] elev,
             float[] gradMag,
             RiverNetwork network,
-            @Nullable LocalRiverProvider.Stages stages) {
+            @Nullable RiverProvider.Stages stages) {
         final int cellCount = PADDED * PADDED;
         final AtomicView net = network.viewAtomic();
         final float[] flow =

@@ -2,9 +2,10 @@ package me.batata_1.fractal_terrain.debug;
 
 import java.io.File;
 import java.util.List;
-import me.batata_1.fractal_terrain.hydrology.GlobalRiverProvider;
-import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
+import me.batata_1.fractal_terrain.hydrology.providers.GlobalRiverProvider;
+import me.batata_1.fractal_terrain.hydrology.providers.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
+import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.relief.ReliefProvider;
 import org.jetbrains.annotations.TestOnly;
@@ -65,7 +66,7 @@ public final class InstanceStageDumper {
 
     private static void dumpLocal(String dir, int tx, int tz, LocalRiverProvider provider) {
         cleanDir(dir);
-        final LocalRiverProvider.Stages s = provider.debugStages(tx, tz);
+        final RiverProvider.Stages s = provider.debugStages(tx, tz);
         final String prefix = "tile_tx" + tx + "_tz" + tz + "_";
         see(dir, s.flow, RELIEF_TILE, prefix + "01_flow");
         see(dir, maskToFloat(s.riverMask), RELIEF_TILE, prefix + "02_river_mask");

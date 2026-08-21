@@ -7,12 +7,10 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import java.util.Arrays;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
-import me.batata_1.fractal_terrain.FractalTerrainInstance;
-import me.batata_1.fractal_terrain.hydrology.LocalRiverProvider;
+import me.batata_1.fractal_terrain.hydrology.providers.LocalRiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.math.DifferenceOfGaussians;
-import me.batata_1.fractal_terrain.math.ds.SpatialIndex;
 import me.batata_1.fractal_terrain.storage.TileKey;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;

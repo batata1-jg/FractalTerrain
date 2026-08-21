@@ -20,7 +20,7 @@ import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.HydrologicalFeature;
-import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.SurfaceSampler;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.InfluenceSampler;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import org.jetbrains.annotations.Nullable;
@@ -726,7 +726,7 @@ public final class RiverNetwork {
             double offsetZ,
             IntPredicate channelIdFilter,
             @Nullable ChannelTyper typer,
-            SurfaceSampler surface) {
+            InfluenceSampler surface) {
         final List<HydrologicalPrimitive> primitives = new ArrayList<>();
         final double[] offset = new double[] {offsetX, offsetZ};
         // Phase 1: resample every emitting channel. Types depend on neighbouring channels, so every

@@ -1,4 +1,4 @@
-package me.batata_1.fractal_terrain.hydrology;
+package me.batata_1.fractal_terrain.hydrology.providers;
 
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.GRID;
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.PAD;
@@ -6,14 +6,15 @@ import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.PADDED
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.sampleBilinear;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Predicate;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
+import me.batata_1.fractal_terrain.hydrology.ChannelElevationAssigner;
+import me.batata_1.fractal_terrain.hydrology.GlobalNetworkBuilder;
+import me.batata_1.fractal_terrain.hydrology.LocalDrainageTracer;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
-import me.batata_1.fractal_terrain.hydrology.network.Channel;
+import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
@@ -65,6 +66,40 @@ public class LocalRiverProvider {
                 PRIMITIVE_CACHE_LIMIT_BYTES);
     }
 
+    public static void apply(GlobalNetworkBuilder.Result ctx, float[][] base, RiverProvider.Stages stages) {
+
+        final var elev = base[0].clone();
+        final var gradMag = base[4];
+
+        LocalDrainageTracer.traceLocalNetwork(ctx.drainage(), elev,gradMag, ctx.network(),stages);
+
+        for (Endpoint node : ctx.network().getNodes()) {
+            if (node.type != Endpoint.Type.SOURCE && node.type != Endpoint.Type.DRAIN) continue;
+            ctx.boundaryElevByNodeIdx().putIfAbsent(
+                    node.id, Math.max(0, sampleBilinear(elev, node.coord[0], node.coord[1])));
+        }
+
+
+        ChannelElevationAssigner.assign(ctx.network(),ctx.boundaryElevByNodeIdx(),elev);
+
+        HydrologyProfileInprinter.carveRiverInfluence(elev,collect(ctx.network(),ctx.typer()),PADDED);
+
+        //correct the elevation of the sources
+        for (Endpoint node : ctx.network().getNodes()) {
+            if (node.type != Endpoint.Type.SOURCE && node.type != Endpoint.Type.DRAIN) continue;
+            ctx.boundaryElevByNodeIdx().put(
+                    node.id, Math.max(0, sampleBilinear(elev, node.coord[0], node.coord[1])));
+        }
+        ChannelElevationAssigner.assign(ctx.network(),ctx.boundaryElevByNodeIdx(),elev);
+
+    }
+
+    private static List<HydrologicalPrimitive> collect(RiverNetwork network, ChannelTyper typer) {
+        var list = network.collectPrimitives(0,0,channelId -> true, typer,(x,z) -> Interpolation.sampleNearest(elev,x,z,PADDED));
+        list.sort(HydrologicalPrimitive.comparator);
+        return list;
+    }
+
     @TestOnly
     public void setGlobalRiverProvider(GlobalRiverProvider provider) {
         this.globalRiverOverride = provider;
@@ -104,35 +139,9 @@ public class LocalRiverProvider {
 
     /** The per-tile pipeline. Step ordering is load-bearing — see the numbered comments in the body.
      *  {@code stages} is a test/debug sink; production calls pass {@code null}. */
-    private ImmutableRTree<HydrologicalPrimitive> buildTile(int tileX, int tileZ, @Nullable Stages stages) {
+    private ImmutableRTree<HydrologicalPrimitive> buildTile(int tileX, int tileZ, @Nullable RiverProvider.Stages stages) {
         final GlobalRiverProvider grp = globalRiverProvider();
         final float[][] base = DecoderChannels.decode(tileX, tileZ, PAD); // padded 514, channels 0..6
-
-        // 1. global rivers: trace + relax, returning the network plus the boundary-elevation map
-        //    GlobalNetworkBuilder accumulated for it (source/drain node datum).
-        final GlobalNetworkBuilder.Result globalResult = GlobalNetworkBuilder.build(tileX, tileZ, base, grp);
-        final RiverNetwork network = globalResult.network();
-        final float[] rawElev = globalResult.rawElev();
-        final Map<Integer, Double> boundaryElev = new HashMap<>(globalResult.boundaryElevByNodeIdx());
-
-        final float[] carvedElevationGlobal = base[0].clone();
-        ChannelElevationAssigner.assign(network, boundaryElev, carvedElevationGlobal);
-        // computeRiverGrid's merge is a sequential recurrence, so the order is load-bearing for
-        // determinism; collectPrimitives does not guarantee it.
-        final List<HydrologicalPrimitive> shellPrimitives = collectPrimitives(network, rawElev, 0, 0);
-        shellPrimitives.sort(HydrologicalPrimitive.comparator);
-        HydrologyProfileInprinter.carveRiverShells(carvedElevationGlobal, shellPrimitives, PADDED);
-        // Snapshot here, not at the end: this buffer is the drainage input for the local trace below, so
-        // the harness needs it as it stood when step 2 read it.
-        if (stages != null) stages.elevationFirstPass = cropToTile(carvedElevationGlobal);
-
-        // 2. sink-fill + drainage on the RAW decoded elevation (not yet carved): the local trace no
-        //    longer needs a pre-carved valley to route toward the global network -- LOCAL_ATTACH_RADIUS
-        //    proximity (not terrain shape) is what joins locals to the graph -- so drainage can be
-        //    computed once, up front, and fed straight into the trace.
-        final float[] filled = Drainage.fillSinks(carvedElevationGlobal, PADDED, HydrologyTuning.FILL_PADDING);
-        final int[] drainagePadded = Drainage.computeDrainageDirection(filled, PADDED);
-
         // 3. local rivers: trace + attach into the SAME graph as standalone SOURCE-rooted edges (dangling
         //    JUNCTION end, or coast DRAIN), then run the atomic collision pass which reorients + attaches
         //    each dangling local edge to a nearby global channel via a bed-overlap crossing (or demotes it
@@ -176,13 +185,14 @@ public class LocalRiverProvider {
             // the local-only PNG is intentionally empty.
             stages.channels = network.getChannels();
             stages.localChannels = new ArrayList<>();
-            stages.rawElevation = cropToTile(base[0]);
-            stages.carvedElevation = cropToTile(carvedElevationGlobal);
+            stages.rawElevation = RiverProvider.cropToTile(base[0]);
+            stages.carvedElevation = RiverProvider.cropToTile(carvedElevationGlobal);
             stages.network = network;
             stages.primitiveTree = primitiveIndex;
         }
         return primitiveIndex;
     }
+
 
     /** Packages the graph into primitives, each carrying a Rosgen type. A fresh classifier per call:
      *  {@code prepare} rebuilds its whole cache anyway, and the two calls see different graphs.
@@ -197,16 +207,6 @@ public class LocalRiverProvider {
                 (x, z) -> Interpolation.sampleNearest(rawElev, x, z, PADDED));
     }
 
-    private static float[] cropToTile(float[] padded) {
-        final float[] data = new float[GRID * GRID];
-        for (int ix = 0; ix < GRID; ix++) {
-            for (int iz = 0; iz < GRID; iz++) {
-                data[ix * GRID + iz] = padded[(PAD + ix) * PADDED + (PAD + iz)];
-            }
-        }
-        return data;
-    }
-
     // -------------------------------------------------------------------------
     // Query API
     // -------------------------------------------------------------------------
@@ -218,7 +218,7 @@ public class LocalRiverProvider {
     }
 
     /** Existence-only counterpart to {@link #queryInfluence}, for callers that just need a yes/no and
-     *  should not pay for a result list. {@code tileVisitRadius} sizes the cross-tile window and must
+     *  should not pay for a ctx list. {@code tileVisitRadius} sizes the cross-tile window and must
      *  upper-bound the distance of any primitive {@code test} can accept. */
     public boolean anyInfluencingPrimitive(double[] pt, double tileVisitRadius, InfluencingPrimitiveTest test) {
         final Predicate<HydrologicalPrimitive> acceptanceTest = primitive -> {
@@ -261,37 +261,10 @@ public class LocalRiverProvider {
     // -------------------------------------------------------------------------
 
     @TestOnly
-    public Stages debugStages(int tileX, int tileZ) {
-        final Stages stages = new Stages();
+    public RiverProvider.Stages debugStages(int tileX, int tileZ) {
+        final RiverProvider.Stages stages = new RiverProvider.Stages();
         buildTile(tileX, tileZ, stages);
         return stages;
     }
 
-    /**
-     * Debug snapshot of one {@link #buildTile} run, captured for {@code LocalRiverTest} so the harness can
-     * render intermediate stages without re-running the pipeline.
-     *
-     * <p>{@link #localChannels} is always empty: the collision pass re-assigns every channel id, so the
-     * local-vs-global split cannot be recovered here and the local-only render is blank. Accepted
-     * debug-only limitation.
-     */
-    @TestOnly
-    public static final class Stages {
-        public float[] flow;
-        public float[] rawElevation;
-        public boolean[] riverMask;
-        /** Elevation after the global-only carve, before the local trace — the field drainage routes on. */
-        public float[] elevationFirstPass;
-
-        public float[] carvedElevation;
-        /** Every channel of {@link #network}. */
-        public List<Channel> channels;
-        /** Always empty; kept so the harness's local-only render still compiles. */
-        public List<Channel> localChannels;
-        /** The single unified per-tile graph. */
-        public RiverNetwork network;
-
-        /** World-framed, unlike the tile-local rasters above; subtract the tile origin to render it. */
-        public ImmutableRTree<HydrologicalPrimitive> primitiveTree;
-    }
 }

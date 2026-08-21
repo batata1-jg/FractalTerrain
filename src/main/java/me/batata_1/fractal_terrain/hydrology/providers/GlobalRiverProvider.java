@@ -1,4 +1,4 @@
-package me.batata_1.fractal_terrain.hydrology;
+package me.batata_1.fractal_terrain.hydrology.providers;
 
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.GLOBAL_RIVER_CHANNELS;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.X;
@@ -12,6 +12,7 @@ import static me.batata_1.fractal_terrain.hydrology.Drainage.OPPOSITE_DIRECTION;
 import java.util.ArrayList;
 import java.util.List;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
+import me.batata_1.fractal_terrain.hydrology.Drainage;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.math.MarchingSquares;
