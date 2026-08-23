@@ -400,6 +400,8 @@ public final class HydrologyProfileInprinter {
             tangCol[col] = -nx * ddz;
         }
 
+
+        final double floodPlainThreshold = Math.max(floodPlainLen/influenceLen, floodPlainLen/influenceWidth);
         final double invLen = 1.0 / influenceLen;
         final double invWidth = 1.0 / influenceWidth;
         for (int row = rowMin; row <= rowMax; row++) {
@@ -425,7 +427,10 @@ public final class HydrologyProfileInprinter {
                         : lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]);
 
                 dist[i] = (float) ((1 - w) * dist[i] + w * d);
-                elevs[i] = (float) Math.min(elevs[i],elevs[i] * (1 - w) + h * w);
+                //TODO: treat case where elev is lower than drain height
+                if(w>floodPlainThreshold) elevs[i] = (float) Math.min(elevs[i],h);
+
+                elevs[i] = (float) Math.min(elevs[i],elevs[i] * (1 - (w/floodPlainThreshold)) + h * (w/floodPlainThreshold));
             }
         }
     }

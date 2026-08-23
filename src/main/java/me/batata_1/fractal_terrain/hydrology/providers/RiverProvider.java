@@ -65,7 +65,8 @@ public class RiverProvider {
 
         final var result = GlobalNetworkBuilder.build(tileX,tileZ,base,grp);
 
-        LocalRiverProvider.apply(result,base,stages);
+        float[] carvedElev = LocalRiverProvider.apply(result,base,stages);
+
 
 
         return null;
@@ -77,7 +78,7 @@ public class RiverProvider {
     private @Nullable GlobalRiverProvider globalRiverOverride;
 
 
-    /**
+     /**
      * Debug snapshot of one {@link #buildTile} run, captured for {@code LocalRiverTest} so the harness can
      * render intermediate stages without re-running the pipeline.
      *

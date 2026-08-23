@@ -3,7 +3,7 @@ package me.batata_1.fractal_terrain.hydrology;
 import static me.batata_1.fractal_terrain.config.DebugConfig.DEBUG_STEPS;
 import static me.batata_1.fractal_terrain.config.HydrologyTuning.*;
 import static me.batata_1.fractal_terrain.hydrology.Drainage.*;
-import static me.batata_1.fractal_terrain.hydrology.providers.HydrologyTileGeometry.*;
+import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.*;
 
 import java.util.*;
 import java.util.function.Predicate;
