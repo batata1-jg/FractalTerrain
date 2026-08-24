@@ -4,9 +4,11 @@
 
 One function, `HydrologyProfileInprinter.computeRiverGrid`, turns the hydrological-primitive index into
 elevation edits for both carve stages, plus one painter that turns the result into placed water. The
-tile-level shell carve runs inside `LocalRiverProvider.buildTile`, once per tile build; the per-chunk bed
-carve runs from `PopulateNoiseStep.fineGrainedPrimitivePass`, which prefetches every primitive in reach
-once per chunk and then calls `computeRiverGrid` over the chunk's lattice.
+tile-level shell carve (`carveRiverInfluence`) runs twice per tile build, once from `GlobalNetworkBuilder
+.build` (global-only graph, to shape the drainage field) and once from `LocalNetworkBuilder.build`
+(unified graph); the per-chunk bed carve runs from `PopulateNoiseStep.fineGrainedPrimitivePass`, which
+prefetches every primitive in reach once per chunk and then calls `computeRiverGrid` over the chunk's
+lattice.
 
 ## Architecture
 
@@ -55,9 +57,11 @@ linearly, so it smears the `RosgenProfile` margin discontinuity (`perpDist <= ma
 one lattice cell — one block wide in the bed path, one pixel wide in the shell path. Accepted, not an
 oversight; revisit if bed rims read as unexpectedly soft.
 
-**Call sites.** `HydrologyProfileInprinter.carveRiverShells` reads and writes the same padded-tile buffer,
-skipping pixels with negative ambient elevation (ocean); `LocalRiverProvider.buildTile` calls it once per
-tile build, to shape the drainage field the local trace reads. `PopulateNoiseStep.fineGrainedPrimitivePass`
+**Call sites.** `HydrologyProfileInprinter.carveRiverInfluence` reads and writes its own padded-tile
+buffer, skipping pixels with negative ambient elevation (ocean); `GlobalNetworkBuilder.build` calls it once
+per tile build to shape the drainage field the local trace reads, and `LocalNetworkBuilder.build` calls it
+a second time, on its own separate elevation clone, to produce the carved elevation `RiverProvider`
+publishes. `PopulateNoiseStep.fineGrainedPrimitivePass`
 carves the bed and, from `computeRiverGrid`'s water lane and type mask, also populates
 `Types.WATER_HEIGHT` and `Types.RIVER_TYPE`. It is fed by `HydrologyProfileInprinter.prefetchChunk`, which
 queries the R-tree once per chunk (chunk center plus half-diagonal radius, in the relief-pixel frame) and

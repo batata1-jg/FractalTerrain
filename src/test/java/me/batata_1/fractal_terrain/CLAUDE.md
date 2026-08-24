@@ -12,13 +12,17 @@ JUnit 5 golden-gate tests, run via `gradle test` (`useJUnitPlatform()`).
 
 ## Status
 
-Compiles and runs as of `06a15dd` plus the working-tree changes to `HydrologyProfileInprinter.java`,
-`PopulateNoiseStep.java` and `ComputeRiverGridTest.java` (measured 2026-08-19):
-**90 tests, 20 failed, 1 skipped.**
+Does not compile as of `feature/hydrology`, measured 2026-08-23: `gradle build` fails at
+`:compileTestJava` — `hydrology/features/ConfluencePrimitiveTest.java` calls
+`ConfluencePrimitive.w(double[])` and `.d(double[])`, neither of which exists (it implements only
+`h(double[])`); 9 errors. Pre-existing, unrelated to the river-provider refactor — the file was last
+modified three commits before that refactor began.
 
-The 20 failures, all pre-existing — `RosgenKeyTest` (6), `ConfluencePrimitiveTest` (4),
-`ChannelGeometryTest` (3), `LocalRiverGoldenTest` (2), `MeandersGoldenTest` (2),
-`GlobalRiverGoldenTest` (1), `ReachMetricsSamplerTest` (1), `CentrelineTest` (1).
+With `ConfluencePrimitiveTest` excluded, a run reported **81 tests, 19 failed, 1 skipped** — measured with
+a test file excluded, not a clean baseline. The 19 failures — `RosgenKeyTest` (6), `ComputeRiverGridTest`
+(3, newly visible now the suite reaches it, not caused by the river refactor), `ChannelGeometryTest` (3),
+`RiverGoldenTest` (2), `MeandersGoldenTest` (2), `GlobalRiverGoldenTest` (1), `ReachMetricsSamplerTest`
+(1), `CentrelineTest` (1).
 
 Re-measure before blaming your own change; compare the failure *messages* in
 `build/test-results/test/*.xml`, not just which test names fail. A worktree needs

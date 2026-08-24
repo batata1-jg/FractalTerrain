@@ -7,12 +7,13 @@ cache design and coordinate frames.
 
 | File                            | What                                                                                       | When to read                                                       |
 | ------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
-| `README.md`                     | Single-store cache design, coordinate frames, the `buildTile` ordering                     | Onboarding to hydrology, changing tile build order or frames        |
-| `LocalRiverProvider.java`       | Thin orchestrator over the 512-native-px tile primitives cache; `buildTile` is the pipeline | Local riverPrimitive output, tile caching, build ordering, test overrides |
+| `README.md`                     | Two-store cache design + memo, coordinate frames, the `buildTile` ordering                 | Onboarding to hydrology, changing tile build order or frames        |
+| `RiverProvider.java`            | Owner of the `primitives` and `hydrology_relief` tile stores plus the cross-store memo; `buildTile` is the shared pipeline | Riverprimitive/carved-elevation output, tile caching, build ordering, test overrides |
 | `GlobalRiverProvider.java`      | Coarse-px global riverPrimitive network, caches its own 64×64-coarse-px tiles                        | Global network, coarse-frame addressing, `computeTileForTest`      |
 | `GlobalNetworkBuilder.java`     | Traces/relaxes the global network inside a tile; returns the `RiverNetwork`, the pre-carve elevation snapshot, and the boundary-elevation map | Global-network trace math, coarse↔native tile mapping |
+| `LocalNetworkBuilder.java`      | Local-trace half of the tile pipeline, symmetric with `GlobalNetworkBuilder`: local drainage trace, boundary-elevation seeding, the two `ChannelElevationAssigner.assign` passes and the carve between them; returns the carved padded elevation | Local-network trace math, carve ordering between the two assign passes |
 | `LocalDrainageTracer.java`      | Traces the local network off the drainage field and attaches it in place onto the same graph | Local drainage tracing, attach/drop rules, `traceLocalNetworkForTest` |
-| `ChannelElevationAssigner.java` | Three-phase bed-elevation propagation; `buildTile` runs it twice per tile                   | Channel bed elevations, downstream propagation, topology failures   |
+| `ChannelElevationAssigner.java` | Three-phase bed-elevation propagation; `buildTile` runs it three times per tile             | Channel bed elevations, downstream propagation, topology failures   |
 | `Drainage.java`                 | Sink-fill, D8/D4 drainage direction, flow accumulation, `FlowGraph` routing topology        | Drainage/flow math; the shared upstream→downstream walk             |
 | `HydrologyTileGeometry.java`    | Shared tile-frame geometry (`GRID=512`, `PAD=1`, `PADDED=514`, `COARSE_PX=256`)             | Tile origins, padding, frame conversions used by all three helpers  |
 | `ChannelGeometry.java`          | Width-to-depth law, bed half-width, channel-overlap test                                    | Channel width/shape geometry, `W_REF` calibration                   |

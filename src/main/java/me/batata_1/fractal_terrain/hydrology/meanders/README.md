@@ -14,10 +14,11 @@ over the same instance in sequence without any one of them holding it privately.
 **Only `GradientNetworkRelaxation` runs in the generation pipeline.** `GlobalNetworkBuilder.build`
 constructs the tile's `RiverNetwork` and relaxes it in place — step count scales with the elevation of
 the tile's primary owned cell, capped at `MAX_RELAX_STEPS`, at a fixed `dx` of 5. `Meanders` is fully
-implemented and shares the same driver, but nothing in `LocalRiverProvider.buildTile` calls it; it is
-exercised only by the `meandersTest` and `captureSelectionTest` harnesses. Read the two as "one
-pipeline model plus one harness model", not as a pair that runs back to back — the symmetry in the
-class docstrings describes the design, not the current call graph.
+implemented and shares the same driver, but nothing in `RiverProvider.buildTile` (or the
+`GlobalNetworkBuilder`/`LocalNetworkBuilder` stages it drives) calls it; it is exercised only by the
+`meandersTest` and `captureSelectionTest` harnesses. Read the two as "one pipeline model plus one harness
+model", not as a pair that runs back to back — the symmetry in the class docstrings describes the design,
+not the current call graph.
 
 A migration model holds no topology logic. `ChannelMigrator.step` fixes the sequence — resample,
 migrate, re-seat endpoints, resolve cutoffs, resolve collisions, resample again — and delegates every

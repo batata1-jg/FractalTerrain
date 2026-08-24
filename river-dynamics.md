@@ -139,7 +139,7 @@ ER = floodProneWidth / bankfullWidth
 
 Three implementation constraints, each of which will silently corrupt the result if ignored:
 
-1. **Sample the raw decoded elevation, never the carved buffer.** `HydrologyProfileInprinter.carveRiverShells`
+1. **Sample the raw decoded elevation, never the carved buffer.** `HydrologyProfileInprinter.carveRiverInfluence`
    *creates* the floodplain — measuring ER on its output measures the tuning constants
    (`FLOODPLAIN_BASE`, `FLOODPLAIN_WIDTH_FACTOR`), not the terrain. The classification is only
    meaningful upstream of the first carve.
@@ -404,7 +404,7 @@ Copy the literature numbers directly and you will classify most of the world as 
 Two options, in order of preference:
 
 1. **Percentile calibration.** Sample along-channel slope over a large batch of generated tiles
-   (`localRiverTest` already dumps this geometry), build the distribution, and place `S_AA` and `S_A` at
+   (`riverTest` already dumps this geometry), build the distribution, and place `S_AA` and `S_A` at
    fixed percentiles. Rosgen's own bands split real channel networks roughly into "most reaches below
    0.02"; matching the *shape* of the distribution matters more than matching the numbers.
 2. **Explicit scale constant.** Define `METRES_PER_PX` and convert. Cleaner dimensionally, but it
@@ -450,13 +450,14 @@ reflect what shipped.
 | `hydrology/HydrologicalPrimitive.java`, the `RosgenType` enum | Enum currently holds `A B C D` only. Level I needs `Aa+ A B C D DA E F G`. Note the serialisation writes `rosgenType.ordinal()` (the `serialize()` method) and reads it back by index (the `deserialize()` method) — **appending is safe, reordering breaks every persisted tile**. |
 | `hydrology/profile/RosgenProfile.java` | Mirror enum, currently only `A` overrides anything. New constants need `floodPlainLength` / `riverInfluence` / bed-profile overrides; the §3.1 prescription lives here. |
 | `hydrology/meanders/RiverNetwork.java` — **RESOLVED**. | The `\ TODO: change this to the correct type` placeholder and its hardcoded `HydrologicalPrimitive.RosgenType.A` fallback are gone, resolved in commit 83e972f ("feat(hydrology): stamp Rosgen type and endpoint kind on primitives in collectPrimitives"). The stamping point is now the `final RosgenType rosgen = ...` assignment inside `collectPrimitives`, fed by the classifier in `hydrology/rosgen/`. |
-| `hydrology/LocalRiverProvider.java`, in `buildTile` | First `ChannelElevationAssigner.assign` then first `HydrologyProfileInprinter.carveRiverShells`. **Classification must run between these two calls**: `assign` provides `bedElevations` (needed for slope and flood-prone stage), and the carve destroys the raw valley geometry ER depends on (§2.2). |
+| `hydrology/GlobalNetworkBuilder.java`, in `build` | First `ChannelElevationAssigner.assign` then first `HydrologyProfileInprinter.carveRiverInfluence`. **Classification must run between these two calls**: `assign` provides `bedElevations` (needed for slope and flood-prone stage), and the carve destroys the raw valley geometry ER depends on (§2.2). |
 | `config/HydrologyTuning.java` | New home for `S_AA`, `S_A`, `ER_ENTRENCHED`, `ER_SLIGHT`, `ER_ANASTOMOSE`, `WD_NARROW`, `FLOW_TO_KM2`, `DEPTH_MAX_FACTOR`. |
 | `hydrology/meanders/Meanders` | If sinuosity becomes prescriptive per type (§4.2), the relaxation needs a per-type target. |
 
-One ordering hazard worth stating explicitly: `LocalRiverProvider.buildTile` runs `assign` and
-`carveRiverShells` **twice**, and `ARCHITECTURE.md` flags the carve as order-dependent and not
-refactor-safe. Classifying on the second pass would read an already-carved buffer and produce garbage
+One ordering hazard worth stating explicitly: `RiverProvider.buildTile` — via `GlobalNetworkBuilder` and
+`LocalNetworkBuilder` — runs `assign` three times and `carveRiverInfluence` twice, and `ARCHITECTURE.md`
+flags the carve as order-dependent and not refactor-safe. Classifying on the second (`LocalNetworkBuilder`)
+pass would read an already-carved buffer and produce garbage
 ER. Classify once, on the first pass, and cache the type on the `Channel`.
 
 ---

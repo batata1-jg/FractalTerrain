@@ -2,10 +2,10 @@ package me.batata_1.fractal_terrain;
 
 import java.nio.file.Path;
 import me.batata_1.fractal_terrain.debug.Infinite3DVisualizer;
-import me.batata_1.fractal_terrain.hydrology.providers.GlobalRiverProvider;
-import me.batata_1.fractal_terrain.hydrology.providers.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfilePainter;
+import me.batata_1.fractal_terrain.hydrology.providers.GlobalRiverProvider;
+import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import me.batata_1.fractal_terrain.ml.pipeline.WorldPipeline;
 import me.batata_1.fractal_terrain.noise.NoiseSampler;
 import me.batata_1.fractal_terrain.relief.ReliefProvider;
@@ -39,7 +39,7 @@ public final class GenerationContext {
     private final ReliefProvider reliefProvider;
     private final BiomeProvider biomeProvider;
     private final GlobalRiverProvider globalRiverProvider;
-    private final LocalRiverProvider localRiverProvider;
+    private final RiverProvider riverProvider;
     private final HydrologyProfileInprinter hydrologyInprinter;
     private final HydrologyProfilePainter hydrologyPainter;
     private final PopulateNoiseStep populateNoiseStep;
@@ -53,9 +53,9 @@ public final class GenerationContext {
         final Path worldPath = server.getWorldPath(LevelResource.ROOT).normalize();
         // Build order mirrors the dependency graph: global → local → relief → biome.
         this.globalRiverProvider = new GlobalRiverProvider(worldPath + "/fractal_terrain");
-        this.localRiverProvider = new LocalRiverProvider(worldPath + "/fractal_terrain");
-        this.hydrologyInprinter = new HydrologyProfileInprinter(this.localRiverProvider);
-        this.hydrologyPainter = new HydrologyProfilePainter(this.localRiverProvider);
+        this.riverProvider = new RiverProvider(worldPath + "/fractal_terrain");
+        this.hydrologyInprinter = new HydrologyProfileInprinter(this.riverProvider);
+        this.hydrologyPainter = new HydrologyProfilePainter(this.riverProvider);
         this.reliefProvider = new ReliefProvider(worldPath + "/fractal_terrain");
         this.biomeProvider = new BiomeProvider(worldPath + "/fractal_terrain");
         final long seed = server.getWorldData().worldGenOptions().seed();
@@ -97,8 +97,8 @@ public final class GenerationContext {
         return globalRiverProvider;
     }
 
-    public LocalRiverProvider getLocalRiverProvider() {
-        return localRiverProvider;
+    public RiverProvider getRiverProvider() {
+        return riverProvider;
     }
 
     public HydrologyProfileInprinter getHydrologyInprinter() {
@@ -134,7 +134,7 @@ public final class GenerationContext {
         biomeProvider.getInfiniteTensor().clear();
         reliefProvider.getInfiniteTensor().clear();
         globalRiverProvider.getInfiniteTensor().clear();
-        localRiverProvider.clearCaches();
+        riverProvider.clearCaches();
         heightmapCache.clear();
     }
 }

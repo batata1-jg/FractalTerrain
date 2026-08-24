@@ -29,7 +29,7 @@ structural node gets a fresh id, and the node counter is set past every preserve
 never collide with a preserved one.
 
 `update` **re-assigns every channel id**. This has a consequence worth stating plainly: the local-vs-global
-channel distinction cannot survive a collision pass. `LocalRiverProvider.Stages.localChannels` is
+channel distinction cannot survive a collision pass. `RiverProvider.Stages.localChannels` is
 therefore always empty and the local-only debug render is blank — an accepted debug-only regression.
 
 `bedElevations` are deliberately not preserved across the seam; `ChannelElevationAssigner` re-derives them.

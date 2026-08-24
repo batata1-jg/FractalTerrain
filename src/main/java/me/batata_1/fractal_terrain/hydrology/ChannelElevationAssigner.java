@@ -1,6 +1,6 @@
 package me.batata_1.fractal_terrain.hydrology;
 
-import static me.batata_1.fractal_terrain.hydrology.providers.HydrologyTileGeometry.sampleBilinear;
+import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.sampleBilinear;
 
 import java.util.ArrayDeque;
 import java.util.HashMap;
@@ -15,8 +15,9 @@ import org.slf4j.LoggerFactory;
 /**
  * Gives every channel point a bed elevation, so the carve has a target to cut toward.
  *
- * <p>Network-agnostic by design: {@code LocalRiverProvider.buildTile} runs it twice per tile, once on
- * the global-only graph and again on the unified one, and it must behave identically both times.
+ * <p>Network-agnostic by design: {@code GlobalNetworkBuilder.build} and {@code LocalNetworkBuilder.build}
+ * each run it once — the former on the global-only graph, the latter on the unified one — and it must
+ * behave identically both times.
  *
  * <p>Each path is floored at the bed of the terminal DRAIN it reaches rather than at the local coarse
  * cell, so a whole source→junction→drain path descends to one consistent minimum. Broken topology

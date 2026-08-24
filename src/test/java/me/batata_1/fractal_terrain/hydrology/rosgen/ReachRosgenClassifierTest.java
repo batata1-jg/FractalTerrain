@@ -198,9 +198,8 @@ class ReachRosgenClassifierTest {
         // three times per tile and reSamples every channel before each classification pass.
         // QuinticHermiteSpline.reSampleWithTs refits a fresh Catmull-Rom through the resampled points
         // each time, so resampling an already-resampled spline is not obviously a fixed point. If it
-        // drifts a reach's metrics across a threshold, the shell carved into the terrain
-        // (LocalRiverProvider:249) and the type persisted to the index (:252) commit different types for
-        // the same physical reach.
+        // drifts a reach's metrics across a threshold, the shell carved into the terrain (RiverProvider)
+        // and the type persisted to the index commit different types for the same physical reach.
         final RiverNetwork net = straightNetwork();
         for (Channel ch : net.getChannels()) ch.bedElevations = descendingBed(ch.numPts());
 

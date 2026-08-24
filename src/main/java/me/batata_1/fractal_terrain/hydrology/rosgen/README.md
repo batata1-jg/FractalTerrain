@@ -92,7 +92,7 @@ headwaters into the reaches below them. Slope-driven variation is intended behav
 ## Invariants
 
 - **`ReachMetricsSampler` must be handed raw decoded elevation, never a carved buffer.**
-  `carveRiverShells` *creates* the floodplain and writes in place, so measuring entrenchment on its
+  `carveRiverInfluence` *creates* the floodplain and writes in place, so measuring entrenchment on its
   output measures `FLOODPLAIN_BASE` and `FLOODPLAIN_WIDTH_FACTOR` — the carve's own tuning constants —
   instead of the terrain. `GlobalNetworkBuilder` clones `rawElev` before the first assign and first carve
   for exactly this reason.
@@ -103,5 +103,5 @@ headwaters into the reaches below them. Slope-driven variation is intended behav
 - **Calibration is unfinished.** The slope bands are literature values for real-world channels, and a
   Minecraft-scale world is vertically exaggerated relative to its horizontal run, so they classify most
   of the world as `Aa+`. The key tests slope first, so slope miscalibration dominates every other error
-  — recalibrate from the `localRiverTest` slope histogram before judging any other threshold. See
+  — recalibrate from the `riverTest` slope histogram before judging any other threshold. See
   `config/README.md`.

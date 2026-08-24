@@ -13,10 +13,10 @@ import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.DebugConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
-import me.batata_1.fractal_terrain.hydrology.providers.GlobalRiverProvider;
-import me.batata_1.fractal_terrain.hydrology.providers.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
+import me.batata_1.fractal_terrain.hydrology.providers.GlobalRiverProvider;
+import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
@@ -27,7 +27,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Queries/sec benchmark comparing the production {@link ImmutableRTree} against the legacy
- * {@link ImmutableQuadTree}-based query path it replaced, over one real {@link LocalRiverProvider}
+ * {@link ImmutableQuadTree}-based query path it replaced, over one real {@link RiverProvider}
  * primitive tile — covering the influence query, the {@code insideChannel} existence test, and the
  * provider-level query/carve calls.
  *
@@ -71,7 +71,7 @@ public class SpatialIndexBenchmark {
         pipeline.updateInstance(420, DEBUG_PATH);
 
         final GlobalRiverProvider globalRivers = new GlobalRiverProvider(null);
-        final LocalRiverProvider localRivers = new LocalRiverProvider(null);
+        final RiverProvider localRivers = new RiverProvider(null);
         localRivers.setGlobalRiverProvider(globalRivers);
         final HydrologyProfileInprinter carver = new HydrologyProfileInprinter(localRivers);
 
@@ -140,7 +140,7 @@ public class SpatialIndexBenchmark {
 
         // ---- provider-level queries: world points, PROVIDER_MARGIN clear of borders (see above) ----
         bench(
-                "LocalRiverProvider.queryInfluence",
+                "RiverProvider.queryInfluence",
                 worldInnerPoints(5, worldOriginX, worldOriginZ),
                 pt -> localRivers.queryInfluence(pt).toArray().length);
 

@@ -7,7 +7,7 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import java.util.Arrays;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
-import me.batata_1.fractal_terrain.hydrology.providers.LocalRiverProvider;
+import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.math.DifferenceOfGaussians;
@@ -18,8 +18,8 @@ import org.slf4j.Logger;
 
 /**
  * Builds final relief tiles ({@code [RELIEF_CHANNELS=7, 512, 512]}). All river handling now lives in
- * {@link LocalRiverProvider}; this provider decodes the diffusion residual, including the elevation
- * channel — {@link LocalRiverProvider} traces and carves rivers off its own separate decode of the same
+ * {@link RiverProvider}; this provider decodes the diffusion residual, including the elevation
+ * channel — {@link RiverProvider} traces and carves rivers off its own separate decode of the same
  * residual, but does not publish the carved buffer for this provider to import.
  *
  * <p>Channel layout: {@code [0]} elev (decoded from the diffusion residual) {@code [1]} blurredElev
@@ -67,8 +67,6 @@ public class ReliefProvider {
 
     private FloatTensor computeTile(int x, int z, @Nullable Stages stages) {
         final int pixels = INNER * INNER;
-
-       // var index = FractalTerrainInstance.getLocalRiverProvider().
 
         // ch0..5 + the DoG source: decode a DoG-haloed slice once.
         final float[][] base = DecoderChannels.decode(x, z, DOG_PAD);

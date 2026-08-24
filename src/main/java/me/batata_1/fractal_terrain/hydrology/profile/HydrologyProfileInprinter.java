@@ -5,25 +5,25 @@ import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
-import me.batata_1.fractal_terrain.hydrology.providers.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
+import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 
 /**
  * The elevation side of the hydrology profile — where rivers actually cut the terrain.
  *
  * <p>Split across two stages because they run at different times against different data: the tile-level
- * shell carve broad-brushes the valley during {@code LocalRiverProvider.buildTile}, and the per-pixel
+ * shell carve broad-brushes the valley during {@code RiverProvider.buildTile}, and the per-pixel
  * refinement cuts the bed trench below it later, driven per chunk from {@code PopulateNoiseStep}.
  *
  * <p>All geometry is in the relief-pixel frame. The carving twin of {@code HydrologyProfilePainter}.
  */
 public final class HydrologyProfileInprinter {
 
-    private final LocalRiverProvider localRiver;
+    private final RiverProvider riverProvider;
 
-    public HydrologyProfileInprinter(LocalRiverProvider localRiver) {
-        this.localRiver = localRiver;
+    public HydrologyProfileInprinter(RiverProvider riverProvider) {
+        this.riverProvider = riverProvider;
     }
 
     public static void carveRiverInfluence(float[] elevation, List<HydrologicalPrimitive> primitives, int paddedSize) {
@@ -49,7 +49,7 @@ public final class HydrologyProfileInprinter {
     // -------------------------------------------------------------------------
 
     public List<HydrologicalPrimitive> prefetchChunk(double centerPixelX, double centerPixelZ, double chunkRadiusPx) {
-        var primitives = localRiver.queryInfluence(new double[] {centerPixelX, centerPixelZ}, chunkRadiusPx);
+        var primitives = riverProvider.queryInfluence(new double[] {centerPixelX, centerPixelZ}, chunkRadiusPx);
         primitives.sort(HydrologicalPrimitive.comparator);
         return primitives;
     }
@@ -184,20 +184,10 @@ public final class HydrologyProfileInprinter {
 
         int stop = 0;
         while (stop < primitives.size() && primitives.get(stop) instanceof RiverPrimitive river) {
-            carvePrimitiveInfluence(
-                    river,
-                    gridSize,
-                    dist,
-                    lut,
-                    perpRow,
-                    perpCol,
-                    tangRow,
-                    tangCol,
-                    elevs);
+            carvePrimitiveInfluence(river, gridSize, dist, lut, perpRow, perpCol, tangRow, tangCol, elevs);
             stop++;
         }
     }
-
 
     /** One primitive's contribution, clipped to the lattice points its footprint reaches. Primitive-outer
      *  so the profile, the seed, the width-invariant extents and the LUT are computed once, not per point. */
@@ -382,10 +372,9 @@ public final class HydrologyProfileInprinter {
         final float waterSurface = (float) (elevation + HydrologicalPrimitive.waterLine(width));
         final long packed = HydrologicalPrimitive.HydrologicalFeature.RIVER.pack(
                 RiverPrimitive.RosgenType.orDefault(river.rosgenType()).ordinal());
-        profile.sampleCrossSection(
-                lut, n, 1.0, baseIdx, seed, elevation, floodPlainLen, marginLen, depth, curvature);
+        profile.sampleCrossSection(lut, n, 1.0, baseIdx, seed, elevation, floodPlainLen, marginLen, depth, curvature);
 
-        for(int i=0 ; i<lut.length ; i++) if(lut[i]<elevation) lut[i]= (float) elevation;
+        for (int i = 0; i < lut.length; i++) if (lut[i] < elevation) lut[i] = (float) elevation;
 
         // :PERF: both projections are affine, so each splits into a row term and a column term; tabulating
         // the two axes costs 2 * gridSize entries and lets the merge rebuild any point with one add.
@@ -400,8 +389,7 @@ public final class HydrologyProfileInprinter {
             tangCol[col] = -nx * ddz;
         }
 
-
-        final double floodPlainThreshold = Math.max(floodPlainLen/influenceLen, floodPlainLen/influenceWidth);
+        final double floodPlainThreshold = Math.max(floodPlainLen / influenceLen, floodPlainLen / influenceWidth);
         final double invLen = 1.0 / influenceLen;
         final double invWidth = 1.0 / influenceWidth;
         for (int row = rowMin; row <= rowMax; row++) {
@@ -427,20 +415,19 @@ public final class HydrologyProfileInprinter {
                         : lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]);
 
                 dist[i] = (float) ((1 - w) * dist[i] + w * d);
-                //TODO: treat case where elev is lower than drain height
-                if(w>floodPlainThreshold) elevs[i] = (float) Math.min(elevs[i],h);
+                // TODO: treat case where elev is lower than drain height
+                if (w > floodPlainThreshold) elevs[i] = (float) Math.min(elevs[i], h);
 
-                elevs[i] = (float) Math.min(elevs[i],elevs[i] * (1 - (w/floodPlainThreshold)) + h * (w/floodPlainThreshold));
+                elevs[i] = (float)
+                        Math.min(elevs[i], elevs[i] * (1 - (w / floodPlainThreshold)) + h * (w / floodPlainThreshold));
             }
         }
     }
 
-
     // -------------------------------------------------------------------------
-    // Tile-level shell pre-carve (moved from LocalRiverProvider)
+    // Tile-level shell pre-carve, called from RiverProvider's tile pipeline
     // -------------------------------------------------------------------------
 
     /** One instance of this class serves every tile build, so the carve buffers cannot be fields. */
     private static final ThreadLocal<GridBuffers> SHELL_BUFFERS = ThreadLocal.withInitial(GridBuffers::new);
-
 }

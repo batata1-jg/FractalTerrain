@@ -48,7 +48,7 @@ public class HydrologyPrimitiveVisualizer {
     }
 
     /** {@link #see(List, String, int, int)} for primitives in <b>world</b> relief-pixel coords — the frame
-     *  {@code LocalRiverProvider} publishes. {@code (originX, originZ)} shifts them into canvas frame. */
+     *  {@code RiverProvider} publishes. {@code (originX, originZ)} shifts them into canvas frame. */
     public void see(
             List<HydrologicalPrimitive> primitives,
             String name,

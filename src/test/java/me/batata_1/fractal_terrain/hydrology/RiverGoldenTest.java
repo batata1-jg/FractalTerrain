@@ -11,8 +11,7 @@ import java.util.Random;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
-import me.batata_1.fractal_terrain.hydrology.providers.HydrologyTileGeometry;
-import me.batata_1.fractal_terrain.hydrology.providers.LocalRiverProvider;
+import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -21,11 +20,11 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Asserts structural invariants rather than a frozen checksum: local output legitimately shifts with
  * the uncalibrated {@code LOCAL_ATTACH_RADIUS}, so a checksum would demand re-baselining on every
- * calibration pass. {@code debug.tests.LocalRiverTest} remains the PNG-dumping counterpart.
+ * calibration pass. {@code debug.tests.RiverTest} remains the PNG-dumping counterpart.
  */
-class LocalRiverGoldenTest {
+class RiverGoldenTest {
 
-    private static final int GRID = LocalRiverProvider.gridSizeForTest();
+    private static final int GRID = RiverProvider.gridSizeForTest();
 
     /** Distance (rows) from the trunk to each ridge crest (the watershed / source line). */
     private static final int RIDGE_OFFSET = 80;
@@ -55,7 +54,7 @@ class LocalRiverGoldenTest {
         return elevation;
     }
 
-    /** Steepest-descent drainage over {@code filled}, matching {@code LocalRiverProvider.buildTile}. */
+    /** Steepest-descent drainage over {@code filled}, matching {@code RiverProvider.buildTile}. */
     private static int[] drainageOf(float[] filled) {
         return Drainage.computeDrainageDirection(filled, GRID);
     }
@@ -76,7 +75,7 @@ class LocalRiverGoldenTest {
 
     /** Runs the production trace over a fresh synthetic network/elevation pair; returns the mutated network. */
     private static RiverNetwork trace(long seed) {
-        final LocalRiverProvider provider = new LocalRiverProvider(null);
+        final RiverProvider provider = new RiverProvider(null);
         // buildTile computes drainage on the sink-FILLED elevation and passes that same filled field to the
         // trace, so flow reaches outlets rather than stalling in interior depressions; mirror that here.
         final float[] filled = Drainage.fillSinks(syntheticElevation(seed), GRID, 0);

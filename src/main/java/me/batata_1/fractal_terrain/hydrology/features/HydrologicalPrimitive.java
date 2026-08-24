@@ -119,7 +119,7 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
      */
     @FunctionalInterface
     interface InfluenceSampler {
-        double at(double x, double z,double bedElev,double width);
+        double at(double x, double z, double bedElev, double width);
     }
 
     /**
@@ -148,7 +148,7 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
                     final double bedElevation = ch.bedElev(i);
                     out.add(new RiverPrimitive(
                             VectorOps.sub(splinePt, offset),
-                            influence.at(splinePt[0],splinePt[1],bedElevation,width),
+                            influence.at(splinePt[0], splinePt[1], bedElevation, width),
                             types[i],
                             centreline.normalAt(ch, i),
                             ch.spline.curvature(i),

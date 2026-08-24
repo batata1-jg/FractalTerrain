@@ -23,7 +23,7 @@ import me.batata_1.fractal_terrain.hydrology.rosgen.ReachRosgenClassifier;
 import me.batata_1.fractal_terrain.math.Interpolation;
 
 /**
- * Step 1 of {@code LocalRiverProvider.buildTile}: turns {@link GlobalRiverProvider}'s coarse arrow field
+ * Step 1 of {@code RiverProvider.buildTile}: turns {@link GlobalRiverProvider}'s coarse arrow field
  * into a relaxed per-tile graph, and hands back the boundary elevations the caller needs to assign beds.
  *
  * <p>Split out of the provider so the trace-and-relax core can be read and tested apart from the
@@ -53,10 +53,15 @@ public final class GlobalNetworkBuilder {
      * accumulated for it (source/drain node datum keyed by minted node id), for the caller to hand to
      * {@link ChannelElevationAssigner#assign}.
      *
-     * <p>{@code rawElev} is the pre-carve elevation snapshot the Rosgen classifier must measure against;
-     * it travels with the network because only {@link #build} runs early enough to take it.
+     * <p>{@code elevCarvedGlobalOnly} is the elevation after the global-only carve, the drainage field is
+     * computed over; {@code typer} is the Rosgen classifier {@link #build} built against that same buffer.
      */
-    public record Result(RiverNetwork network, int[] drainage, Map<Integer, Double> boundaryElevByNodeIdx, ChannelTyper typer) {}
+    public record Result(
+            RiverNetwork network,
+            int[] drainage,
+            Map<Integer, Double> boundaryElevByNodeIdx,
+            ChannelTyper typer,
+            float[] elevCarvedGlobalOnly) {}
 
     public static Result build(int tileX, int tileZ, float[][] base, GlobalRiverProvider grp) {
         final float[] elevCarvedGlobalOnly = base[0].clone();
@@ -83,7 +88,15 @@ public final class GlobalNetworkBuilder {
                 if (outDir != -1) {
                     dcx = ccx + Drainage.NEIGHBOR_OFFSET_X[outDir];
                     dcz = ccz + Drainage.NEIGHBOR_OFFSET_Z[outDir];
-                    drain = findDrain(ccx, ccz, outDir, tileX, tileZ, elevCarvedGlobalOnly, grp.getElevation(ccx, ccz), marginInfl);
+                    drain = findDrain(
+                            ccx,
+                            ccz,
+                            outDir,
+                            tileX,
+                            tileZ,
+                            elevCarvedGlobalOnly,
+                            grp.getElevation(ccx, ccz),
+                            marginInfl);
                 } else {
                     // no downstream arrow: the cell terminates at its lowest-elevation interior point.
                     drain = findLowestInCell(ccx, ccz, tileX, tileZ, elevCarvedGlobalOnly, marginInfl);
@@ -189,16 +202,17 @@ public final class GlobalNetworkBuilder {
             }
         }
 
-        ChannelTyper typer = new ReachRosgenClassifier(elevCarvedGlobalOnly,PADDED);
+        ChannelTyper typer = new ReachRosgenClassifier(elevCarvedGlobalOnly, PADDED);
 
         final RiverNetwork network = new RiverNetwork(PADDED, nodeSpecs, edgeSpecs);
         if (edgeSpecs.isEmpty()) {
-            return new Result(network,
+            return new Result(
+                    network,
                     Drainage.computeDrainageDirection(
-                            Drainage.fillSinks(elevCarvedGlobalOnly,PADDED, HydrologyTuning.FILL_PADDING),PADDED
-                    ),
+                            Drainage.fillSinks(elevCarvedGlobalOnly, PADDED, HydrologyTuning.FILL_PADDING), PADDED),
                     boundaryElevByNodeIdx,
-                    typer);
+                    typer,
+                    elevCarvedGlobalOnly);
         }
 
         // Relaxation steps vary with the elevation of the tile's primary owned cell (2*tileCoords):
@@ -211,24 +225,29 @@ public final class GlobalNetworkBuilder {
                 .relax(Math.min(relaxSteps, MAX_RELAX_STEPS), 5);
         clearBuildState(cells, nodeSpecs, edgeSpecs, centerIdx, edgeNodeIdx);
 
-        ChannelElevationAssigner.assign(network,boundaryElevByNodeIdx, elevCarvedGlobalOnly);
+        ChannelElevationAssigner.assign(network, boundaryElevByNodeIdx, elevCarvedGlobalOnly);
 
-        HydrologyProfileInprinter.carveRiverInfluence(elevCarvedGlobalOnly,collect(network,typer, elevCarvedGlobalOnly),PADDED);
+        HydrologyProfileInprinter.carveRiverInfluence(
+                elevCarvedGlobalOnly, collect(network, typer, elevCarvedGlobalOnly), PADDED);
 
-        return new Result(network,
+        return new Result(
+                network,
                 Drainage.computeDrainageDirection(
-                Drainage.fillSinks(elevCarvedGlobalOnly,PADDED, HydrologyTuning.FILL_PADDING),PADDED
-        ), boundaryElevByNodeIdx, typer);
+                        Drainage.fillSinks(elevCarvedGlobalOnly, PADDED, HydrologyTuning.FILL_PADDING), PADDED),
+                boundaryElevByNodeIdx,
+                typer,
+                elevCarvedGlobalOnly);
     }
 
-    private static List<HydrologicalPrimitive> collect(RiverNetwork network,ChannelTyper typer, float[] elev) {
-        var list = network.collectPrimitives(0,0,channelId -> true, typer,(x,z,bed,width) -> {
-            double delta = Math.abs(Interpolation.sampleNearest(elev,x,z,PADDED) - bed);
-            return HydrologyTuning.influence(width,delta);
+    private static List<HydrologicalPrimitive> collect(RiverNetwork network, ChannelTyper typer, float[] elev) {
+        var list = network.collectPrimitives(0, 0, channelId -> true, typer, (x, z, bed, width) -> {
+            double delta = Math.abs(Interpolation.sampleNearest(elev, x, z, PADDED) - bed);
+            return HydrologyTuning.influence(width, delta);
         });
         list.sort(HydrologicalPrimitive.comparator);
         return list;
-    };
+    }
+    ;
 
     /** Drops the build scaffolding once the graph has copied it, so a tile build does not hold it for
      *  the lifetime of the returned {@link Result}. */

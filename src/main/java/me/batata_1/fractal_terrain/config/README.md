@@ -11,7 +11,7 @@ Most `HydrologyTuning` values are first-cut and untuned. They were chosen to get
 not from measurement, and they are expected to change. This section records what each uncalibrated knob
 controls and how its miscalibration shows up, because none of that is visible from the value.
 
-Calibrate visually via the `localRiverTest` harness.
+Calibrate visually via the `riverTest` harness.
 
 ### Rosgen slope bands are the dominant error source
 
@@ -21,7 +21,7 @@ exaggerated relative to its horizontal run — a 150-block rise over 300 blocks 
 literature figures used as a starting point only.
 
 The classification key tests slope first, so slope miscalibration dominates every other error. Recalibrate
-from the slope histogram `localRiverTest` dumps before judging any other threshold.
+from the slope histogram `riverTest` dumps before judging any other threshold.
 
 ### Failure signatures
 

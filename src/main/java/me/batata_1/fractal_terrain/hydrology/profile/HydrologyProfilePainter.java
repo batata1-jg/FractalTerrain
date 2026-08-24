@@ -1,8 +1,8 @@
 package me.batata_1.fractal_terrain.hydrology.profile;
 
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
-import me.batata_1.fractal_terrain.hydrology.providers.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
+import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
 
@@ -15,10 +15,10 @@ import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
  */
 public final class HydrologyProfilePainter {
 
-    private final LocalRiverProvider localRiver;
+    private final RiverProvider riverProvider;
 
-    public HydrologyProfilePainter(LocalRiverProvider localRiver) {
-        this.localRiver = localRiver;
+    public HydrologyProfilePainter(RiverProvider riverProvider) {
+        this.riverProvider = riverProvider;
     }
 
     /** Water surface height for a column; the chunk filler floods up to it. Measured against the
@@ -33,6 +33,6 @@ public final class HydrologyProfilePainter {
      *  superset since influence always exceeds half-width. */
     public boolean insideChannel(double[] pixelPt) {
         final double tileVisitRadius = HydrologyTuning.maxNativeWidth() / 2.0;
-        return localRiver.anyInfluencingPrimitive(pixelPt, tileVisitRadius, HydrologicalPrimitive::channelContains);
+        return riverProvider.anyInfluencingPrimitive(pixelPt, tileVisitRadius, HydrologicalPrimitive::channelContains);
     }
 }

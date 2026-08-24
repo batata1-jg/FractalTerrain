@@ -57,13 +57,23 @@ Two layers. A JUnit 5 suite (`useJUnitPlatform()`, 15 `*Test.java` classes under
 gradle test                   # JUnit 5 golden suite
 ```
 
-**Baseline, measured 2026-08-19** at `06a15dd` plus the working-tree changes to
-`HydrologyProfileInprinter.java`, `PopulateNoiseStep.java` and `ComputeRiverGridTest.java`:
-the suite **compiles**, and `gradle test` reports **90 tests, 20 failed, 1 skipped**. The 20, all
-pre-existing:
+**Baseline, measured 2026-08-23:** `gradle compileJava compileClientJava spotlessCheck` **passes**, but
+`gradle build` **fails at `:compileTestJava`** — `src/test/.../hydrology/features/ConfluencePrimitiveTest.java`
+calls `ConfluencePrimitive.w(double[])` and `.d(double[])`, neither of which exists on
+`ConfluencePrimitive` (it implements only `h(double[])`); 9 errors. This is pre-existing and unrelated to
+the `RiverProvider`/`LocalNetworkBuilder` river refactor — that test file was last modified three commits
+before the refactor began. `gradle test` therefore cannot run at all as the tree stands.
 
-> `RosgenKeyTest` (6), `ConfluencePrimitiveTest` (4), `ChannelGeometryTest` (3), `LocalRiverGoldenTest` (2),
+With `ConfluencePrimitiveTest` excluded, a run reported **81 tests, 19 failed, 1 skipped** — mark that
+figure explicitly as measured with a test file excluded, not as a clean baseline:
+
+> `RosgenKeyTest` (6), `ComputeRiverGridTest` (3), `ChannelGeometryTest` (3), `RiverGoldenTest` (2),
 > `MeandersGoldenTest` (2), `GlobalRiverGoldenTest` (1), `ReachMetricsSamplerTest` (1), `CentrelineTest` (1).
+
+`ComputeRiverGridTest`'s 3 failures are new relative to the last quoted baseline (which had it at 12
+passing), but are **not** caused by the river refactor: the only production file it exercises is
+`HydrologyProfileInprinter`, and the refactor's diff to that file is import renames and formatting only.
+Record it as pre-existing-but-newly-visible — the suite could not compile far enough to reach it before.
 
 The suite has broken and been repaired several times; treat any quoted baseline, including this one, as
 a claim to re-verify rather than a fact. Re-measure before blaming your own change: build a worktree at
@@ -76,7 +86,7 @@ Manual harnesses run as `JavaExec` tasks pointing at `main()` classes in `debug/
 
 ```
 gradle globalRiverTest        # global riverUnit network + PNG dumps
-gradle localRiverTest         # local riverUnit network + PNG dumps
+gradle riverTest              # local riverUnit network + PNG dumps
 gradle meandersTest           # meander relaxation
 gradle spatialIndexBenchmark  # spatial-index microbench
 gradle pipelineTest           # NOT a pipeline test — samples nvidia-smi VRAM only

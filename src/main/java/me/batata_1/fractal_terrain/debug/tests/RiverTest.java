@@ -11,12 +11,11 @@ import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.DebugConfig;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.Drainage;
-import me.batata_1.fractal_terrain.hydrology.providers.GlobalRiverProvider;
-import me.batata_1.fractal_terrain.hydrology.providers.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
+import me.batata_1.fractal_terrain.hydrology.providers.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import me.batata_1.fractal_terrain.hydrology.rosgen.ReachMetricsSampler;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
@@ -27,22 +26,22 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Standalone smoke test for {@link LocalRiverProvider} (the river-pipeline owner). Loads the models via
+ * Standalone smoke test for {@link RiverProvider} (the river-pipeline owner). Loads the models via
  * {@code FractalTerrainInstance.initPipeline()}, but constructs its own {@link GlobalRiverProvider} and
- * {@link LocalRiverProvider} directly rather than going through {@code FractalTerrainInstance}'s provider
+ * {@link RiverProvider} directly rather than going through {@code FractalTerrainInstance}'s provider
  * accessors, and for a few tiles dumps PNGs of the flow accumulation, local river mask, first-pass and
  * final carved elevation, and traced channels under {@code <DEFAULT_DEBUG_PATH>/local_river/}. Run with
- * {@code ./gradlew localRiverTest}.
+ * {@code ./gradlew riverTest}.
  */
 @TestOnly
-public class LocalRiverTest {
+public class RiverTest {
 
-    private static final Logger LOG = LoggerFactory.getLogger(LocalRiverTest.class);
+    private static final Logger LOG = LoggerFactory.getLogger(RiverTest.class);
 
     private static final String DEBUG_PATH = FractalTerrainConfig.DEFAULT_DEBUG_PATH + "/local_river";
 
     private static final int GRID = 512;
-    /** LocalRiverProvider's padded working resolution (GRID + 1-px halo per side). */
+    /** {@link RiverProvider}'s padded working resolution (GRID + 1-px halo per side). */
     private static final int PAD = 1;
 
     /** Tiles (tx, tz) to render. */
@@ -54,23 +53,23 @@ public class LocalRiverTest {
     };
 
     public static void main(String[] args) {
-        LOG.info("LocalRiverTest start; output dir = {}", DEBUG_PATH);
+        LOG.info("RiverTest start; output dir = {}", DEBUG_PATH);
         DebugConfig.DEBUG_STEPS = false;
         ModelAssetManager.ensureAssetsReady();
         FractalTerrainInstance.initPipeline();
         pipeline.updateInstance(420, DEBUG_PATH);
 
         final GlobalRiverProvider globalRivers = new GlobalRiverProvider(null);
-        final LocalRiverProvider localRivers = new LocalRiverProvider(null);
+        final RiverProvider localRivers = new RiverProvider(null);
         localRivers.setGlobalRiverProvider(globalRivers);
 
         for (int[] tile : TILES) {
             dumpTile(localRivers, globalRivers, tile[0], tile[1]);
         }
-        LOG.info("LocalRiverTest done. See {}", DEBUG_PATH);
+        LOG.info("RiverTest done. See {}", DEBUG_PATH);
     }
 
-    private static void dumpTile(LocalRiverProvider provider, GlobalRiverProvider globalRivers, int tx, int tz) {
+    private static void dumpTile(RiverProvider provider, GlobalRiverProvider globalRivers, int tx, int tz) {
         LOG.info("Dumping tile ({},{}) river={}", tx, tz, GlobalRiverProvider.isRiver(globalRivers.getArrow(tx, tz)));
         final String prefix = "tile_tx" + tx + "_tz" + tz + "_";
 
@@ -89,7 +88,7 @@ public class LocalRiverTest {
         seeFloat(maskToFloat(stages.riverMask), GRID + 2, GRID + 2, prefix + "02_river_mask");
         seeFloat(stages.elevationFirstPass, GRID, GRID, prefix + "03_elev_first_pass");
         seeFloat(stages.carvedElevation, GRID, GRID, prefix + "04_carved_elev");
-        // Both lists are channels of the SAME unified graph (see LocalRiverProvider.Stages), and the local
+        // Both lists are channels of the SAME unified graph (see RiverProvider.Stages), and the local
         // trace shifts its segments by +PAD into the padded graph frame on insertion (DL-005), so both
         // need the same PAD offset subtracted for tile-local pixel coords.
         seeFloat(rasterizeChannels(stages.channels, PAD), GRID, GRID, prefix + "05_global_channels");

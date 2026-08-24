@@ -43,10 +43,10 @@ seed ──► WorldPipeline (JVM-lifetime, me/batata_1/fractal_terrain/ml/pipel
    GenerationContext build order:  global → local → relief → biome
            │
            ├─ GlobalRiverProvider   (hydrology/)  — coarse-px riverPrimitive network per 64×64-coarse tile
-           ├─ LocalRiverProvider    (hydrology/)  — 512-native-px hydrological-primitive index
-           │     ├─ GlobalNetworkBuilder    — traces/relaxes the global network inside a tile
-           │     ├─ LocalDrainageTracer      — local network off the drainage field, attached in place onto that SAME graph
-           │     └─ ChannelElevationAssigner — ONE bed-elevation propagation pass over the unified global+local graph
+           ├─ RiverProvider         (hydrology/)  — 512-native-px hydrological-primitive index + carved-elevation tensor
+           │     ├─ GlobalNetworkBuilder    — traces/relaxes the global network inside a tile; assigns + carves the global-only graph to shape the drainage field
+           │     ├─ LocalNetworkBuilder     — attaches the local trace onto that SAME graph in place, then TWO bed-elevation propagation passes over the unified graph with a carve between them
+           │     └─ LocalDrainageTracer      — the local trace `LocalNetworkBuilder` drives, off the drainage field
            ├─ ReliefProvider        (relief/)     — decodes residual (elevation included) → [RELIEF_CHANNELS=7,512,512]
            └─ BiomeProvider         (world/biome/) — climate+relief → vanilla biome parameters
                      └─ ClimateVariableTransform (facade) → ClimateToBiomeTransformer
@@ -71,30 +71,39 @@ Every ONNX-facing tensor uses the fixed axis order `CH=0/X=1/Z=2` and the channe
 model-specific constants (means/stds, latent compression, native resolution) from
 `world_pipeline_config.json` so a model swap needs no recompile.
 
-**Hydrology split** (`hydrology/`): `LocalRiverProvider.java` is a thin orchestrator over a single
-`NonIntersectingSpatialIndex<ImmutableRTree<HydrologicalPrimitive>>` cache (a 50 MB LRU budget), filled by
-one `buildTile` call. `buildTile` builds ONE per-tile `RiverNetwork` graph: `GlobalNetworkBuilder.java`
-traces the global subgraph, relaxes it with `GradientNetworkRelaxation`, and returns the `RiverNetwork`
-together with the pre-carve elevation snapshot and the boundary-elevation map it accumulated; `LocalDrainageTracer.java` then traces the drainage-derived local network and attaches
-every surviving segment directly onto that SAME graph in place, returning nothing. It works through the
-atomic seam: `RiverNetwork.viewAtomic()` yields an `AtomicView` in which every interior spline point is a
-first-class node, the tracer appends `SOURCE`/interior/`DRAIN` nodes and directed edges to it, and
-`RiverNetwork.manageCollisions(step, view)` orients, captures and prunes that view before folding it back
-into the canonical graph. `ChannelElevationAssigner.java` then runs ONE `assign` pass over
-the now-unified graph, and `RiverNetwork.collectPrimitives` runs ONE pass emitting every hydrological primitive —
-global and local, one shared feature-id counter — by resampling geometry and reading each channel's
-assigned `Channel.bedElevations` (oxbows/abandoned paths fall back to a decoded-terrain sampler, since
-they carry no `bedElevations`). There is no per-pixel global boolean mask anywhere in this path:
-proximity to a global-channel point (`HydrologyTuning.LOCAL_ATTACH_RADIUS`) replaces both the old mask's
-walk-termination exclusion and its reach-seed adjacency, read from a point index built fresh over the
-graph's channels each call. `HydrologyTileGeometry.java` centralizes the shared tile-frame geometry
-(`GRID=512`, `PAD=1`, `PADDED=514`, `COARSE_PX=256`) all three depend on. `Drainage.java` (sink-fill,
-D8/D4 drainage direction, flow accumulation, and the `Drainage.FlowGraph` routing topology both the flow
-accumulator and the local trace walk) and `ChannelGeometry.java` are lower-level shared helpers. The `hydrology/profile/` subpackage (`HydrologyProfileInprinter`, `HydrologyProfilePainter`,
-`HydrologyProfile`, `RosgenProfile`) turns the hydrological-primitive index into carve/paint operations
-consumed by `world/gen/`. `GlobalRiverProvider.java` is independent of `LocalRiverProvider` and caches
-its own 64×64-coarse-px tiles directly (coarse-px addressed, not the 512-native-px tile grid — see
-Coordinate frames).
+**Hydrology split** (`hydrology/`): `RiverProvider.java` owns two per-tile stores — `primitives`, a
+`NonIntersectingSpatialIndex<ImmutableRTree<HydrologicalPrimitive>>` cache (a 50 MB soft cap), and
+`hydrology_relief`, a `NonIntersectingInfiniteTensor` (`{1,512,512}`, no cap of its own) holding the
+river-carved elevation. Both stores' compute callbacks call the same private `buildTile`, which builds ONE
+per-tile `RiverNetwork` graph and returns both artifacts from that single run; a small capacity-4 memo
+(`recentTiles`) means a tile whose primitives and carved elevation are both requested does not run the
+trace/carve pipeline twice. `buildTile` splits across two collaborators: `GlobalNetworkBuilder.java` traces
+the global subgraph, relaxes it with `GradientNetworkRelaxation`, runs `ChannelElevationAssigner.assign`
+and one `carveRiverInfluence` pass over the global-only graph to shape the drainage field, and returns the
+`RiverNetwork` together with that drainage field and the boundary-elevation map it accumulated;
+`LocalNetworkBuilder.java` then traces the drainage-derived local network with `LocalDrainageTracer.java`
+and attaches every surviving segment directly onto that SAME graph in place, returning nothing from the
+tracer itself. It works through the atomic seam: `RiverNetwork.viewAtomic()` yields an `AtomicView` in
+which every interior spline point is a first-class node, the tracer appends `SOURCE`/interior/`DRAIN`
+nodes and directed edges to it, and `RiverNetwork.manageCollisions(step, view)` orients, captures and
+prunes that view before folding it back into the canonical graph. `LocalNetworkBuilder` then runs TWO
+`ChannelElevationAssigner.assign` passes over the now-unified graph, with one `carveRiverInfluence` pass
+between them (into a fresh clone of the raw elevation, not `GlobalNetworkBuilder`'s carved clone), and
+returns the carved padded elevation `RiverProvider` crops and publishes. `RiverProvider.collectPrimitives`
+then runs ONE pass emitting every hydrological primitive — global and local, one shared feature-id counter
+— by resampling geometry and reading each channel's assigned `Channel.bedElevations` (oxbows/abandoned
+paths fall back to a decoded-terrain sampler, since they carry no `bedElevations`). There is no per-pixel
+global boolean mask anywhere in this path: proximity to a global-channel point
+(`HydrologyTuning.LOCAL_ATTACH_RADIUS`) replaces both the old mask's walk-termination exclusion and its
+reach-seed adjacency, read from a point index built fresh over the graph's channels each call.
+`HydrologyTileGeometry.java` centralizes the shared tile-frame geometry (`GRID=512`, `PAD=1`, `PADDED=514`,
+`COARSE_PX=256`) every stage depends on. `Drainage.java` (sink-fill, D8/D4 drainage direction, flow
+accumulation, and the `Drainage.FlowGraph` routing topology both the flow accumulator and the local trace
+walk) and `ChannelGeometry.java` are lower-level shared helpers. The `hydrology/profile/` subpackage
+(`HydrologyProfileInprinter`, `HydrologyProfilePainter`, `HydrologyProfile`, `RosgenProfile`) turns the
+hydrological-primitive index into carve/paint operations consumed by `world/gen/`. `GlobalRiverProvider.java`
+is independent of `RiverProvider` and caches its own 64×64-coarse-px tiles directly (coarse-px addressed,
+not the 512-native-px tile grid — see Coordinate frames).
 
 **Hydrology carve pipeline.** Both carve stages run the *same* function —
 `HydrologyProfileInprinter.computeRiverGrid` — over their own lattice. There is one merge law, not two.
@@ -112,10 +121,11 @@ of re-evaluating `RosgenProfile.delta`'s branchy per-region logic per point.
 
 The two call sites:
 
-1. **Tile-level shell carve** (`HydrologyProfileInprinter.carveRiverShells`), over the 514×514 padded
-   tile, called from `LocalRiverProvider.buildTile` to shape the drainage field the local trace reads.
-   It reads and writes the same buffer and skips pixels with negative ambient elevation (ocean), so the
-   two passes per tile compound.
+1. **Tile-level shell carve** (`HydrologyProfileInprinter.carveRiverInfluence`), over the 514×514 padded
+   tile, called once from `GlobalNetworkBuilder.build` (global-only graph, to shape the drainage field the
+   local trace reads) and once from `LocalNetworkBuilder.build` (unified graph, into a separate clone —
+   see "`buildTile` order" below for why the two calls no longer share one accumulating buffer). Each call
+   reads and writes its own buffer and skips pixels with negative ambient elevation (ocean).
 2. **Per-chunk bed carve** (`PopulateNoiseStep.fineGrainedPrimitivePass`), over the chunk's 16×16
    lattice, written into `Types.RIVER_DIFFERENCE` plus `Types.WATER_HEIGHT` and `Types.RIVER_TYPE`.
    It is fed by `HydrologyProfileInprinter.prefetchChunk`, which stabs the R-tree **once per chunk**
@@ -134,28 +144,38 @@ survives only as a reservation for feature types that have yet to grow real prof
 `HydrologyTuning.MAX_LOCAL_WIDTH` is retained but unread by live code, not even through the
 `FractalTerrainConfig` facade re-export.
 
-`LocalRiverProvider.buildTile` order — note that `assign` and the shell carve each run **twice**:
+`RiverProvider.buildTile` order, now split across `GlobalNetworkBuilder`, `LocalNetworkBuilder` and
+`RiverProvider` itself — note that `assign` runs **three** times and the carve runs **twice**, once per
+class, on two independent buffers rather than one shared accumulating buffer:
 
-1. Trace/relax the global network (`GlobalNetworkBuilder.build`), which returns the network plus the
-   boundary-elevation map it accumulated.
-2. `ChannelElevationAssigner.assign` over the global-only graph, then `carveRiverShells` into the decoded
-   elevation — so the drainage field computed next sees valleys.
-3. `fillSinks` + `computeDrainageDirection` over that carved elevation.
-4. Trace the local network and attach every surviving segment directly onto that SAME graph
-   (`LocalDrainageTracer.traceLocalNetwork`, in place, no return value). The tracer walks the drainage
-   field in upstream-to-downstream order over a `Drainage.FlowGraph`, appends `SOURCE`/interior/`DRAIN`
-   nodes to the graph's `AtomicView`, wires each new node to any nearby global-channel node
-   (`HydrologyTuning.LOCAL_ATTACH_RADIUS`), and closes with `RiverNetwork.manageCollisions`, which
-   orients the view, captures crossings and prunes every branch that reaches no drain.
-5. Augment the boundary map with those local `SOURCE`/`DRAIN` nodes → a second
-   `ChannelElevationAssigner.assign` over the now-unified graph.
-6. `RiverNetwork.collectPrimitives` emitting every primitive (global and local, one shared feature-id counter,
-   reading each channel's assigned `Channel.bedElevations`; oxbows/abandoned paths carry no
-   `bedElevations` and fall back to a decoded-terrain sample) into the R-tree `buildTile` returns → a
-   second `carveRiverShells` runs on the padded buffer, but the buffer itself is never published; cropping
-   it to the 512×512 tile happens only inside the `@TestOnly` `Stages` debug sink.
+1. `GlobalNetworkBuilder.build` traces/relaxes the global network, then runs `ChannelElevationAssigner
+   .assign` over the global-only graph, then `carveRiverInfluence` into its own clone of the decoded
+   elevation — so the `fillSinks` + `computeDrainageDirection` drainage field it computes next over that
+   clone already sees valleys. It returns the network, that drainage field, the boundary-elevation map it
+   accumulated, and the global-only-carved elevation (used downstream only for a debug snapshot — see
+   below).
+2. `LocalNetworkBuilder.build` traces the local network off that drainage field and attaches every
+   surviving segment directly onto that SAME graph (`LocalDrainageTracer.traceLocalNetwork`, in place, no
+   return value). The tracer walks the drainage field in upstream-to-downstream order over a
+   `Drainage.FlowGraph`, appends `SOURCE`/interior/`DRAIN` nodes to the graph's `AtomicView`, wires each
+   new node to any nearby global-channel node (`HydrologyTuning.LOCAL_ATTACH_RADIUS`), and closes with
+   `RiverNetwork.manageCollisions`, which orients the view, captures crossings and prunes every branch
+   that reaches no drain.
+3. `LocalNetworkBuilder.build` augments the boundary map with those local `SOURCE`/`DRAIN` nodes → a
+   second `ChannelElevationAssigner.assign` over the now-unified graph → `carveRiverInfluence` (the
+   pipeline's second and last carve) into a **fresh clone of the raw decoded elevation** — not
+   `GlobalNetworkBuilder`'s carved clone — → the boundary map is re-seeded against that just-carved
+   surface → a third `ChannelElevationAssigner.assign` so the final bed elevations agree with the carve.
+   It returns the carved padded elevation.
+4. Back in `RiverProvider.computeTile`, `RiverNetwork.collectPrimitives` emits every primitive (global and
+   local, one shared feature-id counter, reading each channel's assigned `Channel.bedElevations`;
+   oxbows/abandoned paths carry no `bedElevations` and fall back to a decoded-terrain sample) into the
+   R-tree, sampled against the RAW decoded elevation rather than either carved buffer. There is no third
+   carve: `LocalNetworkBuilder`'s returned elevation is only cropped (`RiverProvider.cropToTile`) into the
+   published `hydrology_relief` tensor; the `@TestOnly` `Stages` debug sink additionally captures
+   `GlobalNetworkBuilder`'s discarded global-only-carved elevation as `elevationFirstPass`.
 
-Both carve passes collect primitives **unfiltered**. The first is global-only purely by timing — the local
+Both carve calls collect primitives **unfiltered**. The first is global-only purely by timing — the local
 network does not exist yet — while the second, running after the local trace, carves local shells too.
 `RiverNetwork.collectPrimitives` has a channel-id-filtering overload that would restrict the carve to global
 channels, but **nothing calls it**. This matters because local networks are traced with no coarse halo,
@@ -186,12 +206,12 @@ compute, so this order is load-bearing:
 | Order | Provider | Package | Depends on |
 | ----- | -------- | ------- | ---------- |
 | 1 | `GlobalRiverProvider` | `hydrology/` | `WorldPipeline` coarse tensor (via the static `pipeline` field) |
-| 2 | `LocalRiverProvider` | `hydrology/` | `GlobalRiverProvider` (fallback via adapter when no test override), decoder tensor |
-| 2a | `HydrologyProfileInprinter` / `HydrologyProfilePainter` | `hydrology/profile/` | the just-built `LocalRiverProvider` |
-| 3 | `ReliefProvider` | `relief/` | decoder tensor (no data dependency on `LocalRiverProvider`; build order is fixed regardless) |
-| 4 | `BiomeProvider` | `world/biome/` | `ReliefProvider`, `LocalRiverProvider` (both via the adapter), climate from `WorldPipeline` |
+| 2 | `RiverProvider` | `hydrology/` | `GlobalRiverProvider` (fallback via adapter when no test override), decoder tensor |
+| 2a | `HydrologyProfileInprinter` / `HydrologyProfilePainter` | `hydrology/profile/` | the just-built `RiverProvider` |
+| 3 | `ReliefProvider` | `relief/` | decoder tensor (no data dependency on `RiverProvider`; build order is fixed regardless) |
+| 4 | `BiomeProvider` | `world/biome/` | `ReliefProvider`, `RiverProvider` (both via the adapter), climate from `WorldPipeline` |
 
-`LocalRiverProvider` also accepts a test-only override (`setGlobalRiverProvider`) so golden tests can
+`RiverProvider` also accepts a test-only override (`setGlobalRiverProvider`) so golden tests can
 inject a fixture instead of reaching the production singleton — the seam the caller migration (below) is expected to widen into the production path.
 
 `PopulateNoiseStep`, `FractalTerrainSurfaceSystem`, and `FractalTerrainHeightmapCache` are built after
@@ -201,7 +221,7 @@ of the `global → local → relief → biome` ordering constraint.
 ## The `GenerationContext` seam
 
 `GenerationContext.java` holds the whole per-world graph (server, `ReliefProvider`, `BiomeProvider`,
-`GlobalRiverProvider`, `LocalRiverProvider`, `HydrologyProfileInprinter`/`Painter`, `PopulateNoiseStep`,
+`GlobalRiverProvider`, `RiverProvider`, `HydrologyProfileInprinter`/`Painter`, `PopulateNoiseStep`,
 `FractalTerrainSurfaceSystem`, `FractalTerrainHeightmapCache`, `RandomState`, `Infinite3DVisualizer`) as
 `final` fields, constructed once per world load.
 
@@ -215,7 +235,7 @@ future so a subsequent `init()` republishes cleanly.
 
 **`FractalTerrainInstance`** (`FractalTerrainInstance.java`) is the thin static adapter kept from
 DL-007: it forwards ~15 historical getters (`getReliefProvider`, `getBiomeProvider`,
-`getGlobalRiverProvider`, `getLocalRiverProvider`, `getHydrologyCarver`, `getHydrologyPainter`,
+`getGlobalRiverProvider`, `getRiverProvider`, `getHydrologyCarver`, `getHydrologyPainter`,
 `getPopulateNoiseStep`, `getSurfaceBuilder`, `getHeightmapCache`, `getNoiseConfig`, `getServer`, …) to
 `current().getX()`. It also owns the one JVM-lifetime object outside `GenerationContext`: the shared
 `public static volatile WorldPipeline pipeline` field, loaded once via `initPipeline()` and reused
@@ -230,14 +250,14 @@ or publish it):
 | Area | Files |
 | ---- | ----- |
 | Mixins / Fabric-instantiated | `mixin/PlacedFeatureMixin.java`, `mixin/SteepSlopePredicateMixin.java`, `world/biome/source/FractalTerrainBiomeSource.java`, `world/gen/chunk/FractalTerrainChunkGenerator.java` |
-| Providers & generation | `hydrology/GlobalRiverProvider.java`, `hydrology/LocalRiverProvider.java`, `relief/ReliefProvider.java`, `relief/DecoderChannels.java`, `world/biome/BiomeProvider.java`, `world/gen/populatenoise/PopulateNoiseStep.java`, `world/gen/surfacebuilder/FractalTerrainSurfaceSystem.java` |
+| Providers & generation | `hydrology/GlobalRiverProvider.java`, `hydrology/RiverProvider.java`, `relief/ReliefProvider.java`, `relief/DecoderChannels.java`, `world/biome/BiomeProvider.java`, `world/gen/populatenoise/PopulateNoiseStep.java`, `world/gen/surfacebuilder/FractalTerrainSurfaceSystem.java` |
 | Storage & helpers | `storage/FractalTerrainHeightmap.java`, `storage/FractalTerrainHeightmapCache.java`, `math/DifferenceOfGaussians.java` |
-| Debug / manual harnesses | `debug/Debug.java`, `debug/Infinite3DVisualizer.java`, `debug/tests/GlobalRiverTest.java`, `debug/tests/LocalRiverTest.java`, `debug/tests/SpatialIndexBenchmark.java` |
+| Debug / manual harnesses | `debug/Debug.java`, `debug/Infinite3DVisualizer.java`, `debug/tests/GlobalRiverTest.java`, `debug/tests/RiverTest.java`, `debug/tests/SpatialIndexBenchmark.java` |
 
 Mixins and Fabric-instantiated types have no constructor the mod controls, so they are expected to keep
 resolving through the adapter permanently; full removal of the static getters is scoped to the remaining
 mod-constructed providers and has no owner milestone. `hydrology/profile/HydrologyProfileInprinter.java` has
-already been migrated — it takes its `LocalRiverProvider` by constructor. Treat
+already been migrated — it takes its `RiverProvider` by constructor. Treat
 `FractalTerrainInstance.getX()` reach-throughs as expected, not as debt to silently clean up.
 
 ## Config & logging conventions
@@ -270,7 +290,7 @@ property-sourced fields for exactly this reason; `DISABLE_3D_VISUALIZER` is read
 point: `LoggerFactory.getLogger("fractal_terrain/" + clazz.getName())` (`Debug.java:35-36`). It is not
 the actual convention — the split favors bypassing the facade, 18 files using `Debug.getLogger` (mostly
 via its static import) against 22 calling `LoggerFactory.getLogger` directly (`ModConfig`,
-`ChannelElevationAssigner`, `LocalDrainageTracer`, `LocalRiverProvider`, `ImmutableRTree`,
+`ChannelElevationAssigner`, `LocalDrainageTracer`, `ImmutableRTree`,
 `PipelineModels`, `ReachRosgenClassifier`, most `debug/tests/` harnesses, …; `Debug.java` itself is
 excluded from that count, since the facade is implemented on top of `LoggerFactory`). M-002 migrated
 files opportunistically rather than exhaustively, and files added since (e.g. the Rosgen/ONNX-asset
@@ -346,7 +366,7 @@ bands, in order of increasing cost:
   network tracing/relaxation orchestration, persistence/codec paths, debug harnesses. Abstraction,
   allocation, interfaces, streams, records, defensive copies are all fine and preferred for clarity.
   Strive to put as much code as possible above the line.
-- **Warm (tile creation):** `LocalRiverProvider.buildTile` and the 512×512-iteration tile passes it
+- **Warm (tile creation):** `RiverProvider.buildTile` and the 512×512-iteration tile passes it
   drives (`Drainage`, `ChannelElevationAssigner`, the `ChannelMigrator` models). Runs 512×512 times, but once per tile with
   the result cached — moderate abstraction is acceptable, unless the warm code recurses, which multiplies
   the cost back into hot territory.
@@ -388,8 +408,8 @@ that an allocation-avoiding or abstraction-skipping pattern is deliberate, not a
   or `GenerationContext`.
 - **Build order `global → local → relief → biome`** is fixed in `GenerationContext`'s constructor
   (`GenerationContext.java:55-60`) and mirrored by the fallback chain each provider uses when no test
-  override is set (`LocalRiverProvider` → `GlobalRiverProvider`, `ReliefProvider`/`BiomeProvider` →
-  `LocalRiverProvider`). Reordering it changes which providers can legally depend on which.
+  override is set (`RiverProvider` → `GlobalRiverProvider`, `ReliefProvider`/`BiomeProvider` →
+  `RiverProvider`). Reordering it changes which providers can legally depend on which.
 - **ONNX tensor-layout invariants are fixed.** `CH=0/X=1/Z=2` and the per-stage channel counts in
   `TensorLayout.java` (`DECODER_CHANNELS=8`, `RELIEF_CHANNELS=7`, `BIOME_CHANNELS=6`,
   `GLOBAL_RIVER_CHANNELS=4`) are the model I/O contract — any stage boundary must preserve them exactly.
@@ -403,14 +423,17 @@ that an allocation-avoiding or abstraction-skipping pattern is deliberate, not a
   cache; if you need a mutable copy, use `slice`/`copyRange`, which allocate a fresh tensor. Note the
   freeze does **not** guard the `public final data` array — this invariant is a convention the compiler
   will not enforce for you.
-- **The hydrology carve is order-dependent, at two levels.** *Across passes:* `carveRiverShells` reads
-  and writes one shared buffer, so results depend on how many passes have run and which primitives were
-  in the graph at the time; `buildTile` runs it twice by design, and adding, reordering or deduplicating
-  those passes changes terrain output. *Within a pass:* `computeRiverGrid` is a sequential
-  smoothed-min-distance recurrence over the primitive list, so its input MUST already be sorted by
-  `HydrologicalPrimitive.comparator` — that sort is what puts every `RiverPrimitive` first and lets the
-  loop stop at the first non-river entry, and it also fixes how near-equidistant competitors blend.
-  Neither level is a refactor-safe region.
+- **The hydrology carve is order-dependent, at two levels — but no longer through one shared buffer.**
+  *Across passes:* `carveRiverInfluence` runs once inside `GlobalNetworkBuilder` (into its own elevation
+  clone, feeding only the drainage field the local trace walks) and once inside `LocalNetworkBuilder`
+  (into a separate, fresh clone of the raw decoded elevation, which is what `RiverProvider` publishes).
+  The two calls no longer compound on one accumulating buffer the way a single `buildTile` method once
+  made them; skipping or reordering the global carve still changes the published output, but only by
+  changing which cells the drainage direction — and therefore the local trace — crosses. *Within a pass:*
+  `computeRiverGrid` is a sequential smoothed-min-distance recurrence over the primitive list, so its
+  input MUST already be sorted by `HydrologicalPrimitive.comparator` — that sort is what puts every
+  `RiverPrimitive` first and lets the loop stop at the first non-river entry, and it also fixes how
+  near-equidistant competitors blend. Neither level is a refactor-safe region.
 - **`RiverNetwork`/`QuadTree` reuse is per-tile and single-threaded.** `GlobalNetworkBuilder` builds and
   returns a fresh `RiverNetwork` purely from its parameters; `LocalDrainageTracer` then mutates
   that same network in place to attach the local subgraph (`traceLocalNetwork` returns nothing) — both are
@@ -421,50 +444,56 @@ that an allocation-avoiding or abstraction-skipping pattern is deliberate, not a
 
 ## Testing stance
 
-**Deterministic layers have a golden gate; the gate is currently red.**
+**The suite does not compile, and the baseline below is a claim to re-verify, not a fact.**
 `src/test/java/me/batata_1/fractal_terrain/` (JUnit 5, `gradle test`, `useJUnitPlatform()` in
-`build.gradle`) holds 15 test classes. Measured 2026-08-19 at `06a15dd` plus the working-tree changes to
-`HydrologyProfileInprinter.java`, `PopulateNoiseStep.java` and `ComputeRiverGridTest.java`:
-**90 tests, 20 failed, 1 skipped.** The suite compiles — earlier revisions of this document recorded a
-`:compileTestJava` break, which is resolved; the four test classes that caused it
-(`NearestChannelSampleTest`, `BlendMinTest`, `PolylineChordErrorTest`,
-`SpatialIndexCorrectnessGoldenTest`) were deleted rather than repaired, along with
-`RiverPrimitiveIdsTest`.
+`build.gradle`) holds 15 test classes. Measured 2026-08-23: `gradle compileJava compileClientJava
+spotlessCheck` passes, but `gradle build` fails at `:compileTestJava` — `hydrology/features/
+ConfluencePrimitiveTest.java` calls `ConfluencePrimitive.w(double[])` and `.d(double[])`, neither of which
+exists on `ConfluencePrimitive` (it implements only `h(double[])`); 9 errors. This is pre-existing and
+unrelated to the river-provider split documented above — the test file was last modified three commits
+before that refactor began. `gradle test` therefore cannot run at all as the tree stands.
+
+With `ConfluencePrimitiveTest` excluded, a run reported **81 tests, 19 failed, 1 skipped** — that figure is
+measured with a test file excluded, not a clean baseline:
 
 | Test | Covers | Status |
 | ---- | ------ | ------ |
-| `hydrology/GlobalRiverGoldenTest.java` | `GlobalRiverProvider`'s per-tile pipeline via `computeTileForTest` | 1 of 2 failing — tile checksum drifted from the captured golden |
-| `hydrology/LocalRiverGoldenTest.java` | `LocalRiverProvider`'s local trace via `traceLocalNetworkForTest` | 2 of 4 failing — "synthetic field produced no local channels: fixture is degenerate" |
-| `hydrology/ChannelGeometryTest.java` | Width-to-depth law (`depthForWidth`, ratio floor, exponent) | 3 of 5 failing — the pinned constants no longer match the law |
-| `hydrology/features/ConfluencePrimitiveTest.java` | Junction arm bracketing, blend, `w` falloff, wire round-trip | 4 of 9 failing — numeric drift in the blend and falloff |
-| `hydrology/features/HydrologicalFeaturePackTest.java` | The family/sub-type long stamped into `Types.RIVER_TYPE` | 4 passing |
-| `hydrology/profile/ComputeRiverGridTest.java` | The lattice carve's merge law, footprint scale, buffer reuse, type mask | 12 passing |
-| `hydrology/profile/SampleCrossSectionTest.java` | The per-primitive cross-section LUT and its scratch-buffer contract | 3 passing |
-| `hydrology/meanders/MeandersGoldenTest.java` | `Meanders`/`RiverNetwork` collision semantics + a migration golden | 2 of 6 active failing, 1 `@Disabled` (see below) |
-| `hydrology/meanders/RiverNetworkSeamGoldenTest.java` | The canonical↔atomic seam round trip | 4 passing |
-| `hydrology/network/CentrelineTest.java` | `Centreline.normalAt` stencil, source one-sidedness, junction tie-break | 1 of 3 failing — wedged-channel normal off the true through-direction |
-| `hydrology/rosgen/RosgenKeyTest.java` | `RosgenKey`'s Level-I decision key, one case per type plus ordering | 6 of 17 failing — type boundaries disagree (E→C, G→F, C→B) |
-| `hydrology/rosgen/ReachRosgenClassifierTest.java` | Reach segmentation + downstream-first graph walk | 6 passing |
-| `hydrology/rosgen/ReachMetricsSamplerTest.java` | Raster sampling against hand-derived analytic answers | 1 of 5 failing — slope off by ~2.7× |
-| `math/VectorOpsProjectionTest.java` | `VectorOps.projectPointOntoSegment` clamping and bank sign | 8 passing |
-| `ml/pipeline/PipelineSessionReloadRaceTest.java` | MUST-1 — the reload-race regression (see above) | 1 passing |
+| `hydrology/GlobalRiverGoldenTest.java` | `GlobalRiverProvider`'s per-tile pipeline via `computeTileForTest` | 1 failing — tile checksum drifted from the captured golden |
+| `hydrology/RiverGoldenTest.java` | `RiverProvider`'s local trace via `traceLocalNetworkForTest` | 2 failing — "synthetic field produced no local channels: fixture is degenerate" |
+| `hydrology/ChannelGeometryTest.java` | Width-to-depth law (`depthForWidth`, ratio floor, exponent) | 3 failing — the pinned constants no longer match the law |
+| `hydrology/features/ConfluencePrimitiveTest.java` | Junction arm bracketing, blend, `w` falloff, wire round-trip | **does not compile** — calls `.w(double[])`/`.d(double[])`, neither exists on `ConfluencePrimitive`; excluded from the 81/19/1 count above |
+| `hydrology/features/HydrologicalFeaturePackTest.java` | The family/sub-type long stamped into `Types.RIVER_TYPE` | passing |
+| `hydrology/profile/ComputeRiverGridTest.java` | The lattice carve's merge law, footprint scale, buffer reuse, type mask | 3 failing — newly visible now the suite reaches it, not caused by the river-provider split (its only exercised production file, `HydrologyProfileInprinter`, changed by import renames and formatting only) |
+| `hydrology/profile/SampleCrossSectionTest.java` | The per-primitive cross-section LUT and its scratch-buffer contract | passing |
+| `hydrology/meanders/MeandersGoldenTest.java` | `Meanders`/`RiverNetwork` collision semantics + a migration golden | 2 failing, 1 `@Disabled` (see below) |
+| `hydrology/meanders/RiverNetworkSeamGoldenTest.java` | The canonical↔atomic seam round trip | passing |
+| `hydrology/network/CentrelineTest.java` | `Centreline.normalAt` stencil, source one-sidedness, junction tie-break | 1 failing — wedged-channel normal off the true through-direction |
+| `hydrology/rosgen/RosgenKeyTest.java` | `RosgenKey`'s Level-I decision key, one case per type plus ordering | 6 failing — type boundaries disagree (E→C, G→F, C→B) |
+| `hydrology/rosgen/ReachRosgenClassifierTest.java` | Reach segmentation + downstream-first graph walk | passing |
+| `hydrology/rosgen/ReachMetricsSamplerTest.java` | Raster sampling against hand-derived analytic answers | 1 failing — slope off by ~2.7× |
+| `math/VectorOpsProjectionTest.java` | `VectorOps.projectPointOntoSegment` clamping and bank sign | passing |
+| `ml/pipeline/PipelineSessionReloadRaceTest.java` | MUST-1 — the reload-race regression (see above) | passing |
 
 Each headless golden drives the exact production code path over a synthetic seeded fixture (no ONNX
-dependency), so a divergence in the deterministic hydrology math fails `gradle test` immediately.
+dependency), so a divergence in the deterministic hydrology math fails `gradle test` immediately, once the
+suite compiles.
 
-**Every failure above is pre-existing, and the baseline is a claim to re-verify, not a fact** — this
-suite has broken and been repaired several times. Do not attribute a red `gradle test` to your own
-change without re-measuring at `HEAD` first, and compare the *failure messages* in
-`build/test-results/test/*.xml`, not just which test names fail. A worktree needs
+**Every failure above except `ComputeRiverGridTest`'s is pre-existing, and the baseline is a claim to
+re-verify, not a fact** — this suite has broken and been repaired several times. Do not attribute a red
+`gradle test` to your own change without re-measuring at `HEAD` first, and compare the *failure messages*
+in `build/test-results/test/*.xml`, not just which test names fail. A worktree needs
 `libs/onnxruntime/teste.jar` copied in (`libs/` is git-ignored) or the build reports ~132 phantom errors.
 
-The failures fall into three kinds:
+The failures fall into four kinds:
 
+- **A test file itself does not compile** (`ConfluencePrimitiveTest`) — calls two methods
+  `ConfluencePrimitive` does not implement. Pre-existing, unrelated to the river-provider split.
 - **Constants the tests pin no longer match the code** (`ChannelGeometryTest`, `RosgenKeyTest`,
-  `ReachMetricsSamplerTest`, `ConfluencePrimitiveTest`, `CentrelineTest`). These are stale expectations,
-  not runtime faults — but which side is wrong is undecided in each case, so do not re-baseline by
-  copying the observed value.
-- **A degenerate fixture** (`LocalRiverGoldenTest`) — the synthetic field now yields no local channels
+  `ReachMetricsSamplerTest`, `CentrelineTest`). These are stale expectations, not runtime faults — but
+  which side is wrong is undecided in each case, so do not re-baseline by copying the observed value.
+  `ComputeRiverGridTest` likely belongs in this bucket too now that the suite reaches it; it was not
+  previously known-red only because the `:compileTestJava` break kept the suite from running that far.
+- **A degenerate fixture** (`RiverGoldenTest`) — the synthetic field now yields no local channels
   at all, so two assertions never reach the behaviour they meant to gate. The fixture needs rebuilding
   before its result means anything.
 - **Checksum drift** (`GlobalRiverGoldenTest`, `MeandersGoldenTest`) — the captured goldens do not

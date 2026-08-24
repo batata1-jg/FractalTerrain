@@ -8,10 +8,10 @@ import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
-import me.batata_1.fractal_terrain.hydrology.providers.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
+import me.batata_1.fractal_terrain.hydrology.providers.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 import me.batata_1.fractal_terrain.relief.DecoderChannels;
@@ -237,9 +237,8 @@ public class Infinite3DVisualizer {
         pt[0] = xx * 0.2; // block -> relief-pixel frame (÷ GLOBAL_SCALE_CORRECTION)
         pt[1] = zz * 0.2;
         //  LOG.info("[");
-        final HydrologicalPrimitive[] primitives = FractalTerrainInstance.getLocalRiverProvider()
-                .queryInfluence(pt)
-                .toArray(new HydrologicalPrimitive[0]);
+        final HydrologicalPrimitive[] primitives =
+                FractalTerrainInstance.getRiverProvider().queryInfluence(pt).toArray(new HydrologicalPrimitive[0]);
         // LOG.info("]");
 
         BlockState deepest = DEFAULT;

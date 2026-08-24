@@ -50,6 +50,7 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
 
     /** Per-node MBR corners, parallel to {@link #nodeChildStart}/{@link #nodeChildCount}. */
     private final double[] nodeMbrMinX;
+
     private final double[] nodeMbrMinZ;
     private final double[] nodeMbrMaxX;
     private final double[] nodeMbrMaxZ;

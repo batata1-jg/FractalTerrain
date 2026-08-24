@@ -24,14 +24,14 @@ public final class HydrologyTuning {
     public static final int BINARY_SEARCH_MAX_STEPS = 20;
 
     // ──────────────────────────────────────────────────────────────────────────
-    // Border / sampling constants consolidated from GlobalRiverProvider, LocalRiverProvider, and
+    // Border / sampling constants consolidated from GlobalRiverProvider, RiverProvider, and
     // Meanders (one home per concept; values unchanged from their prior per-class declarations).
     // ──────────────────────────────────────────────────────────────────────────
 
     /** Coarse-px halo for {@code GlobalRiverProvider}'s isolate ramp, and that provider's padding. */
     public static final int RAMP_WIDTH = 6;
 
-    /** Sink-fill border-blend padding (native px) used by {@code LocalRiverProvider}'s tile carve. */
+    /** Sink-fill border-blend padding (native px) used by {@code RiverProvider}'s tile carve. */
     public static final int FILL_PADDING = 64;
 
     /** Resample spacing (native px) for a freshly traced local channel, in {@code LocalDrainageTracer}. */

@@ -24,7 +24,7 @@ import org.slf4j.Logger;
 
 /**
  * Builds the large-scale river network off the coarse elevation map, upstream of everything in
- * {@link LocalRiverProvider}.
+ * {@link RiverProvider}.
  *
  * <p>Works in the coarse-pixel frame so a river's course is decided at continental scale before any
  * tile-local detail exists; the local provider attaches its drainage-derived network onto this skeleton.

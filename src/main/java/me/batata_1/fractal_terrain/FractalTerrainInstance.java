@@ -6,10 +6,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import me.batata_1.fractal_terrain.debug.Infinite3DVisualizer;
 import me.batata_1.fractal_terrain.debug.InstanceStageDumper;
-import me.batata_1.fractal_terrain.hydrology.providers.GlobalRiverProvider;
-import me.batata_1.fractal_terrain.hydrology.providers.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfilePainter;
+import me.batata_1.fractal_terrain.hydrology.providers.GlobalRiverProvider;
+import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import me.batata_1.fractal_terrain.ml.pipeline.WorldPipeline;
 import me.batata_1.fractal_terrain.relief.ReliefProvider;
@@ -113,8 +113,8 @@ public class FractalTerrainInstance {
         return current().getGlobalRiverProvider();
     }
 
-    public static LocalRiverProvider getLocalRiverProvider() {
-        return current().getLocalRiverProvider();
+    public static RiverProvider getRiverProvider() {
+        return current().getRiverProvider();
     }
 
     public static HydrologyProfileInprinter getHydrologyInprinter() {
@@ -132,7 +132,7 @@ public class FractalTerrainInstance {
         final String root = FractalTerrainConfig.DEFAULT_DEBUG_PATH + "/instance";
         LOG.info("dumping instance debug stages for tile ({},{}) to {}", tileX, tileZ, root);
         InstanceStageDumper.dump(
-                root, tileX, tileZ, ctx.getGlobalRiverProvider(), ctx.getLocalRiverProvider(), ctx.getReliefProvider());
+                root, tileX, tileZ, ctx.getGlobalRiverProvider(), ctx.getRiverProvider(), ctx.getReliefProvider());
         LOG.info("instance debug stages dumped to {}", root);
     }
 

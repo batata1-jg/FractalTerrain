@@ -7,7 +7,7 @@ import com.google.common.base.Function;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
-import me.batata_1.fractal_terrain.hydrology.providers.LocalRiverProvider;
+import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.math.Interpolation;
@@ -257,7 +257,7 @@ public class BiomeProvider {
     /** Dead: no call site, and the body is commented out, so it returns all zeros.
      *  Intended to raise humidity near rivers. */
     private static float[] riverHumidity(int tileX, int tileZ) {
-        final LocalRiverProvider localRivers = FractalTerrainInstance.getLocalRiverProvider();
+        final RiverProvider localRivers = FractalTerrainInstance.getRiverProvider();
         final float[] vegPdf = new float[TILE_PIXELS];
         final int blockOriginX = tileX << 9;
         final int blockOriginZ = tileZ << 9;

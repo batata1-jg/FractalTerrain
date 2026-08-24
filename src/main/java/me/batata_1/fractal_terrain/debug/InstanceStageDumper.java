@@ -2,9 +2,8 @@ package me.batata_1.fractal_terrain.debug;
 
 import java.io.File;
 import java.util.List;
-import me.batata_1.fractal_terrain.hydrology.providers.GlobalRiverProvider;
-import me.batata_1.fractal_terrain.hydrology.providers.LocalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
+import me.batata_1.fractal_terrain.hydrology.providers.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.relief.ReliefProvider;
@@ -35,10 +34,10 @@ public final class InstanceStageDumper {
             int tileX,
             int tileZ,
             GlobalRiverProvider global,
-            LocalRiverProvider local,
+            RiverProvider local,
             ReliefProvider relief) {
         dumpGlobal(rootPath + "/global_river", tileX, tileZ, global);
-        dumpLocal(rootPath + "/local_river", tileX, tileZ, local);
+        dumpRiver(rootPath + "/local_river", tileX, tileZ, local);
         dumpRelief(rootPath + "/relief", tileX, tileZ, relief);
     }
 
@@ -64,7 +63,7 @@ public final class InstanceStageDumper {
         dumpTensorChannels(dir, s.tile, GLOBAL_TILE, prefix + "10_tile_ch");
     }
 
-    private static void dumpLocal(String dir, int tx, int tz, LocalRiverProvider provider) {
+    private static void dumpRiver(String dir, int tx, int tz, RiverProvider provider) {
         cleanDir(dir);
         final RiverProvider.Stages s = provider.debugStages(tx, tz);
         final String prefix = "tile_tx" + tx + "_tz" + tz + "_";

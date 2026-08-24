@@ -8,7 +8,7 @@ pass/fail baseline — several goldens and Rosgen cases fail pre-existing.
 | File                                     | What                                                          | When to read                                                     |
 | ---------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------- |
 | `GlobalRiverGoldenTest.java`             | Frozen checksum over the global tile pipeline                 | Changing the global trace, coast/ridge masks, arrow packing      |
-| `LocalRiverGoldenTest.java`              | Frozen checksum over the local drainage trace                 | Changing flow accumulation, reach tests, attach rules            |
+| `RiverGoldenTest.java`                   | Frozen checksum over the local drainage trace                 | Changing flow accumulation, reach tests, attach rules            |
 | `ChannelGeometryTest.java`               | Width-to-depth law behaviour and guards                       | Changing `W_REF`, `WD_EXPONENT`, or the ratio floor              |
 
 ## Subdirectories

@@ -3,13 +3,13 @@ package me.batata_1.fractal_terrain.relief;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.DECODER_CHANNELS;
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 
-import me.batata_1.fractal_terrain.hydrology.providers.LocalRiverProvider;
+import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 
 /**
  * Shared decode of the diffusion decoder slice into weight-normalized base channels. Both
  * {@link ReliefProvider} (for the relief channels + the residual DoG) and
- * {@link LocalRiverProvider} (for the elevation/gradients it
+ * {@link RiverProvider} (for the elevation/gradients it
  * traces and carves) need this; keeping it here, as a stateless static helper over the cached decoder
  * slice, avoids an instance dependency cycle between the two providers.
  */
