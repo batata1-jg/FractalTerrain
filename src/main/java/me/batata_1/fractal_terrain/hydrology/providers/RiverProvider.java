@@ -276,6 +276,16 @@ public class RiverProvider {
         public float[] elevationFirstPass;
 
         public float[] carvedElevation;
+
+        /** The shell carve's per-lattice-point primitive penetration behind {@link #carvedElevation}, in
+         *  the PADDED frame (like {@link #flow}); {@code null} when no primitive reached this tile. */
+        public float[] distanceField;
+
+        /** Peak {@code w / floodPlainThreshold} any primitive applied at each PADDED-frame point: the
+         *  fraction of the way the carve pulled the surface toward the channel profile. Above 1 the
+         *  blend extrapolates past that profile rather than interpolating to it. */
+        public float[] floodPlainBlend;
+
         /** Every channel of {@link #network}. */
         public List<Channel> channels;
         /** Always empty; kept so the harness's local-only render still compiles. */

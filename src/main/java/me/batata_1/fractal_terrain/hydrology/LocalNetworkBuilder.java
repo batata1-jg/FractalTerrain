@@ -3,6 +3,7 @@ package me.batata_1.fractal_terrain.hydrology;
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.PADDED;
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.sampleBilinear;
 
+import java.util.Arrays;
 import java.util.List;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
@@ -41,7 +42,15 @@ public final class LocalNetworkBuilder {
 
         ChannelElevationAssigner.assign(ctx.network(), ctx.boundaryElevByNodeIdx(), elev);
 
-        HydrologyProfileInprinter.carveRiverInfluence(elev, collect(ctx.network(), ctx.typer(), elev), PADDED);
+        final List<HydrologicalPrimitive> primitives = collect(ctx.network(), ctx.typer(), elev);
+        final float[] blendSink = (stages != null) ? new float[PADDED * PADDED] : null;
+        HydrologyProfileInprinter.carveRiverInfluence(elev, primitives, PADDED, blendSink);
+        // The carve leaves its distance field in a thread-local scratch buffer that an empty primitive
+        // list never touches, so an untouched buffer stays unpublished rather than rendering as this tile.
+        if (stages != null && !primitives.isEmpty()) {
+            stages.distanceField = Arrays.copyOf(HydrologyProfileInprinter.shellDistanceField(), PADDED * PADDED);
+            stages.floodPlainBlend = blendSink;
+        }
 
         // Re-seeds boundary heights against the carved surface so the final assign matches the carve
         // rather than the raw decode the sources/drains were floored against before it.

@@ -44,7 +44,7 @@ public final class DebugConfig {
 
     /** Which field the visualizer raises columns to. Compile-time because it is read per column. */
     public static final Infinite3DVisualizer.DebugModes VIZ_H_CONTROL_MODE =
-            Infinite3DVisualizer.DebugModes.POP_NOISE_RELIEF;
+            Infinite3DVisualizer.DebugModes.RELIEF;
 
     /** Which field the visualizer colours by. Compile-time because it is read per block. */
     public static final Infinite3DVisualizer.DebugPaintModes VIZ_PAINT_CONTROL_MODE =

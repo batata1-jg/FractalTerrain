@@ -93,6 +93,8 @@ public class RiverTest {
         // need the same PAD offset subtracted for tile-local pixel coords.
         seeFloat(rasterizeChannels(stages.channels, PAD), GRID, GRID, prefix + "05_global_channels");
         seeFloat(rasterizeChannels(stages.localChannels, PAD), GRID, GRID, prefix + "06_local_channels");
+        dumpDistanceField(stages, tx, tz, prefix);
+        dumpFloodPlainBlend(stages, tx, tz, prefix);
         LOG.info(
                 "tile ({},{}): {} global, {} local channels",
                 tx,
@@ -125,6 +127,64 @@ public class RiverTest {
             final int idx = Math.min(slopes.size() - 1, (int) (p * slopes.size()));
             System.out.printf("slope p%02d = %.6f%n", (int) (p * 100), slopes.get(idx));
         }
+    }
+
+    /** Renders the shell carve's distance field: per padded-frame point, how far the winning primitive's
+     *  footprint had to stretch to swallow it — 0 on the centreline, 1 at the influence rim. */
+    private static void dumpDistanceField(RiverProvider.Stages stages, int tx, int tz, String prefix) {
+        if (stages.distanceField == null) {
+            LOG.warn("tile ({},{}): no distance field captured — no primitive reached this tile", tx, tz);
+            return;
+        }
+        final float[] dist = stages.distanceField;
+        // UNSET_MIN_DIST is 64, far outside the [0,1] band the carve actually uses, so the visualizer's
+        // min-max stretch would crush every carved point to black without this clamp.
+        final float[] display = new float[dist.length];
+        int covered = 0;
+        float minDist = Float.MAX_VALUE;
+        for (int i = 0; i < dist.length; i++) {
+            display[i] = Math.min(dist[i], 1f);
+            if (dist[i] < 1f) covered++;
+            minDist = Math.min(minDist, dist[i]);
+        }
+        seeFloat(display, GRID + 2, GRID + 2, prefix + "09_shell_dist");
+        LOG.info(
+                "tile ({},{}): shell distance field {} of {} points inside an influence rectangle ({}%), min={}",
+                tx, tz, covered, dist.length, String.format("%.2f", 100.0 * covered / dist.length), minDist);
+    }
+
+    /** Renders the shell carve's floodplain blend ratio {@code w / floodPlainThreshold}: the fraction of
+     *  the way the surface was pulled toward the channel profile. The band above 1 is what the log
+     *  quantifies — there the blend extrapolates past that profile instead of interpolating to it. */
+    private static void dumpFloodPlainBlend(RiverProvider.Stages stages, int tx, int tz, String prefix) {
+        if (stages.floodPlainBlend == null) {
+            LOG.warn("tile ({},{}): no floodplain blend captured — no primitive reached this tile", tx, tz);
+            return;
+        }
+        final float[] blend = stages.floodPlainBlend;
+        int touched = 0;
+        int overOne = 0;
+        float max = 0f;
+        double sumTouched = 0.0;
+        for (float value : blend) {
+            if (value > 0f) {
+                touched++;
+                sumTouched += value;
+            }
+            if (value > 1f) overOne++;
+            max = Math.max(max, value);
+        }
+        seeFloat(blend, GRID + 2, GRID + 2, prefix + "10_floodplain_blend");
+        LOG.info(
+                "tile ({},{}): floodplain blend max={} mean-over-blended={} blended={} of {} points, {} above 1 ({}%)",
+                tx,
+                tz,
+                max,
+                touched == 0 ? 0f : String.format("%.4f", sumTouched / touched),
+                touched,
+                blend.length,
+                overOne,
+                String.format("%.2f", 100.0 * overOne / blend.length));
     }
 
     /** Renders the tile's primitive R-tree via {@link me.batata_1.fractal_terrain.debug.HydrologyPrimitiveVisualizer}

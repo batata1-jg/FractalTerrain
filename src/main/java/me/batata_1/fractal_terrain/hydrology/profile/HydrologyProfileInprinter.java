@@ -8,6 +8,8 @@ import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
 import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
+import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.TestOnly;
 
 /**
  * The elevation side of the hydrology profile — where rivers actually cut the terrain.
@@ -27,21 +29,44 @@ public final class HydrologyProfileInprinter {
     }
 
     public static void carveRiverInfluence(float[] elevation, List<HydrologicalPrimitive> primitives, int paddedSize) {
+        carveRiverInfluence(elevation, primitives, paddedSize, null);
+    }
+
+    /**
+     * {@code blendSink} records the peak floodplain blend ratio each lattice point saw, for debug
+     * renders; production passes {@code null}, which costs the carve one never-taken branch and no
+     * allocation. Sized {@code paddedSize²} and zero-filled by the caller — the carve only maxes into it.
+     */
+    public static void carveRiverInfluence(
+            float[] elevation, List<HydrologicalPrimitive> primitives, int paddedSize, @Nullable float[] blendSink) {
         if (primitives.isEmpty()) return;
         final GridBuffers buffers = SHELL_BUFFERS.get();
         buffers.ensure(paddedSize, maxLutLen(paddedSize, 1.0));
+
+        Arrays.fill(buffers.acc, 0, 3 * paddedSize * paddedSize, 0f);
+        for(int i=0;i<paddedSize*paddedSize;i++) {
+            buffers.acc[3*i] = elevation[i];
+        }
 
         computeRiverInfluenceGrid(
                 paddedSize,
                 primitives,
                 buffers.typeMask,
+                buffers.acc,
                 buffers.dist,
                 buffers.lut,
                 buffers.perpRow,
                 buffers.perpCol,
                 buffers.tangRow,
                 buffers.tangCol,
-                elevation);
+                elevation,
+                blendSink);
+
+        for(int i=0;i<paddedSize*paddedSize;i++) {
+            final float w = buffers.acc[3*i+1];
+            elevation[i] = elevation[i] * (1-w) + w * buffers.acc[3*i];
+        }
+
     }
 
     // -------------------------------------------------------------------------
@@ -171,20 +196,22 @@ public final class HydrologyProfileInprinter {
             int gridSize,
             List<HydrologicalPrimitive> primitives,
             long[] typeMask,
+            float[] acc,
             float[] dist,
             float[] lut,
             double[] perpRow,
             double[] perpCol,
             double[] tangRow,
             double[] tangCol,
-            float[] elevs) {
+            float[] elevs,
+            @Nullable float[] blendSink) {
         final int points = gridSize * gridSize;
         Arrays.fill(typeMask, 0, points, HydrologicalPrimitive.HydrologicalFeature.NONE);
         Arrays.fill(dist, 0, points, (float) UNSET_MIN_DIST);
 
         int stop = 0;
         while (stop < primitives.size() && primitives.get(stop) instanceof RiverPrimitive river) {
-            carvePrimitiveInfluence(river, gridSize, dist, lut, perpRow, perpCol, tangRow, tangCol, elevs);
+            carvePrimitiveInfluence(river, gridSize, acc,dist, lut, perpRow, perpCol, tangRow, tangCol, elevs, blendSink);
             stop++;
         }
     }
@@ -313,13 +340,15 @@ public final class HydrologyProfileInprinter {
     private static void carvePrimitiveInfluence(
             RiverPrimitive river,
             int gridSize,
+            float[] acc,
             float[] dist,
             float[] lut,
             double[] perpRow,
             double[] perpCol,
             double[] tangRow,
             double[] tangCol,
-            float[] elevs) {
+            float[] elevs,
+            @Nullable float[] blendSink) {
         final double[] normal = river.normal();
         // A null normal has no tangent -- river.h() returns flat elevation and the projection would NPE.
         if (normal == null) return;
@@ -389,7 +418,8 @@ public final class HydrologyProfileInprinter {
             tangCol[col] = -nx * ddz;
         }
 
-        final double floodPlainThreshold = Math.max(floodPlainLen / influenceLen, floodPlainLen / influenceWidth);
+        double floodPlainThreshold = Math.max(floodPlainLen / influenceLen, floodPlainLen / influenceWidth);
+        if(floodPlainThreshold > 0.8) floodPlainThreshold = 0.8;
         final double invLen = 1.0 / influenceLen;
         final double invWidth = 1.0 / influenceWidth;
         for (int row = rowMin; row <= rowMax; row++) {
@@ -403,8 +433,9 @@ public final class HydrologyProfileInprinter {
                 // How far the footprint rectangle must be scaled to swallow the point: 1 exactly at the
                 // rim, so the recurrence ranks primitives by rectangle penetration, not radial distance.
                 final double d = Math.max(Math.abs(tang) * invLen, Math.abs(perp) * invWidth);
-                final double mask = d <= 1.0 ? 1.0 : 0.0;
-                final double t = Math.clamp(((dist[i] - d) / HydrologyTuning.INFLUENCE_BLEND_STRENGH + 1) * 0.5, 0, 1);
+                final double dd = (d-floodPlainThreshold)/(1-floodPlainThreshold);
+                final double mask = dd <= 1.0 ? 1.0 : 0.0;
+                final double t = Math.clamp(((dist[i] - dd) / HydrologyTuning.INFLUENCE_BLEND_STRENGH + 1) * 0.5, 0, 1);
                 final double w = t * t * (3.0 - 2.0 * t) * mask;
                 final double f = perp * invStep - baseIdx;
                 // Clamped for safety only: mask already zeroes anything out of band, but the branch-free
@@ -414,12 +445,12 @@ public final class HydrologyProfileInprinter {
                         ? Math.min(elevs[i], lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]))
                         : lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]);
 
-                dist[i] = (float) ((1 - w) * dist[i] + w * d);
+                dist[i] = (float) ((1 - w) * dist[i] + w * dd);
                 // TODO: treat case where elev is lower than drain height
-                if (w > floodPlainThreshold) elevs[i] = (float) Math.min(elevs[i], h);
+                final int a = 3 * i;
 
-                elevs[i] = (float)
-                        Math.min(elevs[i], elevs[i] * (1 - (w / floodPlainThreshold)) + h * (w / floodPlainThreshold));
+                acc[a] = (float) Math.min(acc[a], acc[a] * (1 - w) + h * w);
+                acc[a+1] = (float) 1 - Math.clamp(dist[i],0,1);
             }
         }
     }
@@ -430,4 +461,15 @@ public final class HydrologyProfileInprinter {
 
     /** One instance of this class serves every tile build, so the carve buffers cannot be fields. */
     private static final ThreadLocal<GridBuffers> SHELL_BUFFERS = ThreadLocal.withInitial(GridBuffers::new);
+
+    /**
+     * The distance field the last {@link #carveRiverInfluence} on THIS thread left behind: per lattice
+     * point, the footprint scale at which the winning primitive swallows it, {@link #UNSET_MIN_DIST}
+     * where none reached. The live scratch buffer, so a reader copies before the next carve overwrites
+     * it, and a carve that returned early on an empty primitive list leaves the previous tile's values.
+     */
+    @TestOnly
+    public static float[] shellDistanceField() {
+        return SHELL_BUFFERS.get().dist;
+    }
 }
