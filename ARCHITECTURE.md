@@ -47,7 +47,7 @@ seed ──► WorldPipeline (JVM-lifetime, me/batata_1/fractal_terrain/ml/pipel
            │     ├─ GlobalNetworkBuilder    — traces/relaxes the global network inside a tile; assigns + carves the global-only graph to shape the drainage field
            │     ├─ LocalNetworkBuilder     — attaches the local trace onto that SAME graph in place, then TWO bed-elevation propagation passes over the unified graph with a carve between them
            │     └─ LocalDrainageTracer      — the local trace `LocalNetworkBuilder` drives, off the drainage field
-           ├─ ReliefProvider        (relief/)     — decodes residual (elevation included) → [RELIEF_CHANNELS=7,512,512]
+           ├─ ReliefProvider        (relief/)     — decodes residual + imports RiverProvider's carved elevation as ch0 → [RELIEF_CHANNELS=7,512,512]
            └─ BiomeProvider         (world/biome/) — climate+relief → vanilla biome parameters
                      └─ ClimateVariableTransform (facade) → ClimateToBiomeTransformer
                               ├─ BiomeParameterClassifier
@@ -172,7 +172,8 @@ class, on two independent buffers rather than one shared accumulating buffer:
    oxbows/abandoned paths carry no `bedElevations` and fall back to a decoded-terrain sample) into the
    R-tree, sampled against the RAW decoded elevation rather than either carved buffer. There is no third
    carve: `LocalNetworkBuilder`'s returned elevation is only cropped (`RiverProvider.cropToTile`) into the
-   published `hydrology_relief` tensor; the `@TestOnly` `Stages` debug sink additionally captures
+   published `hydrology_relief` tensor, which `ReliefProvider.computeTile` reads back through
+   `getCarvedElevationTile` as relief channel 0; the `@TestOnly` `Stages` debug sink additionally captures
    `GlobalNetworkBuilder`'s discarded global-only-carved elevation as `elevationFirstPass`.
 
 Both carve calls collect primitives **unfiltered**. The first is global-only purely by timing — the local
@@ -208,7 +209,7 @@ compute, so this order is load-bearing:
 | 1 | `GlobalRiverProvider` | `hydrology/` | `WorldPipeline` coarse tensor (via the static `pipeline` field) |
 | 2 | `RiverProvider` | `hydrology/` | `GlobalRiverProvider` (fallback via adapter when no test override), decoder tensor |
 | 2a | `HydrologyProfileInprinter` / `HydrologyProfilePainter` | `hydrology/profile/` | the just-built `RiverProvider` |
-| 3 | `ReliefProvider` | `relief/` | decoder tensor (no data dependency on `RiverProvider`; build order is fixed regardless) |
+| 3 | `ReliefProvider` | `relief/` | decoder tensor, plus `RiverProvider`'s `hydrology_relief` tile for elevation channel 0 (via the adapter) |
 | 4 | `BiomeProvider` | `world/biome/` | `ReliefProvider`, `RiverProvider` (both via the adapter), climate from `WorldPipeline` |
 
 `RiverProvider` also accepts a test-only override (`setGlobalRiverProvider`) so golden tests can

@@ -37,7 +37,8 @@ import org.jetbrains.annotations.TestOnly;
  *
  * <p>Publishes two artifacts from {@link #buildTile}: the {@code primitives} index of
  * {@link HydrologicalPrimitive} influence circles (world relief-pixel frame) that {@link #queryInfluence}
- * answers, and a {@code hydrology_relief} carved-elevation tensor that has no reader yet.
+ * answers, and a {@code hydrology_relief} carved-elevation tensor that {@code ReliefProvider} imports as
+ * relief channel 0.
  */
 public class RiverProvider {
 
@@ -246,6 +247,13 @@ public class RiverProvider {
 
     public ImmutableRTree<HydrologicalPrimitive> getPrimitiveTree(int tileX, int tileZ) {
         return primitives.getEntry(new int[] {tileX, tileZ});
+    }
+
+    /** The carved elevation tile {@code [1, GRID, GRID]}, cropped to the inner grid. Feeds
+     *  {@code ReliefProvider}'s channel 0, so the published relief carries the same cut the primitives
+     *  in {@link #getPrimitiveTree} were stamped along. */
+    public FloatTensor getCarvedElevationTile(int tileX, int tileZ) {
+        return hydrology_relief.getEntry(new int[] {0, tileX, tileZ});
     }
 
     // -------------------------------------------------------------------------

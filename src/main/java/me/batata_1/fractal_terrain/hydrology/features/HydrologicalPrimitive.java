@@ -41,6 +41,10 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
     Comparator<HydrologicalPrimitive> comparator = (p1, p2) -> {
         if (p1.getType().ordinal() < p2.getType().ordinal()) return -1;
         if (p1.getType().ordinal() > p2.getType().ordinal()) return 1;
+        if(p1 instanceof RiverPrimitive r1 && p2 instanceof RiverPrimitive r2) {
+            if(r1.influence()>r2.influence()) return -1;
+            if(r1.influence()<r2.influence()) return 1;
+        }
         return 0;
     };
 

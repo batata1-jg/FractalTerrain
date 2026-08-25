@@ -207,7 +207,7 @@ public final class HydrologyProfileInprinter {
             @Nullable float[] blendSink) {
         final int points = gridSize * gridSize;
         Arrays.fill(typeMask, 0, points, HydrologicalPrimitive.HydrologicalFeature.NONE);
-        Arrays.fill(dist, 0, points, (float) UNSET_MIN_DIST);
+        Arrays.fill(dist, 0, points, (float) 1);
 
         int stop = 0;
         while (stop < primitives.size() && primitives.get(stop) instanceof RiverPrimitive river) {
@@ -393,14 +393,12 @@ public final class HydrologyProfileInprinter {
         final double width = river.width();
         final double curvature = river.curvature();
         final double elevation = river.elevation();
+        final double influence = river.influence();
         final RosgenProfile profile = (RosgenProfile) river.getProfile();
         final long seed = river.seed();
         final double floodPlainLen = profile.floodPlainLength(width);
         final double marginLen = width / 2;
         final double depth = FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depthForWidth(width);
-        final float waterSurface = (float) (elevation + HydrologicalPrimitive.waterLine(width));
-        final long packed = HydrologicalPrimitive.HydrologicalFeature.RIVER.pack(
-                RiverPrimitive.RosgenType.orDefault(river.rosgenType()).ordinal());
         profile.sampleCrossSection(lut, n, 1.0, baseIdx, seed, elevation, floodPlainLen, marginLen, depth, curvature);
 
         for (int i = 0; i < lut.length; i++) if (lut[i] < elevation) lut[i] = (float) elevation;
@@ -433,8 +431,8 @@ public final class HydrologyProfileInprinter {
                 // How far the footprint rectangle must be scaled to swallow the point: 1 exactly at the
                 // rim, so the recurrence ranks primitives by rectangle penetration, not radial distance.
                 final double d = Math.max(Math.abs(tang) * invLen, Math.abs(perp) * invWidth);
-                final double dd = (d-floodPlainThreshold)/(1-floodPlainThreshold);
-                final double mask = dd <= 1.0 ? 1.0 : 0.0;
+                final double dd = Math.max(0,(d-floodPlainThreshold)/(1-floodPlainThreshold));
+                final double mask = Math.clamp(1-1/(influence*0.1+1),0,1);
                 final double t = Math.clamp(((dist[i] - dd) / HydrologyTuning.INFLUENCE_BLEND_STRENGH + 1) * 0.5, 0, 1);
                 final double w = t * t * (3.0 - 2.0 * t) * mask;
                 final double f = perp * invStep - baseIdx;
@@ -449,7 +447,7 @@ public final class HydrologyProfileInprinter {
                 // TODO: treat case where elev is lower than drain height
                 final int a = 3 * i;
 
-                acc[a] = (float) Math.min(acc[a], acc[a] * (1 - w) + h * w);
+                acc[a] = (float) ( acc[a] * (1 - w) + h * w);
                 acc[a+1] = (float) 1 - Math.clamp(dist[i],0,1);
             }
         }

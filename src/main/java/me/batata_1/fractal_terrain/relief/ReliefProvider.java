@@ -7,6 +7,7 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import java.util.Arrays;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
+import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
@@ -17,14 +18,15 @@ import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 
 /**
- * Builds final relief tiles ({@code [RELIEF_CHANNELS=7, 512, 512]}). All river handling now lives in
- * {@link RiverProvider}; this provider decodes the diffusion residual, including the elevation
- * channel — {@link RiverProvider} traces and carves rivers off its own separate decode of the same
- * residual, but does not publish the carved buffer for this provider to import.
+ * Builds final relief tiles ({@code [RELIEF_CHANNELS=7, 512, 512]}). River handling lives in
+ * {@link RiverProvider}, which traces and carves off its own decode of the same diffusion residual;
+ * this provider imports that carved elevation as channel 0 and decodes the residual itself for every
+ * other channel, so the published relief carries the same cut the hydrological primitives were stamped
+ * along.
  *
- * <p>Channel layout: {@code [0]} elev (decoded from the diffusion residual) {@code [1]} blurredElev
+ * <p>Channel layout: {@code [0]} elev (river-carved, from {@link RiverProvider}) {@code [1]} blurredElev
  * {@code [2]} gradX {@code [3]} gradY {@code [4]} refinedGrad {@code [5]} lowFreqGrad {@code [6]} res —
- * a Difference-of-Gaussians over the decoded (residual) elevation, extracting high-frequency features.
+ * a Difference-of-Gaussians over the raw decoded elevation, so the high-frequency band is free of the carve.
  */
 public class ReliefProvider {
 
@@ -73,12 +75,15 @@ public class ReliefProvider {
         final float[] dogPadded =
                 DifferenceOfGaussians.run(base[0], DOG_PADDED, DOG_PADDED, RES_DOG_SIGMA1, RES_DOG_SIGMA2);
 
+        // Inner-cropped 512x512 already, so it indexes by innerIndex rather than paddedIndex.
+        final float[] carvedElev = FractalTerrainInstance.getRiverProvider().getCarvedElevationTile(x, z).data;
+
         final float[] entries = new float[RELIEF_CHANNELS * pixels];
         for (int ix = 0; ix < INNER; ix++) {
             for (int iz = 0; iz < INNER; iz++) {
                 final int paddedIndex = (DOG_PAD + ix) * DOG_PADDED + (DOG_PAD + iz);
                 final int innerIndex = ix * INNER + iz;
-                entries[innerIndex] = base[0][paddedIndex]; // ch0
+                entries[innerIndex] = carvedElev[innerIndex]; // ch0 = river-carved elev
                 entries[1 * pixels + innerIndex] = base[1][paddedIndex]; // blurredElev
                 entries[2 * pixels + innerIndex] = base[2][paddedIndex]; // gradX
                 entries[3 * pixels + innerIndex] = base[3][paddedIndex]; // gradY

@@ -8,9 +8,9 @@ index of `HydrologicalPrimitive` influence circles (the queryable network geomet
 sink-filled elevation tensor. `GlobalNetworkBuilder` traces/relaxes the global subgraph and carves it once
 to shape the drainage field the local trace walks; `LocalNetworkBuilder` attaches the local trace onto that
 same graph, re-assigns bed elevations across the unified graph, and carves the result into the elevation
-`RiverProvider` publishes. That carved elevation is published as `hydrology_relief`, but has no reader yet
-— `ReliefProvider` still decodes elevation channel 0 itself from the same diffusion residual rather than
-importing it.
+`RiverProvider` publishes. That carved elevation is published as `hydrology_relief` and read back by
+`ReliefProvider` through `getCarvedElevationTile`, which stamps it into relief channel 0 — so the relief
+every downstream consumer sees carries the same cut the primitives were stamped along.
 
 ## Architecture
 
