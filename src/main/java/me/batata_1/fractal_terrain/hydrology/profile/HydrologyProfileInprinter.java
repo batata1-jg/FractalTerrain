@@ -432,20 +432,21 @@ public final class HydrologyProfileInprinter {
                 // rim, so the recurrence ranks primitives by rectangle penetration, not radial distance.
                 final double d = Math.max(Math.abs(tang) * invLen, Math.abs(perp) * invWidth);
                 final double dd = Math.max(0,(d-floodPlainThreshold)/(1-floodPlainThreshold));
-                final double mask = Math.clamp(1-1/(influence*0.1+1),0,1);
+                final double mask = 1;
                 final double t = Math.clamp(((dist[i] - dd) / HydrologyTuning.INFLUENCE_BLEND_STRENGH + 1) * 0.5, 0, 1);
                 final double w = t * t * (3.0 - 2.0 * t) * mask;
                 final double f = perp * invStep - baseIdx;
                 // Clamped for safety only: mask already zeroes anything out of band, but the branch-free
                 // body still evaluates h for those lanes.
                 final int i0 = Math.clamp((int) f, 0, n - 2);
-                final double h = (elevs != null)
-                        ? Math.min(elevs[i], lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]))
-                        : lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]);
+
+                final int a = 3 * i;
+                double heightBeforeCarve = (elevs!=null) ? elevs[i] * (1-acc[a+1]) + acc[a] * acc[a+1] : 1e9;
+                final double h = Math.min(heightBeforeCarve, lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]));
 
                 dist[i] = (float) ((1 - w) * dist[i] + w * dd);
                 // TODO: treat case where elev is lower than drain height
-                final int a = 3 * i;
+
 
                 acc[a] = (float) ( acc[a] * (1 - w) + h * w);
                 acc[a+1] = (float) 1 - Math.clamp(dist[i],0,1);

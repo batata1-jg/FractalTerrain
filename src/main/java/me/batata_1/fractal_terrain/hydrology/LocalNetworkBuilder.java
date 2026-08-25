@@ -45,6 +45,8 @@ public final class LocalNetworkBuilder {
         final List<HydrologicalPrimitive> primitives = collect(ctx.network(), ctx.typer(), elev);
         final float[] blendSink = (stages != null) ? new float[PADDED * PADDED] : null;
         HydrologyProfileInprinter.carveRiverInfluence(elev, primitives, PADDED, blendSink);
+
+
         // The carve leaves its distance field in a thread-local scratch buffer that an empty primitive
         // list never touches, so an untouched buffer stays unpublished rather than rendering as this tile.
         if (stages != null && !primitives.isEmpty()) {

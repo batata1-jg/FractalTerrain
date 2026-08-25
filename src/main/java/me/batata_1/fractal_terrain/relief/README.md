@@ -4,7 +4,7 @@
 
 Builds the final per-tile relief tensor (`[RELIEF_CHANNELS=7, 512, 512]`) from a weight-normalized decode
 of the diffusion decoder's residual channels plus a Difference-of-Gaussians high-frequency channel.
-Elevation (channel 0) is the exception: `hydrology.RiverProvider` decodes the same residual separately to
+Elevation (channel 0) is the exception: `hydrology.providers.RiverProvider` decodes the same residual separately to
 trace and carve rivers, and `ReliefProvider` imports that provider's `hydrology_relief` tile as channel 0
 rather than decoding elevation itself.
 
@@ -13,7 +13,7 @@ rather than decoding elevation itself.
 `DecoderChannels.decode` is a stateless static helper — not an instance method on either provider — that
 fetches a haloed decoder slice from the shared `WorldPipeline` and weight-normalizes it into
 `BASE_CHANNELS` channels. Both `ReliefProvider` (for the relief channels and the residual DoG) and
-`hydrology.RiverProvider` (for the elevation/gradients it traces and carves) call this same helper
+`hydrology.providers.RiverProvider` (for the elevation/gradients it traces and carves) call this same helper
 directly.
 
 ## Design Decisions

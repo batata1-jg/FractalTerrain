@@ -42,13 +42,13 @@ seed ──► WorldPipeline (JVM-lifetime, me/batata_1/fractal_terrain/ml/pipel
            ▼
    GenerationContext build order:  global → local → relief → biome
            │
-           ├─ GlobalRiverProvider   (hydrology/)  — coarse-px riverPrimitive network per 64×64-coarse tile
-           ├─ RiverProvider         (hydrology/)  — 512-native-px hydrological-primitive index + carved-elevation tensor
+           ├─ GlobalRiverProvider   (hydrology/providers/) — coarse-px riverPrimitive network per 64×64-coarse tile
+           ├─ RiverProvider         (hydrology/providers/) — 512-native-px hydrological-primitive index + carved-elevation tensor
            │     ├─ GlobalNetworkBuilder    — traces/relaxes the global network inside a tile; assigns + carves the global-only graph to shape the drainage field
            │     ├─ LocalNetworkBuilder     — attaches the local trace onto that SAME graph in place, then TWO bed-elevation propagation passes over the unified graph with a carve between them
            │     └─ LocalDrainageTracer      — the local trace `LocalNetworkBuilder` drives, off the drainage field
-           ├─ ReliefProvider        (relief/)     — decodes residual + imports RiverProvider's carved elevation as ch0 → [RELIEF_CHANNELS=7,512,512]
-           └─ BiomeProvider         (world/biome/) — climate+relief → vanilla biome parameters
+           ├─ ReliefProvider        (relief/)              — decodes residual + imports RiverProvider's carved elevation as ch0 → [RELIEF_CHANNELS=7,512,512]
+           └─ BiomeProvider         (world/biome/)         — climate+relief → vanilla biome parameters
                      └─ ClimateVariableTransform (facade) → ClimateToBiomeTransformer
                               ├─ BiomeParameterClassifier
                               └─ ShoreDistanceCalculator
@@ -71,7 +71,7 @@ Every ONNX-facing tensor uses the fixed axis order `CH=0/X=1/Z=2` and the channe
 model-specific constants (means/stds, latent compression, native resolution) from
 `world_pipeline_config.json` so a model swap needs no recompile.
 
-**Hydrology split** (`hydrology/`): `RiverProvider.java` owns two per-tile stores — `primitives`, a
+**Hydrology split** (`hydrology/`): `providers/RiverProvider.java` owns two per-tile stores — `primitives`, a
 `NonIntersectingSpatialIndex<ImmutableRTree<HydrologicalPrimitive>>` cache (a 50 MB soft cap), and
 `hydrology_relief`, a `NonIntersectingInfiniteTensor` (`{1,512,512}`, no cap of its own) holding the
 river-carved elevation. Both stores' compute callbacks call the same private `buildTile`, which builds ONE
@@ -206,8 +206,8 @@ compute, so this order is load-bearing:
 
 | Order | Provider | Package | Depends on |
 | ----- | -------- | ------- | ---------- |
-| 1 | `GlobalRiverProvider` | `hydrology/` | `WorldPipeline` coarse tensor (via the static `pipeline` field) |
-| 2 | `RiverProvider` | `hydrology/` | `GlobalRiverProvider` (fallback via adapter when no test override), decoder tensor |
+| 1 | `GlobalRiverProvider` | `hydrology/providers/` | `WorldPipeline` coarse tensor (via the static `pipeline` field) |
+| 2 | `RiverProvider` | `hydrology/providers/` | `GlobalRiverProvider` (fallback via adapter when no test override), decoder tensor |
 | 2a | `HydrologyProfileInprinter` / `HydrologyProfilePainter` | `hydrology/profile/` | the just-built `RiverProvider` |
 | 3 | `ReliefProvider` | `relief/` | decoder tensor, plus `RiverProvider`'s `hydrology_relief` tile for elevation channel 0 (via the adapter) |
 | 4 | `BiomeProvider` | `world/biome/` | `ReliefProvider`, `RiverProvider` (both via the adapter), climate from `WorldPipeline` |
@@ -251,7 +251,7 @@ or publish it):
 | Area | Files |
 | ---- | ----- |
 | Mixins / Fabric-instantiated | `mixin/PlacedFeatureMixin.java`, `mixin/SteepSlopePredicateMixin.java`, `world/biome/source/FractalTerrainBiomeSource.java`, `world/gen/chunk/FractalTerrainChunkGenerator.java` |
-| Providers & generation | `hydrology/GlobalRiverProvider.java`, `hydrology/RiverProvider.java`, `relief/ReliefProvider.java`, `relief/DecoderChannels.java`, `world/biome/BiomeProvider.java`, `world/gen/populatenoise/PopulateNoiseStep.java`, `world/gen/surfacebuilder/FractalTerrainSurfaceSystem.java` |
+| Providers & generation | `hydrology/providers/GlobalRiverProvider.java`, `hydrology/providers/RiverProvider.java`, `relief/ReliefProvider.java`, `relief/DecoderChannels.java`, `world/biome/BiomeProvider.java`, `world/gen/populatenoise/PopulateNoiseStep.java`, `world/gen/surfacebuilder/FractalTerrainSurfaceSystem.java` |
 | Storage & helpers | `storage/FractalTerrainHeightmap.java`, `storage/FractalTerrainHeightmapCache.java`, `math/DifferenceOfGaussians.java` |
 | Debug / manual harnesses | `debug/Debug.java`, `debug/Infinite3DVisualizer.java`, `debug/tests/GlobalRiverTest.java`, `debug/tests/RiverTest.java`, `debug/tests/SpatialIndexBenchmark.java` |
 
