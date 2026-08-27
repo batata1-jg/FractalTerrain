@@ -6,7 +6,9 @@ import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.sample
 import java.util.Arrays;
 import java.util.List;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
+import me.batata_1.fractal_terrain.hydrology.features.ExtendedRiverPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
+import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
@@ -19,9 +21,10 @@ import org.jetbrains.annotations.Nullable;
  * The local-trace half of the per-tile hydrology pipeline, symmetric with {@link GlobalNetworkBuilder}.
  *
  * <p>Runs after it over the same per-tile graph: attaches the drainage-derived local network, re-assigns
- * bed elevations across the unified graph, and carves the result into a fresh elevation clone. Returns
- * the carved padded ({@code PADDED x PADDED}) elevation; step order is load-bearing — see
- * {@code hydrology/README.md} Invariants.
+ * bed elevations across the unified graph, carves the shell into a fresh elevation clone, then re-points
+ * the already-collected river primitives at the final bed elevations and cuts the bed trench into that
+ * same buffer. Returns the shell-carved and bed-carved padded ({@code PADDED x PADDED}) elevation; step
+ * order is load-bearing — see {@code hydrology/README.md} Invariants.
  */
 public final class LocalNetworkBuilder {
 
@@ -43,35 +46,54 @@ public final class LocalNetworkBuilder {
         ChannelElevationAssigner.assign(ctx.network(), ctx.boundaryElevByNodeIdx(), elev);
 
         final List<HydrologicalPrimitive> primitives = collect(ctx.network(), ctx.typer(), elev);
-        final float[] blendSink = (stages != null) ? new float[PADDED * PADDED] : null;
-        HydrologyProfileInprinter.carveRiverInfluence(elev, primitives, PADDED, blendSink);
-
+        final float[] updateElev = elev.clone();
+        HydrologyProfileInprinter.carveRiverInfluence(updateElev, primitives, PADDED);
 
         // The carve leaves its distance field in a thread-local scratch buffer that an empty primitive
         // list never touches, so an untouched buffer stays unpublished rather than rendering as this tile.
         if (stages != null && !primitives.isEmpty()) {
             stages.distanceField = Arrays.copyOf(HydrologyProfileInprinter.shellDistanceField(), PADDED * PADDED);
-            stages.floodPlainBlend = blendSink;
+            stages.floodPlainBlend = null;
         }
 
-        // Re-seeds boundary heights against the carved surface so the final assign matches the carve
-        // rather than the raw decode the sources/drains were floored against before it.
         for (Endpoint node : ctx.network().getNodes()) {
             if (node.type != Endpoint.Type.SOURCE && node.type != Endpoint.Type.DRAIN) continue;
-            ctx.boundaryElevByNodeIdx().put(node.id, Math.max(0, sampleBilinear(elev, node.coord[0], node.coord[1])));
+            ctx.boundaryElevByNodeIdx().put(node.id, Math.max(0, sampleBilinear(updateElev, node.coord[0], node.coord[1])));
         }
-        ChannelElevationAssigner.assign(ctx.network(), ctx.boundaryElevByNodeIdx(), elev);
+        ChannelElevationAssigner.assign(ctx.network(), ctx.boundaryElevByNodeIdx(), updateElev);
+
+        refreshBedElevations(primitives, ctx.network());
+        HydrologyProfileInprinter.carveRiverInfluence(elev, primitives, PADDED,false);
 
         return elev;
     }
 
     private static List<HydrologicalPrimitive> collect(RiverNetwork network, ChannelTyper typer, float[] elev) {
         final List<HydrologicalPrimitive> list =
-                network.collectPrimitives(0, 0, channelId -> true, typer, (x, z, bed, width) -> {
+                network.collectExtendedPrimitives(0, 0, channelId -> true, typer, (x, z, bed, width) -> {
                     final double delta = Math.abs(Interpolation.sampleNearest(elev, x, z, PADDED) - bed);
                     return HydrologyTuning.influence(width, delta);
                 });
         list.sort(HydrologicalPrimitive.comparator);
         return list;
+    }
+
+    /**
+     * Re-points every {@link ExtendedRiverPrimitive} in {@code primitives} at the bed elevation the just
+     * completed {@code ChannelElevationAssigner.assign} produced, in place — an update, not a re-collect,
+     * so {@link RiverNetwork#collectExtendedPrimitives} still runs exactly once per tile. Only the bed
+     * moves: the influence radius is untouched, which is also what keeps the list's {@link
+     * HydrologicalPrimitive#comparator} order valid without re-sorting. Skips a primitive whose channel,
+     * {@code bedElevations} or knot index no longer resolves rather than failing the whole tile.
+     */
+    private static void refreshBedElevations(List<HydrologicalPrimitive> primitives, RiverNetwork network) {
+        for (int i = 0; i < primitives.size(); i++) {
+            if (!(primitives.get(i) instanceof ExtendedRiverPrimitive extended)) continue;
+            final Channel ch = network.getChannel(extended.channelId());
+            if (ch == null || ch.bedElevations == null) continue;
+            final int pointIndex = extended.pointIndex();
+            if (pointIndex < 0 || pointIndex >= ch.bedElevations.length) continue;
+            primitives.set(i, extended.withBedElevation(ch.bedElevations[pointIndex]));
+        }
     }
 }

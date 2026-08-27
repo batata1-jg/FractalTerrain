@@ -51,18 +51,25 @@ debug/test seams that pass a `Stages` sink always recompute, bypassing the memo 
    `LocalDrainageTracer.traceLocalNetwork`, attaching every surviving segment onto the SAME graph in place
    (void return — see `meanders/README.md` for why this must run single-threaded per tile). It augments the
    boundary-elevation map with the local trace's new `SOURCE`/`DRAIN` nodes, then runs
-   `ChannelElevationAssigner.assign` (the pipeline's 2nd assign) over the now-unified graph,
-   `HydrologyProfileInprinter.carveRiverInfluence` (the 2nd and last carve) into its own fresh clone of the
-   raw decoded elevation, re-seeds the boundary-elevation map against that just-carved surface, and runs
-   `ChannelElevationAssigner.assign` a 3rd time so the final bed elevations agree with the carve. It returns
-   the carved padded elevation — this is exactly what `RiverProvider` crops and publishes as
-   `hydrology_relief`.
-3. Back in `RiverProvider.computeTile`, `RiverNetwork.collectPrimitives` emits every primitive (global and
-   local, one shared feature-id counter, `dx = max(width/2, MIN_CONVERT_SPACING)` resample spacing) into
-   the R-tree, sampled against the RAW decoded elevation (not either carved buffer) — so a primitive's
-   influence radius reflects the terrain the network was traced over, not the cut. There is no third carve
-   here: the padded elevation `LocalNetworkBuilder` returned is only cropped (`RiverProvider.cropToTile`)
-   into the `hydrology_relief` tensor.
+   `ChannelElevationAssigner.assign` (the pipeline's 2nd assign) over the now-unified graph and collects the
+   unified graph's primitives once via `RiverNetwork.collectExtendedPrimitives` (`ExtendedRiverPrimitive`
+   carrying each river primitive's `channelId`/knot-index provenance, for the bed refresh two steps below).
+   It then runs `HydrologyProfileInprinter.carveRiverInfluence` (the shell carve) into its own fresh clone
+   of the raw decoded elevation, re-seeds the boundary-elevation map against that just-carved surface, and
+   runs `ChannelElevationAssigner.assign` a 3rd time so the final bed elevations agree with the carve.
+   Rather than re-collecting, it then re-points each already-collected `ExtendedRiverPrimitive` at the bed
+   elevation that 3rd assign just wrote to its channel (`Channel.bedElevations[pointIndex]`, in place —
+   skipping any primitive whose channel or index no longer resolves), and runs
+   `HydrologyProfileInprinter.carveRiverBed` (the bed carve) into the SAME buffer the shell carve just
+   wrote, compounding on it rather than starting from a fresh clone. It returns the shell-and-bed-carved
+   padded elevation — this is exactly what `RiverProvider` crops and publishes as `hydrology_relief`.
+3. Back in `RiverProvider.computeTile`, a separate `RiverNetwork.collectPrimitives` call (plain
+   `RiverPrimitive`s, not the `ExtendedRiverPrimitive`s `LocalNetworkBuilder` collected for its own carve)
+   emits every primitive (global and local, one shared feature-id counter, `dx = max(width/2,
+   MIN_CONVERT_SPACING)` resample spacing) into the R-tree, sampled against the RAW decoded elevation (not
+   either carved buffer) — so a primitive's influence radius reflects the terrain the network was traced
+   over, not the cut. There is no carve here: the padded elevation `LocalNetworkBuilder` returned already
+   carries both carves and is only cropped (`RiverProvider.cropToTile`) into the `hydrology_relief` tensor.
 
 Both carve calls collect primitives *unfiltered*: the first is global-only purely because the local network
 does not exist yet at that point, not because of an explicit filter. `RiverNetwork.collectPrimitives` has a
@@ -108,20 +115,23 @@ therefore on where the local trace runs, does.
   `Storage.evictIfNeeded(PRIMITIVE_CACHE_LIMIT_BYTES)` as its last statement, after the promise for that
   key is settled on both the disk-reload and the recompute branch — never on the lock-free cache-hit path
   (see Architecture). `hydrology_relief` extends `Storage` directly and has no equivalent cap.
-- **The hydrology carve is order-dependent, but no longer through one shared buffer.**
-  `GlobalNetworkBuilder`'s carve and `LocalNetworkBuilder`'s carve each write their own clone of the
-  decoded elevation — `GlobalNetworkBuilder`'s clone only feeds the drainage field
-  (`Drainage.fillSinks`/`computeDrainageDirection`) and a debug snapshot, and is otherwise discarded;
-  `LocalNetworkBuilder` carves a fresh clone of the raw decoded elevation, and that clone is what
-  `RiverProvider` crops and publishes. The two calls therefore do not compound on one accumulating buffer
-  the way a single `buildTile` method once made them. Order-dependence survives through the drainage field
-  instead: skipping or reordering the global carve changes which cells the drainage direction — and
-  therefore the local trace — crosses, which changes the final published elevation even though the global
-  carve's own written values never appear in it. Within a single `carveRiverInfluence` call,
-  `computeRiverGrid` is still a sequential smoothed-min-distance recurrence, so the primitive list it is
-  handed MUST already be sorted by `HydrologicalPrimitive.comparator` — nearest-primitive-wins holds
-  regardless of order, but which near-equidistant competitors blend in, and where the river run ends, do
-  not. See `profile/README.md` for the merge law.
+- **The hydrology carve is order-dependent, and compounds within `LocalNetworkBuilder` but not across it
+  and `GlobalNetworkBuilder`.** `GlobalNetworkBuilder`'s carve writes its own clone of the decoded
+  elevation, feeding only the drainage field (`Drainage.fillSinks`/`computeDrainageDirection`) and a debug
+  snapshot, and is otherwise discarded. `LocalNetworkBuilder` carves a separate, fresh clone of the raw
+  decoded elevation — the shell carve first, then, after the primitive bed refresh, the bed carve into that
+  SAME clone — and that twice-carved clone is what `RiverProvider` crops and publishes. The Global/Local
+  pair therefore does not compound on one accumulating buffer the way a single `buildTile` method once made
+  them, but the shell/bed pair inside `LocalNetworkBuilder` does: the bed carve's `Math.min` against the
+  shell-carved ambient is what keeps it a trench cut into the shell rather than an independent cut against
+  the raw elevation. Order-dependence between Global and Local survives through the drainage field instead:
+  skipping or reordering the global carve changes which cells the drainage direction — and therefore the
+  local trace — crosses, which changes the final published elevation even though the global carve's own
+  written values never appear in it. Within a single carve call, `computeRiverGrid` is still a sequential
+  smoothed-min-distance recurrence, so the primitive list it is handed MUST already be sorted by
+  `HydrologicalPrimitive.comparator` — nearest-primitive-wins holds regardless of order, but which
+  near-equidistant competitors blend in, and where the river run ends, do not. See `profile/README.md` for
+  the merge law.
 - **The per-tile `RiverNetwork` graph is per-tile, single-threaded.** See
   `meanders/README.md` for the full contract; `GlobalNetworkBuilder` and `LocalDrainageTracer` both
   document (and rely on) it.

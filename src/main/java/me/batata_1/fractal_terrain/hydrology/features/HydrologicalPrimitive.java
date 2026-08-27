@@ -41,12 +41,23 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
     Comparator<HydrologicalPrimitive> comparator = (p1, p2) -> {
         if (p1.getType().ordinal() < p2.getType().ordinal()) return -1;
         if (p1.getType().ordinal() > p2.getType().ordinal()) return 1;
-        if(p1 instanceof RiverPrimitive r1 && p2 instanceof RiverPrimitive r2) {
-            if(r1.influence()>r2.influence()) return -1;
-            if(r1.influence()<r2.influence()) return 1;
+        final RiverPrimitive r1 = asRiver(p1);
+        final RiverPrimitive r2 = asRiver(p2);
+        if (r1 != null && r2 != null) {
+            if (r1.influence() > r2.influence()) return -1;
+            if (r1.influence() < r2.influence()) return 1;
         }
         return 0;
     };
+
+    /** The {@link RiverPrimitive} a primitive carves as — itself, or the wrapped river for an {@link
+     *  ExtendedRiverPrimitive} — or {@code null} for every other type. The single place {@link
+     *  #comparator} and the lattice carve both learn that an extended primitive carves like a plain one. */
+    static @Nullable RiverPrimitive asRiver(HydrologicalPrimitive primitive) {
+        if (primitive instanceof RiverPrimitive river) return river;
+        if (primitive instanceof ExtendedRiverPrimitive extended) return extended.river();
+        return null;
+    }
 
     Logger LOG = LoggerFactory.getLogger(HydrologicalPrimitive.class);
 

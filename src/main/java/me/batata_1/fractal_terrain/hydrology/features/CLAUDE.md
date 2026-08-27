@@ -11,6 +11,7 @@ The hydrological-feature types stored in the per-tile primitive index, behind on
 | `PrimitiveCodec.java`           | Shared serialize/deserialize helpers and the coordinate-contents equality test | Writing a primitive's `serializePrimitive`/`equals`, debugging a round-trip      |
 | `PositionOnlyPrimitive.java`    | Package-private mixin for the five position-only features: fixed-radius disc, `DefaultProfile`, no cross-section | Adding a position-only feature, changing the shared disc radius or blend                     |
 | `RiverPrimitive.java`           | A flowing-channel sample: normal, width, bank elevation, Rosgen type        | Channel cross-section, the reference feature implementation           |
+| `ExtendedRiverPrimitive.java`   | A `RiverPrimitive` tagged with `(channelId, knot index)` provenance; tile-local scratch, never indexed or persisted | Re-pointing bed elevations without re-collecting primitives           |
 | `SourcePrimitive.java`          | A headwater spring; position only                                           | Source rendering, adding source-specific carve behaviour              |
 | `ConfluencePrimitive.java`      | A junction, as one ray per incident arm: angle, width, curvature, Rosgen type, rim elevation | Confluence carve, the angular-bracket blend, junction geometry |
 | `DeltaPrimitive.java`           | A river mouth; position only                                                | Delta/mouth behaviour                                                 |

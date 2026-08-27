@@ -18,9 +18,11 @@ import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
+import me.batata_1.fractal_terrain.hydrology.features.ExtendedRiverPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.HydrologicalFeature;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.InfluenceSampler;
+import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import org.jetbrains.annotations.Nullable;
@@ -727,6 +729,31 @@ public final class RiverNetwork {
             IntPredicate channelIdFilter,
             @Nullable ChannelTyper typer,
             InfluenceSampler surface) {
+        return collectPrimitives(offsetX, offsetZ, channelIdFilter, typer, surface, false);
+    }
+
+    /**
+     * Sibling of {@link #collectPrimitives(double, double, IntPredicate, ChannelTyper, InfluenceSampler)}
+     * emitting {@link ExtendedRiverPrimitive} instead of {@link RiverPrimitive} for the river family, so a
+     * tile-local carve can re-point bed elevations without re-running this resample/typer/{@link
+     * Centreline} pass. Sources, confluences, deltas and abandoned paths are unaffected.
+     */
+    public List<HydrologicalPrimitive> collectExtendedPrimitives(
+            double offsetX,
+            double offsetZ,
+            IntPredicate channelIdFilter,
+            @Nullable ChannelTyper typer,
+            InfluenceSampler surface) {
+        return collectPrimitives(offsetX, offsetZ, channelIdFilter, typer, surface, true);
+    }
+
+    private List<HydrologicalPrimitive> collectPrimitives(
+            double offsetX,
+            double offsetZ,
+            IntPredicate channelIdFilter,
+            @Nullable ChannelTyper typer,
+            InfluenceSampler surface,
+            boolean extended) {
         final List<HydrologicalPrimitive> primitives = new ArrayList<>();
         final double[] offset = new double[] {offsetX, offsetZ};
         // Phase 1: resample every emitting channel. Types depend on neighbouring channels, so every
@@ -760,7 +787,17 @@ public final class RiverNetwork {
         }
 
         for (Channel ch : emitting) {
+            if (!extended) {
+                HydrologicalFeature.RIVER.addPrimitives(offset, primitives, typer, ch, centreline, surface);
+                continue;
+            }
+            final int mark = primitives.size();
             HydrologicalFeature.RIVER.addPrimitives(offset, primitives, typer, ch, centreline, surface);
+            // RIVER.addPrimitives emits exactly one primitive per knot in index order, so i - mark IS the
+            // knot index.
+            for (int i = mark; i < primitives.size(); i++)
+                primitives.set(
+                        i, new ExtendedRiverPrimitive((RiverPrimitive) primitives.get(i), ch.channelId, i - mark));
         }
 
         for (RemovedPath rp : removedPaths) {
