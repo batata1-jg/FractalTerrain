@@ -61,16 +61,15 @@ public final class HydrologyProfileInprinter {
                 buffers.tangCol,
                 elevation);
 
-        if(blendTerrain){
+        if (blendTerrain) {
             for (int i = 0; i < paddedSize * paddedSize; i++) {
                 final float w = buffers.acc[3 * i + 1];
                 elevation[i] = elevation[i] * (1 - w) + w * buffers.acc[3 * i];
             }
-        }
-        else {
+        } else {
             for (int i = 0; i < paddedSize * paddedSize; i++) {
                 final float w = buffers.acc[3 * i + 1];
-                elevation[i] = w>0 ? buffers.acc[3 * i] : elevation[i];
+                elevation[i] = w > 0 ? buffers.acc[3 * i] : elevation[i];
             }
         }
     }
@@ -254,8 +253,7 @@ public final class HydrologyProfileInprinter {
         while (stop < primitives.size()) {
             final RiverPrimitive river = HydrologicalPrimitive.asRiver(primitives.get(stop));
             if (river == null) break;
-            carvePrimitiveInfluence(
-                    river, gridSize, acc, dist, lut, perpRow, perpCol, tangRow, tangCol, elevs);
+            carvePrimitiveInfluence(river, gridSize, acc, dist, lut, perpRow, perpCol, tangRow, tangCol, elevs);
             stop++;
         }
     }
@@ -435,9 +433,10 @@ public final class HydrologyProfileInprinter {
 
         final double width = river.width();
         final double curvature = river.curvature();
-        double heightBeforeCarve = (elevs != null) ? elevs[i] * (1 - acc[a + 1]) + acc[a] * acc[a + 1] : 1e9;
-        final double elevation = river.elevation();
-        final double influence = river.influence();
+        // The assigner picks a bed elevation from the uncarved field, so a primitive whose neighbours have
+        // already cut through this point would sit above them and fill rather than cut. Capping against
+        // the surface merged so far keeps the influence carve cut-only.
+        final double elevation = Math.min(river.elevation(), mergedElevationAt(cx, cz, gridSize, acc, elevs));
         final RosgenProfile profile = (RosgenProfile) river.getProfile();
         final long seed = river.seed();
         final double floodPlainLen = profile.floodPlainLength(width);
@@ -464,6 +463,7 @@ public final class HydrologyProfileInprinter {
         if (floodPlainThreshold > 0.8) floodPlainThreshold = 0.8;
         final double invLen = 1.0 / influenceLen;
         final double invWidth = 1.0 / influenceWidth;
+        final double floodPlainNormLen = Math.max(floodPlainLen*invLen, floodPlainLen*invWidth);
         for (int row = rowMin; row <= rowMax; row++) {
             final int rowBase = row * gridSize;
             final double perpAtRow = perpRow[row];
@@ -475,8 +475,8 @@ public final class HydrologyProfileInprinter {
                 // How far the footprint rectangle must be scaled to swallow the point: 1 exactly at the
                 // rim, so the recurrence ranks primitives by rectangle penetration, not radial distance.
                 final double d = Math.max(Math.abs(tang) * invLen, Math.abs(perp) * invWidth);
-                final double dd = Math.max(0, (d - floodPlainThreshold) / (1 - floodPlainThreshold));
-                final double mask = d>1?0:1;
+                final double dd = 0.5*(d>floodPlainNormLen?(d-floodPlainNormLen)/(1-floodPlainNormLen)+1:d/floodPlainNormLen);
+                final double mask = d > 1 ? 0 : 1;
                 final double t = Math.clamp(((dist[i] - dd) / HydrologyTuning.INFLUENCE_BLEND_STRENGH + 1) * 0.5, 0, 1);
                 final double w = t * t * (3.0 - 2.0 * t) * mask;
                 final double f = perp * invStep - baseIdx;
@@ -485,14 +485,46 @@ public final class HydrologyProfileInprinter {
                 final int i0 = Math.clamp((int) f, 0, n - 2);
 
                 final int a = 3 * i;
-                final double h = lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]);
+                final double h = Math.min(elevs[i] * (1-acc[a+1]) + acc[a] * acc[a+1],lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]));
                 dist[i] = (float) ((1 - w) * dist[i] + w * dd);
                 // TODO: treat case where elev is lower than drain height
 
                 acc[a] = (float) (acc[a] * (1 - w) + h * w);
-                acc[a + 1] = (float) 1 - Math.clamp(dist[i], 0, 1);
+                acc[a + 1] = dist[i]<0.5?1:1-Math.clamp(dist[i]*2-1,0,1);
             }
         }
+    }
+
+    /**
+     * The elevation {@link #carveRiverInfluence}'s closing blend would publish at {@code (px, pz)} given
+     * only the primitives merged into {@code acc} so far. Lets a primitive cap its own bed against ground
+     * its already-merged neighbours cut, so the influence carve cannot fill.
+     */
+    private static double  mergedElevationAt(double px, double pz, int side, float[] acc, float[] elevs) {
+        // No ambient field means nothing to cap against; an infinite cap leaves Math.min inert.
+        if (elevs == null) return Double.POSITIVE_INFINITY;
+        int x0 = (int) Math.floor(px);
+        int z0 = (int) Math.floor(pz);
+        final double fx = px - x0;
+        final double fz = pz - z0;
+        int x1 = x0 + 1;
+        int z1 = z0 + 1;
+        x0 = Math.clamp(x0, 0, side - 1);
+        x1 = Math.clamp(x1, 0, side - 1);
+        z0 = Math.clamp(z0, 0, side - 1);
+        z1 = Math.clamp(z1, 0, side - 1);
+        final double v0 = mergedElevationAtPoint(x0 * side + z0, acc, elevs) * (1 - fz)
+                + mergedElevationAtPoint(x0 * side + z1, acc, elevs) * fz;
+        final double v1 = mergedElevationAtPoint(x1 * side + z0, acc, elevs) * (1 - fz)
+                + mergedElevationAtPoint(x1 * side + z1, acc, elevs) * fz;
+        return v0 * (1 - fx) + v1 * fx;
+    }
+
+    /** One lattice point's merged elevation, on the same law the closing blend of {@link
+     *  #carveRiverInfluence} applies: ambient carried toward the merged river surface by its weight. */
+    private static double mergedElevationAtPoint(int i, float[] acc, float[] elevs) {
+        final double w = acc[3 * i + 1];
+        return elevs[i] * (1 - w) + acc[3 * i] * w;
     }
 
     // -------------------------------------------------------------------------

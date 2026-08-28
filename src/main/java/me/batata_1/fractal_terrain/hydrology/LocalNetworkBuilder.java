@@ -58,12 +58,13 @@ public final class LocalNetworkBuilder {
 
         for (Endpoint node : ctx.network().getNodes()) {
             if (node.type != Endpoint.Type.SOURCE && node.type != Endpoint.Type.DRAIN) continue;
-            ctx.boundaryElevByNodeIdx().put(node.id, Math.max(0, sampleBilinear(updateElev, node.coord[0], node.coord[1])));
+            ctx.boundaryElevByNodeIdx()
+                    .put(node.id, Math.max(0, sampleBilinear(updateElev, node.coord[0], node.coord[1])));
         }
         ChannelElevationAssigner.assign(ctx.network(), ctx.boundaryElevByNodeIdx(), updateElev);
 
         refreshBedElevations(primitives, ctx.network());
-        HydrologyProfileInprinter.carveRiverInfluence(elev, primitives, PADDED,false);
+        HydrologyProfileInprinter.carveRiverInfluence(elev, primitives, PADDED, true);
 
         return elev;
     }

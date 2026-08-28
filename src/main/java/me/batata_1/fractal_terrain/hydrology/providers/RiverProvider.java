@@ -143,6 +143,9 @@ public class RiverProvider {
                 collectPrimitives(result.network(), base[0], PAD - tileOriginX, PAD - tileOriginZ);
         final ImmutableRTree<HydrologicalPrimitive> primitiveIndex =
                 new ImmutableRTree<>(primitivePoints, HydrologicalPrimitive.PROTOTYPE);
+
+
+
         final FloatTensor reliefTile = new FloatTensor(cropToTile(carvedElev), new int[] {1, GRID, GRID});
 
         if (stages != null) {
