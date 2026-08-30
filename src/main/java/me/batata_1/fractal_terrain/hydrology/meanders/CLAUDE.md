@@ -9,6 +9,6 @@ contract. The graph itself lives in `../network/` and is injected, not owned.
 | --------------------------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | `README.md`                       | Per-tile single-threaded contract, relaxation ordering                                                | Changing relaxation or reusing a simulation across tiles                   |
 | `ChannelMigrator.java`            | The shared per-step driver: resample → migrate → resolve endpoints → cutoffs → collisions, plus border damping | Adding a migration model, changing step ordering, debug step dumps |
-| `Meanders.java`                   | The Ikeda-Parker-Sawai curvature-driven migration rule. **Harness-only** — no pipeline caller           | Meander migration math, `meandersTest`                                     |
-| `GradientNetworkRelaxation.java`  | The terrain-driven rule: slides points down the decoded elevation gradient. The only model the pipeline runs | Global-network relaxation, gradient sampling                          |
+| `Meanders.java`                   | The Ikeda-Parker-Sawai curvature-driven migration rule, gradient-attenuated. Runs in `RiverProvider.computeTile` | Meander migration math, gradient attenuation, `meandersTest`               |
+| `GradientNetworkRelaxation.java`  | The terrain-driven rule: slides points down the decoded elevation gradient. Runs in `GlobalNetworkBuilder.build` | Global-network relaxation, gradient sampling                          |
 

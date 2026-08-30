@@ -7,11 +7,12 @@ import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
 
 /**
- * The Ikeda-Parker-Sawai meander migration model: it bends channels sideways into meanders, driven by
- * their own curvature rather than by the terrain.
+ * The Ikeda-Parker-Sawai meander migration model: it bends channels sideways into meanders. Curvature
+ * still drives the direction and magnitude of the bend; the terrain gradient only attenuates it.
  *
  * <p>Only the migration rule lives here. The step sequence around it, and every structural change the
  * displacement provokes (cutoffs, stream capture, resampling), belong to {@link ChannelMigrator} and
@@ -28,8 +29,21 @@ public final class Meanders extends ChannelMigrator {
     private static final double FRICTION = 0.011; // diminue a
     private static final double DT = 1;
 
+    /** Exponential-decay reference for gradient attenuation; seeded from {@link HydrologyTuning}'s
+     *  10f steep-gradient gate on this same raster and otherwise uncalibrated. */
+    private static final double GRAD_REF = 1.0;
+
+    /** Padded gradient-magnitude raster (decoder channel 4, {@code refinedGrad}), indexed like every
+     *  other {@code network.getGridSize()} square raster; {@code null} disables attenuation. */
+    private final float @Nullable [] gradMag;
+
     public Meanders(RiverNetwork network) {
+        this(network, null);
+    }
+
+    public Meanders(RiverNetwork network, float[] gradMag) {
         super(network);
+        this.gradMag = gradMag;
     }
 
     public void simulate(int n) {
@@ -79,7 +93,8 @@ public final class Meanders extends ChannelMigrator {
             final double rate = Math.clamp(DT * migrationRates[i], -maxMigration, maxMigration);
             final double[] point = ch.spline.points().get(i);
             final double[] normal = ch.spline.normal(i);
-            final double factor = -rate * borderDamping(point[0], point[1], ch.dischargeWidth());
+            final double gradScale = Math.exp(-sampleGradMag(point[0], point[1]) / GRAD_REF);
+            final double factor = -rate * borderDamping(point[0], point[1], ch.dischargeWidth()) * gradScale;
             final double[] migratedPoint = {point[0] + normal[0] * factor, point[1] + normal[1] * factor};
             Debug.isNan(migratedPoint);
             migratedPoints.add(migratedPoint);
@@ -94,11 +109,23 @@ public final class Meanders extends ChannelMigrator {
         double[][] newPts = new double[ch.spline.getSize()][2];
         for (int i = 0; i < ch.spline.points().size(); i++) {
             final double rate = Math.clamp(DT * migRates[i], -maxMigration, maxMigration);
-            final double[] migVector = VectorOps.scale(ch.spline.normal(i), -rate);
-            double[] newPt = VectorOps.add(ch.spline.points().get(i), migVector);
+            final double[] point = ch.spline.points().get(i);
+            final double gradScale = Math.exp(-sampleGradMag(point[0], point[1]) / GRAD_REF);
+            final double[] migVector = VectorOps.scale(ch.spline.normal(i), -rate * gradScale);
+            double[] newPt = VectorOps.add(point, migVector);
             Debug.isNan(newPt);
             newPts[i] = newPt;
         }
         return newPts;
+    }
+
+    /** Mirrors {@link GradientNetworkRelaxation#sampleGradient}'s clamping/indexing; {@code 0.0} with no
+     *  raster keeps {@link #GRAD_REF} attenuation a no-op for callers that construct without one. */
+    private double sampleGradMag(double x, double z) {
+        if (gradMag == null) return 0.0;
+        final int gridSize = network.getGridSize();
+        final int xCell = Math.clamp((int) Math.round(x), 0, gridSize - 1);
+        final int zCell = Math.clamp((int) Math.round(z), 0, gridSize - 1);
+        return gradMag[xCell * gridSize + zCell];
     }
 }

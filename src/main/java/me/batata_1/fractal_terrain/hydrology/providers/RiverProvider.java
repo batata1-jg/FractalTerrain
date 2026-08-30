@@ -130,8 +130,9 @@ public class RiverProvider {
 
         LocalNetworkBuilder.build(result, base, stages);
 
-        var lateralErosionSim = new Meanders(result.network());
-        lateralErosionSim.simulate(50, 1);
+        // base[4] (refinedGrad) is read-only for this consumer — Meanders only samples it, never mutates it.
+        var lateralErosionSim = new Meanders(result.network(), base[4]);
+        lateralErosionSim.simulate(25);
 
         final float[] carvedElev = carveRivers(result, base[0].clone(), stages);
 

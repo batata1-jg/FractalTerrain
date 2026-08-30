@@ -11,8 +11,8 @@ import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
  * graph traced from coarse arrows settles into the relief the decoder actually produced.
  *
  * <p>The sibling of {@link Meanders} — same {@link ChannelMigrator} step sequence, same injected
- * network, opposite driver. Meandering is curvature-driven and ignores the terrain; relaxation is
- * terrain-driven and ignores curvature, which is why the gradient rasters live here and nowhere else.
+ * network, opposite driver. Relaxation is terrain-driven and ignores curvature; meandering is
+ * curvature-driven and only uses its own gradient raster to attenuate, not steer, the migration.
  *
  * <p>Unlike {@link Meanders#migrateMeanders}, endpoints are NOT pinned: a traced node's coarse-derived
  * position is itself an estimate worth relaxing, and {@code RiverNetwork.resolveEndpoints} re-seats the
