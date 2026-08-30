@@ -4,21 +4,16 @@ import static me.batata_1.fractal_terrain.FractalTerrainConfig.X;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.Z;
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.*;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.Predicate;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
-import me.batata_1.fractal_terrain.hydrology.ChannelElevationAssigner;
-import me.batata_1.fractal_terrain.hydrology.GlobalNetworkBuilder;
-import me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry;
-import me.batata_1.fractal_terrain.hydrology.LocalDrainageTracer;
-import me.batata_1.fractal_terrain.hydrology.LocalNetworkBuilder;
+import me.batata_1.fractal_terrain.hydrology.*;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
+import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
+import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
+import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
@@ -132,7 +127,13 @@ public class RiverProvider {
         final float[][] base = DecoderChannels.decode(tileX, tileZ, PAD); // padded 514, channels 0..6
 
         final GlobalNetworkBuilder.Result result = GlobalNetworkBuilder.build(tileX, tileZ, base, grp);
-        final float[] carvedElev = LocalNetworkBuilder.build(result, base, stages);
+
+        LocalNetworkBuilder.build(result, base, stages);
+
+        var lateralErosionSim = new Meanders(result.network());
+        lateralErosionSim.simulate(50, 1);
+
+        final float[] carvedElev = carveRivers(result,base[0].clone(),stages);
 
         // Primitives are stamped in the WORLD relief-pixel frame: (PAD - tileOrigin) drops the halo pad
         // and adds the tile's world origin in one step, matching the offset-free frame every query path
@@ -159,6 +160,40 @@ public class RiverProvider {
         return new HydrologyResult(primitiveIndex, reliefTile);
     }
 
+    private float[] carveRivers(GlobalNetworkBuilder.Result ctx, float[] elev, @Nullable Stages stages) {
+
+        for (Endpoint node : ctx.network().getNodes()) {
+            if (node.type != Endpoint.Type.SOURCE && node.type != Endpoint.Type.DRAIN) continue;
+            ctx.boundaryElevByNodeIdx()
+                    .putIfAbsent(node.id, Math.max(0, sampleBilinear(elev, node.coord[0], node.coord[1])));
+        }
+        ChannelElevationAssigner.assign(ctx.network(), ctx.boundaryElevByNodeIdx(), elev);
+
+        final List<HydrologicalPrimitive> primitives = collect(ctx.network(), ctx.typer(), elev);
+        HydrologyProfileInprinter.carveRiverInfluence(elev, primitives, PADDED);
+
+        if (stages != null && !primitives.isEmpty()) {
+            stages.distanceField = Arrays.copyOf(HydrologyProfileInprinter.shellDistanceField(), PADDED * PADDED);
+            stages.floodPlainBlend = null;
+        }
+
+        for (Endpoint node : ctx.network().getNodes()) {
+            if (node.type != Endpoint.Type.SOURCE && node.type != Endpoint.Type.DRAIN) continue;
+            ctx.boundaryElevByNodeIdx()
+                    .put(node.id, Math.max(0, sampleBilinear(elev, node.coord[0], node.coord[1])));
+        }
+        ChannelElevationAssigner.assign(ctx.network(), ctx.boundaryElevByNodeIdx(), elev);
+
+        return elev;
+    }
+
+    private static List<HydrologicalPrimitive> collect(RiverNetwork network, ChannelTyper typer, float[] elev) {
+        final List<HydrologicalPrimitive> list = network.collectExtendedPrimitives(
+                0, 0, channelId -> true, typer, HydrologyTileGeometry.influenceSampler(elev));
+        list.sort(HydrologicalPrimitive.comparator);
+        return list;
+    }
+
 
     private static List<HydrologicalPrimitive> collect(
             RiverNetwork network, float[] rawElev, double offsetX, double offsetZ) {
@@ -167,7 +202,7 @@ public class RiverProvider {
                 offsetZ,
                 channelId -> true,
                 new ReachRosgenClassifier(rawElev, PADDED),
-                (x, z, bedElev, width, normal,type) -> RosgenProfile.of(type).floodPlainLength(width));
+                (x, z, bedElev, width, normal,type) -> Math.max(2,1.5*RosgenProfile.of(type).floodPlainLength(width)));
         resp.sort(HydrologicalPrimitive.comparator);
         return resp;
     }

@@ -28,17 +28,13 @@ public final class HydrologyProfileInprinter {
         this.riverProvider = riverProvider;
     }
 
-    public static void carveRiverInfluence(float[] elevation, List<HydrologicalPrimitive> primitives, int paddedSize) {
-        carveRiverInfluence(elevation, primitives, paddedSize, true);
-    }
-
     /**
      * {@code blendSink} records the peak floodplain blend ratio each lattice point saw, for debug
      * renders; production passes {@code null}, which costs the carve one never-taken branch and no
      * allocation. Sized {@code paddedSize²} and zero-filled by the caller — the carve only maxes into it.
      */
     public static void carveRiverInfluence(
-            float[] elevation, List<HydrologicalPrimitive> primitives, int paddedSize, @Nullable boolean blendTerrain) {
+            float[] elevation, List<HydrologicalPrimitive> primitives, int paddedSize) {
         if (primitives.isEmpty()) return;
         final GridBuffers buffers = SHELL_BUFFERS.get();
         buffers.ensure(paddedSize, maxLutLen(paddedSize, 1.0));
@@ -60,18 +56,6 @@ public final class HydrologyProfileInprinter {
                 buffers.tangRow,
                 buffers.tangCol,
                 elevation);
-
-        if (blendTerrain) {
-            for (int i = 0; i < paddedSize * paddedSize; i++) {
-                final float w = buffers.acc[3 * i + 1];
-                elevation[i] = elevation[i] * (1 - w) + w * buffers.acc[3 * i];
-            }
-        } else {
-            for (int i = 0; i < paddedSize * paddedSize; i++) {
-                final float w = buffers.acc[3 * i + 1];
-                elevation[i] = w > 0 ? buffers.acc[3 * i] : elevation[i];
-            }
-        }
     }
 
     /**
@@ -180,7 +164,7 @@ public final class HydrologyProfileInprinter {
      *  {@link HydrologyTuning#MAX_INFLUENCE_RADIUS}; unenforced by the constructor. */
     public static int maxLutLen(int gridSize, double resolution) {
         final int diagonal = (int) Math.ceil((gridSize - 1) * Math.sqrt(2.0));
-        final int influence = (int) Math.ceil(2 * HydrologyTuning.MAX_INFLUENCE_RADIUS / resolution);
+        final int influence = (int) Math.ceil(Math.max(RiverPrimitive.PROTOTYPE.getWidth(), RiverPrimitive.PROTOTYPE.getLength()) / resolution);
         return Math.min(diagonal, influence) + 3;
     }
 
@@ -436,7 +420,8 @@ public final class HydrologyProfileInprinter {
         // The assigner picks a bed elevation from the uncarved field, so a primitive whose neighbours have
         // already cut through this point would sit above them and fill rather than cut. Capping against
         // the surface merged so far keeps the influence carve cut-only.
-        final double elevation = Math.min(river.elevation(), mergedElevationAt(cx, cz, gridSize, acc, elevs));
+        //mergedElevationAt(cx, cz, gridSize, acc, elevs)
+        final double elevation = river.elevation();
         final RosgenProfile profile = (RosgenProfile) river.getProfile();
         final long seed = river.seed();
         final double floodPlainLen = profile.floodPlainLength(width);
@@ -476,21 +461,15 @@ public final class HydrologyProfileInprinter {
                 // rim, so the recurrence ranks primitives by rectangle penetration, not radial distance.
                 final double d = Math.max(Math.abs(tang) * invLen, Math.abs(perp) * invWidth);
                 final double dd = 0.5*(d>floodPlainNormLen?(d-floodPlainNormLen) * invFlNormLenSlope +1:d * invFlNormLen);
-                final double mask = d > 1 ? 0 : 1;
-                final double t = Math.clamp(((dist[i] - dd) / HydrologyTuning.INFLUENCE_BLEND_STRENGH + 1) * 0.5, 0, 1);
-                final double w = t * t * (3.0 - 2.0 * t) * mask;
                 final double f = perp * invStep - baseIdx;
                 // Clamped for safety only: mask already zeroes anything out of band, but the branch-free
                 // body still evaluates h for those lanes.
                 final int i0 = Math.clamp((int) f, 0, n - 2);
 
                 final int a = 3 * i;
-                final double h = Math.min(elevs[i] * (1-acc[a+1]) + acc[a] * acc[a+1],lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]));
-                dist[i] = (float) ((1 - w) * dist[i] + w * dd);
-                // TODO: treat case where elev is lower than drain height
-
-                acc[a] = (float) (acc[a] * (1 - w) + h * w);
-                acc[a + 1] = dist[i]<0.5?1:1-Math.clamp(dist[i]*2-1,0,1);
+                final double h = lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]);
+                final float testeW = dd<0.5?1: (float) (1 - Math.clamp(dd * 2 - 1, 0, 1));
+                elevs[i] = (float) Math.min(elevs[i],acc[a] * (1-testeW) + h * testeW);
             }
         }
     }

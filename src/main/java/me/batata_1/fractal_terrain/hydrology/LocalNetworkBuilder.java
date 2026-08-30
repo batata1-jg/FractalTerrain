@@ -28,12 +28,10 @@ public final class LocalNetworkBuilder {
 
     private LocalNetworkBuilder() {}
 
-    public static float[] build(
+    public static void build(
             GlobalNetworkBuilder.Result ctx, float[][] base, @Nullable RiverProvider.Stages stages) {
         final float[] elev = base[0].clone();
         final float[] gradMag = base[4];
-
-        LocalDrainageTracer.traceLocalNetwork(ctx.drainage(), elev, gradMag, ctx.network(), stages);
 
         for (Endpoint node : ctx.network().getNodes()) {
             if (node.type != Endpoint.Type.SOURCE && node.type != Endpoint.Type.DRAIN) continue;
@@ -44,27 +42,10 @@ public final class LocalNetworkBuilder {
         ChannelElevationAssigner.assign(ctx.network(), ctx.boundaryElevByNodeIdx(), elev);
 
         final List<HydrologicalPrimitive> primitives = collect(ctx.network(), ctx.typer(), elev);
-        final float[] updateElev = elev.clone();
-        HydrologyProfileInprinter.carveRiverInfluence(updateElev, primitives, PADDED);
-        //TODO:tentar o contrariio
-        // The carve leaves its distance field in a thread-local scratch buffer that an empty primitive
-        // list never touches, so an untouched buffer stays unpublished rather than rendering as this tile.
-        if (stages != null && !primitives.isEmpty()) {
-            stages.distanceField = Arrays.copyOf(HydrologyProfileInprinter.shellDistanceField(), PADDED * PADDED);
-            stages.floodPlainBlend = null;
-        }
+        HydrologyProfileInprinter.carveRiverInfluence(elev, primitives, PADDED);
 
-        for (Endpoint node : ctx.network().getNodes()) {
-            if (node.type != Endpoint.Type.SOURCE && node.type != Endpoint.Type.DRAIN) continue;
-            ctx.boundaryElevByNodeIdx()
-                    .put(node.id, Math.max(0, sampleBilinear(updateElev, node.coord[0], node.coord[1])));
-        }
-        ChannelElevationAssigner.assign(ctx.network(), ctx.boundaryElevByNodeIdx(), updateElev);
+        LocalDrainageTracer.traceLocalNetwork(ctx.drainage(), elev, gradMag, ctx.network(), stages);
 
-        refreshBedElevations(primitives, ctx.network());
-        HydrologyProfileInprinter.carveRiverInfluence(elev, primitives, PADDED, true);
-
-        return elev;
     }
 
     private static List<HydrologicalPrimitive> collect(RiverNetwork network, ChannelTyper typer, float[] elev) {

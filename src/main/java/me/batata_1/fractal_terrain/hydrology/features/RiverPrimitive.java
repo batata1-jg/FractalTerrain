@@ -4,6 +4,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.Objects;
+
+import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
@@ -31,7 +33,7 @@ public record RiverPrimitive(
         long seed)
         implements SpatialIndexRotatedRectangle, HydrologicalPrimitive {
 
-    static final RiverPrimitive PROTOTYPE = new RiverPrimitive(new double[] {0.0, 0.0}, 0, null, null, 0, 0, 0, 0);
+    public static final RiverPrimitive PROTOTYPE = new RiverPrimitive(new double[] {0.0, 0.0}, HydrologyTuning.MAX_INFLUENCE_RADIUS, null, null, 0, 0, 0, 0);
 
     public RiverPrimitive(
             double[] coord,
@@ -176,7 +178,7 @@ public record RiverPrimitive(
     /** refers to the width of the river primitive, NOT the accutal river width */
     @Override
     public double getWidth() {
-        return influence * 2;
+        return influence * 3;
     }
 
     /** Rosgen stream classification (A–G); selects the primitive's {@link RosgenProfile}. */

@@ -89,7 +89,7 @@ public class PopulateNoiseStep {
 
         for (int pos = 0; pos < COLUMNS; pos++) {
             final float ambient = interpolatedElevs[pos];
-            final float weight = (float) Math.pow(Math.clamp(acc[3 * pos + 2], 0, 1), 0.1);
+            final float weight = (float) Math.pow(Math.clamp(acc[3 * pos + 2], 0, 1), 0.5);
             // acc[3 * pos] is already normalised, so the blend does not divide again. The min is what
             // keeps the carve cut-only; it is applied once here rather than per primitive.
             final double merged = // weight > 0 ? acc[3 * pos] : ambient;
@@ -99,6 +99,9 @@ public class PopulateNoiseStep {
             riverType[pos] = buffers.typeMask[pos];
             interpolatedElevs[pos] = (float) (Math.max(bottom, merged) + seaLevel - 1);
         }
+
+        
+
     }
 
     public BlockState fillRocks(int x, int y, int z) {
