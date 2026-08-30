@@ -127,14 +127,15 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
     HydrologicalPrimitive deserializePrimitive(byte[] rawBytes);
 
     /**
-     * Terrain surface elevation at a point, in whatever frame the caller emits primitives from.
+     * Influence radius for a channel point, in whatever frame the caller emits primitives from.
      *
      * <p>Nested here so the grid stride behind the sample stays with the provider that owns the grid, and
-     * this package keeps needing no frame of its own.
+     * this package keeps needing no frame of its own. {@code normal} is read-only: implementations must
+     * not retain or mutate it.
      */
     @FunctionalInterface
     interface InfluenceSampler {
-        double at(double x, double z, double bedElev, double width);
+        double at(double x, double z, double bedElev, double width, double[] normal, RiverPrimitive.RosgenType type);
     }
 
     /**
@@ -157,15 +158,16 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
                 RiverPrimitive.RosgenType[] types = typer.typesFor(ch);
                 for (int i = 0; i < ch.numPts(); i++) {
                     final double width = ch.widthAt(i);
+                    final double[] normal = centreline.normalAt(ch, i);
                     // The sampler reads its own grid, which the offset has not been applied to; only the
                     // stored coord is shifted into the frame the index is queried in.
                     final double[] splinePt = ch.spline.sample(i);
                     final double bedElevation = ch.bedElev(i);
                     out.add(new RiverPrimitive(
                             VectorOps.sub(splinePt, offset),
-                            influence.at(splinePt[0], splinePt[1], bedElevation, width),
+                            influence.at(splinePt[0], splinePt[1], bedElevation, width, normal,types[i]),
                             types[i],
-                            centreline.normalAt(ch, i),
+                            normal,
                             ch.spline.curvature(i),
                             width,
                             bedElevation));

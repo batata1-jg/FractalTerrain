@@ -10,7 +10,7 @@ package me.batata_1.fractal_terrain.config;
 public final class HydrologyTuning {
 
     public static final double PRIMITIVE_BLEND_STRENGTH = 0.1;
-    public static final double INFLUENCE_BLEND_STRENGH = 0.1;
+    public static final double INFLUENCE_BLEND_STRENGH = 0.01;
 
     private HydrologyTuning() {}
 

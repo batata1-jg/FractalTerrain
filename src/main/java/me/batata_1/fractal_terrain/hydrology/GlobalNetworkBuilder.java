@@ -20,7 +20,6 @@ import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
 import me.batata_1.fractal_terrain.hydrology.providers.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.rosgen.ReachRosgenClassifier;
-import me.batata_1.fractal_terrain.math.Interpolation;
 
 /**
  * Step 1 of {@code RiverProvider.buildTile}: turns {@link GlobalRiverProvider}'s coarse arrow field
@@ -240,14 +239,11 @@ public final class GlobalNetworkBuilder {
     }
 
     private static List<HydrologicalPrimitive> collect(RiverNetwork network, ChannelTyper typer, float[] elev) {
-        var list = network.collectPrimitives(0, 0, channelId -> true, typer, (x, z, bed, width) -> {
-            double delta = Math.abs(Interpolation.sampleNearest(elev, x, z, PADDED) - bed);
-            return HydrologyTuning.influence(width, delta);
-        });
+        var list =
+                network.collectPrimitives(0, 0, channelId -> true, typer, HydrologyTileGeometry.influenceSampler(elev));
         list.sort(HydrologicalPrimitive.comparator);
         return list;
     }
-    ;
 
     /** Drops the build scaffolding once the graph has copied it, so a tile build does not hold it for
      *  the lifetime of the returned {@link Result}. */

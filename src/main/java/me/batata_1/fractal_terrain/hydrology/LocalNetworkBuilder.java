@@ -5,7 +5,6 @@ import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.sample
 
 import java.util.Arrays;
 import java.util.List;
-import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.features.ExtendedRiverPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
@@ -14,7 +13,6 @@ import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
 import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
-import me.batata_1.fractal_terrain.math.Interpolation;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -48,7 +46,7 @@ public final class LocalNetworkBuilder {
         final List<HydrologicalPrimitive> primitives = collect(ctx.network(), ctx.typer(), elev);
         final float[] updateElev = elev.clone();
         HydrologyProfileInprinter.carveRiverInfluence(updateElev, primitives, PADDED);
-
+        //TODO:tentar o contrariio
         // The carve leaves its distance field in a thread-local scratch buffer that an empty primitive
         // list never touches, so an untouched buffer stays unpublished rather than rendering as this tile.
         if (stages != null && !primitives.isEmpty()) {
@@ -70,11 +68,8 @@ public final class LocalNetworkBuilder {
     }
 
     private static List<HydrologicalPrimitive> collect(RiverNetwork network, ChannelTyper typer, float[] elev) {
-        final List<HydrologicalPrimitive> list =
-                network.collectExtendedPrimitives(0, 0, channelId -> true, typer, (x, z, bed, width) -> {
-                    final double delta = Math.abs(Interpolation.sampleNearest(elev, x, z, PADDED) - bed);
-                    return HydrologyTuning.influence(width, delta);
-                });
+        final List<HydrologicalPrimitive> list = network.collectExtendedPrimitives(
+                0, 0, channelId -> true, typer, HydrologyTileGeometry.influenceSampler(elev));
         list.sort(HydrologicalPrimitive.comparator);
         return list;
     }

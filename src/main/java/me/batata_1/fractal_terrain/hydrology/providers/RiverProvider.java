@@ -14,17 +14,18 @@ import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelElevationAssigner;
 import me.batata_1.fractal_terrain.hydrology.GlobalNetworkBuilder;
+import me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry;
 import me.batata_1.fractal_terrain.hydrology.LocalDrainageTracer;
 import me.batata_1.fractal_terrain.hydrology.LocalNetworkBuilder;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
+import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import me.batata_1.fractal_terrain.hydrology.rosgen.ReachRosgenClassifier;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingSpatialIndex;
-import me.batata_1.fractal_terrain.math.Interpolation;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 import me.batata_1.fractal_terrain.relief.DecoderChannels;
 import org.jetbrains.annotations.Nullable;
@@ -139,12 +140,9 @@ public class RiverProvider {
         // a primitive's influence radius reflects the terrain the network was traced over, not the cut.
         final int tileOriginX = tileX * GRID;
         final int tileOriginZ = tileZ * GRID;
-        final List<HydrologicalPrimitive> primitivePoints =
-                collectPrimitives(result.network(), base[0], PAD - tileOriginX, PAD - tileOriginZ);
+        final List<HydrologicalPrimitive> primitivePoints = collect(result.network(), base[0], PAD - tileOriginX, PAD - tileOriginZ);
         final ImmutableRTree<HydrologicalPrimitive> primitiveIndex =
                 new ImmutableRTree<>(primitivePoints, HydrologicalPrimitive.PROTOTYPE);
-
-
 
         final FloatTensor reliefTile = new FloatTensor(cropToTile(carvedElev), new int[] {1, GRID, GRID});
 
@@ -161,19 +159,17 @@ public class RiverProvider {
         return new HydrologyResult(primitiveIndex, reliefTile);
     }
 
-    /** Packages the graph into primitives, each carrying a Rosgen type. A fresh classifier per call: this
-     *  graph is not the one {@link GlobalNetworkBuilder} classified against. Unsorted — only the two
-     *  carve collects need {@link HydrologicalPrimitive#comparator} order; query callers sort their own
-     *  results. */
-    private static List<HydrologicalPrimitive> collectPrimitives(
+
+    private static List<HydrologicalPrimitive> collect(
             RiverNetwork network, float[] rawElev, double offsetX, double offsetZ) {
-        return network.collectPrimitives(
+        var resp = network.collectPrimitives(
                 offsetX,
                 offsetZ,
                 channelId -> true,
                 new ReachRosgenClassifier(rawElev, PADDED),
-                (x, z, bed, width) -> HydrologyTuning.influence(
-                        width, Math.abs(Interpolation.sampleNearest(rawElev, x, z, PADDED) - bed)));
+                (x, z, bedElev, width, normal,type) -> RosgenProfile.of(type).floodPlainLength(width));
+        resp.sort(HydrologicalPrimitive.comparator);
+        return resp;
     }
 
     @TestOnly

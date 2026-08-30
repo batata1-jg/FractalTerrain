@@ -458,12 +458,12 @@ public final class HydrologyProfileInprinter {
             perpCol[col] = nz * ddz;
             tangCol[col] = -nx * ddz;
         }
-
-        double floodPlainThreshold = Math.max(floodPlainLen / influenceLen, floodPlainLen / influenceWidth);
-        if (floodPlainThreshold > 0.8) floodPlainThreshold = 0.8;
+        
         final double invLen = 1.0 / influenceLen;
         final double invWidth = 1.0 / influenceWidth;
         final double floodPlainNormLen = Math.max(floodPlainLen*invLen, floodPlainLen*invWidth);
+        final double invFlNormLenSlope = 1.0 / (1-floodPlainNormLen);
+        final double invFlNormLen = 1.0 / floodPlainNormLen;
         for (int row = rowMin; row <= rowMax; row++) {
             final int rowBase = row * gridSize;
             final double perpAtRow = perpRow[row];
@@ -475,7 +475,7 @@ public final class HydrologyProfileInprinter {
                 // How far the footprint rectangle must be scaled to swallow the point: 1 exactly at the
                 // rim, so the recurrence ranks primitives by rectangle penetration, not radial distance.
                 final double d = Math.max(Math.abs(tang) * invLen, Math.abs(perp) * invWidth);
-                final double dd = 0.5*(d>floodPlainNormLen?(d-floodPlainNormLen)/(1-floodPlainNormLen)+1:d/floodPlainNormLen);
+                final double dd = 0.5*(d>floodPlainNormLen?(d-floodPlainNormLen) * invFlNormLenSlope +1:d * invFlNormLen);
                 final double mask = d > 1 ? 0 : 1;
                 final double t = Math.clamp(((dist[i] - dd) / HydrologyTuning.INFLUENCE_BLEND_STRENGH + 1) * 0.5, 0, 1);
                 final double w = t * t * (3.0 - 2.0 * t) * mask;
