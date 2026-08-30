@@ -24,7 +24,7 @@ public final class Meanders extends ChannelMigrator {
     private static final double OMEGA = -1.0;
     private static final double GAMMA = 2.5;
 
-    private static final double K = 0.0164; // aumentar esse faz curvar pra traz
+    private static final double K = 0.03; // aumentar esse faz curvar pra traz
     private static final double FRICTION = 0.011; // diminue a
     private static final double DT = 1;
 

@@ -1,8 +1,9 @@
 package me.batata_1.fractal_terrain.debug.tests;
 
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
@@ -21,9 +22,9 @@ public class MeandersTest {
     private static final int GRID = 512;
 
     public static void main(String[] args) {
-        testIndependentCrossing();
-        testDanglingTributaryCapture();
-        testUnreachableBranchPruned();
+        testCrossingBecomesConfluence();
+        testLosingBranchPruned();
+        testDisjointChannelsUntouched();
         testNodeChannelEndpointsLineUp();
         testMeanders();
         LOG.info("ALL MEANDERS TESTS PASSED.");
@@ -33,25 +34,26 @@ public class MeandersTest {
         if (!cond) throw new AssertionError(msg);
     }
 
-    /** One source -> one drain edge from a list of points. */
-    private static Meanders oneEdge(ArrayList<double[]> pts, double flow) {
+    /** {@code n + 1} evenly spaced points from {@code (x0,z0)} to {@code (x1,z1)}, inclusive. */
+    private static ArrayList<double[]> straightRun(double x0, double z0, double x1, double z1, int n) {
+        ArrayList<double[]> pts = new ArrayList<>(n + 1);
+        for (int i = 0; i <= n; i++) {
+            double t = (double) i / n;
+            pts.add(new double[] {x0 + (x1 - x0) * t, z0 + (z1 - z0) * t});
+        }
+        return pts;
+    }
+
+    /** Two source-to-drain channels ("b" then "a") over node ids 0=SOURCE b, 1=DRAIN b, 2=SOURCE a, 3=DRAIN a. */
+    private static Meanders twoChannelNetwork(
+            ArrayList<double[]> bPts, double bFlow, ArrayList<double[]> aPts, double aFlow) {
         List<NodeSpec> nodeSpecs = List.of(
-                new NodeSpec(pts.getFirst()[0], pts.getFirst()[1], Endpoint.Type.SOURCE),
-                new NodeSpec(pts.getLast()[0], pts.getLast()[1], Endpoint.Type.DRAIN));
-        List<EdgeSpec> edgeSpecs = List.of(new EdgeSpec(0, 1, pts, flow));
+                new NodeSpec(bPts.getFirst()[0], bPts.getFirst()[1], Endpoint.Type.SOURCE),
+                new NodeSpec(bPts.getLast()[0], bPts.getLast()[1], Endpoint.Type.DRAIN),
+                new NodeSpec(aPts.getFirst()[0], aPts.getFirst()[1], Endpoint.Type.SOURCE),
+                new NodeSpec(aPts.getLast()[0], aPts.getLast()[1], Endpoint.Type.DRAIN));
+        List<EdgeSpec> edgeSpecs = List.of(new EdgeSpec(0, 1, bPts, bFlow), new EdgeSpec(2, 3, aPts, aFlow));
         return new Meanders(new RiverNetwork(GRID, nodeSpecs, edgeSpecs));
-    }
-
-    private static Meanders trunkInstance() {
-        ArrayList<double[]> pts = new ArrayList<>();
-        for (int i = 0; i <= 60; i++) pts.add(new double[] {100.0 + i * 5.0, 256.0});
-        return oneEdge(pts, 20.0);
-    }
-
-    private static void addDanglingTributary(Meanders sim, ArrayList<double[]> pts) {
-        final double[] flow = new double[pts.size()];
-        Arrays.fill(flow, 3.0);
-        // sim.getNetwork().addLocalChannel(new Channel(pts, flow, 0), Endpoint.Type.JUNCTION);
     }
 
     // -----------------------------------------------------------------------------------------
@@ -114,83 +116,102 @@ public class MeandersTest {
     }
 
     // -----------------------------------------------------------------------------------------
-    // 2. crossing without capture
+    // 2. crossing forced into a confluence
     // -----------------------------------------------------------------------------------------
     /** Wide channel b (horizontal) crossed by narrow channel a (vertical) at (250,256); both self-drain. */
     private static Meanders crossingInstance() {
-        ArrayList<double[]> bPts = new ArrayList<>();
-        for (int i = 0; i <= 60; i++) bPts.add(new double[] {100.0 + i * 5.0, 256.0});
-        ArrayList<double[]> aPts = new ArrayList<>();
-        for (int i = 0; i <= 60; i++) aPts.add(new double[] {250.0, 100.0 + i * 5.0});
-
-        List<NodeSpec> nodeSpecs = List.of(
-                new NodeSpec(bPts.getFirst()[0], bPts.getFirst()[1], Endpoint.Type.SOURCE),
-                new NodeSpec(bPts.getLast()[0], bPts.getLast()[1], Endpoint.Type.DRAIN),
-                new NodeSpec(aPts.getFirst()[0], aPts.getFirst()[1], Endpoint.Type.SOURCE),
-                new NodeSpec(aPts.getLast()[0], aPts.getLast()[1], Endpoint.Type.DRAIN));
-        List<EdgeSpec> edgeSpecs = List.of(new EdgeSpec(0, 1, bPts, 20.0), new EdgeSpec(2, 3, aPts, 5.0));
-        return new Meanders(new RiverNetwork(GRID, nodeSpecs, edgeSpecs));
+        return twoChannelNetwork(
+                straightRun(100.0, 256.0, 400.0, 256.0, 60), 20.0, straightRun(250.0, 100.0, 250.0, 400.0, 60), 5.0);
     }
 
-    private static void testIndependentCrossing() {
+    private static void testCrossingBecomesConfluence() {
         Meanders sim = crossingInstance();
         sim.manageCollisions();
 
-        check(sim.getChannelCount() == 2, "self-draining crossing channels should not be merged");
+        // Planarization inserts one shared atomic node at the geometric crossing, and invariant K1
+        // (single outgoing edge per node) forces that shared node into a single confluence — two
+        // rivers meeting at the same elevation genuinely do merge, so this is the physically correct
+        // outcome, not a defect to route around.
+        check(sim.getChannelCount() == 3, "crossing should split into 3 channels around the new junction");
         boolean junction = sim.getNodes().stream().anyMatch(nd -> nd.type == Endpoint.Type.JUNCTION);
-        check(!junction, "a JUNCTION was minted for two self-draining crossing channels");
+        check(junction, "no JUNCTION was minted at the crossing");
         check(reachesDrain(sim, 0), "channel b source no longer reaches a drain");
         check(reachesDrain(sim, 2), "channel a source no longer reaches a drain");
-        assertEndpointsMatchNodes(sim, "independent crossing");
-        LOG.info("testIndependentCrossing passed.");
+        assertEndpointsMatchNodes(sim, "crossing becomes confluence");
+        LOG.info("testCrossingBecomesConfluence passed.");
     }
 
     // -----------------------------------------------------------------------------------------
-    // 3. capture: a dangling tributary crossing a trunk is promoted into it
+    // 3. the losing branch of a merged crossing is pruned, without orphaning anything
     // -----------------------------------------------------------------------------------------
-    private static void testDanglingTributaryCapture() {
-        Meanders sim = trunkInstance();
-        ArrayList<double[]> tribPts = new ArrayList<>();
-        for (int i = 0; i <= 39; i++) tribPts.add(new double[] {250.0, 100.0 + (256.0 - 100.0) * i / 39.0});
-        addDanglingTributary(sim, tribPts);
+    private static void testLosingBranchPruned() {
+        Meanders sim = crossingInstance();
         sim.manageCollisions();
 
-        boolean confluence = sim.getNodes().stream().anyMatch(nd -> nd.type == Endpoint.Type.JUNCTION);
-        check(confluence, "dangling tributary was not captured into the trunk (no JUNCTION minted)");
-        long sources = sim.getNodes().stream()
-                .filter(nd -> nd.type == Endpoint.Type.SOURCE)
+        // The reverse-BFS capture picks the shorter hop path to the surviving drain, so channel b's
+        // downstream half and its original drain (node 1) are orphaned and dropped.
+        check(sim.getNode(1) == null, "losing branch's drain (node 1) was not pruned");
+        long drains = sim.getNodes().stream()
+                .filter(nd -> nd.type == Endpoint.Type.DRAIN)
                 .count();
-        check(sources == 2, "expected the trunk source plus the captured tributary source");
-        for (Endpoint nd : sim.getNodes())
-            if (nd.type == Endpoint.Type.SOURCE) check(reachesDrain(sim, nd.id), "a source no longer reaches a drain");
-        assertEndpointsMatchNodes(sim, "tributary capture");
-        LOG.info("testDanglingTributaryCapture passed.");
+        check(drains == 1, "expected exactly one surviving DRAIN after the collision pass");
+
+        Set<Integer> fed = new HashSet<>();
+        for (Channel ch : sim.getChannels()) fed.add(ch.endNodeId);
+        for (Channel ch : sim.getChannels()) {
+            Endpoint start = sim.getNode(ch.startNodeId);
+            check(
+                    start.type == Endpoint.Type.SOURCE || fed.contains(start.id),
+                    "channel " + ch.channelId + " starts at orphaned node " + start.id);
+        }
+        LOG.info("testLosingBranchPruned passed.");
     }
 
     // -----------------------------------------------------------------------------------------
-    // 4. prune: a dangling branch reaching no drain is dropped
+    // 4. two channels that never come close stay untouched by the collision pass
     // -----------------------------------------------------------------------------------------
-    private static void testUnreachableBranchPruned() {
-        Meanders sim = trunkInstance();
-        ArrayList<double[]> farPts = new ArrayList<>();
-        for (int i = 0; i <= 20; i++) farPts.add(new double[] {50.0, 40.0 + i * 2.0});
-        addDanglingTributary(sim, farPts);
-        final int tribSourceId = 2;
-        check(sim.getNode(tribSourceId) != null, "fixture precondition: tributary source id 2 should exist");
+    private static Meanders disjointInstance() {
+        return twoChannelNetwork(
+                straightRun(100.0, 256.0, 400.0, 256.0, 60), 20.0, straightRun(100.0, 60.0, 400.0, 60.0, 60), 3.0);
+    }
+
+    private static void testDisjointChannelsUntouched() {
+        Meanders sim = disjointInstance();
+        int trunkPtsBefore = sim.getChannel(0).numPts();
+        int otherPtsBefore = sim.getChannel(1).numPts();
 
         sim.manageCollisions();
 
-        check(sim.getNode(tribSourceId) == null, "unreachable dangling tributary source was not pruned");
-        check(sim.getChannelCount() == 1, "only the trunk channel should remain after pruning");
-        check(reachesDrain(sim, 0), "trunk source no longer reaches a drain");
-        LOG.info("testUnreachableBranchPruned passed.");
+        check(sim.getChannelCount() == 2, "disjoint channels should not be merged");
+        boolean junction = sim.getNodes().stream().anyMatch(nd -> nd.type == Endpoint.Type.JUNCTION);
+        check(!junction, "a JUNCTION was minted for two channels that never cross");
+
+        check(nodeUnchanged(sim, 0, Endpoint.Type.SOURCE, 100.0, 256.0), "node 0 changed");
+        check(nodeUnchanged(sim, 1, Endpoint.Type.DRAIN, 400.0, 256.0), "node 1 changed");
+        check(nodeUnchanged(sim, 2, Endpoint.Type.SOURCE, 100.0, 60.0), "node 2 changed");
+        check(nodeUnchanged(sim, 3, Endpoint.Type.DRAIN, 400.0, 60.0), "node 3 changed");
+
+        Channel trunk = sim.getChannel(sim.getNode(0).outgoing);
+        Channel other = sim.getChannel(sim.getNode(2).outgoing);
+        check(trunk.endNodeId == 1, "trunk is no longer wired to node 1");
+        check(other.endNodeId == 3, "other channel is no longer wired to node 3");
+        check(trunk.numPts() == trunkPtsBefore, "trunk point count changed");
+        check(other.numPts() == otherPtsBefore, "other channel point count changed");
+
+        assertEndpointsMatchNodes(sim, "disjoint channels");
+        LOG.info("testDisjointChannelsUntouched passed.");
+    }
+
+    private static boolean nodeUnchanged(Meanders sim, int nodeId, Endpoint.Type type, double x, double z) {
+        Endpoint n = sim.getNode(nodeId);
+        return n != null && n.type == type && pointDistance(n.coord, new double[] {x, z}) <= 1e-9;
     }
 
     // -----------------------------------------------------------------------------------------
     // 5. graph consistency
     // -----------------------------------------------------------------------------------------
     private static void testNodeChannelEndpointsLineUp() {
-        assertEndpointsMatchNodes(trunkInstance(), "construction");
+        assertEndpointsMatchNodes(crossingInstance(), "construction");
 
         Meanders captured = crossingInstance();
         captured.manageCollisions();

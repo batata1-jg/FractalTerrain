@@ -27,6 +27,7 @@ deep-learning diffusion model, plus a procedural hydrology (riverUnit) system.
 | `run/`    | Dev Minecraft working dir; `run/debug` dumps      | Inspecting generated worlds and debug PNG/TIFF output   |
 | `docs/`   | Scraped Minecraft Wiki worldgen reference (36 pages, generated — do not edit), plus `superpowers/` dated plans and specs | Vanilla worldgen semantics: surface rules, density functions, biomes, features, carvers; or prior design work |
 | `.claude/`| Agent skills + doc/code conventions. Git-ignored, local-only | **Writing any docstring or comment** (`conventions/documentation.md` "Tier 3"), doc conventions, skill definitions |
+| `.superpowers/` | Per-plan SDD ledgers: task briefs, task reports, review diffs. Untracked, local-only | Recovering how a landed change was executed — notably the carve rewrite, whose plan and spec were deleted in `102e42a` |
 | `build/`  | Gradle build output. Generated — do not edit      | Never edit directly                                     |
 | `logs/`   | Runtime logs. Generated — do not edit             | Never edit directly                                     |
 

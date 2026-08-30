@@ -165,7 +165,7 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
                     final double bedElevation = ch.bedElev(i);
                     out.add(new RiverPrimitive(
                             VectorOps.sub(splinePt, offset),
-                            influence.at(splinePt[0], splinePt[1], bedElevation, width, normal,types[i]),
+                            influence.at(splinePt[0], splinePt[1], bedElevation, width, normal, types[i]),
                             types[i],
                             normal,
                             ch.spline.curvature(i),

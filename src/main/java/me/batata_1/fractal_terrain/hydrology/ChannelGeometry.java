@@ -30,7 +30,7 @@ public final class ChannelGeometry {
 
     /** Channel depth for the given width (native px), floored at 1. */
     public static double depthForWidth(double width) {
-        return 1.5*Math.max(2, Math.pow(width / DEPTH_WIDTH_SCALE, 1.0 / DEPTH_WIDTH_EXP));
+        return 1.5 * Math.max(2, Math.pow(width / DEPTH_WIDTH_SCALE, 1.0 / DEPTH_WIDTH_EXP));
     }
 
     /** The one knob calibrating narrow-deep against wide-shallow Rosgen types. */

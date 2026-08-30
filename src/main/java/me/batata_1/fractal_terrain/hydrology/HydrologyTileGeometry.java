@@ -47,7 +47,9 @@ public final class HydrologyTileGeometry {
             // A degenerate (zero) normal makes that division meaningless, so it falls back to the unclamped raw
             // radius instead.
             final double bounded = axisSpan > 0 ? Math.min(raw, edge / axisSpan) : raw;
-            return Math.max(Math.max(bounded, HydrologyTuning.MIN_INFLUENCE_RADIUS), RosgenProfile.of(type).floodPlainLength(width) + 1);
+            return Math.max(
+                    Math.max(bounded, HydrologyTuning.MIN_INFLUENCE_RADIUS),
+                    RosgenProfile.of(type).floodPlainLength(width) + 1);
         };
     }
 }

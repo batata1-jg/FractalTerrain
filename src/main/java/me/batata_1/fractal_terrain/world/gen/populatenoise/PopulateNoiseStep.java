@@ -99,9 +99,6 @@ public class PopulateNoiseStep {
             riverType[pos] = buffers.typeMask[pos];
             interpolatedElevs[pos] = (float) (Math.max(bottom, merged) + seaLevel - 1);
         }
-
-        
-
     }
 
     public BlockState fillRocks(int x, int y, int z) {

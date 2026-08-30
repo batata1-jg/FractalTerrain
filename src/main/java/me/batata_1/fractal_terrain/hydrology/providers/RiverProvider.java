@@ -133,7 +133,7 @@ public class RiverProvider {
         var lateralErosionSim = new Meanders(result.network());
         lateralErosionSim.simulate(50, 1);
 
-        final float[] carvedElev = carveRivers(result,base[0].clone(),stages);
+        final float[] carvedElev = carveRivers(result, base[0].clone(), stages);
 
         // Primitives are stamped in the WORLD relief-pixel frame: (PAD - tileOrigin) drops the halo pad
         // and adds the tile's world origin in one step, matching the offset-free frame every query path
@@ -141,7 +141,8 @@ public class RiverProvider {
         // a primitive's influence radius reflects the terrain the network was traced over, not the cut.
         final int tileOriginX = tileX * GRID;
         final int tileOriginZ = tileZ * GRID;
-        final List<HydrologicalPrimitive> primitivePoints = collect(result.network(), base[0], PAD - tileOriginX, PAD - tileOriginZ);
+        final List<HydrologicalPrimitive> primitivePoints =
+                collect(result.network(), base[0], PAD - tileOriginX, PAD - tileOriginZ);
         final ImmutableRTree<HydrologicalPrimitive> primitiveIndex =
                 new ImmutableRTree<>(primitivePoints, HydrologicalPrimitive.PROTOTYPE);
 
@@ -179,8 +180,7 @@ public class RiverProvider {
 
         for (Endpoint node : ctx.network().getNodes()) {
             if (node.type != Endpoint.Type.SOURCE && node.type != Endpoint.Type.DRAIN) continue;
-            ctx.boundaryElevByNodeIdx()
-                    .put(node.id, Math.max(0, sampleBilinear(elev, node.coord[0], node.coord[1])));
+            ctx.boundaryElevByNodeIdx().put(node.id, Math.max(0, sampleBilinear(elev, node.coord[0], node.coord[1])));
         }
         ChannelElevationAssigner.assign(ctx.network(), ctx.boundaryElevByNodeIdx(), elev);
 
@@ -194,7 +194,6 @@ public class RiverProvider {
         return list;
     }
 
-
     private static List<HydrologicalPrimitive> collect(
             RiverNetwork network, float[] rawElev, double offsetX, double offsetZ) {
         var resp = network.collectPrimitives(
@@ -202,7 +201,8 @@ public class RiverProvider {
                 offsetZ,
                 channelId -> true,
                 new ReachRosgenClassifier(rawElev, PADDED),
-                (x, z, bedElev, width, normal,type) -> Math.max(2,1.5*RosgenProfile.of(type).floodPlainLength(width)));
+                (x, z, bedElev, width, normal, type) ->
+                        Math.max(2, 1.5 * RosgenProfile.of(type).floodPlainLength(width)));
         resp.sort(HydrologicalPrimitive.comparator);
         return resp;
     }

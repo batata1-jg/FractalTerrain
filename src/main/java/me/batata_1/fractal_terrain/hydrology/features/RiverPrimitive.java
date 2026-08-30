@@ -4,7 +4,6 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.Objects;
-
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
@@ -33,7 +32,8 @@ public record RiverPrimitive(
         long seed)
         implements SpatialIndexRotatedRectangle, HydrologicalPrimitive {
 
-    public static final RiverPrimitive PROTOTYPE = new RiverPrimitive(new double[] {0.0, 0.0}, HydrologyTuning.MAX_INFLUENCE_RADIUS, null, null, 0, 0, 0, 0);
+    public static final RiverPrimitive PROTOTYPE =
+            new RiverPrimitive(new double[] {0.0, 0.0}, HydrologyTuning.MAX_INFLUENCE_RADIUS, null, null, 0, 0, 0, 0);
 
     public RiverPrimitive(
             double[] coord,

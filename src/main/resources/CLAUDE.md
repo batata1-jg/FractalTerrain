@@ -13,10 +13,17 @@ Mod metadata, mixin/accesswidener config, worldgen datapack JSON, and bundled as
 
 ## Subdirectories
 
-| Directory                                  | What                                                              | When to read                                  |
-| ------------------------------------------ | ---------------------------------------------------------------- | --------------------------------------------- |
-| `data/fractal_terrain/worldgen/`           | Worldgen JSON: `noise_settings`, `world_preset`                  | Editing generation shape, world preset        |
-| `data/fractal_terrain/dimension_type/`     | Overworld dimension-type JSON (height/build limits)              | Changing world height range                    |
-| `data/minecraft/tags/worldgen/`            | Vanilla worldgen tag overrides (world-preset tags)               | Registering the preset into vanilla selection  |
-| `data/terrablender/tags/dimension_type/` | TerraBlender tag opting `fractal_terrain:overworld` into region-based biome placement | Changing which dimensions TerraBlender manages |
-| `assets/fractal_terrain/`                  | `lang/`, `icon.png`, `ml_util/fuzed.onnx` (bundled post-process) | Translations, mod icon, bundled ONNX helper    |
+| Directory | What                                                          | When to read                                              |
+| --------- | ------------------------------------------------------------- | --------------------------------------------------------- |
+| `data/`   | Datapack JSON under `fractal_terrain/`, `minecraft/`, `terrablender/` — see the table below | Editing generation shape, world preset, dimension bounds, tags |
+| `assets/` | Client assets under `fractal_terrain/`: `lang/en_us.json`, `icon.png`, `ml_util/fuzed.onnx` (bundled post-process model) | Translations, mod icon, bundled ONNX helper                |
+
+### Datapack files
+
+| File                                                          | What                                                                  | When to read                                   |
+| ------------------------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------------------- |
+| `data/fractal_terrain/worldgen/noise_settings/fractal_terrain.json` | Noise settings: sea level, noise router slots, surface rule           | Editing generation shape, surface banding      |
+| `data/fractal_terrain/worldgen/world_preset/fractal_terrain.json`   | World preset bundling the overworld dimension                        | Changing what the preset ships                 |
+| `data/fractal_terrain/dimension_type/overworld.json`          | Overworld dimension type (height/build limits)                        | Changing world height range                    |
+| `data/minecraft/tags/worldgen/world_preset/normal.json`       | `replace: true` override of vanilla's `normal` tag — re-lists the vanilla presets plus `fractal_terrain` | Registering the preset into vanilla world-type selection, or restoring a preset the override dropped |
+| `data/terrablender/tags/dimension_type/overworld_regions.json` | Opts `fractal_terrain:overworld` into TerraBlender region-based biome placement | Changing which dimensions TerraBlender manages |

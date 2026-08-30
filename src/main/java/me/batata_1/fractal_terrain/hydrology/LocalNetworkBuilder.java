@@ -3,7 +3,6 @@ package me.batata_1.fractal_terrain.hydrology;
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.PADDED;
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.sampleBilinear;
 
-import java.util.Arrays;
 import java.util.List;
 import me.batata_1.fractal_terrain.hydrology.features.ExtendedRiverPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
@@ -28,8 +27,7 @@ public final class LocalNetworkBuilder {
 
     private LocalNetworkBuilder() {}
 
-    public static void build(
-            GlobalNetworkBuilder.Result ctx, float[][] base, @Nullable RiverProvider.Stages stages) {
+    public static void build(GlobalNetworkBuilder.Result ctx, float[][] base, @Nullable RiverProvider.Stages stages) {
         final float[] elev = base[0].clone();
         final float[] gradMag = base[4];
 
@@ -45,7 +43,6 @@ public final class LocalNetworkBuilder {
         HydrologyProfileInprinter.carveRiverInfluence(elev, primitives, PADDED);
 
         LocalDrainageTracer.traceLocalNetwork(ctx.drainage(), elev, gradMag, ctx.network(), stages);
-
     }
 
     private static List<HydrologicalPrimitive> collect(RiverNetwork network, ChannelTyper typer, float[] elev) {

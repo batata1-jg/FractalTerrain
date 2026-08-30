@@ -8,7 +8,6 @@ import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
 import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
-import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
 
 /**
@@ -33,8 +32,7 @@ public final class HydrologyProfileInprinter {
      * renders; production passes {@code null}, which costs the carve one never-taken branch and no
      * allocation. Sized {@code paddedSize²} and zero-filled by the caller — the carve only maxes into it.
      */
-    public static void carveRiverInfluence(
-            float[] elevation, List<HydrologicalPrimitive> primitives, int paddedSize) {
+    public static void carveRiverInfluence(float[] elevation, List<HydrologicalPrimitive> primitives, int paddedSize) {
         if (primitives.isEmpty()) return;
         final GridBuffers buffers = SHELL_BUFFERS.get();
         buffers.ensure(paddedSize, maxLutLen(paddedSize, 1.0));
@@ -164,7 +162,8 @@ public final class HydrologyProfileInprinter {
      *  {@link HydrologyTuning#MAX_INFLUENCE_RADIUS}; unenforced by the constructor. */
     public static int maxLutLen(int gridSize, double resolution) {
         final int diagonal = (int) Math.ceil((gridSize - 1) * Math.sqrt(2.0));
-        final int influence = (int) Math.ceil(Math.max(RiverPrimitive.PROTOTYPE.getWidth(), RiverPrimitive.PROTOTYPE.getLength()) / resolution);
+        final int influence = (int) Math.ceil(
+                Math.max(RiverPrimitive.PROTOTYPE.getWidth(), RiverPrimitive.PROTOTYPE.getLength()) / resolution);
         return Math.min(diagonal, influence) + 3;
     }
 
@@ -420,7 +419,7 @@ public final class HydrologyProfileInprinter {
         // The assigner picks a bed elevation from the uncarved field, so a primitive whose neighbours have
         // already cut through this point would sit above them and fill rather than cut. Capping against
         // the surface merged so far keeps the influence carve cut-only.
-        //mergedElevationAt(cx, cz, gridSize, acc, elevs)
+        // mergedElevationAt(cx, cz, gridSize, acc, elevs)
         final double elevation = river.elevation();
         final RosgenProfile profile = (RosgenProfile) river.getProfile();
         final long seed = river.seed();
@@ -443,11 +442,11 @@ public final class HydrologyProfileInprinter {
             perpCol[col] = nz * ddz;
             tangCol[col] = -nx * ddz;
         }
-        
+
         final double invLen = 1.0 / influenceLen;
         final double invWidth = 1.0 / influenceWidth;
-        final double floodPlainNormLen = Math.max(floodPlainLen*invLen, floodPlainLen*invWidth);
-        final double invFlNormLenSlope = 1.0 / (1-floodPlainNormLen);
+        final double floodPlainNormLen = Math.max(floodPlainLen * invLen, floodPlainLen * invWidth);
+        final double invFlNormLenSlope = 1.0 / (1 - floodPlainNormLen);
         final double invFlNormLen = 1.0 / floodPlainNormLen;
         for (int row = rowMin; row <= rowMax; row++) {
             final int rowBase = row * gridSize;
@@ -460,7 +459,8 @@ public final class HydrologyProfileInprinter {
                 // How far the footprint rectangle must be scaled to swallow the point: 1 exactly at the
                 // rim, so the recurrence ranks primitives by rectangle penetration, not radial distance.
                 final double d = Math.max(Math.abs(tang) * invLen, Math.abs(perp) * invWidth);
-                final double dd = 0.5*(d>floodPlainNormLen?(d-floodPlainNormLen) * invFlNormLenSlope +1:d * invFlNormLen);
+                final double dd = 0.5
+                        * (d > floodPlainNormLen ? (d - floodPlainNormLen) * invFlNormLenSlope + 1 : d * invFlNormLen);
                 final double f = perp * invStep - baseIdx;
                 // Clamped for safety only: mask already zeroes anything out of band, but the branch-free
                 // body still evaluates h for those lanes.
@@ -468,8 +468,8 @@ public final class HydrologyProfileInprinter {
 
                 final int a = 3 * i;
                 final double h = lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]);
-                final float testeW = dd<0.5?1: (float) (1 - Math.clamp(dd * 2 - 1, 0, 1));
-                elevs[i] = (float) Math.min(elevs[i],acc[a] * (1-testeW) + h * testeW);
+                final float testeW = dd < 0.5 ? 1 : (float) (1 - Math.clamp(dd * 2 - 1, 0, 1));
+                elevs[i] = (float) Math.min(elevs[i], acc[a] * (1 - testeW) + h * testeW);
             }
         }
     }
@@ -479,7 +479,7 @@ public final class HydrologyProfileInprinter {
      * only the primitives merged into {@code acc} so far. Lets a primitive cap its own bed against ground
      * its already-merged neighbours cut, so the influence carve cannot fill.
      */
-    private static double  mergedElevationAt(double px, double pz, int side, float[] acc, float[] elevs) {
+    private static double mergedElevationAt(double px, double pz, int side, float[] acc, float[] elevs) {
         // No ambient field means nothing to cap against; an infinite cap leaves Math.min inert.
         if (elevs == null) return Double.POSITIVE_INFINITY;
         int x0 = (int) Math.floor(px);
