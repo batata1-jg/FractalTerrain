@@ -13,8 +13,10 @@ constructor and never revisited.
 Two independent paths share the cache map (`CACHE: ConcurrentHashMap<TileKey, CompletableFuture<T>>`):
 
 - **Load path** (`fetchEntry` → `loadInto`): reads a persisted tile from disk. `NonIntersectingInfiniteTensor`
-  overrides `loadInto` to catch `EntryNotLoadableException` (cache-only storage, unpersisted key, missing
-  file, or deserialization failure) and recompute the entry synchronously instead of failing.
+  and `NonIntersectingSpatialIndex` override `loadInto` to catch `EntryNotLoadableException` (cache-only
+  storage, unpersisted key, missing file, or deserialization failure) and recompute the entry synchronously
+  instead of failing. Both also enforce their byte budget there, because `loadInto` is their only insert
+  path — see `infinitetensor/README.md`.
 - **Compute path** (`getOrCompute` / `claimForCompute` + `fulfillClaim`/`abandonClaim`): produces a tile
   freshly, used by `InfiniteTensor.computeSingle`/`computeBatched`.
 
@@ -25,9 +27,15 @@ Both paths converge on `persistAndRecord` (compute) or the freeze-and-complete b
 
 **Reads are lock-free; only eviction bookkeeping is locked.** `getEntry` on a cache hit never blocks on
 any lock — `CACHE` is a `ConcurrentHashMap` and hits return directly. The only lock, `evictionLock`, guards
-`cachedEntryByteSizes`/`totalCachedBytes` (the LRU byte-budget bookkeeping) and is never acquired by a
+`cachedEntryByteSizes`/`totalCachedBytes` (the byte-budget bookkeeping) and is never acquired by a
 reader; only `recordCachedEntry`, `pollOldest`, and `evictIfNeeded` touch it. This keeps the tile-read hot
 path (shared across many worker threads generating a chunk) contention-free.
+
+**The byte budget is insertion-ordered, not LRU.** `cachedEntryByteSizes` is a plain `LinkedHashMap` (not
+access-ordered), and `recordCachedEntry` — the only thing that reorders it — runs solely from the two
+insert points, never from `getEntry`. A tile read on every single chunk is therefore still evicted once
+enough newer tiles land ahead of it. Any budget must be sized as headroom over the working set rather than
+fitted to it; `infinitetensor/README.md` records why the two large tensors use eight tiles.
 
 **Single-flight via `putIfAbsent`, not `computeIfAbsent`.** Both `fetchEntry` (load) and `claimForCompute`
 (compute) use a plain `CACHE.get` followed by `CACHE.putIfAbsent` to install a fresh promise, deliberately
@@ -44,6 +52,16 @@ requesting one of those windows blocks on the batch's own promise instead of rac
 settles each claim as the batch result for that window becomes available. Do not bypass `claimForCompute`
 with a check-then-act pattern (e.g. `if (!inStorage(key)) compute()`) — only the atomic `putIfAbsent`
 inside it guarantees a key is computed at most once when many worker threads race for overlapping slices.
+
+**A chunk reads a tile channel as one window, not as 1024 point lookups.** `ChunkChannelFill` exists
+because `GLOBAL_SCALE_CORRECTION` is 5, so a 16-block chunk spans 3.2 tensor pixels and a channel's whole
+working set for that chunk is a 4x4 or 5x5 window. Its window bounds are `floor(minPx)` to `ceil(maxPx)`,
+never `floor` to `floor + 1`: on a coordinate that lands exactly on a pixel the two corners coincide, and
+reading one pixel further would cross a 512-px tile boundary and materialise a whole neighbouring tile —
+an ONNX inference, for relief — to supply a value multiplied by zero. `open` takes the pixel scale as a
+parameter rather than assuming `GLOBAL_SCALE_CORRECTION`, because the biome densities convert with
+`scale * GLOBAL_SCALE_CORRECTION`; passing a scale that disagrees with the one the caller samples at
+would size the window to miss the corners the sampler reads.
 
 ## Invariants
 

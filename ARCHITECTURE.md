@@ -404,6 +404,10 @@ bands, in order of increasing cost:
   (`HydrologyProfile`/`RosgenProfile`/`DefaultProfile`, `VectorOps`). The `Object... args` varargs on
   `h`/`w` is itself an allocation-per-call hazard — an example of the signature shape this rule warns
   against.
+- `storage/ChunkChannelFill.java` `fillBilinear`/`fillSmoothStep` and `world/biome/BiomeProvider`'s
+  `ChannelDensity.fillArray` — the 16x16 sample loops every heightmap channel and every biome density
+  runs per chunk. The window fields are hoisted into locals before each loop rather than read off the
+  `ChunkWindow` record per pixel, for this reason.
 
 **Hot-path code that already follows the rule** — the reference patterns to copy:
 
