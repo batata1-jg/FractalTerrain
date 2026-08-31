@@ -41,13 +41,24 @@ public class ReliefProvider {
 
     private static final int DOG_PADDED = INNER + 2 * DOG_PAD;
 
+    /** Cached relief tiles. Far above the 1-4 tile working set (a tile is 160 chunks per axis) because
+     *  Storage's byte accounting is FIFO, not LRU: a tile read every chunk still ages out. */
+    private static final int MAX_CACHED_TILES = 8;
+
+    private static final long CACHE_LIMIT_BYTES =
+            (long) MAX_CACHED_TILES * RELIEF_CHANNELS * INNER * INNER * Float.BYTES;
+
     private static final Logger LOG = getLogger(ReliefProvider.class);
 
     private final NonIntersectingInfiniteTensor finalTiles;
 
     public ReliefProvider(String path) {
         finalTiles = new NonIntersectingInfiniteTensor(
-                path, "final_relief_tiles", new int[] {RELIEF_CHANNELS, INNER, INNER}, this::buildReliefTile);
+                path,
+                "final_relief_tiles",
+                new int[] {RELIEF_CHANNELS, INNER, INNER},
+                this::buildReliefTile,
+                CACHE_LIMIT_BYTES);
     }
 
     public NonIntersectingInfiniteTensor getInfiniteTensor() {

@@ -83,6 +83,13 @@ public class BiomeProvider {
     /** Channels stored per tile: the real {@link FractalTerrainConfig#BIOME_CHANNELS}, plus the debug channel when active. */
     private static final int TILE_CHANNELS = DEBUG_DSHORE_CHANNEL_ON ? BIOME_CHANNELS + 1 : BIOME_CHANNELS;
 
+    /** Cached biome tiles. Same 8-tile reasoning as {@code ReliefProvider}: Storage's accounting is
+     *  FIFO, so the budget must sit well above the 1-4 tile working set. Sized off TILE_CHANNELS, so it
+     *  already covers the larger tile the visualizer's debug channel produces. */
+    private static final int MAX_CACHED_TILES = 8;
+
+    private static final long CACHE_LIMIT_BYTES = (long) MAX_CACHED_TILES * TILE_CHANNELS * TILE_PIXELS * Float.BYTES;
+
     // -------------------------------------------------------------------------
     // Fields
     // -------------------------------------------------------------------------
@@ -144,7 +151,7 @@ public class BiomeProvider {
 
     public BiomeProvider(String path) {
         finalTiles = new NonIntersectingInfiniteTensor(
-                path, "final_biome_tiles", new int[] {TILE_CHANNELS, 512, 512}, buildTile());
+                path, "final_biome_tiles", new int[] {TILE_CHANNELS, 512, 512}, buildTile(), CACHE_LIMIT_BYTES);
         // Vanilla Climate.Sampler order: temperature, humidity, continentalness, erosion, depth, weirdness.
         // Each channel produces its own density via its creator (DEPTH's is the vertical y-gradient).
         final float scale = 1;
