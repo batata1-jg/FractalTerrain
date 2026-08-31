@@ -285,14 +285,14 @@ public class BiomeProvider {
     /** Erosion for the 16×16 blocks of {@code pos}, indexed {@code x*16 + z} (see {@link ErosionDensity}). */
     public float[] fillErosion(ChunkPos pos) {
         final float[] res = new float[1 << 8];
-        ((ErosionDensity) erosionDensity).fillArray(res, pos);
+        ((ChannelDensity) erosionDensity).fillArray(res, pos);
         return res;
     }
 
     /** Weirdness for the 16×16 blocks of {@code pos}, indexed {@code x*16 + z} (see {@link WeirdnessDensity}). */
     public float[] fillWeirdness(ChunkPos pos) {
         final float[] res = new float[1 << 8];
-        ((WeirdnessDensity) weirdnessDensity).fillArray(res, pos);
+        ((ChannelDensity) weirdnessDensity).fillArray(res, pos);
         return res;
     }
 
@@ -315,90 +315,105 @@ public class BiomeProvider {
     // Nested density functions
     // -------------------------------------------------------------------------
 
-    /** Plain bilinear interpolation of a stored biome channel. */
-    private static class BiomeProviderDensity implements DensityFunction.SimpleFunction {
-
-        private final Interpolation interpolation;
-
-        public BiomeProviderDensity(final float scale, final int ch) {
-            interpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
-                mutablePos[CH] = ch;
-                return FractalTerrainInstance.getBiomeProvider().finalTiles.getValue(mutablePos);
-            });
-        }
-
-        @Override
-        public void fillArray(double[] densities, @NotNull ContextProvider applier) {
-            if (densities.length == 0) return;
-
-            for (int i = 0; i < densities.length; i++) {
-                final FunctionContext pos = applier.forIndex(i);
-                densities[i] = interpolation.interpolateBilinear(pos.blockX(), pos.blockZ());
-            }
-        }
-
-        @Override
-        public double compute(FunctionContext pos) {
-            return interpolation.interpolateBilinear(pos.blockX(), pos.blockZ());
-        }
-
-        @Override
-        public double minValue() {
-            return 0;
-        }
-
-        @Override
-        public double maxValue() {
-            return 0;
-        }
-
-        @Override
-        public KeyDispatchDataCodec<? extends DensityFunction> codec() {
-            return null;
-        }
-    }
+    /** Widest block span the batch path will slice before falling back to per-point reads. A vanilla
+     *  {@code fillArray} batch is cell-sized, so this only guards a pathological caller. */
+    private static final int MAX_BATCH_SPAN_BLOCKS = 64;
 
     /**
-     * Erosion density that nudges values out of vanilla's shattered band (erosion level 5,
-     * ≈0.45–0.55) until shattered biomes are handled. See {@code worldgeneration101.md}
-     * ("Shattered biomes") and {@link BiomeParameterClassifier#isShatteredErosion}.
+     * Shared body of the three tile-channel densities.
+     *
+     * <p>Holds the two ways to read one channel — a pre-sliced chunk window for the batch and chunk
+     * fills, and the per-point {@link Interpolation} that still backs {@code compute} — so each
+     * subclass supplies only its own composition (a shattered-band nudge, a magnitude-times-sign
+     * product) rather than a fourth copy of the fill loops.
      */
-    private static class ErosionDensity implements DensityFunction.SimpleFunction {
+    private abstract static class ChannelDensity implements DensityFunction.SimpleFunction {
 
-        // Shattered (erosion level 5) avoidance band and the push applied to escape it.
-        private static final double SHATTERED_LO = 0.44, SHATTERED_HI = 0.55, SHATTERED_PUSH = 0.15;
+        /** Tile channel this density reads; the window slices it directly. */
+        protected final int channel;
 
-        private final Interpolation interpolation;
+        /** Blocks per tensor pixel, the same divisor {@link Interpolation} applies internally. Threaded
+         *  into the window path rather than assumed, so the two cannot silently disagree. */
+        protected final float pixelScale;
 
-        public ErosionDensity(final float scale, final int ch) {
-            interpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
-                mutablePos[CH] = ch;
-                return FractalTerrainInstance.getBiomeProvider().finalTiles.getValue(mutablePos);
-            });
+        protected ChannelDensity(final int channel, final float pixelScale) {
+            this.channel = channel;
+            this.pixelScale = pixelScale;
         }
 
-        private double sample(int x, int z) {
-            double res = interpolation.interpolateBilinear(x, z);
-            if (SHATTERED_LO < res && res < SHATTERED_HI) res += SHATTERED_PUSH;
-            return res;
+        /** This density's value at a block, reading a window already sliced over it. */
+        protected abstract double sample(ChunkChannelFill.ChunkWindow window, int blockX, int blockZ);
+
+        /** This density's value at a single block, via the per-point tensor path. */
+        protected abstract double sample(int blockX, int blockZ);
+
+        /** Bilinear read of {@link #channel} out of an open window; the subclasses compose on top. */
+        protected double read(ChunkChannelFill.ChunkWindow window, int blockX, int blockZ) {
+            return Interpolation.sampleWindowBilinear(
+                    window.data(),
+                    blockX / pixelScale,
+                    blockZ / pixelScale,
+                    window.originX(),
+                    window.originZ(),
+                    window.rowStride());
         }
 
+        private ChunkChannelFill.ChunkWindow open(int minBlockX, int minBlockZ, int maxBlockX, int maxBlockZ) {
+            return ChunkChannelFill.open(
+                    FractalTerrainInstance.getBiomeProvider().finalTiles,
+                    channel,
+                    minBlockX,
+                    minBlockZ,
+                    maxBlockX,
+                    maxBlockZ,
+                    pixelScale);
+        }
+
+        /** Bounds the batch's block rectangle, slices it once, then samples. Falls back to per-point
+         *  reads for a batch too wide to slice, rather than allocating an unbounded window. */
         @Override
         public void fillArray(double[] densities, @NotNull ContextProvider applier) {
             if (densities.length == 0) return;
 
+            // One pass over forIndex, never two: NoiseChunk's anonymous ContextProvider also advances
+            // interpolationCounter, which is CacheOnce's generation stamp, so asking a second time would
+            // invalidate sibling caches that are still live. Keep the positions instead of re-reading them.
+            final int[] blocks = new int[densities.length * 2];
+            int minX = Integer.MAX_VALUE, minZ = Integer.MAX_VALUE;
+            int maxX = Integer.MIN_VALUE, maxZ = Integer.MIN_VALUE;
             for (int i = 0; i < densities.length; i++) {
                 final FunctionContext pos = applier.forIndex(i);
-                densities[i] = sample(pos.blockX(), pos.blockZ());
+                final int x = pos.blockX();
+                final int z = pos.blockZ();
+                blocks[2 * i] = x;
+                blocks[2 * i + 1] = z;
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (z < minZ) minZ = z;
+                if (z > maxZ) maxZ = z;
+            }
+
+            if (maxX - minX >= MAX_BATCH_SPAN_BLOCKS || maxZ - minZ >= MAX_BATCH_SPAN_BLOCKS) {
+                for (int i = 0; i < densities.length; i++) {
+                    densities[i] = sample(blocks[2 * i], blocks[2 * i + 1]);
+                }
+                return;
+            }
+
+            final ChunkChannelFill.ChunkWindow window = open(minX, minZ, maxX, maxZ);
+            for (int i = 0; i < densities.length; i++) {
+                densities[i] = sample(window, blocks[2 * i], blocks[2 * i + 1]);
             }
         }
 
-        public void fillArray(float[] erosionMap, ChunkPos pos) {
+        /** The 16x16 chunk form, backing {@code fillErosion}/{@code fillWeirdness}. */
+        public void fillArray(float[] out, ChunkPos pos) {
             final int startX = pos.getMinBlockX();
             final int startZ = pos.getMinBlockZ();
+            final ChunkChannelFill.ChunkWindow window = open(startX, startZ, startX + 15, startZ + 15);
             for (int x = 0; x < 16; x++) {
                 for (int z = 0; z < 16; z++) {
-                    erosionMap[x * 16 + z] = (float) sample(startX + x, startZ + z);
+                    out[x * 16 + z] = (float) sample(window, startX + x, startZ + z);
                 }
             }
         }
@@ -424,6 +439,66 @@ public class BiomeProvider {
         }
     }
 
+    /** Plain bilinear interpolation of a stored biome channel. */
+    private static class BiomeProviderDensity extends ChannelDensity {
+
+        private final Interpolation interpolation;
+
+        public BiomeProviderDensity(final float scale, final int ch) {
+            super(ch, scale * GLOBAL_SCALE_CORRECTION);
+            interpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
+                mutablePos[CH] = ch;
+                return FractalTerrainInstance.getBiomeProvider().finalTiles.getValue(mutablePos);
+            });
+        }
+
+        @Override
+        protected double sample(ChunkChannelFill.ChunkWindow window, int blockX, int blockZ) {
+            return read(window, blockX, blockZ);
+        }
+
+        @Override
+        protected double sample(int blockX, int blockZ) {
+            return interpolation.interpolateBilinear(blockX, blockZ);
+        }
+    }
+
+    /**
+     * Erosion density that nudges values out of vanilla's shattered band (erosion level 5,
+     * ≈0.45–0.55) until shattered biomes are handled. See {@code worldgeneration101.md}
+     * ("Shattered biomes") and {@link BiomeParameterClassifier#isShatteredErosion}.
+     */
+    private static class ErosionDensity extends ChannelDensity {
+
+        // Shattered (erosion level 5) avoidance band and the push applied to escape it.
+        private static final double SHATTERED_LO = 0.44, SHATTERED_HI = 0.55, SHATTERED_PUSH = 0.15;
+
+        private final Interpolation interpolation;
+
+        public ErosionDensity(final float scale, final int ch) {
+            super(ch, scale * GLOBAL_SCALE_CORRECTION);
+            interpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
+                mutablePos[CH] = ch;
+                return FractalTerrainInstance.getBiomeProvider().finalTiles.getValue(mutablePos);
+            });
+        }
+
+        private static double nudge(double res) {
+            if (SHATTERED_LO < res && res < SHATTERED_HI) res += SHATTERED_PUSH;
+            return res;
+        }
+
+        @Override
+        protected double sample(ChunkChannelFill.ChunkWindow window, int blockX, int blockZ) {
+            return nudge(read(window, blockX, blockZ));
+        }
+
+        @Override
+        protected double sample(int blockX, int blockZ) {
+            return nudge(interpolation.interpolateBilinear(blockX, blockZ));
+        }
+    }
+
     /**
      * Weirdness, interpolated as magnitude and sign separately.
      *
@@ -431,12 +506,13 @@ public class BiomeProvider {
      * keeping that smooth preserves landscape shape, while the sign is biome-selection-only and can
      * scatter freely — which is what folds the world into more weirdness bands.
      */
-    private static class WeirdnessDensity implements DensityFunction.SimpleFunction {
+    private static class WeirdnessDensity extends ChannelDensity {
 
         private final Interpolation valueInterpolation;
         private final Interpolation signInterpolation;
 
         public WeirdnessDensity(final float scale, final int ch) {
+            super(ch, scale * GLOBAL_SCALE_CORRECTION);
             valueInterpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
                 mutablePos[CH] = ch;
                 return Math.abs(
@@ -449,50 +525,29 @@ public class BiomeProvider {
             });
         }
 
-        /** Smooth magnitude × rapidly-flipping sign (see the class javadoc). */
-        private double sample(int x, int z) {
-            if (signInterpolation.interpolateBilinear(x, z) >= 0) return valueInterpolation.interpolateBilinear(x, z);
-            return -valueInterpolation.interpolateBilinear(x, z);
+        /** Both interpolations read the same channel, so one window serves the magnitude and the sign —
+         *  the 2048-lookup half of the per-chunk cost collapses to a single slice here. */
+        @Override
+        protected double sample(ChunkChannelFill.ChunkWindow window, int blockX, int blockZ) {
+            final float px = blockX / pixelScale;
+            final float pz = blockZ / pixelScale;
+            final float[] data = window.data();
+            final int originX = window.originX();
+            final int originZ = window.originZ();
+            final int rowStride = window.rowStride();
+            // Corner-wise abs/signum before the lerp, matching what the two Interpolations do inside
+            // their own per-corner source functions.
+            final double magnitude = Interpolation.sampleWindowAbs(data, px, pz, originX, originZ, rowStride);
+            final double sign = Interpolation.sampleWindowSignum(data, px, pz, originX, originZ, rowStride);
+            return (sign >= 0) ? magnitude : -magnitude;
         }
 
         @Override
-        public void fillArray(double[] densities, @NotNull ContextProvider applier) {
-            if (densities.length == 0) return;
-
-            for (int i = 0; i < densities.length; i++) {
-                final FunctionContext pos = applier.forIndex(i);
-                densities[i] = sample(pos.blockX(), pos.blockZ());
+        protected double sample(int blockX, int blockZ) {
+            if (signInterpolation.interpolateBilinear(blockX, blockZ) >= 0) {
+                return valueInterpolation.interpolateBilinear(blockX, blockZ);
             }
-        }
-
-        public void fillArray(float[] weirdnessMap, ChunkPos pos) {
-            final int startX = pos.getMinBlockX();
-            final int startZ = pos.getMinBlockZ();
-            for (int x = 0; x < 16; x++) {
-                for (int z = 0; z < 16; z++) {
-                    weirdnessMap[x * 16 + z] = (float) sample(startX + x, startZ + z);
-                }
-            }
-        }
-
-        @Override
-        public double compute(FunctionContext pos) {
-            return sample(pos.blockX(), pos.blockZ());
-        }
-
-        @Override
-        public double minValue() {
-            return 0;
-        }
-
-        @Override
-        public double maxValue() {
-            return 0;
-        }
-
-        @Override
-        public KeyDispatchDataCodec<? extends DensityFunction> codec() {
-            return null;
+            return -valueInterpolation.interpolateBilinear(blockX, blockZ);
         }
     }
 

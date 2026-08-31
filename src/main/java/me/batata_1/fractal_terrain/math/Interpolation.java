@@ -98,6 +98,39 @@ public class Interpolation {
                 deltaX, deltaZ, data[colLo + rowLo], data[colHi + rowLo], data[colLo + rowHi], data[colHi + rowHi]);
     }
 
+    /** Bilinear sample with {@code Math.abs} applied to each corner before the lerp. The transform is
+     *  per-corner, not on the result: applied afterwards, a cell straddling zero would cancel to near
+     *  zero instead of averaging its corners' magnitudes. */
+    public static double sampleWindowAbs(float[] data, float px, float pz, int originX, int originZ, int rowStride) {
+        final int colLo = ((int) Math.floor(px) - originX) * rowStride;
+        final int colHi = ((int) Math.ceil(px) - originX) * rowStride;
+        final int rowLo = (int) Math.floor(pz) - originZ;
+        final int rowHi = (int) Math.ceil(pz) - originZ;
+        return Mth.lerp2(
+                px - Math.floor(px),
+                pz - Math.floor(pz),
+                Math.abs(data[colLo + rowLo]),
+                Math.abs(data[colHi + rowLo]),
+                Math.abs(data[colLo + rowHi]),
+                Math.abs(data[colHi + rowHi]));
+    }
+
+    /** {@code Math.signum} counterpart to {@link #sampleWindowAbs}; the pair reproduces weirdness's
+     *  smooth-magnitude-times-scattering-sign split from one window instead of two tensor walks. */
+    public static double sampleWindowSignum(float[] data, float px, float pz, int originX, int originZ, int rowStride) {
+        final int colLo = ((int) Math.floor(px) - originX) * rowStride;
+        final int colHi = ((int) Math.ceil(px) - originX) * rowStride;
+        final int rowLo = (int) Math.floor(pz) - originZ;
+        final int rowHi = (int) Math.ceil(pz) - originZ;
+        return Mth.lerp2(
+                px - Math.floor(px),
+                pz - Math.floor(pz),
+                Math.signum(data[colLo + rowLo]),
+                Math.signum(data[colHi + rowLo]),
+                Math.signum(data[colLo + rowHi]),
+                Math.signum(data[colHi + rowHi]));
+    }
+
     /** Unboxed twin of {@link #stepSmoothstep}; the expression is duplicated verbatim so the two cannot
      *  drift and the window samplers stay bit-identical to the per-pixel path. */
     private static double smoothStep(double x) {
