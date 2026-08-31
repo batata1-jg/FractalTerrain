@@ -9,7 +9,7 @@ deep-learning diffusion model, plus a procedural hydrology (riverUnit) system.
 | ------------------ | -------------------------------------------------------- | --------------------------------------------------------------------- |
 | `ARCHITECTURE.md`  | System overview: pipeline, providers, data flow, frames  | Understanding how generation fits together, onboarding, cross-cutting |
 | `README.md`        | User-facing mod description, install, disclaimer         | Understanding the product, install steps, known-broken features       |
-| `build.gradle`     | Loom build, Spotless, model-manifest + debug-harness tasks | Adding tasks/deps, changing the pinned model revision, build issues   |
+| `build.gradle`     | Loom build, Spotless, model-manifest + debug-harness tasks; pins the Hugging Face model revision (`modelRepositoryRevision`) | Adding tasks/deps, changing the pinned model revision, build issues   |
 | `gradle.properties`| Gradle/mod versions and flags                            | Bumping versions, toggling build flags                                |
 | `settings.gradle`  | Gradle project + repositories                            | Adding repositories or subprojects                                    |
 | `.gitignore`       | Ignore rules; note `/CLAUDE.md` and `/.claude/` are ignored (local-only) | Checking why a file is untracked, adding an ignore rule |
@@ -28,6 +28,7 @@ deep-learning diffusion model, plus a procedural hydrology (riverUnit) system.
 | `docs/`   | Scraped Minecraft Wiki worldgen reference (36 pages, generated — do not edit), plus `superpowers/` dated plans and specs | Vanilla worldgen semantics: surface rules, density functions, biomes, features, carvers; or prior design work |
 | `.claude/`| Agent skills + doc/code conventions. Git-ignored, local-only | **Writing any docstring or comment** (`conventions/documentation.md` "Tier 3"), doc conventions, skill definitions |
 | `.superpowers/` | Per-plan SDD ledgers: task briefs, task reports, review diffs. Untracked, local-only | Recovering how a landed change was executed — notably the carve rewrite, whose plan and spec were deleted in `102e42a` |
+| `src/main/java/.../fractal_terrain/noise/` | Byte-identity-vendored noise code (FastNoiseLite dispatcher + strategies). Do not reformat/refactor | Never edit for style; see `noise/CLAUDE.md` for the byte-identical constraint |
 | `build/`  | Gradle build output. Generated — do not edit      | Never edit directly                                     |
 | `logs/`   | Runtime logs. Generated — do not edit             | Never edit directly                                     |
 
@@ -65,11 +66,16 @@ calls `ConfluencePrimitive.w(double[])` and `.d(double[])`, neither of which exi
 the `RiverProvider`/`LocalNetworkBuilder` river refactor — that test file was last modified three commits
 before the refactor began. `gradle test` therefore cannot run at all as the tree stands.
 
-With `ConfluencePrimitiveTest` excluded, a run reported **81 tests, 19 failed, 1 skipped** — mark that
+**Re-measured 2026-08-31 at `18060cc`**, `ConfluencePrimitiveTest` excluded: **81 tests, 20 failed,
+1 skipped** — 20, not the 19 quoted here previously, and `ChannelGeometryTest` fails 4, not 3. Mark this
 figure explicitly as measured with a test file excluded, not as a clean baseline:
 
-> `RosgenKeyTest` (6), `ComputeRiverGridTest` (3), `ChannelGeometryTest` (3), `RiverGoldenTest` (2),
+> `RosgenKeyTest` (6), `ChannelGeometryTest` (4), `ComputeRiverGridTest` (3), `RiverGoldenTest` (2),
 > `MeandersGoldenTest` (2), `GlobalRiverGoldenTest` (1), `ReachMetricsSamplerTest` (1), `CentrelineTest` (1).
+
+After the 2026-08-31 refactor pass (Rosgen dead band deleted, so its 4 `RosgenKeyTest` cases are gone):
+**77 tests, 18 failed, 1 skipped** — the same set minus `RosgenKeyTest`'s two `deadBand*` failures, with
+every remaining failure message byte-identical, golden checksums included.
 
 `ComputeRiverGridTest`'s 3 failures are new relative to the last quoted baseline (which had it at 12
 passing), but are **not** caused by the river refactor: the only production file it exercises is

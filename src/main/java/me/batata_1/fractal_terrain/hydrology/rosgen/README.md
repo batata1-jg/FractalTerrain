@@ -48,46 +48,24 @@ spatial locality — each sample is close to a cache miss. `collectPrimitives` r
 floors at 0.5 px, so a detailed tile emits tens of thousands of points. One transect per reach (Rosgen's
 own ~20-channel-width definition) is three orders of magnitude cheaper and is what the scheme specifies.
 
-## Why the graph walk is downstream-first
+## Channel walk order
 
-`RiverNetwork.update` splits a trunk river into a separate `Channel` at every confluence. Applying the
-dead band per channel would reset it at every junction, so a trunk could change type at each confluence
-for no terrain reason — reproducing, at every junction in the world, exactly the scalloped floodplain
-edge the dead band exists to prevent. Walking from drains upstream lets each channel's downstream-most
-reach inherit its downstream neighbour's upstream-most type.
-
-`orderDownstreamFirst` seeds a BFS frontier with the DRAIN-adjacent channels and expands through
-`startNode.incoming`, which visits a channel before anything feeding it. **No reversal is wanted** —
-reversing would invert the order and break `seedFor`, which reads the downstream neighbour's committed
-types and therefore requires that neighbour classified first.
+`prepare()` visits channels via `orderDownstreamFirst`, which seeds a BFS frontier with the
+DRAIN-adjacent channels and expands through `startNode.incoming` so each channel is visited before
+anything feeding it. Classification does not depend on this order — each reach is classified from its
+own measured metrics only — but the ordering guarantee is exercised directly by
+`ReachRosgenClassifierTest.headwaterChannelsAreOrderedBeforeTheTrunkTheyFeed`.
 
 ### Known limitation: dangling components
 
 The walk is not fully downstream-first for components with no reachable drain. The injected component
 root is whichever unseen channel has the lowest id, not necessarily the component's outlet; since
 channel ids run low-to-high upstream-to-downstream, a pruned-tail component such as `X(5)→Y(6)→Z(7)` is
-emitted `X, Y, Z` — upstream-first, the wrong direction for that component.
-
-`seedFor` then returns `null` for `X` and `Y`, which `applyDeadBand` handles by committing the raw type
-rather than crashing, so the dead band simply resets at those boundaries. Chasing the true outlet would
-mean following `getNode(endNodeId).outgoing` to the component root with a cycle guard — a dangling
-component's single-outflow chain has no drain to stop at. Not worth it for a case that only arises in
-pruned components.
-
-## The dead band
-
-Rosgen's published tolerances (ER ±0.2, W/D ±2.0) are applied as a dead band: when a reach's ratio sits
-within tolerance of a threshold the key compares it against, the neighbouring reach's type is kept
-instead of committing to the raw one.
-
-The tolerances exist because field metrics are noisy; a raster implementation is noisier still. Without
-the dead band, types flicker along a single river, and because the profile controls `floodPlainLength`
-and `riverInfluence`, a flicker becomes a visibly scalloped floodplain edge.
-
-**Scope is ER and W/D only.** The slope bands and the braiding threshold are deliberately outside it.
-Slope is a real property of the landform rather than a noisy transect measurement, and a reach genuinely
-crossing into the steep bands should change type there; suppressing that would smear `Aa+`/`A`
-headwaters into the reaches below them. Slope-driven variation is intended behaviour, not flicker.
+emitted `X, Y, Z` — upstream-first, the wrong direction for that component. This has no effect on
+classification output, since each reach's type depends only on its own measured metrics. Chasing the
+true outlet would mean following `getNode(endNodeId).outgoing` to the component root with a cycle
+guard — a dangling component's single-outflow chain has no drain to stop at. Not worth it for a case
+that only arises in pruned components and no longer affects classification.
 
 ## Invariants
 

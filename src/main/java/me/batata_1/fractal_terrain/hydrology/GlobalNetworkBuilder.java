@@ -47,6 +47,19 @@ public final class GlobalNetworkBuilder {
 
     private record CellInfo(int ccx, int ccz, int outDirection, int dcx, int dcz, double[] drain) {}
 
+    /** One coarse-cell edge scanned by {@link #findDrain}: which coordinate the edge fixes, the other's
+     *  scan range, and whether the edge sits on a tile corner (needing the stricter corner margin) rather
+     *  than an ordinary border. */
+    private record ScanLine(boolean fixedZ, int line, int from, int to, boolean edgeOnSeam) {
+        private int xi(int t) {
+            return fixedZ ? t : line;
+        }
+
+        private int zi(int t) {
+            return fixedZ ? line : t;
+        }
+    }
+
     /**
      * The relaxed {@link RiverNetwork} together with the boundary-elevation map {@link #build}
      * accumulated for it (source/drain node datum keyed by minted node id), for the caller to hand to
@@ -65,6 +78,63 @@ public final class GlobalNetworkBuilder {
     public static Result build(int tileX, int tileZ, float[][] base, GlobalRiverProvider grp) {
         final float[] elevCarvedGlobalOnly = base[0].clone();
 
+        final Map<Long, CellInfo> cells = resolveCellDrains(tileX, tileZ, grp, elevCarvedGlobalOnly);
+
+        final List<RiverNetwork.NodeSpec> nodeSpecs = new ArrayList<>();
+        final List<RiverNetwork.EdgeSpec> edgeSpecs = new ArrayList<>();
+        final Map<Long, Integer> centerIdx = new HashMap<>();
+        final Map<EdgeKey, Integer> edgeNodeIdx = new HashMap<>();
+        final Map<Integer, Double> boundaryElevByNodeIdx = new HashMap<>();
+
+        addOwnedCentreNodes(tileX, tileZ, cells, nodeSpecs, centerIdx, boundaryElevByNodeIdx);
+        stitchEdgesAndSources(
+                tileX,
+                tileZ,
+                cells,
+                nodeSpecs,
+                edgeSpecs,
+                centerIdx,
+                edgeNodeIdx,
+                boundaryElevByNodeIdx,
+                elevCarvedGlobalOnly,
+                grp);
+
+        ChannelTyper typer = new ReachRosgenClassifier(elevCarvedGlobalOnly, PADDED);
+
+        final RiverNetwork network = new RiverNetwork(PADDED, nodeSpecs, edgeSpecs);
+        if (edgeSpecs.isEmpty()) {
+            return new Result(
+                    network,
+                    Drainage.computeDrainageDirection(
+                            Drainage.fillSinks(elevCarvedGlobalOnly, PADDED, HydrologyTuning.FILL_PADDING), PADDED),
+                    boundaryElevByNodeIdx,
+                    typer,
+                    elevCarvedGlobalOnly);
+        }
+
+        new GradientNetworkRelaxation(network, base[2].clone(), base[3].clone())
+                .relax(Math.min(relaxStepsFor(tileX, tileZ, cells, grp), MAX_RELAX_STEPS), 5);
+        clearBuildState(cells, nodeSpecs, edgeSpecs, centerIdx, edgeNodeIdx);
+
+        ChannelElevationAssigner.assign(network, boundaryElevByNodeIdx, elevCarvedGlobalOnly);
+
+        HydrologyProfileInprinter.carveRiverInfluence(
+                elevCarvedGlobalOnly, collect(network, typer, elevCarvedGlobalOnly), PADDED);
+
+        return new Result(
+                network,
+                Drainage.computeDrainageDirection(
+                        Drainage.fillSinks(elevCarvedGlobalOnly, PADDED, HydrologyTuning.FILL_PADDING), PADDED),
+                boundaryElevByNodeIdx,
+                typer,
+                elevCarvedGlobalOnly);
+    }
+
+    /** Resolves each owned-plus-halo coarse cell's drain point — downstream if the coarse arrow field
+     *  gives one, otherwise the cell's lowest interior point — the map every later phase of {@link #build}
+     *  reads. */
+    private static Map<Long, CellInfo> resolveCellDrains(
+            int tileX, int tileZ, GlobalRiverProvider grp, float[] elevCarvedGlobalOnly) {
         final Map<Long, CellInfo> cells = new HashMap<>();
         for (int a = -1; a <= 2; a++) {
             for (int b = -1; b <= 2; b++) {
@@ -103,14 +173,18 @@ public final class GlobalNetworkBuilder {
                 cells.put(cellKey(ccx, ccz), new CellInfo(ccx, ccz, outDir, dcx, dcz, drain));
             }
         }
+        return cells;
+    }
 
-        final List<RiverNetwork.NodeSpec> nodeSpecs = new ArrayList<>();
-        final List<RiverNetwork.EdgeSpec> edgeSpecs = new ArrayList<>();
-        final Map<Long, Integer> centerIdx = new HashMap<>();
-        final Map<EdgeKey, Integer> edgeNodeIdx = new HashMap<>();
-        final Map<Integer, Double> boundaryElevByNodeIdx = new HashMap<>();
-
-        // owned (2x2) centres.
+    /** Seeds a hub node for each owned cell — its drain point if it terminates, otherwise its centre — so
+     *  {@link #stitchEdgesAndSources} has something to connect every drain/entry edge to. */
+    private static void addOwnedCentreNodes(
+            int tileX,
+            int tileZ,
+            Map<Long, CellInfo> cells,
+            List<RiverNetwork.NodeSpec> nodeSpecs,
+            Map<Long, Integer> centerIdx,
+            Map<Integer, Double> boundaryElevByNodeIdx) {
         for (int a = 0; a <= 1; a++) {
             for (int b = 0; b <= 1; b++) {
                 final int ccx = tileX * 2 + a;
@@ -133,7 +207,21 @@ public final class GlobalNetworkBuilder {
                 }
             }
         }
+    }
 
+    /** Wires each owned cell's hub to its downstream drain and to every upstream neighbour draining into
+     *  it, then seeds a headwater node wherever the coarse field marks a source. */
+    private static void stitchEdgesAndSources(
+            int tileX,
+            int tileZ,
+            Map<Long, CellInfo> cells,
+            List<RiverNetwork.NodeSpec> nodeSpecs,
+            List<RiverNetwork.EdgeSpec> edgeSpecs,
+            Map<Long, Integer> centerIdx,
+            Map<EdgeKey, Integer> edgeNodeIdx,
+            Map<Integer, Double> boundaryElevByNodeIdx,
+            float[] elevCarvedGlobalOnly,
+            GlobalRiverProvider grp) {
         for (int a = 0; a <= 1; a++) {
             for (int b = 0; b <= 1; b++) {
                 final int ccx = tileX * 2 + a;
@@ -200,42 +288,14 @@ public final class GlobalNetworkBuilder {
                 }
             }
         }
+    }
 
-        ChannelTyper typer = new ReachRosgenClassifier(elevCarvedGlobalOnly, PADDED);
-
-        final RiverNetwork network = new RiverNetwork(PADDED, nodeSpecs, edgeSpecs);
-        if (edgeSpecs.isEmpty()) {
-            return new Result(
-                    network,
-                    Drainage.computeDrainageDirection(
-                            Drainage.fillSinks(elevCarvedGlobalOnly, PADDED, HydrologyTuning.FILL_PADDING), PADDED),
-                    boundaryElevByNodeIdx,
-                    typer,
-                    elevCarvedGlobalOnly);
-        }
-
-        // Relaxation steps vary with the elevation of the tile's primary owned cell (2*tileCoords):
-        // higher terrain gets more steps, capped at MAX_RELAX_STEPS.
+    /** Relaxation step count grows with the elevation of the tile's primary owned cell (2*tileCoords), so
+     *  higher terrain relaxes more; the caller caps the result at {@link #MAX_RELAX_STEPS}. */
+    private static int relaxStepsFor(int tileX, int tileZ, Map<Long, CellInfo> cells, GlobalRiverProvider grp) {
         final CellInfo primaryCell = cells.get(cellKey(tileX * 2, tileZ * 2));
         final double primaryElev = (primaryCell != null) ? grp.getElevation(primaryCell.ccx(), primaryCell.ccz()) : 0.0;
-        final int relaxSteps = MIN_RELAX_STEPS + (int) Math.round(Math.max(0.0, primaryElev) * RELAX_STEPS_PER_ELEV);
-
-        new GradientNetworkRelaxation(network, base[2].clone(), base[3].clone())
-                .relax(Math.min(relaxSteps, MAX_RELAX_STEPS), 5);
-        clearBuildState(cells, nodeSpecs, edgeSpecs, centerIdx, edgeNodeIdx);
-
-        ChannelElevationAssigner.assign(network, boundaryElevByNodeIdx, elevCarvedGlobalOnly);
-
-        HydrologyProfileInprinter.carveRiverInfluence(
-                elevCarvedGlobalOnly, collect(network, typer, elevCarvedGlobalOnly), PADDED);
-
-        return new Result(
-                network,
-                Drainage.computeDrainageDirection(
-                        Drainage.fillSinks(elevCarvedGlobalOnly, PADDED, HydrologyTuning.FILL_PADDING), PADDED),
-                boundaryElevByNodeIdx,
-                typer,
-                elevCarvedGlobalOnly);
+        return MIN_RELAX_STEPS + (int) Math.round(Math.max(0.0, primaryElev) * RELAX_STEPS_PER_ELEV);
     }
 
     private static List<HydrologicalPrimitive> collect(RiverNetwork network, ChannelTyper typer, float[] elev) {
@@ -363,22 +423,16 @@ public final class GlobalNetworkBuilder {
      *  and may sit on the seam; an interior edge must stay clear of the whole border band. */
     private static double[] findDrain(
             int ccx, int ccz, int dir, int tileX, int tileZ, float[] elev, double target, double marginInfl) {
-        final int minXi = PAD + (ccx - tileX * 2) * COARSE_PX;
-        final int minZi = PAD + (ccz - tileZ * 2) * COARSE_PX;
-        final boolean fixedZ = (dir == 4 || dir == 5); // edge is a constant-Z line
-        final int line = fixedZ ? (dir == 4 ? minZi : minZi + COARSE_PX) : (dir == 6 ? minXi : minXi + COARSE_PX);
-        if (line < 0 || line >= PADDED) return null;
-        final boolean edgeOnSeam = (line == PAD || line == PAD + HydrologyTileGeometry.GRID);
-        final int from = Math.max(0, fixedZ ? minXi : minZi);
-        final int to = Math.min(PADDED, (fixedZ ? minXi : minZi) + COARSE_PX);
+        final ScanLine scan = scanLineFor(ccx, ccz, dir, tileX, tileZ);
+        if (scan == null) return null;
 
         int bestX = -1;
         int bestZ = -1;
         double bestDiff = Double.MAX_VALUE;
-        for (int t = from; t < to; t++) {
-            final int xi = fixedZ ? t : line;
-            final int zi = fixedZ ? line : t;
-            if (edgeOnSeam ? nearTileCorner(xi, zi, marginInfl) : nearTileBorder(xi, zi, marginInfl)) continue;
+        for (int t = scan.from(); t < scan.to(); t++) {
+            final int xi = scan.xi(t);
+            final int zi = scan.zi(t);
+            if (scan.edgeOnSeam() ? nearTileCorner(xi, zi, marginInfl) : nearTileBorder(xi, zi, marginInfl)) continue;
             final double diff = Math.abs(elev[xi * PADDED + zi] - target);
             if (diff < bestDiff) {
                 bestDiff = diff;
@@ -388,6 +442,21 @@ public final class GlobalNetworkBuilder {
         }
         if (bestX < 0) return null;
         return new double[] {bestX, bestZ};
+    }
+
+    /** Resolves the edge {@code dir} scans out of cell {@code (ccx, ccz)} into tile-local pixel
+     *  coordinates, or {@code null} when that edge falls outside the padded tile. */
+    private static ScanLine scanLineFor(int ccx, int ccz, int dir, int tileX, int tileZ) {
+        final int minXi = PAD + (ccx - tileX * 2) * COARSE_PX;
+        final int minZi = PAD + (ccz - tileZ * 2) * COARSE_PX;
+        final boolean fixedZ = (dir == 4 || dir == 5); // edge is a constant-Z line
+        final int line = fixedZ ? (dir == 4 ? minZi : minZi + COARSE_PX) : (dir == 6 ? minXi : minXi + COARSE_PX);
+        if (line < 0 || line >= PADDED) return null;
+        final boolean edgeOnSeam = (line == PAD || line == PAD + HydrologyTileGeometry.GRID);
+        final int alongMin = fixedZ ? minXi : minZi;
+        final int from = Math.max(0, alongMin);
+        final int to = Math.min(PADDED, alongMin + COARSE_PX);
+        return new ScanLine(fixedZ, line, from, to, edgeOnSeam);
     }
 
     /** Lowest interior pixel of a cell, border band excluded so a drain never lands on a shared seam. */

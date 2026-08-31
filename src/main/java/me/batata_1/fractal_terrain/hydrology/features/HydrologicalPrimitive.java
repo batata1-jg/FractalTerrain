@@ -76,9 +76,9 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
     /** Water surface offset below the bank, stepped by channel size. Static because the carve reads
      *  it at an interpolated width, not at any one primitive's. */
     static float waterLine(double channelWidth) {
-        if (channelWidth <= 1.5) return -1;
-        if (channelWidth <= 2.5) return -2;
-        return -3;
+        if (channelWidth <= HydrologyTuning.WATER_LINE_WIDTH_NARROW) return HydrologyTuning.WATER_LINE_OFFSET_NARROW;
+        if (channelWidth <= HydrologyTuning.WATER_LINE_WIDTH_MEDIUM) return HydrologyTuning.WATER_LINE_OFFSET_MEDIUM;
+        return HydrologyTuning.WATER_LINE_OFFSET_WIDE;
     }
 
     // Records compare array components by reference; these compare contents instead.

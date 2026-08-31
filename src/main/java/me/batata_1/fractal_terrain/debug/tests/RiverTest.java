@@ -11,6 +11,7 @@ import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.DebugConfig;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.Drainage;
+import me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
@@ -40,8 +41,7 @@ public class RiverTest {
 
     private static final String DEBUG_PATH = FractalTerrainConfig.DEFAULT_DEBUG_PATH + "/local_river";
 
-    private static final int GRID = 512;
-    /** {@link RiverProvider}'s padded working resolution (GRID + 1-px halo per side). */
+    /** {@link RiverProvider}'s padded working resolution ({@link HydrologyTileGeometry#GRID} + 1-px halo per side). */
     private static final int PAD = 1;
 
     /** Tiles (tx, tz) to render. */
@@ -84,15 +84,35 @@ public class RiverTest {
             LOG.warn("tile ({},{}): debugStages failed ({}); cell profile above still dumped", tx, tz, e.toString(), e);
             return;
         }
-        seeFloat(stages.flow, GRID + 2, GRID + 2, prefix + "01_flow");
-        seeFloat(maskToFloat(stages.riverMask), GRID + 2, GRID + 2, prefix + "02_river_mask");
-        seeFloat(stages.elevationFirstPass, GRID, GRID, prefix + "03_elev_first_pass");
-        seeFloat(stages.carvedElevation, GRID, GRID, prefix + "04_carved_elev");
+        seeFloat(stages.flow, HydrologyTileGeometry.GRID + 2, HydrologyTileGeometry.GRID + 2, prefix + "01_flow");
+        seeFloat(
+                maskToFloat(stages.riverMask),
+                HydrologyTileGeometry.GRID + 2,
+                HydrologyTileGeometry.GRID + 2,
+                prefix + "02_river_mask");
+        seeFloat(
+                stages.elevationFirstPass,
+                HydrologyTileGeometry.GRID,
+                HydrologyTileGeometry.GRID,
+                prefix + "03_elev_first_pass");
+        seeFloat(
+                stages.carvedElevation,
+                HydrologyTileGeometry.GRID,
+                HydrologyTileGeometry.GRID,
+                prefix + "04_carved_elev");
         // Both lists are channels of the SAME unified graph (see RiverProvider.Stages), and the local
         // trace shifts its segments by +PAD into the padded graph frame on insertion (DL-005), so both
         // need the same PAD offset subtracted for tile-local pixel coords.
-        seeFloat(rasterizeChannels(stages.channels, PAD), GRID, GRID, prefix + "05_global_channels");
-        seeFloat(rasterizeChannels(stages.localChannels, PAD), GRID, GRID, prefix + "06_local_channels");
+        seeFloat(
+                rasterizeChannels(stages.channels, PAD),
+                HydrologyTileGeometry.GRID,
+                HydrologyTileGeometry.GRID,
+                prefix + "05_global_channels");
+        seeFloat(
+                rasterizeChannels(stages.localChannels, PAD),
+                HydrologyTileGeometry.GRID,
+                HydrologyTileGeometry.GRID,
+                prefix + "06_local_channels");
         dumpDistanceField(stages, tx, tz, prefix);
         dumpFloodPlainBlend(stages, tx, tz, prefix);
         LOG.info(
@@ -102,7 +122,7 @@ public class RiverTest {
                 stages.channels.size(),
                 stages.localChannels.size());
         checkMonotonicElevations(stages.network, tx, tz);
-        ReachMetricsSampler sampler = new ReachMetricsSampler(stages.rawElevation, GRID);
+        ReachMetricsSampler sampler = new ReachMetricsSampler(stages.rawElevation, HydrologyTileGeometry.GRID);
         dumpSlopeHistogram(stages.network, sampler);
         dumpPrimitiveTree(stages, tx, tz, prefix);
     }
@@ -147,7 +167,7 @@ public class RiverTest {
             if (dist[i] < 1f) covered++;
             minDist = Math.min(minDist, dist[i]);
         }
-        seeFloat(display, GRID + 2, GRID + 2, prefix + "09_shell_dist");
+        seeFloat(display, HydrologyTileGeometry.GRID + 2, HydrologyTileGeometry.GRID + 2, prefix + "09_shell_dist");
         LOG.info(
                 "tile ({},{}): shell distance field {} of {} points inside an influence rectangle ({}%), min={}",
                 tx, tz, covered, dist.length, String.format("%.2f", 100.0 * covered / dist.length), minDist);
@@ -174,7 +194,7 @@ public class RiverTest {
             if (value > 1f) overOne++;
             max = Math.max(max, value);
         }
-        seeFloat(blend, GRID + 2, GRID + 2, prefix + "10_floodplain_blend");
+        seeFloat(blend, HydrologyTileGeometry.GRID + 2, HydrologyTileGeometry.GRID + 2, prefix + "10_floodplain_blend");
         LOG.info(
                 "tile ({},{}): floodplain blend max={} mean-over-blended={} blended={} of {} points, {} above 1 ({}%)",
                 tx,
@@ -198,10 +218,12 @@ public class RiverTest {
         Debug.primitives.debugPath = DEBUG_PATH;
         try {
             final List<HydrologicalPrimitive> primitives = stages.primitiveTree.getAllEntries();
-            final double worldOriginX = tx * (double) GRID;
-            final double worldOriginZ = tz * (double) GRID;
-            Debug.primitives.see(primitives, prefix + "07_units", GRID, 4, worldOriginX, worldOriginZ);
-            Debug.primitives.seeByRosgenType(primitives, prefix + "08_rosgen", GRID, 4, worldOriginX, worldOriginZ);
+            final double worldOriginX = tx * (double) HydrologyTileGeometry.GRID;
+            final double worldOriginZ = tz * (double) HydrologyTileGeometry.GRID;
+            Debug.primitives.see(
+                    primitives, prefix + "07_units", HydrologyTileGeometry.GRID, 4, worldOriginX, worldOriginZ);
+            Debug.primitives.seeByRosgenType(
+                    primitives, prefix + "08_rosgen", HydrologyTileGeometry.GRID, 4, worldOriginX, worldOriginZ);
             Debug.primitives.logStats(primitives, "tile (" + tx + "," + tz + ")");
         } catch (RuntimeException e) {
             LOG.warn("tile ({},{}): primitive-tree dump failed ({})", tx, tz, e.toString(), e);
@@ -309,7 +331,9 @@ public class RiverTest {
     private static List<Endpoint> downstreamPath(RiverNetwork network, Endpoint source) {
         final List<Endpoint> path = new ArrayList<>();
         Endpoint current = source;
-        for (int guard = 0; current != null && guard <= GRID * GRID; guard++) {
+        for (int guard = 0;
+                current != null && guard <= HydrologyTileGeometry.GRID * HydrologyTileGeometry.GRID;
+                guard++) {
             path.add(current);
             if (current.outgoing == -1) break;
             final Channel channel = network.getChannel(current.outgoing);
@@ -331,13 +355,14 @@ public class RiverTest {
 
     /** Rasterize each channel's spline points onto the tile grid, subtracting {@code offset} (the pad). */
     private static float[] rasterizeChannels(List<Channel> channels, int offset) {
-        final float[] grid = new float[GRID * GRID];
+        final float[] grid = new float[HydrologyTileGeometry.GRID * HydrologyTileGeometry.GRID];
         if (channels == null) return grid;
         for (Channel channel : channels) {
             for (double[] point : channel.spline.points()) {
                 final int x = (int) Math.round(point[0]) - offset;
                 final int z = (int) Math.round(point[1]) - offset;
-                if (x >= 0 && x < GRID && z >= 0 && z < GRID) grid[x * GRID + z] = 1f;
+                if (x >= 0 && x < HydrologyTileGeometry.GRID && z >= 0 && z < HydrologyTileGeometry.GRID)
+                    grid[x * HydrologyTileGeometry.GRID + z] = 1f;
             }
         }
         return grid;

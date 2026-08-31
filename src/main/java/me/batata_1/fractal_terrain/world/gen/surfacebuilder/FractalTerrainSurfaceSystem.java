@@ -142,18 +142,18 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
                 final int z = startZ + dz;
                 mutable.setX(x).setZ(z);
                 materialRuleContext.updateXZ(x, z);
-                int relief_height = (int) heightmaps.get(Types.ELEVATION, dx, dz);
+                int reliefHeight = (int) heightmaps.get(Types.ELEVATION, dx, dz);
                 int stoneDepthAbove;
                 int stoneDepthBellow;
                 int fluid_height;
                 final int sedimentLayerDepth = sedimentDepth(dx, dz, heightmaps);
 
                 for (int d = 0; d <= sedimentLayerDepth; d++) {
-                    final int y = relief_height - d;
+                    final int y = reliefHeight - d;
                     stoneDepthAbove = d + 1;
-                    stoneDepthBellow = relief_height + 128 - d;
+                    stoneDepthBellow = reliefHeight + 128 - d;
                     // 64
-                    final int seaH = 2 * seaLevel - relief_height;
+                    final int seaH = 2 * seaLevel - reliefHeight;
                     fluid_height = seaH;
                     materialRuleContext.updateY(stoneDepthAbove, stoneDepthBellow, fluid_height, x, y, z);
                     BlockState newBlockState = blockStateRule.tryApply(x, y, z);

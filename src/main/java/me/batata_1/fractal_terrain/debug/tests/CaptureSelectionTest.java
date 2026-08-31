@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry;
 import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
 import me.batata_1.fractal_terrain.hydrology.network.AtomicView;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
@@ -25,7 +26,6 @@ public class CaptureSelectionTest {
 
     private static final Logger LOG = LoggerFactory.getLogger(CaptureSelectionTest.class);
 
-    private static final int GRID = 512;
     private static final double TRIBUTARY_FLOW = 3.0;
 
     private static boolean allPassed = true;
@@ -139,7 +139,7 @@ public class CaptureSelectionTest {
                 new NodeSpec(aPts.getFirst()[0], aPts.getFirst()[1], Endpoint.Type.SOURCE),
                 new NodeSpec(aPts.getLast()[0], aPts.getLast()[1], Endpoint.Type.DRAIN));
         List<EdgeSpec> edgeSpecs = List.of(new EdgeSpec(0, 1, bPts, 20.0), new EdgeSpec(2, 3, aPts, 5.0));
-        return new Meanders(new RiverNetwork(GRID, nodeSpecs, edgeSpecs));
+        return new Meanders(new RiverNetwork(HydrologyTileGeometry.GRID, nodeSpecs, edgeSpecs));
     }
 
     // -----------------------------------------------------------------------------------------
@@ -183,7 +183,7 @@ public class CaptureSelectionTest {
                 new NodeSpec(pts.getFirst()[0], pts.getFirst()[1], Endpoint.Type.SOURCE),
                 new NodeSpec(pts.getLast()[0], pts.getLast()[1], Endpoint.Type.DRAIN));
         List<EdgeSpec> edgeSpecs = List.of(new EdgeSpec(0, 1, pts, flow));
-        return new Meanders(new RiverNetwork(GRID, nodeSpecs, edgeSpecs));
+        return new Meanders(new RiverNetwork(HydrologyTileGeometry.GRID, nodeSpecs, edgeSpecs));
     }
 
     /** A single wide horizontal trunk SOURCE(0) -> DRAIN(1) along z = 256, x in [100, 400]. */
@@ -251,7 +251,7 @@ public class CaptureSelectionTest {
                 new NodeSpec(pts1.getFirst()[0], pts1.getFirst()[1], Endpoint.Type.SOURCE),
                 new NodeSpec(pts1.getLast()[0], pts1.getLast()[1], Endpoint.Type.DRAIN));
         List<EdgeSpec> edgeSpecs = List.of(new EdgeSpec(0, 1, pts, flow), new EdgeSpec(2, 3, pts1, flow));
-        return new Meanders(new RiverNetwork(GRID, nodeSpecs, edgeSpecs));
+        return new Meanders(new RiverNetwork(HydrologyTileGeometry.GRID, nodeSpecs, edgeSpecs));
     }
 
     private static String networkSignature(Meanders sim) {

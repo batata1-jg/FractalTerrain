@@ -32,7 +32,7 @@ public final class LocalNetworkBuilder {
         final float[] gradMag = base[4];
 
         for (Endpoint node : ctx.network().getNodes()) {
-            if (node.type != Endpoint.Type.SOURCE && node.type != Endpoint.Type.DRAIN) continue;
+            if (!node.isSourceOrDrain()) continue;
             ctx.boundaryElevByNodeIdx()
                     .putIfAbsent(node.id, Math.max(0, sampleBilinear(elev, node.coord[0], node.coord[1])));
         }

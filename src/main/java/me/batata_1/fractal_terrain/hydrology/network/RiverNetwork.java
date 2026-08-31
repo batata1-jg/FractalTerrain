@@ -167,7 +167,7 @@ public final class RiverNetwork {
         final int[] specNodeAtomicId = new int[nodeSpecs.size()];
         for (int i = 0; i < nodeSpecs.size(); i++) {
             final NodeSpec ns = nodeSpecs.get(i);
-            final boolean boundary = ns.type() == Endpoint.Type.SOURCE || ns.type() == Endpoint.Type.DRAIN;
+            final boolean boundary = ns.type().isSourceOrDrain();
             final double ownFlow = (ns.type() == Endpoint.Type.SOURCE) ? sourceSeed[i] : FLOW_PER_CELL;
             final double anchor = (ns.type() == Endpoint.Type.DRAIN) ? drainAnchor[i] : -1;
             specNodeAtomicId[i] =
@@ -250,7 +250,7 @@ public final class RiverNetwork {
                     continue;
                 }
                 final Endpoint ep = nodes.get(endpointNodeId);
-                final boolean boundary = ep.type == Endpoint.Type.SOURCE || ep.type == Endpoint.Type.DRAIN;
+                final boolean boundary = ep.isSourceOrDrain();
                 // ownFlow: SOURCE carries its captured seed (ep.boundaryFlow); DRAIN/JUNCTION carry the
                 // per-cell constant. anchorFlow: DRAIN carries its anchor (ep.boundaryFlow), else unused.
                 final double ownFlow = (ep.type == Endpoint.Type.SOURCE) ? ch.flow[0] : FLOW_PER_CELL;
@@ -304,7 +304,7 @@ public final class RiverNetwork {
         final TreeSet<Integer> structural = new TreeSet<>();
         for (int id = 0; id < n; id++) {
             final Endpoint.Type role = atomic.role(id);
-            if (role == Endpoint.Type.SOURCE || role == Endpoint.Type.DRAIN || indegree[id] >= 2) {
+            if ((role != null && role.isSourceOrDrain()) || indegree[id] >= 2) {
                 structural.add(id);
             }
         }
@@ -316,7 +316,7 @@ public final class RiverNetwork {
         int maxPreserved = -1;
         for (int id : structural) {
             final Endpoint.Type role = atomic.role(id);
-            if (role == Endpoint.Type.SOURCE || role == Endpoint.Type.DRAIN) {
+            if (role != null && role.isSourceOrDrain()) {
                 canonicalIdOf[id] = atomic.canonicalId(id);
                 maxPreserved = Math.max(maxPreserved, atomic.canonicalId(id));
             }
@@ -391,8 +391,7 @@ public final class RiverNetwork {
         final Endpoint existing = nodes.get(canonicalId);
         if (existing != null) return existing;
         final Endpoint.Type role = atomic.role(atomicId);
-        final Endpoint.Type type =
-                (role == Endpoint.Type.SOURCE || role == Endpoint.Type.DRAIN) ? role : Endpoint.Type.JUNCTION;
+        final Endpoint.Type type = (role != null && role.isSourceOrDrain()) ? role : Endpoint.Type.JUNCTION;
         final Endpoint ep = new Endpoint(canonicalId, type, pos.clone());
         // Restore the carried seed/anchor so a subsequent viewAtomic() reads the same ownFlow/anchorFlow
         // (keeps the seam round trip idempotent for flow, mirroring the SOURCE/DRAIN id preservation).

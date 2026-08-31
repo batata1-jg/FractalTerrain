@@ -9,11 +9,11 @@ import me.batata_1.fractal_terrain.storage.TileKey;
 public class NonIntersectingInfiniteTensor extends Storage<FloatTensor> {
 
     private final TensorWindow outWindow;
-    private final Function<TileKey, FloatTensor> entry_creating_function;
+    private final Function<TileKey, FloatTensor> entryCreatingFunction;
 
     public NonIntersectingInfiniteTensor(String path, String name, int[] shape, Function<TileKey, FloatTensor> f) {
         super(path, name, shape.length, new FloatTensor(new int[] {1}));
-        this.entry_creating_function = f;
+        this.entryCreatingFunction = f;
         this.outWindow = new TensorWindow(shape);
     }
 
@@ -25,7 +25,7 @@ public class NonIntersectingInfiniteTensor extends Storage<FloatTensor> {
         try {
             super.loadInto(key, promise);
         } catch (EntryNotLoadableException miss) {
-            final FloatTensor entry = entry_creating_function.apply(key);
+            final FloatTensor entry = entryCreatingFunction.apply(key);
             persistAndRecord(key, entry);
             promise.complete(entry);
         }

@@ -43,20 +43,20 @@ public class ReliefProvider {
 
     private static final Logger LOG = getLogger(ReliefProvider.class);
 
-    private final NonIntersectingInfiniteTensor final_tiles;
+    private final NonIntersectingInfiniteTensor finalTiles;
 
     public ReliefProvider(String path) {
-        final_tiles = new NonIntersectingInfiniteTensor(
+        finalTiles = new NonIntersectingInfiniteTensor(
                 path, "final_relief_tiles", new int[] {RELIEF_CHANNELS, INNER, INNER}, this::buildReliefTile);
     }
 
     public NonIntersectingInfiniteTensor getInfiniteTensor() {
-        return final_tiles;
+        return finalTiles;
     }
 
     /** The full computed relief tile {@code [RELIEF_CHANNELS, 512, 512]} for tile {@code (tileX, tileZ)}. */
     public FloatTensor getReliefTile(int tileX, int tileZ) {
-        return final_tiles.getEntry(new int[] {0, tileX, tileZ});
+        return finalTiles.getEntry(new int[] {0, tileX, tileZ});
     }
 
     // -------------------------------------------------------------------------
@@ -108,7 +108,7 @@ public class ReliefProvider {
 
     public Float get_entry(final int[] mutableCoords, final int ch) {
         mutableCoords[FractalTerrainConfig.CH] = ch;
-        return final_tiles.getValue(mutableCoords);
+        return finalTiles.getValue(mutableCoords);
     }
 
     public Float getElev(int[] xz) {

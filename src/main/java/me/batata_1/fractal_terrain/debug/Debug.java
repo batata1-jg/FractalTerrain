@@ -36,7 +36,7 @@ public class Debug {
         return LoggerFactory.getLogger("fractal_terrain/" + clazz.getName());
     }
 
-    public static void isNan(double[] t) {
+    public static void assertNoNaN(double[] t) {
         for (double v : t)
             if (Double.isNaN(v)) throw new RuntimeException("this double[] is nan " + Arrays.toString(t));
     }

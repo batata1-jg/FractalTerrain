@@ -163,8 +163,7 @@ class ReachRosgenClassifierTest {
         }
     }
 
-    /** Alternating confined and open valley bands, so consecutive reaches straddle an ER threshold and
-     *  the dead band has something to suppress. */
+    /** Alternating confined and open valley bands, so consecutive reaches straddle an ER threshold. */
     private static float[] alternatingValleyField(int pinchPeriod, double narrowHalfWidth, float wallHeight) {
         final float[] elev = new float[SIDE * SIDE];
         for (int x = 0; x < SIDE; x++) {

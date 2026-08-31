@@ -45,7 +45,7 @@ public class RiverProvider {
     private static final int RECENT_TILE_CAPACITY = 4;
 
     private final NonIntersectingSpatialIndex<ImmutableRTree<HydrologicalPrimitive>> primitives;
-    private final NonIntersectingInfiniteTensor hydrology_relief;
+    private final NonIntersectingInfiniteTensor hydrologyRelief;
 
     /** Last few {@link #buildTile} results, so a tile whose primitives and carved elevation are both
      *  requested does not re-run the trace/carve pipeline twice. A miss only costs a recompute —
@@ -68,7 +68,7 @@ public class RiverProvider {
                 new ImmutableRTree<>(List.of(), HydrologicalPrimitive.PROTOTYPE),
                 key -> buildTile(key.get(0), key.get(1), null).primitive(),
                 PRIMITIVE_CACHE_LIMIT_BYTES);
-        hydrology_relief = new NonIntersectingInfiniteTensor(
+        hydrologyRelief = new NonIntersectingInfiniteTensor(
                 path, "hydrology_relief", new int[] {1, GRID, GRID}, key -> buildTile(key.get(X), key.get(Z), null)
                         .tile());
     }
@@ -165,7 +165,7 @@ public class RiverProvider {
     private float[] carveRivers(GlobalNetworkBuilder.Result ctx, float[] elev, @Nullable Stages stages) {
 
         for (Endpoint node : ctx.network().getNodes()) {
-            if (node.type != Endpoint.Type.SOURCE && node.type != Endpoint.Type.DRAIN) continue;
+            if (!node.isSourceOrDrain()) continue;
             ctx.boundaryElevByNodeIdx()
                     .putIfAbsent(node.id, Math.max(0, sampleBilinear(elev, node.coord[0], node.coord[1])));
         }
@@ -180,7 +180,7 @@ public class RiverProvider {
         }
 
         for (Endpoint node : ctx.network().getNodes()) {
-            if (node.type != Endpoint.Type.SOURCE && node.type != Endpoint.Type.DRAIN) continue;
+            if (!node.isSourceOrDrain()) continue;
             ctx.boundaryElevByNodeIdx().put(node.id, Math.max(0, sampleBilinear(elev, node.coord[0], node.coord[1])));
         }
         ChannelElevationAssigner.assign(ctx.network(), ctx.boundaryElevByNodeIdx(), elev);
@@ -231,7 +231,7 @@ public class RiverProvider {
     /** Clears both stores' caches. */
     public void clearCaches() {
         primitives.clear();
-        hydrology_relief.clear();
+        hydrologyRelief.clear();
         recentTiles.clear();
     }
 
@@ -288,7 +288,7 @@ public class RiverProvider {
      *  {@code ReliefProvider}'s channel 0, so the published relief carries the same cut the primitives
      *  in {@link #getPrimitiveTree} were stamped along. */
     public FloatTensor getCarvedElevationTile(int tileX, int tileZ) {
-        return hydrology_relief.getEntry(new int[] {0, tileX, tileZ});
+        return hydrologyRelief.getEntry(new int[] {0, tileX, tileZ});
     }
 
     // -------------------------------------------------------------------------

@@ -14,7 +14,7 @@ import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 
 public class TensorVisualizer {
 
-    public static void isNan(OnnxTensor t) {
+    public static void assertNoNaN(OnnxTensor t) {
         float[] arr = t.getFloatBuffer().array();
         for (float v : arr) if (Float.isNaN(v)) throw new RuntimeException("this tensor is nan");
     }

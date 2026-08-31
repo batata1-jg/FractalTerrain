@@ -13,6 +13,7 @@ import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.DebugConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
+import me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
 import me.batata_1.fractal_terrain.hydrology.providers.GlobalRiverProvider;
@@ -42,7 +43,6 @@ public class SpatialIndexBenchmark {
 
     private static final String DEBUG_PATH = FractalTerrainConfig.DEFAULT_DEBUG_PATH + "/spatial_index_benchmark";
 
-    private static final int GRID = 512;
     private static final int TILE_X = -2;
     private static final int TILE_Z = -2;
 
@@ -83,8 +83,8 @@ public class SpatialIndexBenchmark {
         // World-pixel origin of the benchmark tile. The provider indexes primitives in the WORLD frame, so
         // this is not just for the provider-level benchmarks below: EVERY structure and query point here
         // lives in that frame, including the index-level ones that used to be tile-local.
-        final double worldOriginX = TILE_X * (double) GRID;
-        final double worldOriginZ = TILE_Z * (double) GRID;
+        final double worldOriginX = TILE_X * (double) HydrologyTileGeometry.GRID;
+        final double worldOriginZ = TILE_Z * (double) HydrologyTileGeometry.GRID;
 
         // The legacy structure over the same primitives: a point quadtree + the per-primitive reach re-test. Its
         // bounds must span the tile's WORLD extent, or every primitive falls outside the root square.
@@ -92,12 +92,19 @@ public class SpatialIndexBenchmark {
         for (final HydrologicalPrimitive primitive : allPrimitives) primitivePoints.add(new PrimitivePoint(primitive));
         final ImmutableQuadTree<PrimitivePoint> primitiveQuadTree = new ImmutableQuadTree<>(
                 new double[] {worldOriginX - 16, worldOriginZ - 16},
-                new double[] {worldOriginX + GRID + 16, worldOriginZ + GRID + 16},
+                new double[] {
+                    worldOriginX + HydrologyTileGeometry.GRID + 16, worldOriginZ + HydrologyTileGeometry.GRID + 16
+                },
                 primitivePoints);
 
         // Snapshot for the human: the same imagery LocalRiverTest dumps (world coords → tile canvas).
         Debug.primitives.see(
-                allPrimitives, "benchmark_units_tx" + TILE_X + "_tz" + TILE_Z, GRID, 4, worldOriginX, worldOriginZ);
+                allPrimitives,
+                "benchmark_units_tx" + TILE_X + "_tz" + TILE_Z,
+                HydrologyTileGeometry.GRID,
+                4,
+                worldOriginX,
+                worldOriginZ);
         Debug.primitives.logStats(allPrimitives, "tile (" + TILE_X + "," + TILE_Z + ")");
 
         crossCheckInfluenceQueries(allPrimitives, primitiveQuadTree, primitiveRTree, worldOriginX, worldOriginZ);
@@ -180,8 +187,8 @@ public class SpatialIndexBenchmark {
         final List<HydrologicalPrimitive> stabBuffer = new ArrayList<>(256);
         int quadTreeDeviations = 0;
         for (int i = 0; i < CROSS_CHECK_POINTS; i++) {
-            pt[0] = worldOriginX + rng.nextDouble() * GRID;
-            pt[1] = worldOriginZ + rng.nextDouble() * GRID;
+            pt[0] = worldOriginX + rng.nextDouble() * HydrologyTileGeometry.GRID;
+            pt[1] = worldOriginZ + rng.nextDouble() * HydrologyTileGeometry.GRID;
 
             final Set<HydrologicalPrimitive> bruteForceHits = new HashSet<>();
             for (final HydrologicalPrimitive primitive : allPrimitives) {
@@ -231,8 +238,8 @@ public class SpatialIndexBenchmark {
         final Random rng = new Random(seed);
         final double[] pt = new double[2];
         return () -> {
-            pt[0] = worldOriginX + rng.nextDouble() * GRID;
-            pt[1] = worldOriginZ + rng.nextDouble() * GRID;
+            pt[0] = worldOriginX + rng.nextDouble() * HydrologyTileGeometry.GRID;
+            pt[1] = worldOriginZ + rng.nextDouble() * HydrologyTileGeometry.GRID;
             return pt;
         };
     }
@@ -240,7 +247,7 @@ public class SpatialIndexBenchmark {
     /** Deterministic uniform world-frame points in the tile's inner region (PROVIDER_MARGIN from borders). */
     private static PointSupplier worldInnerPoints(long seed, double worldOriginX, double worldOriginZ) {
         final Random rng = new Random(seed);
-        final double span = GRID - 2 * PROVIDER_MARGIN;
+        final double span = HydrologyTileGeometry.GRID - 2 * PROVIDER_MARGIN;
         final double[] pt = new double[2];
         return () -> {
             pt[0] = worldOriginX + PROVIDER_MARGIN + rng.nextDouble() * span;

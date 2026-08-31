@@ -9,4 +9,4 @@ the rules being pinned.
 | --------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------- |
 | `RosgenKeyTest.java`              | Key ordering and totality, including saturated entrenchment     | Changing type boundaries or the key's branch order            |
 | `ReachMetricsSamplerTest.java`    | Slope and entrenchment measured over synthetic valley fields    | Changing transect bounds, step sizing, or the slope floor     |
-| `ReachRosgenClassifierTest.java`  | Reach segmentation and downstream-first graph ordering          | Changing the graph walk or cross-junction dead-band carry     |
+| `ReachRosgenClassifierTest.java`  | Reach segmentation and downstream-first graph ordering          | Changing the graph walk or reach segmentation                 |

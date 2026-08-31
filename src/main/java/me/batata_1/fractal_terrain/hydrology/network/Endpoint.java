@@ -16,7 +16,11 @@ public class Endpoint {
     public enum Type {
         SOURCE,
         DRAIN,
-        JUNCTION
+        JUNCTION;
+
+        public boolean isSourceOrDrain() {
+            return this == SOURCE || this == DRAIN;
+        }
     }
 
     public final int id;
@@ -46,7 +50,7 @@ public class Endpoint {
     }
 
     public boolean isSourceOrDrain() {
-        return type == Type.SOURCE || type == Type.DRAIN;
+        return type.isSourceOrDrain();
     }
 
     @Override

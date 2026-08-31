@@ -112,7 +112,6 @@ public final class HydrologyTuning {
 
     public static double influence(double width) {
         return Math.clamp(width * 5, MIN_INFLUENCE_RADIUS, MAX_INFLUENCE_RADIUS);
-        // return Math.clamp(0.844803 * Math.pow(width + 0.990178, 1.52681) + 0.167833, 1, MAX_INFLUENCE_RADIUS);
     }
 
     /** Influence radius for a channel point whose bed sits {@code deltaElev} below the surface, so a deeply
@@ -133,6 +132,21 @@ public final class HydrologyTuning {
     public static double maxNativeWidth() {
         return MAX_WIDTH;
     }
+
+    /** Width threshold below which {@code HydrologicalPrimitive.waterLine} returns {@link #WATER_LINE_OFFSET_NARROW}. */
+    public static final double WATER_LINE_WIDTH_NARROW = 1.5;
+
+    /** Width threshold below which {@code HydrologicalPrimitive.waterLine} returns {@link #WATER_LINE_OFFSET_MEDIUM}. */
+    public static final double WATER_LINE_WIDTH_MEDIUM = 2.5;
+
+    /** Water-surface offset (native px) below the bank for a channel narrower than {@link #WATER_LINE_WIDTH_NARROW}. */
+    public static final float WATER_LINE_OFFSET_NARROW = -1;
+
+    /** Water-surface offset (native px) below the bank for a channel narrower than {@link #WATER_LINE_WIDTH_MEDIUM}. */
+    public static final float WATER_LINE_OFFSET_MEDIUM = -2;
+
+    /** Water-surface offset (native px) below the bank for any channel at or above {@link #WATER_LINE_WIDTH_MEDIUM}. */
+    public static final float WATER_LINE_OFFSET_WIDE = -3;
 
     // ──────────────────────────────────────────────────────────────────────────
     // Rosgen Level-I classification (see hydrology/rosgen/ — ReachRosgenClassifier, RosgenKey, RosgenProfile)
@@ -168,12 +182,6 @@ public final class HydrologyTuning {
 
     /** Splits narrow-deep ({@code E G}) from wide-shallow ({@code C F}); calibrate {@code W_REF}, not this. */
     public static final double WD_NARROW = 1.0;
-
-    /** Rosgen's published ER tolerance — the dead band that suppresses type flicker at a threshold. */
-    public static final double ER_TOLERANCE = 0.2;
-
-    /** Rosgen's published W/D tolerance — the dead band that suppresses type flicker at a threshold. */
-    public static final double WD_TOLERANCE = 2.0;
 
     /** Sets the flood-prone stage as a multiple of mean bankfull depth. Rule of thumb, not sourced. */
     public static final double DEPTH_MAX_FACTOR = 1;

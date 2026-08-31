@@ -21,10 +21,6 @@ import org.slf4j.LoggerFactory;
 /**
  * Runs the Rosgen key over the whole graph, segmenting channels into reaches and measuring each.
  *
- * <p>Walks downstream-first so the dead band carries across junctions. {@code RiverNetwork.update} splits
- * a trunk at every confluence, so a per-channel walk would reset the band at each one and scallop the
- * floodplain edge the band exists to prevent.
- *
  * <p>Classifies per reach, not per point: transects are cache-hostile and a detailed tile emits tens of
  * thousands of points, while Rosgen's own reach definition is ~20 channel widths.
  */
@@ -45,7 +41,7 @@ public final class ReachRosgenClassifier implements ChannelTyper {
         this.centreline = new Centreline(network);
         typesByChannelId.clear();
         for (Channel ch : orderDownstreamFirst(network)) {
-            typesByChannelId.put(ch.channelId, classifyChannel(ch, seedFor(ch, network)));
+            typesByChannelId.put(ch.channelId, classifyChannel(ch));
         }
     }
 
@@ -55,12 +51,11 @@ public final class ReachRosgenClassifier implements ChannelTyper {
         if (cached != null && cached.length == channel.numPts()) return cached;
         // A channel resampled after prepare(), or one absent from the prepared network: classify it
         // standalone rather than returning a mis-sized array.
-        return classifyChannel(channel, null);
+        return classifyChannel(channel);
     }
 
-    /** Orders channels so each comes after the one it flows into, which {@link #seedFor} requires.
-     *  Dangling components with no reachable drain are rooted at their lowest id rather than their true
-     *  outlet, so the dead band resets at those boundaries — see {@code README.md}. */
+    /** Orders channels so each comes after the one it flows into. Dangling components with no reachable
+     *  drain are rooted at their lowest id rather than their true outlet — see {@code README.md}. */
     private static List<Channel> orderDownstreamFirst(RiverNetwork network) {
         final List<Channel> order = new ArrayList<>();
         final ArrayDeque<Channel> frontier = new ArrayDeque<>();
@@ -78,9 +73,8 @@ public final class ReachRosgenClassifier implements ChannelTyper {
         // Any channel not reachable from a drain (a dangling branch) still needs a type. Sorted by id:
         // getChannels() is a view over a HashMap, and unlike the drain-rooted expansion above — where a
         // channel is always polled after the channel it flows into, whatever order its siblings arrive in
-        // — a dangling branch can be classified before its own downstream neighbour, so this order
-        // reaches the output through seedFor. RiverNetwork.viewAtomic and detectCrossings sort for the
-        // same reason.
+        // — a dangling branch can be classified before its own downstream neighbour. RiverNetwork.viewAtomic
+        // and detectCrossings sort by id for the same determinism reason.
         final List<Channel> remaining = new ArrayList<>(network.getChannels());
         remaining.sort(Comparator.comparingInt(ch -> ch.channelId));
         for (Channel ch : remaining) {
@@ -107,29 +101,20 @@ public final class ReachRosgenClassifier implements ChannelTyper {
         }
     }
 
-    /** The downstream neighbour's committed type, or null at a drain; the dead band's carry-in. */
-    private RosgenType seedFor(Channel ch, RiverNetwork network) {
-        final Endpoint end = network.getNode(ch.endNodeId);
-        if (end == null || end.outgoing == -1) return null;
-        final RosgenType[] downstream = typesByChannelId.get(end.outgoing);
-        return (downstream == null || downstream.length == 0) ? null : downstream[0];
-    }
-
-    /** One type per spline point, walked downstream-to-upstream so the dead band flows the same
-     *  direction as the graph walk. */
-    private RosgenType[] classifyChannel(Channel ch, RosgenType seed) {
+    /** One type per spline point, each reach classified independently from its own measured metrics. */
+    private RosgenType[] classifyChannel(Channel ch) {
         final int n = ch.numPts();
         final RosgenType[] types = new RosgenType[n];
         if (n == 0) return types;
 
         final List<int[]> reaches = segment(ch);
-        RosgenType previous = seed;
+        // Walked last-to-first: segment()'s ranges are inclusive at both ends, so adjacent reaches share a
+        // boundary index. The earlier reach writes it last and therefore owns it.
         for (int r = reaches.size() - 1; r >= 0; r--) {
             final int[] reach = reaches.get(r);
             final ReachMetrics metrics = measure(ch, reach[0], reach[1]);
-            final RosgenType committed = RosgenKey.applyDeadBand(metrics, RosgenKey.classify(metrics), previous);
+            final RosgenType committed = RosgenKey.classify(metrics);
             for (int i = reach[0]; i <= reach[1]; i++) types[i] = committed;
-            previous = committed;
         }
         // Any point no reach covered stays null. segment() is meant to cover every index, so a null here
         // is a segmentation gap; leaving it null keeps it visible (white in the type PNG, and never

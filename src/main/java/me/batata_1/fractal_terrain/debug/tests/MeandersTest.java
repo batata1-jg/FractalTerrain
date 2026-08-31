@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Set;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
+import me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry;
 import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
@@ -18,8 +19,6 @@ import org.slf4j.LoggerFactory;
 public class MeandersTest {
 
     private static final Logger LOG = LoggerFactory.getLogger(MeandersTest.class);
-
-    private static final int GRID = 512;
 
     public static void main(String[] args) {
         testCrossingBecomesConfluence();
@@ -53,7 +52,7 @@ public class MeandersTest {
                 new NodeSpec(aPts.getFirst()[0], aPts.getFirst()[1], Endpoint.Type.SOURCE),
                 new NodeSpec(aPts.getLast()[0], aPts.getLast()[1], Endpoint.Type.DRAIN));
         List<EdgeSpec> edgeSpecs = List.of(new EdgeSpec(0, 1, bPts, bFlow), new EdgeSpec(2, 3, aPts, aFlow));
-        return new Meanders(new RiverNetwork(GRID, nodeSpecs, edgeSpecs));
+        return new Meanders(new RiverNetwork(HydrologyTileGeometry.GRID, nodeSpecs, edgeSpecs));
     }
 
     // -----------------------------------------------------------------------------------------
@@ -76,7 +75,7 @@ public class MeandersTest {
                 new NodeSpec(pts1.getFirst()[0], pts1.getFirst()[1], Endpoint.Type.SOURCE),
                 new NodeSpec(pts1.getLast()[0], pts1.getLast()[1], Endpoint.Type.DRAIN));
         List<EdgeSpec> edgeSpecs = List.of(new EdgeSpec(0, 1, pts, flow), new EdgeSpec(2, 3, pts1, flow));
-        Meanders sim = new Meanders(new RiverNetwork(GRID, nodeSpecs, edgeSpecs));
+        Meanders sim = new Meanders(new RiverNetwork(HydrologyTileGeometry.GRID, nodeSpecs, edgeSpecs));
 
         double x0 = pts.getFirst()[0], z0 = pts.getFirst()[1];
 

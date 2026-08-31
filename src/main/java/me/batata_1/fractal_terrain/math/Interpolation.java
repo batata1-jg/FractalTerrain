@@ -8,7 +8,7 @@ public class Interpolation {
     private static final Function<Double, Double> stepBilinear = x -> x;
     public static final Function<Double, Double> stepSmoothstep = x -> 3 * (x * x) - 2 * (x * x * x);
 
-    private final float interpolation_scale;
+    private final float interpolationScale;
     private final Function<int[], Float> f;
 
     public static double lerp(double start, double end, double weight) {
@@ -16,7 +16,7 @@ public class Interpolation {
     }
 
     public Interpolation(final float interpolationScale, final Function<int[], Float> f) {
-        interpolation_scale = interpolationScale;
+        this.interpolationScale = interpolationScale;
         this.f = f;
     }
 
@@ -73,8 +73,8 @@ public class Interpolation {
     // xz real coords
     private double interpolate(float x, float z, final Function<Double, Double> step) {
 
-        x /= interpolation_scale;
-        z /= interpolation_scale;
+        x /= interpolationScale;
+        z /= interpolationScale;
 
         final int[] xs = {(int) Math.floor(x), (int) Math.ceil(x)};
         final int[] zs = {(int) Math.floor(z), (int) Math.ceil(z)};

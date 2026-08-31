@@ -70,7 +70,7 @@ public class Channel {
     public double[] computeLocalRates() {
         final double[] res = new double[spline.points().size()];
         for (int t = 0; t < spline.points().size(); t++) {
-            res[t] = Math.pow(widthAt(t)+1,4) * spline.curvature(t);
+            res[t] = Math.pow(widthAt(t) + 1, 4) * spline.curvature(t);
         }
         return res;
     }

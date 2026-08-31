@@ -62,7 +62,7 @@ public final class Meanders extends ChannelMigrator {
     private static double[] computeMigrationRates(Channel ch, double dx) {
         final double sinuosity = ch.computeSinuosity();
         final double[] localRates = ch.computeLocalRates();
-        Debug.isNan(localRates);
+        Debug.assertNoNaN(localRates);
         final double sigmaToTheMinus2over3 = Math.pow(sinuosity, -TWO_THIRDS);
         final double alpha = 2 * FRICTION / ch.depth();
         final double expTerm = Math.exp(-alpha * dx);
@@ -74,7 +74,7 @@ public final class Meanders extends ChannelMigrator {
             integralTerm *= expTerm;
             migRates[i] = migRate * sigmaToTheMinus2over3;
         }
-        Debug.isNan(migRates);
+        Debug.assertNoNaN(migRates);
         return migRates;
     }
 
@@ -96,7 +96,7 @@ public final class Meanders extends ChannelMigrator {
             final double gradScale = Math.exp(-sampleGradMag(point[0], point[1]) / GRAD_REF);
             final double factor = -rate * borderDamping(point[0], point[1], ch.dischargeWidth()) * gradScale;
             final double[] migratedPoint = {point[0] + normal[0] * factor, point[1] + normal[1] * factor};
-            Debug.isNan(migratedPoint);
+            Debug.assertNoNaN(migratedPoint);
             migratedPoints.add(migratedPoint);
         }
         ch.spline = QuinticHermiteSpline.createCatmullRom(migratedPoints);
@@ -113,7 +113,7 @@ public final class Meanders extends ChannelMigrator {
             final double gradScale = Math.exp(-sampleGradMag(point[0], point[1]) / GRAD_REF);
             final double[] migVector = VectorOps.scale(ch.spline.normal(i), -rate * gradScale);
             double[] newPt = VectorOps.add(point, migVector);
-            Debug.isNan(newPt);
+            Debug.assertNoNaN(newPt);
             newPts[i] = newPt;
         }
         return newPts;

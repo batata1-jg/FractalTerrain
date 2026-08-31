@@ -87,7 +87,7 @@ public class BiomeProvider {
     // Fields
     // -------------------------------------------------------------------------
 
-    private final NonIntersectingInfiniteTensor final_tiles;
+    private final NonIntersectingInfiniteTensor finalTiles;
     public final Climate.Sampler sampler;
 
     private final DensityFunction erosionDensity;
@@ -143,7 +143,7 @@ public class BiomeProvider {
     // -------------------------------------------------------------------------
 
     public BiomeProvider(String path) {
-        final_tiles = new NonIntersectingInfiniteTensor(
+        finalTiles = new NonIntersectingInfiniteTensor(
                 path, "final_biome_tiles", new int[] {TILE_CHANNELS, 512, 512}, buildTile());
         // Vanilla Climate.Sampler order: temperature, humidity, continentalness, erosion, depth, weirdness.
         // Each channel produces its own density via its creator (DEPTH's is the vertical y-gradient).
@@ -161,7 +161,7 @@ public class BiomeProvider {
 
         weirdnessInterpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
             mutablePos[CH] = BiomeChannels.WEIRDNESS.channel;
-            return final_tiles.getValue(mutablePos);
+            return finalTiles.getValue(mutablePos);
         });
     }
 
@@ -300,7 +300,7 @@ public class BiomeProvider {
         public BiomeProviderDensity(final float scale, final int ch) {
             interpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
                 mutablePos[CH] = ch;
-                return FractalTerrainInstance.getBiomeProvider().final_tiles.getValue(mutablePos);
+                return FractalTerrainInstance.getBiomeProvider().finalTiles.getValue(mutablePos);
             });
         }
 
@@ -350,7 +350,7 @@ public class BiomeProvider {
         public ErosionDensity(final float scale, final int ch) {
             interpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
                 mutablePos[CH] = ch;
-                return FractalTerrainInstance.getBiomeProvider().final_tiles.getValue(mutablePos);
+                return FractalTerrainInstance.getBiomeProvider().finalTiles.getValue(mutablePos);
             });
         }
 
@@ -417,12 +417,12 @@ public class BiomeProvider {
             valueInterpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
                 mutablePos[CH] = ch;
                 return Math.abs(
-                        FractalTerrainInstance.getBiomeProvider().final_tiles.getValue(mutablePos));
+                        FractalTerrainInstance.getBiomeProvider().finalTiles.getValue(mutablePos));
             });
             signInterpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
                 mutablePos[CH] = ch;
                 return Math.signum(
-                        FractalTerrainInstance.getBiomeProvider().final_tiles.getValue(mutablePos));
+                        FractalTerrainInstance.getBiomeProvider().finalTiles.getValue(mutablePos));
             });
         }
 
@@ -478,14 +478,14 @@ public class BiomeProvider {
     // -------------------------------------------------------------------------
 
     public NonIntersectingInfiniteTensor getInfiniteTensor() {
-        return final_tiles;
+        return finalTiles;
     }
 
     /** Raw channel read backing the climate heightmap types. Deliberately uninterpolated — the
      *  heightmap supplies its own, as it does for the relief getters. Clobbers {@code xz[CH]}. */
     private Float biomeChannel(final int[] xz, final int ch) {
         xz[CH] = ch;
-        return final_tiles.getValue(xz);
+        return finalTiles.getValue(xz);
     }
 
     /** Continentalness ({@link BiomeChannels#CONTINENTALNESS}) at scaled-grid {@code xz}. */

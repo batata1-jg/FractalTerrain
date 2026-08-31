@@ -31,7 +31,7 @@ public final class ChannelElevationAssigner {
 
     public static void assign(RiverNetwork network, Map<Integer, Double> boundaryElevByNodeIdx, float[] decodedElev) {
         for (Endpoint endpoint : network.getNodes()) {
-            if (endpoint.type == Endpoint.Type.SOURCE || endpoint.type == Endpoint.Type.DRAIN) {
+            if (endpoint.isSourceOrDrain()) {
                 endpoint.elevation = boundaryElevByNodeIdx.getOrDefault(endpoint.id, 0.0);
             }
         }
@@ -53,7 +53,7 @@ public final class ChannelElevationAssigner {
         // calculate the correct elevations for the junctions, and sources
         while (!ready.isEmpty()) {
             final Channel ch = network.getChannel(ready.poll());
-            if (ch == null) continue;
+            if (ch == null) throw new IllegalArgumentException("channel is null");
             final Endpoint startPoint = network.getNode(ch.startNodeId);
             if (startPoint == null) throw new IllegalArgumentException("startPoint is null");
             final double endPointElev = drainElevByNodeId.getOrDefault(ch.endNodeId, Double.NaN);
@@ -62,11 +62,10 @@ public final class ChannelElevationAssigner {
             if (Double.isNaN(startElev)) throw new IllegalArgumentException("startElev is NaN");
             double lastPointElev = startElev;
             for (double[] p : ch.spline.points()) {
-                //                LOG.info("[{},{}]", endPointElev,lastPointElev);
                 lastPointElev = Math.clamp(sampleBilinear(decodedElev, p[0], p[1]), endPointElev, lastPointElev);
             }
             final Endpoint endEndpoint = network.getNode(ch.endNodeId);
-            if (endEndpoint == null) continue;
+            if (endEndpoint == null) throw new IllegalArgumentException("endEndpoint is null");
             if (endEndpoint.type == Endpoint.Type.JUNCTION) {
                 junctionElev.merge(endEndpoint.id, lastPointElev, Math::min);
                 final int remaining = pendingIncoming.merge(endEndpoint.id, -1, Integer::sum);

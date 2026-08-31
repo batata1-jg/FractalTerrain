@@ -24,7 +24,7 @@ public final class DebugConfig {
     public static final boolean TEST_INSTANCE = ModConfig.readBoolean("debug.test_instance", false);
     public static final boolean DEBUG_RIVER_NET = ModConfig.readBoolean("debug.river_net", false);
     public static final boolean DEBUG_MANAGE_COLLISIONS = ModConfig.readBoolean("debug.manage_collisions", false);
-    public static final boolean DEBUG_CROSSING_WINNER = false;
+    public static final boolean DEBUG_CROSSING_WINNER = ModConfig.readBoolean("debug.crossing_winner", false);
 
     /** When true, every migration step dumps per-stage network PNGs into {@code step_<n>/} folders.
      *  Mutable, unlike the flags above: the debug harnesses set it per run, and it lives here rather
@@ -50,9 +50,12 @@ public final class DebugConfig {
     public static final Infinite3DVisualizer.DebugPaintModes VIZ_PAINT_CONTROL_MODE =
             Infinite3DVisualizer.DebugPaintModes.HYDRO_ZONES;
 
-    /** Generation steps suppressed while the visualizer is active. */
-    public static final boolean DISABLE_BIOME_DECORATION = true || !DISABLE_3D_VISUALIZER;
+    /** Unconditionally suppressed, independent of the visualizer: biome/structure decoration is
+     *  known-broken and can crash — see README.md. */
+    public static final boolean DISABLE_BIOME_DECORATION = true;
 
-    public static final boolean DISABLE_SURFACE_STEP = false || !DISABLE_3D_VISUALIZER;
+    /** Suppressed while the visualizer is active. */
+    public static final boolean DISABLE_SURFACE_STEP = !DISABLE_3D_VISUALIZER;
+
     public static final boolean TEST_HEIGHT_MAP = ModConfig.readBoolean("debug.test_height_map", false);
 }

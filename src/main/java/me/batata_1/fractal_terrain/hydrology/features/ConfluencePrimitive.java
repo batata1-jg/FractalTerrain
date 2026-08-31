@@ -31,6 +31,19 @@ public record ConfluencePrimitive(
         RiverPrimitive.RosgenType[] rosgenTypes)
         implements SpatialIndexCircle, HydrologicalPrimitive {
 
+    // Every downstream reader (h, channelContains, waterLine, widestArm) indexes all five arrays by the
+    // same arm index, with nothing else enforcing that they line up.
+    public ConfluencePrimitive {
+        if (angles.length != curvatures.length
+                || angles.length != widths.length
+                || angles.length != rimElevations.length
+                || angles.length != rosgenTypes.length) {
+            throw new IllegalArgumentException("ConfluencePrimitive arm arrays must have equal length: angles="
+                    + angles.length + ", curvatures=" + curvatures.length + ", widths=" + widths.length
+                    + ", rimElevations=" + rimElevations.length + ", rosgenTypes=" + rosgenTypes.length);
+        }
+    }
+
     static final ConfluencePrimitive PROTOTYPE = new ConfluencePrimitive(
             new double[2],
             0,
