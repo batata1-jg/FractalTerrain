@@ -23,6 +23,7 @@ import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingSpatialIndex;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 import me.batata_1.fractal_terrain.relief.DecoderChannels;
+import me.batata_1.fractal_terrain.storage.TileKey;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
 
@@ -96,6 +97,10 @@ public class RiverProvider {
         return data;
     }
 
+    public List<HydrologicalPrimitive> getPrimitivesInTile(TileKey key) {
+        return primitives.getEntry(key).getAllEntries();
+    }
+
     private record HydrologyResult(ImmutableRTree<HydrologicalPrimitive> primitive, FloatTensor tile) {}
 
     private GlobalRiverProvider globalRiverProvider() {
@@ -131,8 +136,8 @@ public class RiverProvider {
         LocalNetworkBuilder.build(result, base, stages);
 
         // base[4] (refinedGrad) is read-only for this consumer — Meanders only samples it, never mutates it.
-        var lateralErosionSim = new Meanders(result.network(), base[4]);
-        lateralErosionSim.simulate(25);
+       // var lateralErosionSim = new Meanders(result.network(), base[4]);
+        //lateralErosionSim.simulate(25);
 
         final float[] carvedElev = carveRivers(result, base[0].clone(), stages);
 

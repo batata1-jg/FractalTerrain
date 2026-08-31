@@ -56,42 +56,6 @@ public final class HydrologyProfileInprinter {
                 elevation);
     }
 
-    /**
-     * The bed trench cut into the shell {@link #carveRiverInfluence} already carved into {@code
-     * elevation}, run once per tile after the pipeline's final {@code ChannelElevationAssigner.assign}.
-     * Shares {@link #SHELL_BUFFERS} with the shell carve and clobbers its {@code dist} field, so any
-     * {@link #shellDistanceField()} snapshot must already have been taken.
-     */
-    public static void carveRiverBed(float[] elevation, List<HydrologicalPrimitive> primitives, int paddedSize) {
-        if (primitives.isEmpty()) return;
-        final GridBuffers buffers = SHELL_BUFFERS.get();
-        buffers.ensure(paddedSize, maxLutLen(paddedSize, 1.0));
-
-        computeRiverGrid(
-                0,
-                0,
-                1.0,
-                paddedSize,
-                primitives,
-                buffers.acc,
-                buffers.typeMask,
-                buffers.dist,
-                buffers.lut,
-                buffers.perpRow,
-                buffers.perpCol,
-                buffers.tangRow,
-                buffers.tangCol,
-                elevation);
-
-        final int points = paddedSize * paddedSize;
-        for (int i = 0; i < points; i++) {
-            final float w = (float) Math.pow(Math.clamp(buffers.acc[3 * i + 2], 0, 1), 0.1);
-            if (w > 0) {
-                elevation[i] = (1 - w) * elevation[i] + w * Math.min(buffers.acc[3 * i], elevation[i]);
-            }
-        }
-    }
-
     // -------------------------------------------------------------------------
     // Per-pixel refinement (zone-priority merge)
     // -------------------------------------------------------------------------

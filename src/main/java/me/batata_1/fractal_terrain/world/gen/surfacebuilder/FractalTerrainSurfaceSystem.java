@@ -75,7 +75,7 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
     }
 
     private float humidityBasedFalloff(int x, int z, FractalTerrainHeightmap h) {
-        float humidity = h.get(Types.VEGETATION, x, z);
+        float humidity = h.get(Types.HUMIDITY, x, z);
         return (Math.clamp(humidity, -1, 1) + 1) * 10;
     }
 
@@ -90,7 +90,7 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
     }
 
     private float correctHighHumidity(float depth, int x, int z, FractalTerrainHeightmap h) {
-        float humidity = h.get(Types.VEGETATION, x, z);
+        float humidity = h.get(Types.HUMIDITY, x, z);
         if (HumidityLevel.of(humidity).equals(HumidityLevel.LEVEL_4)) return Math.max(depth, 1);
         return depth;
     }
@@ -136,25 +136,29 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
         BlockPos.MutableBlockPos mutable2 = new BlockPos.MutableBlockPos();
         final int bottomY = chunk.getMinBuildHeight();
 
+        float[] relief_heightmap = (float[]) heightmaps.get(Types.ELEVATION);
+        float[] water_heightmap = (float[]) heightmaps.get(Types.WATER_HEIGHT);
+
+
         for (int dx = 0; dx < 16; ++dx) {
             for (int dz = 0; dz < 16; ++dz) {
                 final int x = startX + dx;
                 final int z = startZ + dz;
                 mutable.setX(x).setZ(z);
                 materialRuleContext.updateXZ(x, z);
-                int reliefHeight = (int) heightmaps.get(Types.ELEVATION, dx, dz);
+                int relief_height = (int) relief_heightmap[16*dx+dz];
                 int stoneDepthAbove;
                 int stoneDepthBellow;
                 int fluid_height;
                 final int sedimentLayerDepth = sedimentDepth(dx, dz, heightmaps);
 
                 for (int d = 0; d <= sedimentLayerDepth; d++) {
-                    final int y = reliefHeight - d;
+                    final int y = relief_height - d;
                     stoneDepthAbove = d + 1;
-                    stoneDepthBellow = reliefHeight + 128 - d;
+                    stoneDepthBellow = relief_height + 128 - d;
                     // 64
-                    final int seaH = 2 * seaLevel - reliefHeight;
-                    fluid_height = seaH;
+                    final int fh = (int) (water_heightmap[16*dx+dz]  + seaLevel - relief_height);
+                    fluid_height = fh;
                     materialRuleContext.updateY(stoneDepthAbove, stoneDepthBellow, fluid_height, x, y, z);
                     BlockState newBlockState = blockStateRule.tryApply(x, y, z);
                     if (newBlockState != null) {
