@@ -83,36 +83,11 @@ public abstract class InfiniteTensor {
         for (int d = 0; d < n; d++) outShape[d] = end[d] - start[d];
         FloatTensor output = new FloatTensor(outShape);
 
-        int[] lo = outputWindow.getLowestIntersection(pixelRange);
-        int[] hi = outputWindow.getHighestIntersection(pixelRange);
         if (storage == null) throw new IllegalStateException("storage was not initialized");
-        // Reused across windows — iteration is sequential/single-threaded, and each is fully
-        // recomputed per window before use, so hoisting these out of the loop is safe.
-        final int[][] isect = new int[n][2];
-        final int[][] srcRegion = new int[n][2];
-        final int[][] dstRegion = new int[n][2];
-        iterateWindows(lo, hi, windowIndex -> {
+        SliceGeometry.forEachIntersection(outputWindow, pixelRange, (windowIndex, dstRegion, srcRegion) -> {
             final FloatTensor cached = getEntryOrRecompute(windowIndex);
             if (cached == null) return;
-
-            final int[][] wBounds = outputWindow.getBounds(windowIndex);
-
-            // Intersection of the window bounds with the requested pixel range.
-            for (int d = 0; d < n; d++) {
-                isect[d][0] = Math.max(pixelRange[d][0], wBounds[d][0]);
-                isect[d][1] = Math.min(pixelRange[d][1], wBounds[d][1]);
-                if (isect[d][0] >= isect[d][1]) return; // no overlap
-            }
-
-            for (int d = 0; d < n; d++) {
-                srcRegion[d][0] = isect[d][0] - wBounds[d][0];
-                srcRegion[d][1] = isect[d][1] - wBounds[d][0];
-                dstRegion[d][0] = isect[d][0] - pixelRange[d][0];
-                dstRegion[d][1] = isect[d][1] - pixelRange[d][0];
-            }
-
             updateOutput(output, cached, dstRegion, srcRegion);
-            // output.addFrom(cached, dstRegion, srcRegion);
         });
 
         storage.evictIfNeeded(cacheLimitBytes);
