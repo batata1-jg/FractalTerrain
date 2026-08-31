@@ -4,8 +4,6 @@ import static me.batata_1.fractal_terrain.FractalTerrainInstance.getBiomeProvide
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.getReliefProvider;
 
 import java.util.function.Function;
-import me.batata_1.fractal_terrain.FractalTerrainConfig;
-import me.batata_1.fractal_terrain.math.Interpolation;
 import net.minecraft.world.level.ChunkPos;
 
 /**
@@ -24,27 +22,26 @@ import net.minecraft.world.level.ChunkPos;
 public record FractalTerrainHeightmap(Object[] data) {
 
     /**
-     * The heightmap kinds. Each carries its per-pixel source channel (a {@code Function<int[], Float>}
-     * over {@code [ch, x, z]}, matching the relief/biome getter contract) composed into the
-     * chunk-filling {@link #creator}.
+     * The heightmap kinds. Each carries the provider call that fills a whole chunk's channel in one
+     * pass, so the cache computes once per chunk rather than once per block.
      *
-     * <p>Relief channels (elevation, gradients, residual) read the {@code ReliefProvider} getters; the
-     * climate channels (continentalness…weirdness) read the matching {@code BiomeProvider} getters. The
-     * climate/gradient channels are point-sampled and bilinearly upscaled via {@link #fillBilinear};
-     * {@link #ELEVATION} uses smoothstep ({@link #fillSmoothStep}) to match the legacy {@code getHeight}.
+     * <p>Relief channels (elevation, gradients, residual) come from {@code ReliefProvider}, the climate
+     * channels from {@code BiomeProvider}; each provider takes one tensor slice over the chunk's ~5x5
+     * pixel window and upscales it. Each entry resolves its provider per call rather than capturing one,
+     * because a world reload replaces the {@code GenerationContext} the providers live in.
      */
     public enum Types {
-        ELEVATION(pos -> fillSmoothStep(pos, getReliefProvider()::getElev)),
-        REFINED_GRAD(pos -> fillBilinear(pos, getReliefProvider()::getRefinedGrad)),
-        RES(pos -> fillBilinear(pos, getReliefProvider()::getRes)),
-        BLURRED_ELEV(pos -> fillBilinear(pos, getReliefProvider()::getBlurredElev)),
-        GRAD_X(pos -> fillBilinear(pos, getReliefProvider()::getGradX)),
-        GRAD_Y(pos -> fillBilinear(pos, getReliefProvider()::getGradY)),
-        CONTINENTALNESS(pos -> fillBilinear(pos, getBiomeProvider()::getContinentalness)),
-        EROSION(getBiomeProvider()::fillErosion),
-        TEMPERATURE(pos -> fillBilinear(pos, getBiomeProvider()::getTemperature)),
-        VEGETATION(pos -> fillBilinear(pos, getBiomeProvider()::getVegetation)),
-        WEIRDNESS(getBiomeProvider()::fillWeirdness),
+        ELEVATION(pos -> getReliefProvider().fillElev(pos)),
+        REFINED_GRAD(pos -> getReliefProvider().fillRefinedGrad(pos)),
+        RES(pos -> getReliefProvider().fillRes(pos)),
+        BLURRED_ELEV(pos -> getReliefProvider().fillBlurredElev(pos)),
+        GRAD_X(pos -> getReliefProvider().fillGradX(pos)),
+        GRAD_Y(pos -> getReliefProvider().fillGradY(pos)),
+        CONTINENTALNESS(pos -> getBiomeProvider().fillContinentalness(pos)),
+        EROSION(pos -> getBiomeProvider().fillErosion(pos)),
+        TEMPERATURE(pos -> getBiomeProvider().fillTemperature(pos)),
+        VEGETATION(pos -> getBiomeProvider().fillVegetation(pos)),
+        WEIRDNESS(pos -> getBiomeProvider().fillWeirdness(pos)),
         // Special (like ELEVATION): zero-filled here, then populated by the second pass
         // (PopulateNoiseStep#fineGrainedPrimitivePass) as carve(x,z) − pre-carve elevation. Negative where the
         // river carved below the original terrain; the surface painter places water there.
@@ -60,46 +57,6 @@ public record FractalTerrainHeightmap(Object[] data) {
 
         WATER_HEIGHT(pos -> new float[1 << 8]),
         ;
-
-        private static float[] fillBilinear(ChunkPos chunkPos, Function<int[], Float> f) {
-            final float[] heights = new float[1 << 8];
-            final int startingX = chunkPos.getMinBlockX();
-            final int startingZ = chunkPos.getMinBlockZ();
-            final int[] mutableCoords = new int[3];
-            final float[] mutableNodes = new float[4];
-            for (int dx = 0; dx < 16; dx++) {
-                for (int dz = 0; dz < 16; dz++) {
-                    mutableCoords[0] = dx + startingX;
-                    mutableCoords[1] = dz + startingZ;
-                    heights[(dx << 4) + dz] = (float) Interpolation.interpolateBilinear(
-                            (dx + startingX) / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION,
-                            (dz + startingZ) / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION,
-                            mutableCoords,
-                            mutableNodes,
-                            f);
-                }
-            }
-            return heights;
-        }
-
-        private static float[] fillSmoothStep(ChunkPos chunkPos, Function<int[], Float> f) {
-            final float[] heights = new float[1 << 8];
-            final int startingX = chunkPos.getMinBlockX();
-            final int startingZ = chunkPos.getMinBlockZ();
-            final int[] mutableCoords = new int[3];
-            final float[] mutableNodes = new float[4];
-            for (int dx = 0; dx < 16; dx++) {
-                for (int dz = 0; dz < 16; dz++) {
-                    heights[(dx << 4) + dz] = (float) Interpolation.interpolateSmoothStep(
-                            (dx + startingX) / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION,
-                            (dz + startingZ) / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION,
-                            mutableCoords,
-                            mutableNodes,
-                            f);
-                }
-            }
-            return heights;
-        }
 
         private final Function<ChunkPos, Object> creator;
 

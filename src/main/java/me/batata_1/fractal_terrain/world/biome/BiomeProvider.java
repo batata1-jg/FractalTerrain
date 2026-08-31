@@ -11,6 +11,7 @@ import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.math.Interpolation;
+import me.batata_1.fractal_terrain.storage.ChunkChannelFill;
 import me.batata_1.fractal_terrain.storage.TileKey;
 import net.minecraft.util.KeyDispatchDataCodec;
 import net.minecraft.world.level.ChunkPos;
@@ -295,6 +296,21 @@ public class BiomeProvider {
         return res;
     }
 
+    /** Continentalness for the 16×16 blocks of {@code pos}, indexed {@code x*16 + z}. */
+    public float[] fillContinentalness(ChunkPos pos) {
+        return ChunkChannelFill.fillBilinear(finalTiles, BiomeChannels.CONTINENTALNESS.channel, pos);
+    }
+
+    /** Temperature for the 16×16 blocks of {@code pos}, indexed {@code x*16 + z}. */
+    public float[] fillTemperature(ChunkPos pos) {
+        return ChunkChannelFill.fillBilinear(finalTiles, BiomeChannels.TEMPERATURE.channel, pos);
+    }
+
+    /** Vegetation/humidity for the 16×16 blocks of {@code pos}, indexed {@code x*16 + z}. */
+    public float[] fillVegetation(ChunkPos pos) {
+        return ChunkChannelFill.fillBilinear(finalTiles, BiomeChannels.HUMIDITY.channel, pos);
+    }
+
     // -------------------------------------------------------------------------
     // Nested density functions
     // -------------------------------------------------------------------------
@@ -493,21 +509,6 @@ public class BiomeProvider {
     private Float biomeChannel(final int[] xz, final int ch) {
         xz[CH] = ch;
         return finalTiles.getValue(xz);
-    }
-
-    /** Continentalness ({@link BiomeChannels#CONTINENTALNESS}) at scaled-grid {@code xz}. */
-    public Float getContinentalness(final int[] xz) {
-        return biomeChannel(xz, BiomeChannels.CONTINENTALNESS.channel);
-    }
-
-    /** Temperature ({@link BiomeChannels#TEMPERATURE}) at scaled-grid {@code xz}. */
-    public Float getTemperature(final int[] xz) {
-        return biomeChannel(xz, BiomeChannels.TEMPERATURE.channel);
-    }
-
-    /** Vegetation/humidity ({@link BiomeChannels#HUMIDITY}) at scaled-grid {@code xz}. */
-    public Float getVegetation(final int[] xz) {
-        return biomeChannel(xz, BiomeChannels.HUMIDITY.channel);
     }
 
     /** Bilinearly-interpolated weirdness at block {@code (x, z)} (scale-5 sampling of channel 4). */

@@ -12,7 +12,9 @@ import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.math.DifferenceOfGaussians;
+import me.batata_1.fractal_terrain.storage.ChunkChannelFill;
 import me.batata_1.fractal_terrain.storage.TileKey;
+import net.minecraft.world.level.ChunkPos;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
@@ -122,32 +124,43 @@ public class ReliefProvider {
         return finalTiles.getValue(mutableCoords);
     }
 
+    /** Kept for {@code Infinite3DVisualizer}, the only caller left once the heightmap reads slices. */
     public Float getElev(int[] xz) {
         return get_entry(xz, 0);
     }
 
-    public Float getBlurredElev(final int[] xz) {
-        return get_entry(xz, 1);
-    }
-
-    public Float getGradX(final int[] xz) {
-        return get_entry(xz, 2);
-    }
-
-    public Float getGradY(final int[] xz) {
-        return get_entry(xz, 3);
-    }
-
-    public Float getRefinedGrad(final int[] xz) {
-        return get_entry(xz, 4);
-    }
-
+    /** Dead ahead of this change and not this change's to remove. */
     public Float getLowFreqGrad(final int[] xz) {
         return get_entry(xz, 5);
     }
 
-    public Float getRes(final int[] xz) {
-        return get_entry(xz, 6);
+    // -------------------------------------------------------------------------
+    // Per-chunk channel producers (consumed by FractalTerrainHeightmap)
+    // -------------------------------------------------------------------------
+
+    /** River-carved elevation for the 16x16 blocks of {@code pos}. Smoothstep, matching legacy getHeight. */
+    public float[] fillElev(ChunkPos pos) {
+        return ChunkChannelFill.fillSmoothStep(finalTiles, 0, pos);
+    }
+
+    public float[] fillBlurredElev(ChunkPos pos) {
+        return ChunkChannelFill.fillBilinear(finalTiles, 1, pos);
+    }
+
+    public float[] fillGradX(ChunkPos pos) {
+        return ChunkChannelFill.fillBilinear(finalTiles, 2, pos);
+    }
+
+    public float[] fillGradY(ChunkPos pos) {
+        return ChunkChannelFill.fillBilinear(finalTiles, 3, pos);
+    }
+
+    public float[] fillRefinedGrad(ChunkPos pos) {
+        return ChunkChannelFill.fillBilinear(finalTiles, 4, pos);
+    }
+
+    public float[] fillRes(ChunkPos pos) {
+        return ChunkChannelFill.fillBilinear(finalTiles, 6, pos);
     }
 
     // -------------------------------------------------------------------------
