@@ -7,6 +7,7 @@ import com.google.common.base.Function;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
@@ -97,6 +98,8 @@ public class BiomeProvider {
     @TestOnly
     private final Interpolation weirdnessInterpolation;
 
+
+
     // -------------------------------------------------------------------------
     // Channel → density wiring
     // -------------------------------------------------------------------------
@@ -177,19 +180,18 @@ public class BiomeProvider {
             final float[] grad = reliefTensor.copyRange(4 << 18, 5 << 18);
             final float[] lowFreqGrad = reliefTensor.copyRange(5 << 18, 6 << 18);
             final float[] res = reliefTensor.copyRange(6 << 18, 7 << 18);
-            final float[] vegPdf = new float[TILE_PIXELS];
             final float[] climate = pipeline.getClimate(x, z, elev);
             final int[] coarseDistShore = computeCoarseDistShore(x, z);
             // While the visualizer runs, also capture the per-pixel dist-to-shore for the debug channel.
             final float[] distShoreDebug = DEBUG_DSHORE_CHANNEL_ON ? new float[TILE_PIXELS] : null;
+            var humidityFromRiver = humidityFromBodiesOfWater(key);
             final float[] biomeVariables = ClimateVariableTransform.transform(
-                    x, z, elev, grad, lowFreqGrad, climate, res, vegPdf, coarseDistShore, distShoreDebug);
+                    x, z, elev, grad, lowFreqGrad, climate, res,humidityFromRiver, coarseDistShore, distShoreDebug);
 
             // Channel layout: [0..4] biome params, [5] river-humidity PDF (reserved, unused by the
             // sampler), [6] debug dist-to-shore (only while the visualizer runs).
             final float[] entries = new float[TILE_CHANNELS * TILE_PIXELS];
-            System.arraycopy(biomeVariables, 0, entries, 0, PARAM_CHANNELS * TILE_PIXELS);
-            System.arraycopy(vegPdf, 0, entries, PARAM_CHANNELS * TILE_PIXELS, TILE_PIXELS);
+            System.arraycopy(biomeVariables, 0, entries, 0, (PARAM_CHANNELS+1) * TILE_PIXELS);
             if (distShoreDebug != null) {
                 System.arraycopy(distShoreDebug, 0, entries, DEBUG_DSHORE_CHANNEL * TILE_PIXELS, TILE_PIXELS);
             }
@@ -256,18 +258,17 @@ public class BiomeProvider {
 
     /** Dead: no call site, and the body is commented out, so it returns all zeros.
      *  Intended to raise humidity near rivers. */
-    private static float[] riverHumidity(int tileX, int tileZ) {
-        final RiverProvider localRivers = FractalTerrainInstance.getRiverProvider();
-        final float[] vegPdf = new float[TILE_PIXELS];
-        final int blockOriginX = tileX << 9;
-        final int blockOriginZ = tileZ << 9;
+    private static float[] humidityFromBodiesOfWater(TileKey key) {
+        final var primitives = FractalTerrainInstance.getRiverProvider().getPrimitivesInTile(key);
+        primitives.sort(HydrologicalPrimitive.comparator);
+        final var riverH = new float[TILE_PIXELS];
         for (int ix = 0; ix < 512; ix++) {
             for (int iz = 0; iz < 512; iz++) {
                 // final double dist = localRivers.nearestRiverDistance(blockOriginX + ix, blockOriginZ + iz);
                 // vegPdf[ix * 512 + iz] = (dist == Double.MAX_VALUE) ? 0f : (float) Math.exp(-dist / HUMIDITY_FALLOFF);
             }
         }
-        return vegPdf;
+        return new float[TILE_PIXELS];
     }
 
     // -------------------------------------------------------------------------
@@ -502,6 +503,10 @@ public class BiomeProvider {
     public Float getVegetation(final int[] xz) {
         return biomeChannel(xz, BiomeChannels.HUMIDITY.channel);
     }
+
+    public Float getVegPdf(int[] xz) {
+        xz[CH] = 5;
+        return final_tiles.getValue(xz);}
 
     /** Bilinearly-interpolated weirdness at block {@code (x, z)} (scale-5 sampling of channel 4). */
     @TestOnly

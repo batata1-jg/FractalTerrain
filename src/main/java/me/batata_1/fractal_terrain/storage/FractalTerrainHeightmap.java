@@ -36,14 +36,11 @@ public record FractalTerrainHeightmap(Object[] data) {
     public enum Types {
         ELEVATION(pos -> fillSmoothStep(pos, getReliefProvider()::getElev)),
         REFINED_GRAD(pos -> fillBilinear(pos, getReliefProvider()::getRefinedGrad)),
-        RES(pos -> fillBilinear(pos, getReliefProvider()::getRes)),
-        BLURRED_ELEV(pos -> fillBilinear(pos, getReliefProvider()::getBlurredElev)),
-        GRAD_X(pos -> fillBilinear(pos, getReliefProvider()::getGradX)),
-        GRAD_Y(pos -> fillBilinear(pos, getReliefProvider()::getGradY)),
+        VEGETATION_PDF( pos -> fillBilinear(pos,getBiomeProvider()::getVegPdf)),
         CONTINENTALNESS(pos -> fillBilinear(pos, getBiomeProvider()::getContinentalness)),
         EROSION(getBiomeProvider()::fillErosion),
         TEMPERATURE(pos -> fillBilinear(pos, getBiomeProvider()::getTemperature)),
-        VEGETATION(pos -> fillBilinear(pos, getBiomeProvider()::getVegetation)),
+        HUMIDITY(pos -> fillBilinear(pos, getBiomeProvider()::getVegetation)),
         WEIRDNESS(getBiomeProvider()::fillWeirdness),
         // Special (like ELEVATION): zero-filled here, then populated by the second pass
         // (PopulateNoiseStep#fineGrainedPrimitivePass) as carve(x,z) − pre-carve elevation. Negative where the

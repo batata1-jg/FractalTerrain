@@ -3,10 +3,11 @@ package me.batata_1.fractal_terrain.world.gen.surfacebuilder;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import java.util.Objects;
-import me.batata_1.fractal_terrain.FractalTerrainInstance;
+
 import me.batata_1.fractal_terrain.mixin.MaterialRuleContextAccessor;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
+import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmapCacheAccessor;
 import me.batata_1.fractal_terrain.world.biome.parameters.Continentalness;
 import me.batata_1.fractal_terrain.world.biome.parameters.ErosionLevel;
 import me.batata_1.fractal_terrain.world.biome.parameters.HumidityLevel;
@@ -75,7 +76,7 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
     }
 
     private float humidityBasedFalloff(int x, int z, FractalTerrainHeightmap h) {
-        float humidity = h.get(Types.VEGETATION, x, z);
+        float humidity = h.get(Types.HUMIDITY, x, z);
         return (Math.clamp(humidity, -1, 1) + 1) * 10;
     }
 
@@ -90,7 +91,7 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
     }
 
     private float correctHighHumidity(float depth, int x, int z, FractalTerrainHeightmap h) {
-        float humidity = h.get(Types.VEGETATION, x, z);
+        float humidity = h.get(Types.HUMIDITY, x, z);
         if (HumidityLevel.of(humidity).equals(HumidityLevel.LEVEL_4)) return Math.max(depth, 1);
         return depth;
     }
@@ -125,7 +126,7 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
         final BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
         final ChunkPos chunkPos = chunk.getPos();
         final FractalTerrainHeightmap heightmaps =
-                FractalTerrainInstance.getHeightmapCache().getOrCompute(chunkPos);
+                FractalTerrainHeightmapCacheAccessor.get(chunkPos);
         int startX = chunkPos.getMinBlockX();
         int startZ = chunkPos.getMinBlockZ();
         BlockColumn blockColumn = new SurfaceBuilderBlockCollum(chunk, mutable, chunkPos);
@@ -136,13 +137,17 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
         BlockPos.MutableBlockPos mutable2 = new BlockPos.MutableBlockPos();
         final int bottomY = chunk.getMinBuildHeight();
 
+        float[] relief_heightmap = (float[]) heightmaps.get(Types.ELEVATION);
+        float[] water_heightmap = (float[]) heightmaps.get(Types.WATER_HEIGHT);
+
+
         for (int dx = 0; dx < 16; ++dx) {
             for (int dz = 0; dz < 16; ++dz) {
                 final int x = startX + dx;
                 final int z = startZ + dz;
                 mutable.setX(x).setZ(z);
                 materialRuleContext.updateXZ(x, z);
-                int relief_height = (int) heightmaps.get(Types.ELEVATION, dx, dz);
+                int relief_height = (int) relief_heightmap[16*dx+dz];
                 int stoneDepthAbove;
                 int stoneDepthBellow;
                 int fluid_height;
@@ -153,8 +158,8 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
                     stoneDepthAbove = d + 1;
                     stoneDepthBellow = relief_height + 128 - d;
                     // 64
-                    final int seaH = 2 * seaLevel - relief_height;
-                    fluid_height = seaH;
+                    final int fh = (int) (water_heightmap[16*dx+dz]  + seaLevel - relief_height);
+                    fluid_height = fh;
                     materialRuleContext.updateY(stoneDepthAbove, stoneDepthBellow, fluid_height, x, y, z);
                     BlockState newBlockState = blockStateRule.tryApply(x, y, z);
                     if (newBlockState != null) {
