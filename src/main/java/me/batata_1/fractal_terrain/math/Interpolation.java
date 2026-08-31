@@ -70,6 +70,40 @@ public class Interpolation {
         return v0 * (1 - fx) + v1 * fx;
     }
 
+    /** Bilinear sample of a pre-sliced window, allocation-free. Replaces four tensor lookups per pixel
+     *  on the chunk-fill path; {@code px}/{@code pz} are global pixel coords, the window origin is
+     *  subtracted only at the index. Unclamped — the caller sizes the window to cover floor..ceil. */
+    public static double sampleWindowBilinear(
+            float[] data, float px, float pz, int originX, int originZ, int rowStride) {
+        final int colLo = ((int) Math.floor(px) - originX) * rowStride;
+        final int colHi = ((int) Math.ceil(px) - originX) * rowStride;
+        final int rowLo = (int) Math.floor(pz) - originZ;
+        final int rowHi = (int) Math.ceil(pz) - originZ;
+        final double deltaX = px - Math.floor(px);
+        final double deltaZ = pz - Math.floor(pz);
+        return Mth.lerp2(
+                deltaX, deltaZ, data[colLo + rowLo], data[colHi + rowLo], data[colLo + rowHi], data[colHi + rowHi]);
+    }
+
+    /** Smoothstep counterpart to {@link #sampleWindowBilinear}; the elevation channel uses this one. */
+    public static double sampleWindowSmoothStep(
+            float[] data, float px, float pz, int originX, int originZ, int rowStride) {
+        final int colLo = ((int) Math.floor(px) - originX) * rowStride;
+        final int colHi = ((int) Math.ceil(px) - originX) * rowStride;
+        final int rowLo = (int) Math.floor(pz) - originZ;
+        final int rowHi = (int) Math.ceil(pz) - originZ;
+        final double deltaX = smoothStep(px - Math.floor(px));
+        final double deltaZ = smoothStep(pz - Math.floor(pz));
+        return Mth.lerp2(
+                deltaX, deltaZ, data[colLo + rowLo], data[colHi + rowLo], data[colLo + rowHi], data[colHi + rowHi]);
+    }
+
+    /** Unboxed twin of {@link #stepSmoothstep}; the expression is duplicated verbatim so the two cannot
+     *  drift and the window samplers stay bit-identical to the per-pixel path. */
+    private static double smoothStep(double x) {
+        return 3 * (x * x) - 2 * (x * x * x);
+    }
+
     // xz real coords
     private double interpolate(float x, float z, final Function<Double, Double> step) {
 
