@@ -129,11 +129,6 @@ public class ReliefProvider {
         return get_entry(xz, 0);
     }
 
-    /** Dead ahead of this change and not this change's to remove. */
-    public Float getLowFreqGrad(final int[] xz) {
-        return get_entry(xz, 5);
-    }
-
     // -------------------------------------------------------------------------
     // Per-chunk channel producers (consumed by FractalTerrainHeightmap)
     // -------------------------------------------------------------------------
