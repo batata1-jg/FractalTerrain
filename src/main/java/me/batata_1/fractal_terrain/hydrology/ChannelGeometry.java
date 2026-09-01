@@ -2,13 +2,13 @@ package me.batata_1.fractal_terrain.hydrology;
 
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
-import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
+import me.batata_1.fractal_terrain.hydrology.profile.RiverInfluenceCarve;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 
 /**
  * The single authority for channel cross-section geometry shared across the hydrology pipeline: the bed
  * half-width, the empirical depth-from-width law, and the channel-overlap test. Centralizing these here
- * keeps the carve ({@link HydrologyProfileInprinter}), paint
+ * keeps the carve ({@link RiverInfluenceCarve}), paint
  * ({@link me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfilePainter}), meander
  * ({@link Channel} /
  * {@link RiverNetwork}) and profile

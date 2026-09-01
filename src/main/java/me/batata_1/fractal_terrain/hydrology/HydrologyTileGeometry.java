@@ -33,7 +33,7 @@ public final class HydrologyTileGeometry {
     /**
      * The shared {@link InfluenceSampler} every tile-pipeline collect site queries against {@code elev},
      * clamped so a primitive's rotated footprint fits inside the padded tile instead of running off the
-     * grid and getting silently truncated by {@code HydrologyProfileInprinter}'s AABB clip.
+     * grid and getting silently truncated by {@code RiverInfluenceCarve}'s AABB clip.
      */
     public static InfluenceSampler influenceSampler(float[] elev) {
         return (x, z, bedElev, width, normal, type) -> {

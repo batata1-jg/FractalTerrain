@@ -229,7 +229,7 @@ public class Infinite3DVisualizer {
 
     private static final BlockState NOT_RIVER = Blocks.BLACK_CONCRETE.defaultBlockState();
 
-    /** Preview of what {@code HydrologyProfileInprinter} will carve at {@code (xx, zz)}: composites the
+    /** Preview of what {@code RiverInfluenceCarve} will carve at {@code (xx, zz)}: composites the
      *  deepest zone across covering {@link RiverPrimitive}s, but returns black on any non-river primitive in range. */
     public BlockState debugHydroZones(int xx, int y, int zz) {
         final double[] pt = mutableCoordsXZ.get();

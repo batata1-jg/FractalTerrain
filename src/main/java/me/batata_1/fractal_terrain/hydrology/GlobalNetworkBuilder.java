@@ -17,7 +17,7 @@ import me.batata_1.fractal_terrain.hydrology.meanders.*;
 import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
-import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
+import me.batata_1.fractal_terrain.hydrology.profile.RiverInfluenceCarve;
 import me.batata_1.fractal_terrain.hydrology.providers.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.rosgen.ReachRosgenClassifier;
 
@@ -118,7 +118,7 @@ public final class GlobalNetworkBuilder {
 
         ChannelElevationAssigner.assign(network, boundaryElevByNodeIdx, elevCarvedGlobalOnly);
 
-        HydrologyProfileInprinter.carveRiverInfluence(
+        RiverInfluenceCarve.carveRiverInfluence(
                 elevCarvedGlobalOnly, collect(network, typer, elevCarvedGlobalOnly), PADDED);
 
         return new Result(

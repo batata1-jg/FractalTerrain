@@ -16,7 +16,7 @@ import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
-import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
+import me.batata_1.fractal_terrain.hydrology.profile.RiverInfluenceCarve;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import me.batata_1.fractal_terrain.hydrology.rosgen.ReachRosgenClassifier;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
@@ -178,10 +178,10 @@ public class RiverProvider {
         ChannelElevationAssigner.assign(ctx.network(), ctx.boundaryElevByNodeIdx(), elev);
 
         final List<HydrologicalPrimitive> primitives = collect(ctx.network(), ctx.typer(), elev);
-        HydrologyProfileInprinter.carveRiverInfluence(elev, primitives, PADDED);
+        RiverInfluenceCarve.carveRiverInfluence(elev, primitives, PADDED);
 
         if (stages != null && !primitives.isEmpty()) {
-            stages.distanceField = Arrays.copyOf(HydrologyProfileInprinter.shellDistanceField(), PADDED * PADDED);
+            stages.distanceField = Arrays.copyOf(RiverInfluenceCarve.shellDistanceField(), PADDED * PADDED);
             stages.floodPlainBlend = null;
         }
 
@@ -267,7 +267,7 @@ public class RiverProvider {
     }
 
     /**
-     * Every primitive influencing {@code pt}, unordered — feeds {@link HydrologyProfileInprinter}'s flat
+     * Every primitive influencing {@code pt}, unordered — feeds {@code HydrologyProfileInprinter}'s flat
      * distance-weighted merge. {@code extraRadius} inflates the circles so the per-chunk prefetch can
      * serve a whole chunk from one query. Returns indexed instances; callers must not mutate them.
      */

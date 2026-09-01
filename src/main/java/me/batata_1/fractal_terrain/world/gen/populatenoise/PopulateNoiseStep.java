@@ -7,6 +7,7 @@ import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
+import me.batata_1.fractal_terrain.hydrology.profile.RiverInfluenceCarve;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
 import net.minecraft.world.level.ChunkPos;
@@ -31,9 +32,9 @@ public class PopulateNoiseStep {
     private static final double GRID_RESOLUTION = 1.0 / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION;
 
     /** One instance of this class serves every chunk-generation thread, so the carve buffers cannot be fields. */
-    private static final ThreadLocal<HydrologyProfileInprinter.GridBuffers> BUFFERS = ThreadLocal.withInitial(() -> {
-        final HydrologyProfileInprinter.GridBuffers buffers = new HydrologyProfileInprinter.GridBuffers();
-        buffers.ensure(GRID_SIZE, HydrologyProfileInprinter.maxLutLen(GRID_SIZE, GRID_RESOLUTION));
+    private static final ThreadLocal<RiverInfluenceCarve.GridBuffers> BUFFERS = ThreadLocal.withInitial(() -> {
+        final RiverInfluenceCarve.GridBuffers buffers = new RiverInfluenceCarve.GridBuffers();
+        buffers.ensure(GRID_SIZE, RiverInfluenceCarve.maxLutLen(GRID_SIZE, GRID_RESOLUTION));
         return buffers;
     });
 
@@ -69,9 +70,9 @@ public class PopulateNoiseStep {
         final List<HydrologicalPrimitive> primitives =
                 imprinter.prefetchChunk(chunkCenterPixelX, chunkCenterPixelZ, chunkRadiusPx);
 
-        final HydrologyProfileInprinter.GridBuffers buffers = BUFFERS.get();
+        final RiverInfluenceCarve.GridBuffers buffers = BUFFERS.get();
         final float[] acc = buffers.acc;
-        HydrologyProfileInprinter.computeRiverGrid(
+        RiverInfluenceCarve.computeRiverGrid(
                 chunkPos.getMinBlockX() / scale,
                 chunkPos.getMinBlockZ() / scale,
                 GRID_RESOLUTION,

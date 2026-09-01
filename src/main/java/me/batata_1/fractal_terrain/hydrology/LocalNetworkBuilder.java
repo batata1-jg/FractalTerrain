@@ -10,7 +10,7 @@ import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
-import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
+import me.batata_1.fractal_terrain.hydrology.profile.RiverInfluenceCarve;
 import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import org.jetbrains.annotations.Nullable;
 
@@ -40,7 +40,7 @@ public final class LocalNetworkBuilder {
         ChannelElevationAssigner.assign(ctx.network(), ctx.boundaryElevByNodeIdx(), elev);
 
         final List<HydrologicalPrimitive> primitives = collect(ctx.network(), ctx.typer(), elev);
-        HydrologyProfileInprinter.carveRiverInfluence(elev, primitives, PADDED);
+        RiverInfluenceCarve.carveRiverInfluence(elev, primitives, PADDED);
 
         LocalDrainageTracer.traceLocalNetwork(ctx.drainage(), elev, gradMag, ctx.network(), stages);
     }

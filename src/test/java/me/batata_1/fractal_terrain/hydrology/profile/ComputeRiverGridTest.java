@@ -27,9 +27,9 @@ class ComputeRiverGridTest {
         return new RiverPrimitive(new double[] {cx, 8.0}, 5.0, type, new double[] {1.0, 0.0}, 0.0, 2.0, elevation, ids);
     }
 
-    private static HydrologyProfileInprinter.GridBuffers buffers() {
-        final HydrologyProfileInprinter.GridBuffers b = new HydrologyProfileInprinter.GridBuffers();
-        b.ensure(GRID, HydrologyProfileInprinter.maxLutLen(GRID, RES));
+    private static RiverInfluenceCarve.GridBuffers buffers() {
+        final RiverInfluenceCarve.GridBuffers b = new RiverInfluenceCarve.GridBuffers();
+        b.ensure(GRID, RiverInfluenceCarve.maxLutLen(GRID, RES));
         return b;
     }
 
@@ -40,9 +40,9 @@ class ComputeRiverGridTest {
     @Test
     void carvesTheChannelCentreToTheProfileSurface() {
         final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
-        final HydrologyProfileInprinter.GridBuffers b = buffers();
+        final RiverInfluenceCarve.GridBuffers b = buffers();
 
-        HydrologyProfileInprinter.computeRiverGrid(
+        RiverInfluenceCarve.computeRiverGrid(
                 0,
                 0,
                 RES,
@@ -70,9 +70,9 @@ class ComputeRiverGridTest {
     @Test
     void leavesLatticePointsOutsideTheInfluenceUntouched() {
         final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
-        final HydrologyProfileInprinter.GridBuffers b = buffers();
+        final RiverInfluenceCarve.GridBuffers b = buffers();
 
-        HydrologyProfileInprinter.computeRiverGrid(
+        RiverInfluenceCarve.computeRiverGrid(
                 0,
                 0,
                 RES,
@@ -100,9 +100,9 @@ class ComputeRiverGridTest {
         // the higher primitive -- the merge is distance-driven, not elevation-driven.
         final RiverPrimitive a = knot(8.0, 100.0, RosgenType.A, 0L);
         final RiverPrimitive b2 = knot(9.0, 200.0, RosgenType.A, 1L);
-        final HydrologyProfileInprinter.GridBuffers b = buffers();
+        final RiverInfluenceCarve.GridBuffers b = buffers();
 
-        HydrologyProfileInprinter.computeRiverGrid(
+        RiverInfluenceCarve.computeRiverGrid(
                 0,
                 0,
                 RES,
@@ -129,9 +129,9 @@ class ComputeRiverGridTest {
         // last-wins or higher-wins implementation would report 190 (from farther) instead of 90 (nearer).
         final RiverPrimitive nearer = knot(9.0, 100.0, RosgenType.A, 0L);
         final RiverPrimitive farther = knot(8.0, 200.0, RosgenType.A, 1L);
-        final HydrologyProfileInprinter.GridBuffers b = buffers();
+        final RiverInfluenceCarve.GridBuffers b = buffers();
 
-        HydrologyProfileInprinter.computeRiverGrid(
+        RiverInfluenceCarve.computeRiverGrid(
                 0,
                 0,
                 RES,
@@ -154,10 +154,10 @@ class ComputeRiverGridTest {
 
     @Test
     void reseedsSoASecondCallDoesNotCompound() {
-        final HydrologyProfileInprinter.GridBuffers b = buffers();
+        final RiverInfluenceCarve.GridBuffers b = buffers();
         final List<HydrologicalPrimitive> one = List.of(knot(8.0, 100.0, RosgenType.A, 0L));
 
-        HydrologyProfileInprinter.computeRiverGrid(
+        RiverInfluenceCarve.computeRiverGrid(
                 0,
                 0,
                 RES,
@@ -173,7 +173,7 @@ class ComputeRiverGridTest {
                 b.tangCol,
                 null);
         final float first = b.acc[3 * idx(8, 8)];
-        HydrologyProfileInprinter.computeRiverGrid(
+        RiverInfluenceCarve.computeRiverGrid(
                 0,
                 0,
                 RES,
@@ -197,9 +197,9 @@ class ComputeRiverGridTest {
         final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
         final HydrologicalPrimitive source =
                 new me.batata_1.fractal_terrain.hydrology.features.SourcePrimitive(new double[] {8.0, 8.0});
-        final HydrologyProfileInprinter.GridBuffers b = buffers();
+        final RiverInfluenceCarve.GridBuffers b = buffers();
 
-        final int stop = HydrologyProfileInprinter.computeRiverGrid(
+        final int stop = RiverInfluenceCarve.computeRiverGrid(
                 0,
                 0,
                 RES,
@@ -223,9 +223,9 @@ class ComputeRiverGridTest {
         // A null normal has no cross-section; carving it would NPE in the projection.
         final RiverPrimitive noNormal =
                 new RiverPrimitive(new double[] {8.0, 8.0}, 5.0, RosgenType.A, null, 0.0, 2.0, 100.0, 0L);
-        final HydrologyProfileInprinter.GridBuffers b = buffers();
+        final RiverInfluenceCarve.GridBuffers b = buffers();
 
-        HydrologyProfileInprinter.computeRiverGrid(
+        RiverInfluenceCarve.computeRiverGrid(
                 0,
                 0,
                 RES,
@@ -256,9 +256,9 @@ class ComputeRiverGridTest {
                 2.0,
                 100.0,
                 0L);
-        final HydrologyProfileInprinter.GridBuffers b = buffers();
+        final RiverInfluenceCarve.GridBuffers b = buffers();
 
-        HydrologyProfileInprinter.computeRiverGrid(
+        RiverInfluenceCarve.computeRiverGrid(
                 0,
                 0,
                 RES,
@@ -282,9 +282,9 @@ class ComputeRiverGridTest {
         // waterLine(2.0) is -2, so the surface sits two below the primitive's own elevation. The water
         // lane blends toward a default of 0, which makes the raw accumulator the answer -- no divide.
         final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
-        final HydrologyProfileInprinter.GridBuffers b = buffers();
+        final RiverInfluenceCarve.GridBuffers b = buffers();
 
-        HydrologyProfileInprinter.computeRiverGrid(
+        RiverInfluenceCarve.computeRiverGrid(
                 0,
                 0,
                 RES,
@@ -309,9 +309,9 @@ class ComputeRiverGridTest {
         // RosgenType.C so the packed value is non-zero -- RIVER + A packs to 0L and would not
         // distinguish a real stamp from an unwritten cell.
         final RiverPrimitive river = knot(8.0, 100.0, RosgenType.C, 0L);
-        final HydrologyProfileInprinter.GridBuffers b = buffers();
+        final RiverInfluenceCarve.GridBuffers b = buffers();
 
-        HydrologyProfileInprinter.computeRiverGrid(
+        RiverInfluenceCarve.computeRiverGrid(
                 0,
                 0,
                 RES,
@@ -337,9 +337,9 @@ class ComputeRiverGridTest {
     void anUnclassifiedReachStampsTheProfileItActuallyCarvedWith() {
         // A null rosgenType coalesces to A for the carve, so the mask must say A rather than "unknown".
         final RiverPrimitive river = knot(8.0, 100.0, null, 0L);
-        final HydrologyProfileInprinter.GridBuffers b = buffers();
+        final RiverInfluenceCarve.GridBuffers b = buffers();
 
-        HydrologyProfileInprinter.computeRiverGrid(
+        RiverInfluenceCarve.computeRiverGrid(
                 0,
                 0,
                 RES,
@@ -362,9 +362,9 @@ class ComputeRiverGridTest {
     void theTypeMaskFollowsTheNearestPrimitiveNotTheFirst() {
         final RiverPrimitive a = knot(8.0, 100.0, RosgenType.A, 0L);
         final RiverPrimitive c = knot(9.0, 100.0, RosgenType.C, 1L);
-        final HydrologyProfileInprinter.GridBuffers b = buffers();
+        final RiverInfluenceCarve.GridBuffers b = buffers();
 
-        HydrologyProfileInprinter.computeRiverGrid(
+        RiverInfluenceCarve.computeRiverGrid(
                 0,
                 0,
                 RES,
