@@ -405,8 +405,7 @@ public final class FractalTerrainChunkGenerator extends ChunkGenerator {
     }
 
     private int getHeight(int x, int z) {
-        return (int) FractalTerrainHeightmapCacheAccessor
-                .get(x>>4,z>>4)
+        return (int) FractalTerrainHeightmapCacheAccessor.get(x >> 4, z >> 4)
                 .get(FractalTerrainHeightmap.Types.ELEVATION, x & 15, z & 15);
     }
 

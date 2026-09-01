@@ -33,6 +33,4 @@ class HydrologicalFeaturePackTest {
         assertNull(HydrologicalFeature.unpack(HydrologicalFeature.NONE));
         assertEquals(HydrologicalFeature.RIVER, HydrologicalFeature.unpack(0L));
     }
-
-
 }

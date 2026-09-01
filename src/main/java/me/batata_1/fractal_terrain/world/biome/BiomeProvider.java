@@ -8,7 +8,6 @@ import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
-import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.math.Interpolation;
@@ -106,8 +105,6 @@ public class BiomeProvider {
     @TestOnly
     private final Interpolation weirdnessInterpolation;
 
-
-
     // -------------------------------------------------------------------------
     // Channel → density wiring
     // -------------------------------------------------------------------------
@@ -199,7 +196,7 @@ public class BiomeProvider {
             // Channel layout: [0..4] biome params, [5] river-humidity PDF (reserved, unused by the
             // sampler), [6] debug dist-to-shore (only while the visualizer runs).
             final float[] entries = new float[TILE_CHANNELS * TILE_PIXELS];
-            System.arraycopy(biomeVariables, 0, entries, 0, (PARAM_CHANNELS+1) * TILE_PIXELS);
+            System.arraycopy(biomeVariables, 0, entries, 0, (PARAM_CHANNELS + 1) * TILE_PIXELS);
             if (distShoreDebug != null) {
                 System.arraycopy(distShoreDebug, 0, entries, DEBUG_DSHORE_CHANNEL * TILE_PIXELS, TILE_PIXELS);
             }
@@ -569,7 +566,8 @@ public class BiomeProvider {
 
     public Float getVegPdf(int[] xz) {
         xz[CH] = 5;
-        return finalTiles.getValue(xz);}
+        return finalTiles.getValue(xz);
+    }
 
     /** Bilinearly-interpolated weirdness at block {@code (x, z)} (scale-5 sampling of channel 4). */
     @TestOnly

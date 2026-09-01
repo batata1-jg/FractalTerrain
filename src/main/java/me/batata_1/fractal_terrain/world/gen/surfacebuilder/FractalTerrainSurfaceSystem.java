@@ -139,14 +139,13 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
         float[] relief_heightmap = (float[]) heightmaps.get(Types.ELEVATION);
         float[] water_heightmap = (float[]) heightmaps.get(Types.WATER_HEIGHT);
 
-
         for (int dx = 0; dx < 16; ++dx) {
             for (int dz = 0; dz < 16; ++dz) {
                 final int x = startX + dx;
                 final int z = startZ + dz;
                 mutable.setX(x).setZ(z);
                 materialRuleContext.updateXZ(x, z);
-                int relief_height = (int) relief_heightmap[16*dx+dz];
+                int relief_height = (int) relief_heightmap[16 * dx + dz];
                 int stoneDepthAbove;
                 int stoneDepthBellow;
                 int fluid_height;
@@ -157,7 +156,7 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
                     stoneDepthAbove = d + 1;
                     stoneDepthBellow = relief_height + 128 - d;
                     // 64
-                    final int fh = (int) (water_heightmap[16*dx+dz]  + seaLevel - relief_height);
+                    final int fh = (int) (water_heightmap[16 * dx + dz] + seaLevel - relief_height);
                     fluid_height = fh;
                     materialRuleContext.updateY(stoneDepthAbove, stoneDepthBellow, fluid_height, x, y, z);
                     BlockState newBlockState = blockStateRule.tryApply(x, y, z);

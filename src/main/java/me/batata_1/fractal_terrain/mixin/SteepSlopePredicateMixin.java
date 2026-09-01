@@ -4,7 +4,6 @@ import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmapCacheAccessor;
-import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.levelgen.SurfaceRules;
 import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.Mixin;
@@ -26,7 +25,8 @@ public abstract class SteepSlopePredicateMixin {
                     (SurfaceRules.Context.SteepMaterialCondition) (Object) this;
             final int x = thisObject.context.blockX;
             final int z = thisObject.context.blockZ;
-            final float slope = FractalTerrainHeightmapCacheAccessor.get(x>>4,z>>4).get(FractalTerrainHeightmap.Types.REFINED_GRAD, x & 15 , z & 15);
+            final float slope = FractalTerrainHeightmapCacheAccessor.get(x >> 4, z >> 4)
+                    .get(FractalTerrainHeightmap.Types.REFINED_GRAD, x & 15, z & 15);
             cir.setReturnValue(slope >= 35);
         }
     }

@@ -4,7 +4,6 @@ import static me.batata_1.fractal_terrain.FractalTerrainInstance.getBiomeProvide
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.getReliefProvider;
 
 import java.util.function.Function;
-
 import net.minecraft.world.level.ChunkPos;
 
 /**
@@ -34,8 +33,8 @@ public record FractalTerrainHeightmap(Object[] data) {
     public enum Types {
         ELEVATION(pos -> getReliefProvider().fillElev(pos)),
         REFINED_GRAD(pos -> getReliefProvider().fillRefinedGrad(pos)),
-        //TODO:create fill veg pdf
-        VEGETATION_PDF(pos -> new float[1<<18]),
+        // TODO:create fill veg pdf
+        VEGETATION_PDF(pos -> new float[1 << 18]),
         CONTINENTALNESS(pos -> getBiomeProvider().fillContinentalness(pos)),
         EROSION(pos -> getBiomeProvider().fillErosion(pos)),
         TEMPERATURE(pos -> getBiomeProvider().fillTemperature(pos)),

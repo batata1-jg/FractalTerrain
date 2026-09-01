@@ -1,6 +1,5 @@
 package me.batata_1.fractal_terrain.hydrology;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
@@ -23,5 +22,4 @@ class ChannelGeometryTest {
         assertTrue(Double.isFinite(ChannelGeometry.widthDepthRatio(0.0)));
         assertTrue(ChannelGeometry.widthDepthRatio(0.0) >= 0.0);
     }
-
 }

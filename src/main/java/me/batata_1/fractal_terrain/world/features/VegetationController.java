@@ -12,6 +12,7 @@ public class VegetationController {
     }
 
     public static float densityAt(int x, int z) {
-        return FractalTerrainHeightmapCacheAccessor.get( x>>4, z>>4).get(FractalTerrainHeightmap.Types.HUMIDITY,x&15,z&15);
+        return FractalTerrainHeightmapCacheAccessor.get(x >> 4, z >> 4)
+                .get(FractalTerrainHeightmap.Types.HUMIDITY, x & 15, z & 15);
     }
 }

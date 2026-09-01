@@ -17,7 +17,6 @@ import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 import me.batata_1.fractal_terrain.relief.DecoderChannels;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmapCacheAccessor;
-import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.TestOnly;
@@ -48,8 +47,7 @@ public class Infinite3DVisualizer {
         POP_NOISE_RELIEF(1f, 1f, 1f, xz -> 0f) {
             @Override
             public int sample(int x, int z) {
-                final FractalTerrainHeightmap heightmaps =
-                        FractalTerrainHeightmapCacheAccessor.get( x>>4,z>>4);
+                final FractalTerrainHeightmap heightmaps = FractalTerrainHeightmapCacheAccessor.get(x >> 4, z >> 4);
                 final float[] reliefBaseHeight = (float[]) heightmaps.get(FractalTerrainHeightmap.Types.ELEVATION);
                 return (int) reliefBaseHeight[(x & 15) * 16 + (z & 15)];
             }
