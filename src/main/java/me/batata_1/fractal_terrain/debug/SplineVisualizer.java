@@ -2,12 +2,12 @@ package me.batata_1.fractal_terrain.debug;
 
 import static me.batata_1.fractal_terrain.debug.Debug.DEBUG_LOGGER;
 
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import javax.imageio.ImageIO;
@@ -50,7 +50,7 @@ public class SplineVisualizer {
 
         final double[] curPt = new double[2];
         final double detectDist = HydrologyTuning.DX;
-        final List<CoordPoint> treePoints = new ArrayList<>();
+        final List<CoordPoint> treePoints = new ObjectArrayList<>();
 
         for (double i = 0; i < spline.getSize() + beyond; i += resolution)
             treePoints.add(new CoordPoint(spline.sample(i)));

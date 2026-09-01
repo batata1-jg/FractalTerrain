@@ -2,7 +2,8 @@ package me.batata_1.fractal_terrain.debug;
 
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.CH;
 
-import java.util.ArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import java.util.List;
 import java.util.function.Function;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
@@ -54,7 +55,7 @@ public class Infinite3DVisualizer {
         },
         SINGLE_PRIMITIVE(0, 0, 0, xz -> 0f) {
 
-            private static final ArrayList<HydrologicalPrimitive> primitives = new ArrayList<>();
+            private static final List<HydrologicalPrimitive> primitives = new ObjectArrayList<>();
             private static final ImmutableRTree<HydrologicalPrimitive> tree;
             private static final int BASE_ELEV = 80;
 

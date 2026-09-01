@@ -1,6 +1,6 @@
 package me.batata_1.fractal_terrain.debug.tests;
 
-import java.util.ArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -34,8 +34,8 @@ public class MeandersTest {
     }
 
     /** {@code n + 1} evenly spaced points from {@code (x0,z0)} to {@code (x1,z1)}, inclusive. */
-    private static ArrayList<double[]> straightRun(double x0, double z0, double x1, double z1, int n) {
-        ArrayList<double[]> pts = new ArrayList<>(n + 1);
+    private static List<double[]> straightRun(double x0, double z0, double x1, double z1, int n) {
+        List<double[]> pts = new ObjectArrayList<>(n + 1);
         for (int i = 0; i <= n; i++) {
             double t = (double) i / n;
             pts.add(new double[] {x0 + (x1 - x0) * t, z0 + (z1 - z0) * t});
@@ -44,8 +44,7 @@ public class MeandersTest {
     }
 
     /** Two source-to-drain channels ("b" then "a") over node ids 0=SOURCE b, 1=DRAIN b, 2=SOURCE a, 3=DRAIN a. */
-    private static Meanders twoChannelNetwork(
-            ArrayList<double[]> bPts, double bFlow, ArrayList<double[]> aPts, double aFlow) {
+    private static Meanders twoChannelNetwork(List<double[]> bPts, double bFlow, List<double[]> aPts, double aFlow) {
         List<NodeSpec> nodeSpecs = List.of(
                 new NodeSpec(bPts.getFirst()[0], bPts.getFirst()[1], Endpoint.Type.SOURCE),
                 new NodeSpec(bPts.getLast()[0], bPts.getLast()[1], Endpoint.Type.DRAIN),
@@ -60,12 +59,12 @@ public class MeandersTest {
     // -----------------------------------------------------------------------------------------
     private static void testMeanders() {
         int n = 100;
-        ArrayList<double[]> pts = new ArrayList<>(n);
+        List<double[]> pts = new ObjectArrayList<>(n);
         for (int i = 0; i < n; i++) {
             pts.add(new double[] {10.0 + i * 5.0, 200.0 + 5.0 * Math.sin(2.0 * Math.PI * i / (n - 1))});
         }
         double flow = 10;
-        ArrayList<double[]> pts1 = new ArrayList<>(n);
+        List<double[]> pts1 = new ObjectArrayList<>(n);
         for (int i = 0; i < n; i++) {
             pts1.add(new double[] {10.0 + i * 5.0, 300.0 + 5.0 * Math.sin(2.0 * Math.PI * i / (n - 1))});
         }

@@ -1,6 +1,6 @@
 package me.batata_1.fractal_terrain.debug.tests;
 
-import java.util.ArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -97,7 +97,7 @@ public class CaptureSelectionTest {
     /** [S1-DIAG] Dumps every surviving channel (endpoints + first/last point) and every surviving node
      *  (type + coord), localizing exactly where a JUNCTION was minted, if any. */
     private static void dumpChannelsAndNodes(Meanders sim, String label) {
-        List<Channel> channels = new ArrayList<>(sim.getChannels());
+        List<Channel> channels = new ObjectArrayList<>(sim.getChannels());
         channels.sort(Comparator.comparingInt(c -> c.channelId));
         LOG.info("{} dumping {} channels:", label, channels.size());
         for (Channel ch : channels) {
@@ -118,7 +118,7 @@ public class CaptureSelectionTest {
                     last[0],
                     last[1]);
         }
-        List<Endpoint> nodes = new ArrayList<>(sim.getNodes());
+        List<Endpoint> nodes = new ObjectArrayList<>(sim.getNodes());
         nodes.sort(Comparator.comparingInt(n -> n.id));
         LOG.info("{} dumping {} nodes:", label, nodes.size());
         for (Endpoint nd : nodes) {
@@ -128,9 +128,9 @@ public class CaptureSelectionTest {
 
     /** Wide channel b (horizontal) crossed by narrow channel a (vertical) at (250,256); both self-drain. */
     private static Meanders crossingInstance() {
-        ArrayList<double[]> bPts = new ArrayList<>();
+        List<double[]> bPts = new ObjectArrayList<>();
         for (int i = 0; i <= 60; i++) bPts.add(new double[] {100.0 + i * 5.0, 256.0});
-        ArrayList<double[]> aPts = new ArrayList<>();
+        List<double[]> aPts = new ObjectArrayList<>();
         for (int i = 0; i <= 60; i++) aPts.add(new double[] {250.0, 100.0 + i * 5.0});
 
         List<NodeSpec> nodeSpecs = List.of(
@@ -178,7 +178,7 @@ public class CaptureSelectionTest {
     }
 
     /** One source -> one drain edge from a list of points. */
-    private static Meanders oneEdge(ArrayList<double[]> pts, double flow) {
+    private static Meanders oneEdge(List<double[]> pts, double flow) {
         List<NodeSpec> nodeSpecs = List.of(
                 new NodeSpec(pts.getFirst()[0], pts.getFirst()[1], Endpoint.Type.SOURCE),
                 new NodeSpec(pts.getLast()[0], pts.getLast()[1], Endpoint.Type.DRAIN));
@@ -188,14 +188,14 @@ public class CaptureSelectionTest {
 
     /** A single wide horizontal trunk SOURCE(0) -> DRAIN(1) along z = 256, x in [100, 400]. */
     private static Meanders trunkInstance() {
-        ArrayList<double[]> pts = new ArrayList<>();
+        List<double[]> pts = new ObjectArrayList<>();
         for (int i = 0; i <= 60; i++) pts.add(new double[] {100.0 + i * 5.0, 256.0});
         return oneEdge(pts, 20.0);
     }
 
     /** A short polyline far from the trunk (never crosses it). */
-    private static ArrayList<double[]> farPoints() {
-        ArrayList<double[]> pts = new ArrayList<>();
+    private static List<double[]> farPoints() {
+        List<double[]> pts = new ObjectArrayList<>();
         for (int i = 0; i <= 20; i++) pts.add(new double[] {50.0, 40.0 + i * 2.0});
         return pts;
     }
@@ -236,12 +236,12 @@ public class CaptureSelectionTest {
     /** Two parallel sinusoidal channels (100 pts each) that meander into each other over 100 steps. */
     private static Meanders newTwoChannelSinusoidalNetwork() {
         int n = 100;
-        ArrayList<double[]> pts = new ArrayList<>(n);
+        List<double[]> pts = new ObjectArrayList<>(n);
         for (int i = 0; i < n; i++) {
             pts.add(new double[] {10.0 + i * 5.0, 200.0 + 5.0 * Math.sin(2.0 * Math.PI * i / (n - 1))});
         }
         double flow = 10;
-        ArrayList<double[]> pts1 = new ArrayList<>(n);
+        List<double[]> pts1 = new ObjectArrayList<>(n);
         for (int i = 0; i < n; i++) {
             pts1.add(new double[] {10.0 + i * 5.0, 300.0 + 5.0 * Math.sin(2.0 * Math.PI * i / (n - 1))});
         }
@@ -255,7 +255,7 @@ public class CaptureSelectionTest {
     }
 
     private static String networkSignature(Meanders sim) {
-        List<Channel> channels = new ArrayList<>(sim.getChannels());
+        List<Channel> channels = new ObjectArrayList<>(sim.getChannels());
         channels.sort(Comparator.comparingInt(c -> c.channelId));
         double checksum = 0;
         int totalPoints = 0;

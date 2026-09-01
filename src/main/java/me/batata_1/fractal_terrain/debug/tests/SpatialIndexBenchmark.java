@@ -2,7 +2,7 @@ package me.batata_1.fractal_terrain.debug.tests;
 
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 
-import java.util.ArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
@@ -88,7 +88,7 @@ public class SpatialIndexBenchmark {
 
         // The legacy structure over the same primitives: a point quadtree + the per-primitive reach re-test. Its
         // bounds must span the tile's WORLD extent, or every primitive falls outside the root square.
-        final List<PrimitivePoint> primitivePoints = new ArrayList<>(allPrimitives.size());
+        final List<PrimitivePoint> primitivePoints = new ObjectArrayList<>(allPrimitives.size());
         for (final HydrologicalPrimitive primitive : allPrimitives) primitivePoints.add(new PrimitivePoint(primitive));
         final ImmutableQuadTree<PrimitivePoint> primitiveQuadTree = new ImmutableQuadTree<>(
                 new double[] {worldOriginX - 16, worldOriginZ - 16},
@@ -112,12 +112,12 @@ public class SpatialIndexBenchmark {
         final double membershipRadius = HydrologyTuning.maxNativeWidth() / 2.0;
 
         // ---- influence query: legacy quadtree+filter vs one R-tree stab -------------------------
-        final List<PrimitivePoint> legacyQueryBuffer = new ArrayList<>(256);
+        final List<PrimitivePoint> legacyQueryBuffer = new ObjectArrayList<>(256);
         final double legacyInfluenceOpsPerSec = bench(
                 "quadtree influence query (circle r=" + HydrologyTuning.MAX_INFLUENCE_RADIUS + " + reach filter)",
                 worldTilePoints(1, worldOriginX, worldOriginZ),
                 pt -> legacyInfluenceQuery(primitiveQuadTree, pt, legacyQueryBuffer));
-        final List<HydrologicalPrimitive> stabQueryBuffer = new ArrayList<>(256);
+        final List<HydrologicalPrimitive> stabQueryBuffer = new ObjectArrayList<>(256);
         final double rtreeInfluenceOpsPerSec = bench(
                 "rtree influence query (queryContaining stab)", worldTilePoints(1, worldOriginX, worldOriginZ), pt -> {
                     stabQueryBuffer.clear();
@@ -183,8 +183,8 @@ public class SpatialIndexBenchmark {
             double worldOriginZ) {
         final Random rng = new Random(42);
         final double[] pt = new double[2];
-        final List<PrimitivePoint> legacyBuffer = new ArrayList<>(256);
-        final List<HydrologicalPrimitive> stabBuffer = new ArrayList<>(256);
+        final List<PrimitivePoint> legacyBuffer = new ObjectArrayList<>(256);
+        final List<HydrologicalPrimitive> stabBuffer = new ObjectArrayList<>(256);
         int quadTreeDeviations = 0;
         for (int i = 0; i < CROSS_CHECK_POINTS; i++) {
             pt[0] = worldOriginX + rng.nextDouble() * HydrologyTileGeometry.GRID;

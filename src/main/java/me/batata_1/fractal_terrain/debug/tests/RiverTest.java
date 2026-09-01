@@ -2,8 +2,8 @@ package me.batata_1.fractal_terrain.debug.tests;
 
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.io.File;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
@@ -132,7 +132,7 @@ public class RiverTest {
     private static void dumpSlopeHistogram(RiverNetwork network, ReachMetricsSampler sampler) {
         // throw new NotImplementedException();
         if (network == null) return;
-        final List<Double> slopes = new ArrayList<>();
+        final List<Double> slopes = new ObjectArrayList<>();
         for (Channel ch : network.getChannels()) {
             if (ch.bedElevations == null || ch.numPts() < 2) continue;
             if (ch.bedElevations.length != ch.numPts()) continue;
@@ -329,7 +329,7 @@ public class RiverTest {
 
     /** Collect the node sequence from {@code source} downstream to its drain (following {@code outgoing}). */
     private static List<Endpoint> downstreamPath(RiverNetwork network, Endpoint source) {
-        final List<Endpoint> path = new ArrayList<>();
+        final List<Endpoint> path = new ObjectArrayList<>();
         Endpoint current = source;
         for (int guard = 0;
                 current != null && guard <= HydrologyTileGeometry.GRID * HydrologyTileGeometry.GRID;
