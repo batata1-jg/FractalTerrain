@@ -253,7 +253,7 @@ public class ClimateToBiomeTransformer {
             float[] vegPdf,
             int[] coarseDistShore,
             @Nullable float[] distShoreOut) {
-        float[] out = new float[CHANNELS * TILE_SIZE_SQUARED];
+        float[] out = new float[(CHANNELS+1) * TILE_SIZE_SQUARED];
         for (int i = 0; i < (CHANNELS * TILE_SIZE_SQUARED); i++) out[i] = -1;
 
         if (climate == null || climate.length < (4 * TILE_SIZE_SQUARED)) {
@@ -358,6 +358,7 @@ public class ClimateToBiomeTransformer {
                 out[2 * TILE_SIZE_SQUARED + idx] = biome[TEMPERATURE];
                 out[3 * TILE_SIZE_SQUARED + idx] = biome[VEGETATION];
                 out[4 * TILE_SIZE_SQUARED + idx] = biome[WEIRDNESS];
+                out[5 * TILE_SIZE_SQUARED + idx] = 1;
                 if (distShoreOut != null) distShoreOut[idx] = distShore;
             }
         }

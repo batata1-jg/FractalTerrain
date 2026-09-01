@@ -193,8 +193,8 @@ public class BiomeProvider {
             // While the visualizer runs, also capture the per-pixel dist-to-shore for the debug channel.
             final float[] distShoreDebug = DEBUG_DSHORE_CHANNEL_ON ? new float[TILE_PIXELS] : null;
             var humidityFromRiver = humidityFromBodiesOfWater(key);
-            final float[] biomeVariables = ClimateVariableTransform.transform(
-                    x, z, elev, grad, lowFreqGrad, climate, res,humidityFromRiver, coarseDistShore, distShoreDebug);
+            final float[] biomeVariables = ClimateToBiomeTransformer.transform(
+                    x, z, elev, grad, lowFreqGrad, climate, res, humidityFromRiver, coarseDistShore, distShoreDebug);
 
             // Channel layout: [0..4] biome params, [5] river-humidity PDF (reserved, unused by the
             // sampler), [6] debug dist-to-shore (only while the visualizer runs).
