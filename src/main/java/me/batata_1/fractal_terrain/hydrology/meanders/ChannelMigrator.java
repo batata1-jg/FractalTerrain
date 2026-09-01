@@ -1,6 +1,5 @@
 package me.batata_1.fractal_terrain.hydrology.meanders;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import me.batata_1.fractal_terrain.config.DebugConfig;
@@ -119,7 +118,7 @@ public abstract class ChannelMigrator {
         return network.getChannels();
     }
 
-    public ArrayList<double[]> getChannelPts(int channelId) {
+    public List<double[]> getChannelPts(int channelId) {
         return network.getChannelPts(channelId);
     }
 

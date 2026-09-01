@@ -6,7 +6,7 @@ import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.PAD;
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.PADDED;
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.sampleBilinear;
 
-import java.util.ArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -80,8 +80,8 @@ public final class GlobalNetworkBuilder {
 
         final Map<Long, CellInfo> cells = resolveCellDrains(tileX, tileZ, grp, elevCarvedGlobalOnly);
 
-        final List<RiverNetwork.NodeSpec> nodeSpecs = new ArrayList<>();
-        final List<RiverNetwork.EdgeSpec> edgeSpecs = new ArrayList<>();
+        final List<RiverNetwork.NodeSpec> nodeSpecs = new ObjectArrayList<>();
+        final List<RiverNetwork.EdgeSpec> edgeSpecs = new ObjectArrayList<>();
         final Map<Long, Integer> centerIdx = new HashMap<>();
         final Map<EdgeKey, Integer> edgeNodeIdx = new HashMap<>();
         final Map<Integer, Double> boundaryElevByNodeIdx = new HashMap<>();
@@ -360,8 +360,8 @@ public final class GlobalNetworkBuilder {
         return new double[] {ns.x(), ns.z()};
     }
 
-    private static ArrayList<double[]> pts(double[]... ps) {
-        final ArrayList<double[]> list = new ArrayList<>(ps.length);
+    private static List<double[]> pts(double[]... ps) {
+        final List<double[]> list = new ObjectArrayList<>(ps.length);
         for (double[] p : ps) list.add(new double[] {p[0], p[1]});
         return list;
     }

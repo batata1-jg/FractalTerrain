@@ -1,6 +1,7 @@
 package me.batata_1.fractal_terrain.hydrology.meanders;
 
-import java.util.ArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import java.util.List;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
@@ -44,7 +45,7 @@ public final class GradientNetworkRelaxation extends ChannelMigrator {
     public void migrateLowerGrad(Channel ch, double dx) {
         final double maxMigration = HydrologyTuning.maxMigration(dx);
         final int pointCount = ch.spline.points().size();
-        ArrayList<double[]> migratedPoints = new ArrayList<>(pointCount);
+        List<double[]> migratedPoints = new ObjectArrayList<>(pointCount);
         for (int i = 0; i < pointCount; i++) {
             final double[] point = ch.spline.points().get(i);
             final double[] gradient = sampleGradient(point[0], point[1]);

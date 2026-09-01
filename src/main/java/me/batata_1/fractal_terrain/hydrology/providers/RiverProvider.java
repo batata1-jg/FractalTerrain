@@ -4,6 +4,7 @@ import static me.batata_1.fractal_terrain.FractalTerrainConfig.X;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.Z;
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.*;
 
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.*;
 import java.util.function.Predicate;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
@@ -156,7 +157,7 @@ public class RiverProvider {
 
         if (stages != null) {
             stages.channels = result.network().getChannels();
-            stages.localChannels = new ArrayList<>();
+            stages.localChannels = new ObjectArrayList<>();
             stages.rawElevation = cropToTile(base[0]);
             stages.elevationFirstPass = cropToTile(result.elevCarvedGlobalOnly());
             stages.carvedElevation = cropToTile(carvedElev);
@@ -271,7 +272,7 @@ public class RiverProvider {
      * serve a whole chunk from one query. Returns indexed instances; callers must not mutate them.
      */
     public List<HydrologicalPrimitive> queryInfluence(double[] pt, double extraRadius) {
-        final List<HydrologicalPrimitive> influencingPrimitives = new ArrayList<>(64);
+        final List<HydrologicalPrimitive> influencingPrimitives = new ObjectArrayList<>(64);
         primitives.forEachTileWithin(
                 pt, HydrologyTuning.MAX_INFLUENCE_RADIUS + extraRadius, (tileOriginX, tileOriginZ, tileIndex) -> {
                     tileIndex.queryContaining(pt, extraRadius, influencingPrimitives);

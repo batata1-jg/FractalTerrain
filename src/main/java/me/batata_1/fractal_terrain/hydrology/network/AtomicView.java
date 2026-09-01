@@ -1,5 +1,6 @@
 package me.batata_1.fractal_terrain.hydrology.network;
 
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.*;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
@@ -15,25 +16,25 @@ import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
  * canonical channel's spline points to their atomic ids, so crossing detection can re-stamp contacts.
  */
 public final class AtomicView {
-    private final List<double[]> position = new ArrayList<>();
+    private final List<double[]> position = new ObjectArrayList<>();
     /**
      * SOURCE / DRAIN / JUNCTION, or {@code null} for an interior spline point.
      */
-    public final List<Endpoint.Type> role = new ArrayList<>();
+    public final List<Endpoint.Type> role = new ObjectArrayList<>();
     /**
      * Valid only where {@link #role} is SOURCE or DRAIN — the canonical {@link Endpoint} id to preserve.
      */
-    private final List<Integer> canonicalId = new ArrayList<>();
+    private final List<Integer> canonicalId = new ObjectArrayList<>();
     /**
      * CARRIED input: the per-cell constant {@link #FLOW_PER_CELL} (interior/junction) or the SOURCE seed.
      */
-    private final List<Double> ownFlow = new ArrayList<>();
+    private final List<Double> ownFlow = new ObjectArrayList<>();
     /**
      * CARRIED input, meaningful only where {@link #role} is DRAIN: the clamp ceiling + near-drain target.
      */
-    public final List<Double> anchorFlow = new ArrayList<>();
+    public final List<Double> anchorFlow = new ObjectArrayList<>();
     /** Directed successors per atomic node. Mutate only via {@link #addDirectedEdge(int, int)}. */
-    public final List<List<Integer>> adjacency = new ArrayList<>();
+    public final List<List<Integer>> adjacency = new ObjectArrayList<>();
     /**
      * canonical channelId -> atomic id per spline point (only populated by {@link #viewAtomic()}).
      */
@@ -76,7 +77,7 @@ public final class AtomicView {
         this.canonicalId.add(canonicalId);
         this.ownFlow.add(ownFlow);
         this.anchorFlow.add(anchorFlow);
-        adjacency.add(new ArrayList<>());
+        adjacency.add(new ObjectArrayList<>());
         return id;
     }
 
@@ -110,8 +111,8 @@ public final class AtomicView {
 
         // predecessors u of each edge u -> node, each list sorted ascending by atomic id so every
         // confluence sum order is pinned (Determinism).
-        final List<List<Integer>> predecessors = new ArrayList<>(n);
-        for (int v = 0; v < n; v++) predecessors.add(new ArrayList<>());
+        final List<List<Integer>> predecessors = new ObjectArrayList<>(n);
+        for (int v = 0; v < n; v++) predecessors.add(new ObjectArrayList<>());
         for (int u = 0; u < n; u++)
             for (int v : adjacency.get(u)) predecessors.get(v).add(u);
         for (List<Integer> preds : predecessors) Collections.sort(preds);
@@ -148,7 +149,7 @@ public final class AtomicView {
             int up = mainstemPredecessor(drain, predecessors, flow);
             if (up == -1 || anchor - flow[up] <= HydrologyTuning.DRAIN_FLOW_SMOOTH_STEP) continue;
 
-            final List<Integer> chain = new ArrayList<>();
+            final List<Integer> chain = new ObjectArrayList<>();
             int node = up;
             while (node != -1
                     && chain.size() < HydrologyTuning.DRAIN_FLOW_SMOOTH_MAX_NODES
@@ -174,7 +175,7 @@ public final class AtomicView {
 
     /** All atomic nodes upstream of {@code drain} (reverse-reachable via predecessors), including it. */
     private static List<Integer> basinOf(int drain, List<List<Integer>> predecessors) {
-        final List<Integer> basin = new ArrayList<>();
+        final List<Integer> basin = new ObjectArrayList<>();
         final ArrayDeque<Integer> stack = new ArrayDeque<>();
         stack.push(drain);
         while (!stack.isEmpty()) {
@@ -223,7 +224,7 @@ public final class AtomicView {
 
         // 1. Undirected position segments (dedup both directions of the same geometric edge), sorted for a
         //    deterministic crossing-node id assignment.
-        final List<int[]> segments = new ArrayList<>(); // {lo, hi}, lo < hi
+        final List<int[]> segments = new ObjectArrayList<>(); // {lo, hi}, lo < hi
         final Set<Long> seen = new HashSet<>();
         for (int u = 0; u < originalSize; u++)
             for (int v : adjacency.get(u)) {
@@ -234,8 +235,8 @@ public final class AtomicView {
         segments.sort(Comparator.<int[]>comparingInt(s -> s[0]).thenComparingInt(s -> s[1]));
 
         // node -> indices of segments incident to it (candidate lookup keyed on a shared / near node).
-        final List<List<Integer>> incident = new ArrayList<>(originalSize);
-        for (int i = 0; i < originalSize; i++) incident.add(new ArrayList<>());
+        final List<List<Integer>> incident = new ObjectArrayList<>(originalSize);
+        for (int i = 0; i < originalSize; i++) incident.add(new ObjectArrayList<>());
         for (int si = 0; si < segments.size(); si++) {
             incident.get(segments.get(si)[0]).add(si);
             incident.get(segments.get(si)[1]).add(si);
@@ -243,14 +244,14 @@ public final class AtomicView {
 
         // 2. Node R-tree; each node's proximity circle bounds how far a crossing partner's endpoint can sit.
         final double radius = HydrologyTuning.MAX_MIGRATION * 5;
-        final List<nodePrimitive> primitives = new ArrayList<>(originalSize);
+        final List<nodePrimitive> primitives = new ObjectArrayList<>(originalSize);
         for (int i = 0; i < originalSize; i++) primitives.add(new nodePrimitive(pos(i), radius, i));
         final ImmutableRTree<nodePrimitive> index = new ImmutableRTree<>(primitives, null);
 
         // 3. Detect crossings; record the (t, crossingNodeId) split points per segment (t = param along lo->hi).
-        final List<List<double[]>> splits = new ArrayList<>(segments.size());
-        for (int i = 0; i < segments.size(); i++) splits.add(new ArrayList<>());
-        final List<nodePrimitive> nearby = new ArrayList<>();
+        final List<List<double[]>> splits = new ObjectArrayList<>(segments.size());
+        for (int i = 0; i < segments.size(); i++) splits.add(new ObjectArrayList<>());
+        final List<nodePrimitive> nearby = new ObjectArrayList<>();
         for (int si = 0; si < segments.size(); si++) {
             final int a = segments.get(si)[0], b = segments.get(si)[1];
             final double[] pa = pos(a), pb = pos(b);

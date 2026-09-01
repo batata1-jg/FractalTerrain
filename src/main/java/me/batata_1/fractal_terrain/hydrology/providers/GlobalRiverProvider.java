@@ -9,7 +9,7 @@ import static me.batata_1.fractal_terrain.hydrology.Drainage.NEIGHBOR_OFFSET_X;
 import static me.batata_1.fractal_terrain.hydrology.Drainage.NEIGHBOR_OFFSET_Z;
 import static me.batata_1.fractal_terrain.hydrology.Drainage.OPPOSITE_DIRECTION;
 
-import java.util.ArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.List;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.Drainage;
@@ -187,7 +187,7 @@ public class GlobalRiverProvider {
                 arrows[i * PADDED_SIDE + j] = coastMask[i][j] ? COAST_BIT : 0;
             }
         }
-        final List<List<int[]>> descentPaths = (stages != null) ? new ArrayList<>() : null;
+        final List<List<int[]>> descentPaths = (stages != null) ? new ObjectArrayList<>() : null;
         for (int pi = 0; pi < PADDED_SIDE; pi++) {
             for (int pj = 0; pj < PADDED_SIDE; pj++) {
                 if (!ridgeMask[pi][pj]) continue;
@@ -258,7 +258,7 @@ public class GlobalRiverProvider {
     private void walkFromSource(
             int startPi, int startPj, int[] drainageDirection, int[] arrows, @Nullable List<List<int[]>> descentPaths) {
         arrows[startPi * PADDED_SIDE + startPj] |= SOURCE_BIT;
-        final List<int[]> path = (descentPaths != null) ? new ArrayList<>() : null;
+        final List<int[]> path = (descentPaths != null) ? new ObjectArrayList<>() : null;
         if (path != null) path.add(new int[] {startPi, startPj});
 
         int pi = startPi;

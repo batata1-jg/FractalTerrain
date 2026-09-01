@@ -79,14 +79,14 @@ public class MeandersTest {
 
         double x0 = pts.getFirst()[0], z0 = pts.getFirst()[1];
 
-        ArrayList<double[]> before = sim.getChannelPts(0);
+        List<double[]> before = sim.getChannelPts(0);
         double sBefore = sinuosity(before);
         LOG.info("Before: sinuosity={}  points={}", String.format("%.4f", sBefore), before.size());
         Debug.river.see(sim, "before");
 
         sim.simulate(100);
 
-        ArrayList<double[]> result = sim.getChannelPts(0);
+        List<double[]> result = sim.getChannelPts(0);
         int m = result.size();
         double sAfter = sinuosity(result);
         LOG.info("After:  sinuosity={}  points={}", String.format("%.4f", sAfter), m);
@@ -266,7 +266,7 @@ public class MeandersTest {
         return false;
     }
 
-    private static double sinuosity(ArrayList<double[]> pts) {
+    private static double sinuosity(List<double[]> pts) {
         double arcLen = 0.0;
         for (int i = 1; i < pts.size(); i++) {
             double dx = pts.get(i)[0] - pts.get(i - 1)[0];

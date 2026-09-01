@@ -1,7 +1,7 @@
 package me.batata_1.fractal_terrain.hydrology.rosgen;
 
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -57,7 +57,7 @@ public final class ReachRosgenClassifier implements ChannelTyper {
     /** Orders channels so each comes after the one it flows into. Dangling components with no reachable
      *  drain are rooted at their lowest id rather than their true outlet — see {@code README.md}. */
     private static List<Channel> orderDownstreamFirst(RiverNetwork network) {
-        final List<Channel> order = new ArrayList<>();
+        final List<Channel> order = new ObjectArrayList<>();
         final ArrayDeque<Channel> frontier = new ArrayDeque<>();
         final Map<Integer, Boolean> seen = new HashMap<>();
 
@@ -75,7 +75,7 @@ public final class ReachRosgenClassifier implements ChannelTyper {
         // channel is always polled after the channel it flows into, whatever order its siblings arrive in
         // — a dangling branch can be classified before its own downstream neighbour. RiverNetwork.viewAtomic
         // and detectCrossings sort by id for the same determinism reason.
-        final List<Channel> remaining = new ArrayList<>(network.getChannels());
+        final List<Channel> remaining = new ObjectArrayList<>(network.getChannels());
         remaining.sort(Comparator.comparingInt(ch -> ch.channelId));
         for (Channel ch : remaining) {
             if (seen.putIfAbsent(ch.channelId, Boolean.TRUE) != null) continue;
@@ -124,7 +124,7 @@ public final class ReachRosgenClassifier implements ChannelTyper {
 
     /** Inclusive {@code [from, to]} index pairs, cut at the reach length in arc length. */
     private static List<int[]> segment(Channel ch) {
-        final List<int[]> reaches = new ArrayList<>();
+        final List<int[]> reaches = new ObjectArrayList<>();
         final List<double[]> pts = ch.spline.points();
         final int n = pts.size();
         if (n < 2) {

@@ -138,13 +138,13 @@ class MeandersGoldenTest {
     @Test
     void meandersInvariantsHoldAfterSimulation() {
         Meanders sim = newTwoChannelSinusoidalNetwork();
-        ArrayList<double[]> before = sim.getChannelPts(0);
+        List<double[]> before = sim.getChannelPts(0);
         double sBefore = sinuosity(before);
         double x0 = before.getFirst()[0], z0 = before.getFirst()[1];
 
         sim.simulate(100);
 
-        ArrayList<double[]> result = sim.getChannelPts(0);
+        List<double[]> result = sim.getChannelPts(0);
         int m = result.size();
         double sAfter = sinuosity(result);
 
@@ -372,7 +372,7 @@ class MeandersGoldenTest {
         return false;
     }
 
-    private static double sinuosity(ArrayList<double[]> pts) {
+    private static double sinuosity(List<double[]> pts) {
         double arcLen = 0.0;
         for (int i = 1; i < pts.size(); i++) {
             double dx = pts.get(i)[0] - pts.get(i - 1)[0];

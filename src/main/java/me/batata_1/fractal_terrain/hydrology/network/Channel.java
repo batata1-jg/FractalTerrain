@@ -1,7 +1,7 @@
 package me.batata_1.fractal_terrain.hydrology.network;
 
-import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
@@ -31,7 +31,7 @@ public class Channel {
     public double[] bedElevations;
 
     /** The canonical construction path. {@code flow} must carry one entry per point. */
-    public Channel(ArrayList<double[]> pts, double[] flow, int channelId) {
+    public Channel(List<double[]> pts, double[] flow, int channelId) {
         if (flow.length != pts.size()) {
             throw new IllegalArgumentException("flow length " + flow.length + " != point count " + pts.size());
         }
@@ -135,7 +135,7 @@ public class Channel {
                 + String.format("%.3f", computeSinuosity()) + "}";
     }
 
-    public void keepOnly(ArrayList<Integer> newPathIndexes) {
+    public void keepOnly(List<Integer> newPathIndexes) {
         final double[] newFlow = new double[newPathIndexes.size()];
         for (int i = 0; i < newPathIndexes.size(); i++) newFlow[i] = flow[newPathIndexes.get(i)];
         this.spline = spline.keepOnly(newPathIndexes);

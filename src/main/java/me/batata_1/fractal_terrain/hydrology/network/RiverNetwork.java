@@ -4,8 +4,8 @@ import static me.batata_1.fractal_terrain.config.DebugConfig.DEBUG_CROSSING_WINN
 import static me.batata_1.fractal_terrain.config.DebugConfig.DEBUG_STEPS;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -59,8 +59,8 @@ public final class RiverNetwork {
     // history (only populated when savePreviousStates is true)
     private final boolean savePreviousStates;
     private final int maxSavedStates;
-    private final ArrayDeque<List<ArrayList<double[]>>> previousStates = new ArrayDeque<>();
-    private final List<RemovedPath> removedPaths = new ArrayList<>();
+    private final ArrayDeque<List<List<double[]>>> previousStates = new ArrayDeque<>();
+    private final List<RemovedPath> removedPaths = new ObjectArrayList<>();
 
     // for each endpoint, if it is source/drain, update the channels to match it. If it is junction, take the average of
     // the channels end positions.
@@ -115,10 +115,10 @@ public final class RiverNetwork {
      * carries it as its seed {@code ownFlow}, a DRAIN end as its {@code anchorFlow};
      * Width is derived downstream via {@link HydrologyTuning#widthFromFlow}.
      */
-    public record EdgeSpec(int startNodeIdx, int endNodeIdx, ArrayList<double[]> pts, double flow) {}
+    public record EdgeSpec(int startNodeIdx, int endNodeIdx, List<double[]> pts, double flow) {}
 
     /** A geometry removed from the active network, retained for {@link #collectPrimitives}. */
-    private record RemovedPath(HydrologicalFeature type, ArrayList<double[]> pts, double width, int time) {}
+    private record RemovedPath(HydrologicalFeature type, List<double[]> pts, double width, int time) {}
 
     /** The production construction path: a graph that keeps no history, resampled at the default spacing. */
     public RiverNetwork(int gridSize, List<NodeSpec> nodeSpecs, List<EdgeSpec> edgeSpecs) {
@@ -193,7 +193,7 @@ public final class RiverNetwork {
     private static List<double[]> resamplePts(List<double[]> pts, double flow, double resampleDist) {
         final double[] tmpFlow = new double[pts.size()];
         Arrays.fill(tmpFlow, flow);
-        final Channel tmp = new Channel(new ArrayList<>(pts), tmpFlow, 0);
+        final Channel tmp = new Channel(new ObjectArrayList<>(pts), tmpFlow, 0);
         if (tmp.isResampleable()) {
             try {
                 tmp.reSample(resampleDist);
@@ -225,7 +225,7 @@ public final class RiverNetwork {
         final AtomicView atomic = new AtomicView();
         final Map<Integer, Integer> endpointToAtomicId = new HashMap<>(); // canonical Endpoint id -> atomic id
 
-        final List<Integer> channelIds = new ArrayList<>(channels.keySet());
+        final List<Integer> channelIds = new ObjectArrayList<>(channels.keySet());
         Collections.sort(channelIds);
 
         for (int channelId : channelIds) {
@@ -338,7 +338,7 @@ public final class RiverNetwork {
         for (int start : structural) { // sorted — deterministic emission order
             if (atomic.role(start) == Endpoint.Type.DRAIN) continue; // drains only terminate a chain
             int cur = onlyOutgoing(atomic, start);
-            final List<Integer> chain = new ArrayList<>();
+            final List<Integer> chain = new ObjectArrayList<>();
             chain.add(start);
             while (!structural.contains(cur)) {
                 chain.add(cur);
@@ -357,7 +357,7 @@ public final class RiverNetwork {
 
     /** Emits one chain as a wired-in {@link Channel}; the per-chain step of {@link #update}. */
     private void emitChannel(AtomicView atomic, double[] accumulatedFlow, List<Integer> chain, int[] canonicalIdOf) {
-        final ArrayList<double[]> points = new ArrayList<>(chain.size());
+        final List<double[]> points = new ObjectArrayList<>(chain.size());
         final double[] flow = new double[chain.size()];
         for (int i = 0; i < chain.size(); i++) {
             points.add(atomic.pos(chain.get(i)));
@@ -446,8 +446,8 @@ public final class RiverNetwork {
      *  {@code outgoing[]} by construction. See {@code README.md} "Stream capture" for the invariants this establishes. */
     private static ReachTree reverseBfsCapture(AtomicView atomic) {
         final int n = atomic.size();
-        final List<List<Integer>> adjReversed = new ArrayList<>(n);
-        for (int v = 0; v < n; v++) adjReversed.add(new ArrayList<>());
+        final List<List<Integer>> adjReversed = new ObjectArrayList<>(n);
+        for (int v = 0; v < n; v++) adjReversed.add(new ObjectArrayList<>());
         for (int u = 0; u < n; u++)
             for (int v : atomic.adjacency.get(u)) adjReversed.get(v).add(u);
 
@@ -456,7 +456,7 @@ public final class RiverNetwork {
         final int[] parent = new int[n];
         Arrays.fill(parent, NONE);
 
-        List<Integer> layer = new ArrayList<>();
+        List<Integer> layer = new ObjectArrayList<>();
         for (int id = 0; id < n; id++) if (atomic.role(id) == Endpoint.Type.DRAIN) layer.add(id);
         for (int id : layer) dist[id] = 0;
 
@@ -464,7 +464,7 @@ public final class RiverNetwork {
         // independent of dequeue order and the whole pass stays O(V+E).
         int d = 0;
         while (!layer.isEmpty()) {
-            final List<Integer> next = new ArrayList<>();
+            final List<Integer> next = new ObjectArrayList<>();
             for (int p : layer) {
                 if (atomic.role(p) == Endpoint.Type.SOURCE) continue; // absorbing: never expanded
                 for (int u : adjReversed.get(p)) {
@@ -560,7 +560,7 @@ public final class RiverNetwork {
 
         for (int head = 0; head < n; head++) {
             if (alive[head] || hasUnmarkedPred[head]) continue;
-            final ArrayList<double[]> pts = new ArrayList<>();
+            final List<double[]> pts = new ObjectArrayList<>();
             double maxOwn = 0.0;
             int cur = head;
             while (cur != NONE && !alive[cur]) {
@@ -580,7 +580,7 @@ public final class RiverNetwork {
      *  {@link ChannelGeometry#channelsOverlap}), feeding the collision/orientation pass below. */
     private List<int[]> detectCrossings(AtomicView atomic) {
         quadTree.clear();
-        final List<Integer> channelIds = new ArrayList<>(channels.keySet());
+        final List<Integer> channelIds = new ObjectArrayList<>(channels.keySet());
         Collections.sort(channelIds);
         for (int channelId : channelIds) insertChannelInQuadTree(channels.get(channelId));
 
@@ -591,7 +591,7 @@ public final class RiverNetwork {
                 maxHalf = Math.max(maxHalf, ChannelGeometry.bedHalfWidth(c.widthAt(i)));
         }
 
-        final List<int[]> edges = new ArrayList<>();
+        final List<int[]> edges = new ObjectArrayList<>();
         for (int channelAId : channelIds) {
             final Channel channelA = channels.get(channelAId);
             final int[] aAtomic = atomic.pointAtomicIds.get(channelAId);
@@ -657,7 +657,7 @@ public final class RiverNetwork {
         }
         quadTree.clear();
         insertChannelInQuadTree(ch);
-        ArrayList<Integer> newPathIndexes = new ArrayList<>();
+        List<Integer> newPathIndexes = new ObjectArrayList<>();
 
         for (int id = 0; id < ch.numPts() - 1; id++) {
             if (!quadTree.containsPoint(ch.pt(id))) continue;
@@ -686,11 +686,10 @@ public final class RiverNetwork {
     }
 
     /** Record the points of {@code ch} NOT in {@code keptIndexes} as a removed feature (oxbow loop). */
-    private void recordRemovedComplement(
-            Channel ch, ArrayList<Integer> keptIndexes, HydrologicalFeature type, int step) {
+    private void recordRemovedComplement(Channel ch, List<Integer> keptIndexes, HydrologicalFeature type, int step) {
         final boolean[] kept = new boolean[ch.numPts()];
         for (int idx : keptIndexes) if (idx >= 0 && idx < kept.length) kept[idx] = true;
-        final ArrayList<double[]> removed = new ArrayList<>();
+        final List<double[]> removed = new ObjectArrayList<>();
         int firstRemovedIndex = -1;
         for (int i = 0; i < ch.numPts(); i++)
             if (!kept[i]) {
@@ -708,9 +707,9 @@ public final class RiverNetwork {
     /** Snapshot the current channel geometry (bounded to {@code maxSavedStates}); no-op if disabled. */
     public void recordState(int step) {
         if (!savePreviousStates) return;
-        final List<ArrayList<double[]>> snapshot = new ArrayList<>(channels.size());
+        final List<List<double[]>> snapshot = new ObjectArrayList<>(channels.size());
         for (Channel ch : channels.values()) {
-            final ArrayList<double[]> copy = new ArrayList<>(ch.numPts());
+            final List<double[]> copy = new ObjectArrayList<>(ch.numPts());
             for (double[] p : ch.spline.points()) copy.add(p.clone());
             snapshot.add(copy);
         }
@@ -753,11 +752,11 @@ public final class RiverNetwork {
             @Nullable ChannelTyper typer,
             InfluenceSampler surface,
             boolean extended) {
-        final List<HydrologicalPrimitive> primitives = new ArrayList<>();
+        final List<HydrologicalPrimitive> primitives = new ObjectArrayList<>();
         final double[] offset = new double[] {offsetX, offsetZ};
         // Phase 1: resample every emitting channel. Types depend on neighbouring channels, so every
         // channel must hold its final geometry before any of them is classified.
-        final List<Channel> emitting = new ArrayList<>();
+        final List<Channel> emitting = new ObjectArrayList<>();
         for (Channel ch : channels.values()) {
             if (!channelIdFilter.test(ch.channelId)) continue;
             if (!ch.isResampleable()) continue; // degenerate geometry (too few points or NaN): skip
@@ -809,10 +808,10 @@ public final class RiverNetwork {
     // ---------------------------------------------------------------------------------------------
 
     public List<Channel> getChannels() {
-        return new ArrayList<>(channels.values());
+        return new ObjectArrayList<>(channels.values());
     }
 
-    public ArrayList<double[]> getChannelPts(int channelId) {
+    public List<double[]> getChannelPts(int channelId) {
         return channels.get(channelId).spline.points();
     }
 

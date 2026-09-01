@@ -6,17 +6,17 @@ import static me.batata_1.fractal_terrain.math.VectorOps.distance;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import org.slf4j.Logger;
 
-public record QuinticHermiteSpline(
-        ArrayList<double[]> points, ArrayList<double[]> velocity, ArrayList<double[]> acceleration) {
+public record QuinticHermiteSpline(List<double[]> points, List<double[]> velocity, List<double[]> acceleration) {
 
     private static final Logger LOG = getLogger(QuinticHermiteSpline.class);
 
-    public static QuinticHermiteSpline createCatmullRom(ArrayList<double[]> pt) {
+    public static QuinticHermiteSpline createCatmullRom(List<double[]> pt) {
         ArrayList<double[]> dxy = new ArrayList<>();
         dxy.add(new double[2]);
         for (int i = 1; i < pt.size() - 1; i++) {
@@ -207,7 +207,7 @@ public record QuinticHermiteSpline(
         return sample;
     }
 
-    public QuinticHermiteSpline keepOnly(final ArrayList<Integer> indexes) {
+    public QuinticHermiteSpline keepOnly(final List<Integer> indexes) {
         return new QuinticHermiteSpline(
                 new ArrayList<>(indexes.stream().map(points::get).toList()),
                 new ArrayList<>(indexes.stream().map(velocity::get).toList()),

@@ -1,6 +1,7 @@
 package me.batata_1.fractal_terrain.hydrology.meanders;
 
-import java.util.ArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import java.util.List;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
@@ -84,7 +85,7 @@ public final class Meanders extends ChannelMigrator {
         final double[] migrationRates = computeMigrationRates(ch, dx);
         final double maxMigration = HydrologyTuning.maxMigration(dx);
         final int pointCount = ch.spline.points().size();
-        ArrayList<double[]> migratedPoints = new ArrayList<>(pointCount);
+        List<double[]> migratedPoints = new ObjectArrayList<>(pointCount);
         for (int i = 0; i < pointCount; i++) {
             if (i == 0 || i == pointCount - 1) {
                 migratedPoints.add(ch.spline.points().get(i)); // pin node endpoints
