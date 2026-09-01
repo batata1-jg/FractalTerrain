@@ -1,8 +1,8 @@
 package me.batata_1.fractal_terrain.math.ds;
 
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
@@ -82,7 +82,7 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
         this.leafCapacity = leafCapacity;
         this.elementPrototype = elementPrototype;
 
-        final ArrayList<T> retained = new ArrayList<>(inputElements);
+        final List<T> retained = new ObjectArrayList<>(inputElements);
         retained.removeIf(Objects::isNull);
         final int elementCount = retained.size();
 
@@ -129,7 +129,7 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
         for (int slot = 0; slot < elementCount; slot++) this.elements[slot] = retained.get(elementOrder[slot]);
 
         // ---- leaf level ------------------------------------------------------------------------
-        final ArrayList<LevelUnderConstruction> levels = new ArrayList<>();
+        final List<LevelUnderConstruction> levels = new ObjectArrayList<>();
         final int firstLevelCount = ceilDiv(elementCount, leafCapacity);
         LevelUnderConstruction currentLevel = new LevelUnderConstruction(firstLevelCount);
         for (int leaf = 0; leaf < firstLevelCount; leaf++) {
@@ -309,7 +309,7 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
     /** Every stored element, in STR leaf order. */
     @Override
     public List<T> getAllEntries() {
-        return new ArrayList<>(Arrays.asList(elements));
+        return new ObjectArrayList<>(Arrays.asList(elements));
     }
 
     // -------------------------------------------------------------------------
@@ -318,7 +318,7 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
 
     /** All stored shapes containing {@code queryPoint} (order unspecified). */
     public List<T> queryContaining(final double[] queryPoint) {
-        return queryContaining(queryPoint, 0.0, new ArrayList<>());
+        return queryContaining(queryPoint, 0.0, new ObjectArrayList<>());
     }
 
     /** Buffer-reusing overload for hot paths. {@code out} is appended to, never cleared. */
@@ -418,7 +418,7 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
     /** Self-check for the frozen structure; logs rather than throws so tests can call it.
      *  The MBR-containment check is the one that catches a bad bulk load. */
     public boolean validate() {
-        final List<String> errors = new ArrayList<>();
+        final List<String> errors = new ObjectArrayList<>();
         final int nodeCount = nodeChildStart.length;
         if (nodeCount == 0) {
             if (elements.length != 0) errors.add("empty node array but " + elements.length + " elements");
@@ -594,7 +594,7 @@ public final class ImmutableRTree<T extends SpatialIndexShape>
                     + Integer.toHexString(magic) + "); delete the fractal_terrain tile cache to regenerate");
         final int storedLeafCapacity = buf.getInt();
         final int count = buf.getInt();
-        final List<T> restored = new ArrayList<>(count);
+        final List<T> restored = new ObjectArrayList<>(count);
         for (int i = 0; i < count; i++) {
             final int len = buf.getInt();
             final byte[] chunk = new byte[len];

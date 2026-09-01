@@ -2,12 +2,12 @@ package me.batata_1.fractal_terrain.storage;
 
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -336,7 +336,7 @@ public class Storage<T extends Persistable<T>> {
     /** Trims the cache to its byte budget. Purge order matters for cache-only payloads, or a racing
      *  reader sees an entry that exists logically but nowhere. */
     public void evictIfNeeded(long cacheLimitBytes) {
-        final List<TileKey> victims = new ArrayList<>();
+        final List<TileKey> victims = new ObjectArrayList<>();
         synchronized (evictionLock) {
             while (totalCachedBytes > cacheLimitBytes) {
                 TileKey evictedKey = pollOldest();

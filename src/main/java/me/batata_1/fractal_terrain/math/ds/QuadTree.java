@@ -1,5 +1,6 @@
 package me.batata_1.fractal_terrain.math.ds;
 
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.*;
@@ -68,7 +69,7 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
         }
     }
 
-    final List<Node<T>> tree = new ArrayList<>(8);
+    final List<Node<T>> tree = new ObjectArrayList<>(8);
 
     /** Guards {@link #tree}: many concurrent readers (queries) or one exclusive writer (mutations). */
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
@@ -132,7 +133,7 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
     public List<T> getAllEntries() {
         lock.readLock().lock();
         try {
-            return new ArrayList<>(tree.get(1).points);
+            return new ObjectArrayList<>(tree.get(1).points);
         } finally {
             lock.readLock().unlock();
         }
@@ -281,22 +282,22 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
     }
 
     // se so tem um elemento checar esse
-    private <S extends SpatialIndexShape> ArrayList<T> query(final S shape, final int id) {
+    private <S extends SpatialIndexShape> List<T> query(final S shape, final int id) {
         if (id == 0) return null;
         final Node<T> cur = tree.get(id);
         if (shape.notIntersect(cur.p0, cur.p1)) return null;
-        if (shape.contains(cur.p0, cur.p1)) return new ArrayList<>(cur.points);
+        if (shape.contains(cur.p0, cur.p1)) return new ObjectArrayList<>(cur.points);
         // terminal node: one point, or a depth-capped node that never split
         if (cur.points.size() == 1 || cur.depth >= maxTreeDepth) {
-            ArrayList<T> hits = null;
+            List<T> hits = null;
             for (T pt : cur.points) {
                 if (!shape.contains(pt)) continue;
-                if (hits == null) hits = new ArrayList<>();
+                if (hits == null) hits = new ObjectArrayList<>();
                 hits.add(pt);
             }
             return hits;
         }
-        ArrayList<T> mergedPoints = null;
+        List<T> mergedPoints = null;
         for (int section : cur.child) {
             mergedPoints = merge(mergedPoints, query(shape, section));
         }
@@ -358,7 +359,7 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
         lock.readLock().lock();
         try {
             List<T> resp = query(new SpatialIndexShape.Rectangle(b, d), 1);
-            if (resp == null) return new ArrayList<>();
+            if (resp == null) return new ObjectArrayList<>();
             return resp;
         } finally {
             lock.readLock().unlock();
@@ -370,7 +371,7 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
         lock.readLock().lock();
         try {
             List<T> resp = query(new SpatialIndexShape.Circle(pt, r), 1);
-            if (resp == null) return new ArrayList<>();
+            if (resp == null) return new ObjectArrayList<>();
             return resp;
         } finally {
             lock.readLock().unlock();
@@ -394,7 +395,7 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
         lock.readLock().lock();
         try {
             List<T> resp = query(new SpatialIndexShape.Rectangle(b, d), 1);
-            if (resp == null) return new ArrayList<>();
+            if (resp == null) return new ObjectArrayList<>();
             return resp.stream().map(SpatialIndexPoint::toArray).toList();
         } finally {
             lock.readLock().unlock();
@@ -425,7 +426,7 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
         return (pt.get(Z) <= m[Z]) ? QP : QQ;
     }
 
-    private ArrayList<T> merge(ArrayList<T> a, ArrayList<T> b) {
+    private List<T> merge(List<T> a, List<T> b) {
         if (a == null) return b;
         if (b == null) return a;
         if (a.size() < b.size()) {

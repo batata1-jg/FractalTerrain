@@ -4,7 +4,7 @@ import static me.batata_1.fractal_terrain.FractalTerrainConfig.MAX_SPLINE_LENGTH
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 import static me.batata_1.fractal_terrain.math.VectorOps.distance;
 
-import java.util.ArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.Arrays;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
@@ -17,7 +17,7 @@ public record QuinticHermiteSpline(List<double[]> points, List<double[]> velocit
     private static final Logger LOG = getLogger(QuinticHermiteSpline.class);
 
     public static QuinticHermiteSpline createCatmullRom(List<double[]> pt) {
-        ArrayList<double[]> dxy = new ArrayList<>();
+        List<double[]> dxy = new ObjectArrayList<>();
         dxy.add(new double[2]);
         for (int i = 1; i < pt.size() - 1; i++) {
             dxy.add(VectorOps.scale(VectorOps.sub(pt.get(i + 1), pt.get(i - 1)), 0.5));
@@ -26,7 +26,7 @@ public record QuinticHermiteSpline(List<double[]> points, List<double[]> velocit
             dxy.set(0, dxy.get(1));
         }
         dxy.add(dxy.getLast());
-        ArrayList<double[]> ddxy = new ArrayList<>();
+        List<double[]> ddxy = new ObjectArrayList<>();
         ddxy.add(new double[2]);
         for (int i = 1; i < pt.size() - 1; i++) {
             ddxy.add(VectorOps.scale(VectorOps.sub(dxy.get(i + 1), dxy.get(i - 1)), 0.5));
@@ -91,7 +91,7 @@ public record QuinticHermiteSpline(List<double[]> points, List<double[]> velocit
     public Resampled reSampleWithTs(double samplingDist) {
         if (this.checkNaN()) throw new IllegalStateException();
         if (points.size() < 2) throw new IllegalStateException("spline must have at least 2 points");
-        ArrayList<Double> newT = new ArrayList<>();
+        List<Double> newT = new ObjectArrayList<>();
         newT.add(0.0);
         for (int counter = 0; counter < MAX_SPLINE_LENGTH; counter++) {
             newT.add(nextInSpline(newT.getLast(), samplingDist));
@@ -100,10 +100,11 @@ public record QuinticHermiteSpline(List<double[]> points, List<double[]> velocit
                 newT.add(getMaxT());
                 return new Resampled(
                         new QuinticHermiteSpline(
-                                new ArrayList<>(newT.stream().map(this::sample).toList()),
-                                new ArrayList<>(
+                                new ObjectArrayList<>(
+                                        newT.stream().map(this::sample).toList()),
+                                new ObjectArrayList<>(
                                         newT.stream().map(this::firstDerivative).toList()),
-                                new ArrayList<>(newT.stream()
+                                new ObjectArrayList<>(newT.stream()
                                         .map(this::secondDerivative)
                                         .toList())),
                         newT.stream().mapToDouble(Double::doubleValue).toArray());
@@ -209,9 +210,9 @@ public record QuinticHermiteSpline(List<double[]> points, List<double[]> velocit
 
     public QuinticHermiteSpline keepOnly(final List<Integer> indexes) {
         return new QuinticHermiteSpline(
-                new ArrayList<>(indexes.stream().map(points::get).toList()),
-                new ArrayList<>(indexes.stream().map(velocity::get).toList()),
-                new ArrayList<>(indexes.stream().map(acceleration::get).toList()));
+                new ObjectArrayList<>(indexes.stream().map(points::get).toList()),
+                new ObjectArrayList<>(indexes.stream().map(velocity::get).toList()),
+                new ObjectArrayList<>(indexes.stream().map(acceleration::get).toList()));
     }
 
     public void appendBack() {}

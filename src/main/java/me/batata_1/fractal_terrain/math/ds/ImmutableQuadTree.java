@@ -1,8 +1,8 @@
 package me.batata_1.fractal_terrain.math.ds;
 
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -99,7 +99,7 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
         this.maxPointsNode = maxPointsNode;
         this.pointPrototype = pointPrototype;
 
-        final ArrayList<T> sorted = new ArrayList<>(inputPoints);
+        final List<T> sorted = new ObjectArrayList<>(inputPoints);
         sorted.removeIf(Objects::isNull);
 
         // Reject non-finite point coordinates up front. A NaN or infinity poisons the alignment loop
@@ -177,7 +177,7 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
         sorted.sort(this::comparator);
         this.points = sorted.toArray((T[]) new SpatialIndexPoint[0]);
 
-        final ArrayList<Node> nodeList = new ArrayList<>();
+        final List<Node> nodeList = new ObjectArrayList<>();
         nodeList.add(PLACEHOLDER); // root at index 0
         buildInto(nodeList, 0, 0, this.points.length, 0, rootOriginX, rootOriginZ, rootSize);
         this.nodes = nodeList.toArray(new Node[0]);
@@ -209,7 +209,7 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
     /** Packs the pre-sorted range into {@code nodes[slot]} and recurses.
      *  {@code (ox, oz, size)} is the node's square: lower corner plus side length. */
     private void buildInto(
-            ArrayList<Node> nodeList, int slot, int start, int end, int depth, double ox, double oz, double size) {
+            List<Node> nodeList, int slot, int start, int end, int depth, double ox, double oz, double size) {
         final int count = end - start;
         if (count <= maxPointsNode || depth == maxDepth) {
             nodeList.set(slot, new Node(count, start)); // leaf: id = points slice start
@@ -249,7 +249,7 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
     /** Every real (non-null) stored point, in euler-tour order. */
     @Override
     public List<T> getAllEntries() {
-        final List<T> allEntries = new ArrayList<>(numPoints());
+        final List<T> allEntries = new ObjectArrayList<>(numPoints());
         collect(0, points.length, allEntries);
         return allEntries;
     }
@@ -261,7 +261,7 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
     }
 
     public List<T> getPointsInBox(final double[] b, final double[] d) {
-        return getPointsInBox(b, d, new ArrayList<>());
+        return getPointsInBox(b, d, new ObjectArrayList<>());
     }
 
     /** Buffer-reusing overload for hot paths. {@code out} is appended to, never cleared. */
@@ -275,7 +275,7 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
     }
 
     public List<T> getPointsInCircle(final double[] center, final double r) {
-        return getPointsInCircle(center, r, new ArrayList<>());
+        return getPointsInCircle(center, r, new ObjectArrayList<>());
     }
 
     /** Buffer-reusing overload for hot paths. {@code out} is appended to, never cleared. */
@@ -541,7 +541,7 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
     /** Self-check for the frozen structure; logs rather than throws so tests and assertions can call it.
      *  The point-inside-its-leaf-square check is the one that catches sort/query quadrant disagreement. */
     public boolean validate() {
-        final List<String> errors = new ArrayList<>();
+        final List<String> errors = new ObjectArrayList<>();
         checkRootConstants(errors);
         if (nodes.length == 0) {
             if (points.length != 0) errors.add("empty node array but " + points.length + " points");
@@ -732,7 +732,7 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
         final double[] storedMin = {buf.getDouble(), buf.getDouble()};
         final double[] storedMax = {buf.getDouble(), buf.getDouble()};
         final int count = buf.getInt();
-        final List<T> restored = new ArrayList<>(count);
+        final List<T> restored = new ObjectArrayList<>(count);
         for (int i = 0; i < count; i++) {
             final int len = buf.getInt();
             final byte[] chunk = new byte[len];

@@ -2,6 +2,7 @@ package me.batata_1.fractal_terrain.infinitetensor;
 
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -136,7 +137,7 @@ public abstract class InfiniteTensor {
 
         // Dependencies get the exact list of pixel ranges (one per our pending window), not a union.
         for (int i = 0; i < deps.length; i++) {
-            List<int[][]> depRanges = new ArrayList<>(pending.size());
+            List<int[][]> depRanges = new ObjectArrayList<>(pending.size());
             for (int[] wi : pending) {
                 depRanges.add(depWindows[i].getBounds(wi));
             }
@@ -161,7 +162,7 @@ public abstract class InfiniteTensor {
         // Single-flight: only the thread that wins the claim gathers deps and runs the model; racing
         // threads await the winner's result instead of duplicating (expensive) inference.
         storage.getOrCompute(windowIndex, () -> {
-            List<FloatTensor> args = new ArrayList<>(deps.length);
+            List<FloatTensor> args = new ObjectArrayList<>(deps.length);
             for (int i = 0; i < deps.length; i++) {
                 int[][] bounds = depWindows[i].getBounds(windowIndex);
                 int[] depStart = new int[bounds.length];
@@ -189,9 +190,9 @@ public abstract class InfiniteTensor {
 
             // Single-flight per window: claim each, only run inference over the windows we win. Per-element
             // results are independent, so a sub-batch of the won windows yields identical values.
-            List<int[]> won = new ArrayList<>(slice.size());
-            List<CompletableFuture<FloatTensor>> wonPromises = new ArrayList<>(slice.size());
-            List<CompletableFuture<FloatTensor>> lost = new ArrayList<>();
+            List<int[]> won = new ObjectArrayList<>(slice.size());
+            List<CompletableFuture<FloatTensor>> wonPromises = new ObjectArrayList<>(slice.size());
+            List<CompletableFuture<FloatTensor>> lost = new ObjectArrayList<>();
             for (int[] wi : slice) {
                 CompletableFuture<FloatTensor> claim = storage.claimForCompute(wi);
                 if (claim != null) {
@@ -207,9 +208,9 @@ public abstract class InfiniteTensor {
                 int fulfilled = 0;
                 try {
                     // args.get(depIdx) → list of tensors for that dep, one per WON window
-                    List<List<FloatTensor>> args = new ArrayList<>(deps.length);
+                    List<List<FloatTensor>> args = new ObjectArrayList<>(deps.length);
                     for (int i = 0; i < deps.length; i++) {
-                        List<FloatTensor> depArgs = new ArrayList<>(won.size());
+                        List<FloatTensor> depArgs = new ObjectArrayList<>(won.size());
                         for (int[] windowIndex : won) {
                             int[][] bounds = depWindows[i].getBounds(windowIndex);
                             int[] depStart = new int[bounds.length];

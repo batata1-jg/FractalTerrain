@@ -1,6 +1,6 @@
 package me.batata_1.fractal_terrain.math;
 
-import java.util.ArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -32,10 +32,10 @@ public class MarchingSquares {
     /** Border contours as fitted splines. Degenerate results are skipped rather than returned. */
     public List<QuinticHermiteSpline> trace(boolean[][] mask) {
         final List<List<double[]>> contours = traceContours(mask);
-        final List<QuinticHermiteSpline> splines = new ArrayList<>();
+        final List<QuinticHermiteSpline> splines = new ObjectArrayList<>();
         for (List<double[]> contour : contours) {
             if (contour.size() < minPolylineLength) continue;
-            final ArrayList<double[]> contourPoints = new ArrayList<>(contour);
+            final List<double[]> contourPoints = new ObjectArrayList<>(contour);
             try {
                 final QuinticHermiteSpline fitted = QuinticHermiteSpline.createCatmullRom(contourPoints);
                 splines.add(fitted.reSample(resampleSpacing));
@@ -83,11 +83,11 @@ public class MarchingSquares {
      *  Closed contours repeat their start point so the fit closes cleanly. */
     public static List<List<double[]>> traceContours(boolean[][] mask) {
         final int height = mask.length;
-        if (height < 2) return new ArrayList<>();
+        if (height < 2) return new ObjectArrayList<>();
         final int width = mask[0].length;
-        if (width < 2) return new ArrayList<>();
+        if (width < 2) return new ObjectArrayList<>();
 
-        final List<Segment> segments = new ArrayList<>();
+        final List<Segment> segments = new ObjectArrayList<>();
         final Map<Long, Segment> bySource = new HashMap<>();
 
         for (int r = 0; r < height - 1; r++) {
@@ -131,7 +131,7 @@ public class MarchingSquares {
         final Set<Long> targets = new HashSet<>();
         for (Segment s : segments) targets.add(s.toKey);
 
-        final List<List<double[]>> contours = new ArrayList<>();
+        final List<List<double[]>> contours = new ObjectArrayList<>();
         for (Segment s : segments) {
             if (!s.consumed && !targets.contains(s.fromKey)) contours.add(walk(s, bySource));
         }
@@ -143,7 +143,7 @@ public class MarchingSquares {
 
     /** Follow {@code from → to} links from {@code seed} until the contour closes or dead-ends. */
     private static List<double[]> walk(Segment seed, Map<Long, Segment> bySource) {
-        final List<double[]> contour = new ArrayList<>();
+        final List<double[]> contour = new ObjectArrayList<>();
         final long startKey = seed.fromKey;
         contour.add(seed.from);
         Segment cur = seed;

@@ -1,6 +1,6 @@
 package me.batata_1.fractal_terrain.math;
 
-import java.util.ArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.List;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 
@@ -33,10 +33,10 @@ public class Skeletonizer {
     public List<QuinticHermiteSpline> trace(boolean[][] mask) {
         final boolean[][] skeleton = zhangSuen(mask);
         final List<List<int[]>> polylines = tracePolylines(skeleton);
-        final List<QuinticHermiteSpline> splines = new ArrayList<>();
+        final List<QuinticHermiteSpline> splines = new ObjectArrayList<>();
         for (List<int[]> polyline : polylines) {
             if (polyline.size() < minPolylineLength) continue;
-            final ArrayList<double[]> polylinePoints = new ArrayList<>(polyline.size());
+            final List<double[]> polylinePoints = new ObjectArrayList<>(polyline.size());
             for (int[] pixel : polyline) {
                 polylinePoints.add(new double[] {pixel[0], pixel[1]});
             }
@@ -67,7 +67,7 @@ public class Skeletonizer {
         final boolean[][] image = new boolean[height][width];
         for (int row = 0; row < height; row++) System.arraycopy(input[row], 0, image[row], 0, width);
 
-        final List<int[]> toRemove = new ArrayList<>();
+        final List<int[]> toRemove = new ObjectArrayList<>();
         boolean changed = true;
         while (changed) {
             changed = false;
@@ -161,9 +161,9 @@ public class Skeletonizer {
         }
 
         final boolean[][] visited = new boolean[height][width];
-        final List<List<int[]>> polylines = new ArrayList<>();
+        final List<List<int[]>> polylines = new ObjectArrayList<>();
 
-        final List<int[]> nodes = new ArrayList<>();
+        final List<int[]> nodes = new ObjectArrayList<>();
         for (int row = 0; row < height; row++) {
             for (int col = 0; col < width; col++) {
                 if (skeleton[row][col] && (neighborCount[row][col] == 1 || neighborCount[row][col] >= 3)) {
@@ -179,7 +179,7 @@ public class Skeletonizer {
                 if (startRow < 0 || startRow >= height || startCol < 0 || startCol >= width) continue;
                 if (!skeleton[startRow][startCol] || visited[startRow][startCol]) continue;
 
-                final List<int[]> line = new ArrayList<>();
+                final List<int[]> line = new ObjectArrayList<>();
                 line.add(new int[] {node[0], node[1]});
                 int curRow = startRow, curCol = startCol;
                 while (true) {
@@ -210,7 +210,7 @@ public class Skeletonizer {
             for (int col = 0; col < width; col++) {
                 if (!skeleton[row][col] || visited[row][col]) continue;
                 if (neighborCount[row][col] != 2) continue;
-                final List<int[]> loop = new ArrayList<>();
+                final List<int[]> loop = new ObjectArrayList<>();
                 loop.add(new int[] {row, col});
                 visited[row][col] = true;
                 int curRow = row, curCol = col;

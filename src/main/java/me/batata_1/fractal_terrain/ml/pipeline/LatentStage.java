@@ -1,6 +1,6 @@
 package me.batata_1.fractal_terrain.ml.pipeline;
 
-import java.util.ArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Supplier;
@@ -164,7 +164,7 @@ final class LatentStage {
                 });
 
         // Build outputs: pred = -raw_model_out; sample = cos(t)*xT - sin(t)*sigma_data*pred
-        List<FloatTensor> results = new ArrayList<>(batch);
+        List<FloatTensor> results = new ObjectArrayList<>(batch);
         for (int b = 0; b < batch; b++) {
             float[] xT = xTArr[b];
             float[] newSample = new float[5 * S * S];
