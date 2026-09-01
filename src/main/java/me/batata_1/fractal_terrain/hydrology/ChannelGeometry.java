@@ -29,18 +29,15 @@ public final class ChannelGeometry {
     }
 
     /** Channel depth for the given width (native px), floored at 1. */
-    public static double depthForWidth(double width) {
+    public static double depth(double width) {
         return 1.5 * Math.max(2, Math.pow(width / DEPTH_WIDTH_SCALE, 1.0 / DEPTH_WIDTH_EXP));
     }
 
-    /** The one knob calibrating narrow-deep against wide-shallow Rosgen types. */
-    public static final double W_REF = 2.0;
-
     /** Prescribes the width-to-depth ratio the Rosgen classifier compares against {@code WD_NARROW}.
-     *  Deliberately not derived from {@link #depthForWidth}, whose 1.0 floor would degenerate the ratio
+     *  Deliberately not derived from {@link #depth}, whose 1.0 floor would degenerate the ratio
      *  to plain width and classify nearly everything narrow-deep — see {@code config/README.md}. */
     public static double widthDepthRatio(double width) {
-        return width / depthForWidth(width);
+        return width / depth(width);
     }
 
     /** Floor keeping {@link #widthDepthRatio} positive and NaN-free against unchecked negative width. */

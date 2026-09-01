@@ -99,5 +99,5 @@ class GlobalRiverGoldenTest {
     }
 
     /** Captured checksum from {@link #globalNetworkMatchesGolden}; covers arrows/width/bed/flow channels. */
-    private static final long GOLDEN_CHECKSUM = 2603768671405312821L;
+    private static final long GOLDEN_CHECKSUM = 8057916655239363332L;
 }

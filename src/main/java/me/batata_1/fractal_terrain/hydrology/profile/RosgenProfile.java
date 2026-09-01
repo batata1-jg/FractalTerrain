@@ -140,7 +140,7 @@ public enum RosgenProfile implements HydrologyProfile {
 
         @Override
         protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
-            return -Math.min(1, 0.5 * depth * Math.pow(1 - signedPerpDist * signedPerpDist, 0.16)) - 3;
+            return -Math.max(1, 0.5 * depth * Math.pow(1 - signedPerpDist * signedPerpDist, 0.16)) - 3;
         }
     },
     G {
@@ -193,7 +193,7 @@ public enum RosgenProfile implements HydrologyProfile {
                 signedPerpDist,
                 floodPlainLength(width),
                 width / 2,
-                FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depthForWidth(width),
+                FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depth(width),
                 curvature);
     }
 
@@ -258,7 +258,7 @@ public enum RosgenProfile implements HydrologyProfile {
 
     // should be between the range -1 and 1
     protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
-        return -Math.min(1, depth * Math.sqrt(1 - signedPerpDist * signedPerpDist));
+        return -Math.max(1, depth * Math.sqrt(1 - signedPerpDist * signedPerpDist));
     }
 
     /** The profile for a primitive's Rosgen type. */

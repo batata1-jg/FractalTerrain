@@ -57,7 +57,7 @@ public class Channel {
 
     /** Channel depth derived from the discharge width (the widest, downstream end). */
     public double depth() {
-        return ChannelGeometry.depthForWidth(dischargeWidth());
+        return ChannelGeometry.depth(dischargeWidth());
     }
 
     /** Flow between points, so resampling can interpolate rather than snap to the nearest point. */

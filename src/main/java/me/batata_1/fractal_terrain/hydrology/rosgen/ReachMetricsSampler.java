@@ -45,7 +45,7 @@ public final class ReachMetricsSampler {
      *  Walk bound and step floor are tuned in {@code config/README.md}. */
     public double entrenchmentRatio(double[] point, double[] normal, double bedElev, double width) {
         final double bankfullWidth = Math.max(width, HydrologyTuning.MIN_WIDTH);
-        final double depth = HydrologyTuning.DEPTH_MAX_FACTOR * ChannelGeometry.depthForWidth(bankfullWidth);
+        final double depth = HydrologyTuning.DEPTH_MAX_FACTOR * ChannelGeometry.depth(bankfullWidth);
         final double floodProneStage = bedElev + 2.0 * depth;
         final double bankfullWidthFactor = Math.pow(bankfullWidth, 0.05) + HydrologyTuning.ENTRENTMENT_RATIO_BIAS;
         final double maxFloodPlainWidth = HydrologyTuning.ER_WALK_WIDTHS * bankfullWidthFactor;

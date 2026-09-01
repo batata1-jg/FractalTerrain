@@ -569,7 +569,7 @@ public class BiomeProvider {
 
     public Float getVegPdf(int[] xz) {
         xz[CH] = 5;
-        return final_tiles.getValue(xz);}
+        return finalTiles.getValue(xz);}
 
     /** Bilinearly-interpolated weirdness at block {@code (x, z)} (scale-5 sampling of channel 4). */
     @TestOnly

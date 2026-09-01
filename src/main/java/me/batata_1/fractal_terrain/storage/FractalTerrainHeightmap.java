@@ -4,8 +4,7 @@ import static me.batata_1.fractal_terrain.FractalTerrainInstance.getBiomeProvide
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.getReliefProvider;
 
 import java.util.function.Function;
-import me.batata_1.fractal_terrain.FractalTerrainConfig;
-import me.batata_1.fractal_terrain.math.Interpolation;
+
 import net.minecraft.world.level.ChunkPos;
 
 /**
@@ -40,7 +39,7 @@ public record FractalTerrainHeightmap(Object[] data) {
         CONTINENTALNESS(pos -> getBiomeProvider().fillContinentalness(pos)),
         EROSION(pos -> getBiomeProvider().fillErosion(pos)),
         TEMPERATURE(pos -> getBiomeProvider().fillTemperature(pos)),
-        VEGETATION(pos -> getBiomeProvider().fillVegetation(pos)),
+        HUMIDITY(pos -> getBiomeProvider().fillVegetation(pos)),
         WEIRDNESS(pos -> getBiomeProvider().fillWeirdness(pos)),
         // Special (like ELEVATION): zero-filled here, then populated by the second pass
         // (PopulateNoiseStep#fineGrainedPrimitivePass) as carve(x,z) − pre-carve elevation. Negative where the

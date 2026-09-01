@@ -116,9 +116,10 @@ Read order; stop once you have what the task needs, and skip what is absent with
 2. The `README.md` or `CLAUDE.md` in, or above, the directory you are about to edit.
 3. `ARCHITECTURE.md` for anything crossing providers, frames, or the generation pipeline.
 4. `.claude/conventions/` — read `CLAUDE.md` there, then open only the files covering what you
-   touch: `documentation.md` for any docstring or comment, `structural.md` and `code-quality/`
-   for code, `performance.md` on or near a hot path, `temporal.md` for comment tense,
-   `diff-format.md` for diffs, `intent-markers.md` for `:PERF:`/`:UNSAFE:`/`:SCHEMA:`.
+   touch: `documentation.md` for any docstring or comment, `structural.md`, `code-quality/`, and
+   `class-structure.md` for code, `performance.md` on or near a hot path, `temporal.md` for
+   comment tense, `diff-format.md` for diffs, `intent-markers.md` for
+   `:PERF:`/`:UNSAFE:`/`:SCHEMA:`.
 
 `docs/` is scraped Minecraft Wiki worldgen reference, not conventions. Read it for vanilla
 worldgen semantics, never for how to write code here.

@@ -8,6 +8,7 @@ import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.HydrologicalFeature;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive.RosgenType;
+import me.batata_1.fractal_terrain.math.VectorOps;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -61,7 +62,9 @@ class ComputeRiverGridTest {
         final int centre = idx(8, 8);
         assertEquals(1.0f, b.acc[3 * centre + 2], 1e-6f, "weight at the centre");
         // RosgenProfile.delta returns a flat -10 inside marginLen (width 2 -> marginLen 1).
-        assertEquals(90.0f, b.acc[3 * centre], 1e-4f, "height at the centre");
+        final double[] point = {8.0, 8.0};
+        final double signedPerpDist = VectorOps.dot(river.normal(), VectorOps.sub(point, river.coord()));
+        assertEquals(river.h(signedPerpDist), b.acc[3 * centre], 1e-4f, "height at the centre");
     }
 
     @Test
@@ -115,7 +118,9 @@ class ComputeRiverGridTest {
                 b.tangCol,
                 null);
 
-        assertEquals(190.0f, b.acc[3 * idx(9, 8)], 1e-4f);
+        final double[] point = {9.0, 8.0};
+        final double signedPerpDist = VectorOps.dot(b2.normal(), VectorOps.sub(point, b2.coord()));
+        assertEquals(b2.h(signedPerpDist), b.acc[3 * idx(9, 8)], 1e-4f);
     }
 
     @Test
@@ -142,7 +147,9 @@ class ComputeRiverGridTest {
                 b.tangCol,
                 null);
 
-        assertEquals(90.0f, b.acc[3 * idx(9, 8)], 1e-4f);
+        final double[] point = {9.0, 8.0};
+        final double signedPerpDist = VectorOps.dot(nearer.normal(), VectorOps.sub(point, nearer.coord()));
+        assertEquals(nearer.h(signedPerpDist), b.acc[3 * idx(9, 8)], 1e-4f);
     }
 
     @Test

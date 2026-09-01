@@ -270,7 +270,7 @@ public final class HydrologyProfileInprinter {
         final long seed = river.seed();
         final double floodPlainLen = profile.floodPlainLength(width);
         final double marginLen = width / 2;
-        final double depth = FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depthForWidth(width);
+        final double depth = FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depth(width);
         final float waterSurface = (float) (elevation + HydrologicalPrimitive.waterLine(width));
         final long packed = HydrologicalPrimitive.HydrologicalFeature.RIVER.pack(
                 RiverPrimitive.RosgenType.orDefault(river.rosgenType()).ordinal());
@@ -389,7 +389,7 @@ public final class HydrologyProfileInprinter {
         final long seed = river.seed();
         final double floodPlainLen = profile.floodPlainLength(width);
         final double marginLen = width / 2;
-        final double depth = FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depthForWidth(width);
+        final double depth = FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depth(width);
         profile.sampleCrossSection(lut, n, 1.0, baseIdx, seed, elevation, floodPlainLen, marginLen, depth, curvature);
 
         for (int i = 0; i < lut.length; i++) if (lut[i] < elevation) lut[i] = (float) elevation;

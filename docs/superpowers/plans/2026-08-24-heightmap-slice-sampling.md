@@ -10,6 +10,16 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-20-heightmap-slice-sampling-design.md`
 
+**Re-verified 2026-08-31 against `4911ac7`.** Nothing in this plan has landed: there is no
+`SliceGeometry`, no `NonIntersectingInfiniteTensor.getSlice`, no `ChunkChannelFill`, and neither large
+tensor has a byte budget. Four things drifted since the 2026-08-24 draft and are corrected throughout —
+`ReliefProvider`/`BiomeProvider`'s field is now `finalTiles` (was `final_tiles`),
+`NonIntersectingInfiniteTensor`'s is `entryCreatingFunction` (was `entry_creating_function`), the line
+references below were re-read, and the test baseline in Global Constraints was replaced with the
+2026-08-31 re-measurement. Everything else was checked and still holds: `GLOBAL_SCALE_CORRECTION = 5f`,
+`RELIEF_CHANNELS = 7`, `BIOME_CHANNELS = 6`, `CH/X/Z = 0/1/2`, the eleven convertible `Types` entries,
+`ConfluencePrimitive` implementing only `h(double[])`, and every documentation target in Task 7.
+
 ## Global Constraints
 
 - **Read the project guidance before the first edit of a session.** Root `CLAUDE.md` "Development" read order: root `CLAUDE.md`, then the `README.md`/`CLAUDE.md` in or above the directory being edited, then `ARCHITECTURE.md` (this change crosses providers and the generation pipeline, so it applies), then `.claude/conventions/CLAUDE.md` followed by `documentation.md`, `structural.md`, `code-quality/`, `performance.md`, `temporal.md`, `intent-markers.md`. Read them; do not paraphrase them from this plan.
@@ -19,7 +29,7 @@
 - **The corner rule: `floor` and `ceil`, never `floor` and `floor + 1`.** `Interpolation.interpolate` uses `xs = {floor(x), ceil(x)}`. On an exact pixel `floor == ceil`, so only one column is read. `floor + 1` gives a numerically identical value (the extra column has weight zero) but reads one pixel further, which at a 512-px tile boundary forces a whole extra tile to materialise — a full ONNX inference, for a value multiplied by zero.
 - **`GLOBAL_SCALE_CORRECTION = 5f`** (`config/ModConfig.java:22`), a compile-time constant that javac inlines, so referencing it never triggers `ModConfig`'s static initializer (which needs `FabricLoader` and would fail headless). The same holds for `RELIEF_CHANNELS = 7`, `BIOME_CHANNELS = 6`, `CH = 0`, `X = 1`, `Z = 2`. **Never reference a non-constant config member from code a JUnit test loads.**
 - **Tile geometry:** relief and biome tiles are `[C, 512, 512]` with disjoint windows (`TensorWindow(int[] size)` sets `stride == size`). Tensor index order is `[channel, x, z]`; the flat index within a tile is `ch * 512 * 512 + x * 512 + z`.
-- **Test baseline is a claim, not a fact.** `gradle build` currently fails at `:compileTestJava` — `src/test/.../hydrology/features/ConfluencePrimitiveTest.java` calls `ConfluencePrimitive.w(double[])` and `.d(double[])`, neither of which exists; 9 errors. Pre-existing and out of scope. With that file excluded a run reported 81 tests, 19 failed, 1 skipped (`RosgenKeyTest` 6, `ComputeRiverGridTest` 3, `ChannelGeometryTest` 3, `RiverGoldenTest` 2, `MeandersGoldenTest` 2, `GlobalRiverGoldenTest` 1, `ReachMetricsSamplerTest` 1, `CentrelineTest` 1). Re-measure at `HEAD` in a worktree with `libs/onnxruntime/teste.jar` copied in (`libs/` is git-ignored; without it you get ~132 phantom errors), and compare failure **messages** in `build/test-results/test/*.xml`, not just test names.
+- **Test baseline is a claim, not a fact.** `gradle build` currently fails at `:compileTestJava` — `src/test/.../hydrology/features/ConfluencePrimitiveTest.java` calls `ConfluencePrimitive.w(double[])` and `.d(double[])`, neither of which exists; 9 errors. Pre-existing and out of scope. With that file excluded, the root `CLAUDE.md` records **77 tests, 18 failed, 1 skipped** after the 2026-08-31 refactor pass (`RosgenKeyTest` 4, `ChannelGeometryTest` 4, `ComputeRiverGridTest` 3, `RiverGoldenTest` 2, `MeandersGoldenTest` 2, `GlobalRiverGoldenTest` 1, `ReachMetricsSamplerTest` 1, `CentrelineTest` 1) — down from 81/20/1 at `18060cc`, because the Rosgen dead band was deleted and took its four `RosgenKeyTest` cases with it. Every remaining failure message is byte-identical across that pass, golden checksums included. `src/test/java/me/batata_1/fractal_terrain/CLAUDE.md` still quotes the older 81/19/1 figure; Task 7 corrects it. Re-measure at `HEAD` in a worktree with `libs/onnxruntime/teste.jar` copied in (`libs/` is git-ignored; without it you get ~132 phantom errors), and compare failure **messages** in `build/test-results/test/*.xml`, not just test names.
 - **Running the new tests while `ConfluencePrimitiveTest` is broken.** `gradle test --tests '<pattern>'` still compiles the whole test source set and will fail. Add this line to `build.gradle` for the duration of local verification and **revert it before the final commit**:
 
   ```groovy
@@ -251,7 +261,7 @@ Expected: PASS, 4 tests.
 
 - [ ] **Step 5: Point `InfiniteTensor.getSlice` at the new static**
 
-In `src/main/java/me/batata_1/fractal_terrain/infinitetensor/InfiniteTensor.java`, replace the whole body of `getSlice` (currently lines 74-121) with:
+In `src/main/java/me/batata_1/fractal_terrain/infinitetensor/InfiniteTensor.java`, replace the whole body of `getSlice` (currently lines 74-120) with:
 
 ```java
     /** The read entry point: assembles a slice from however many windows it spans. */
@@ -309,8 +319,8 @@ git commit -m "refactor: InfiniteTensor.getSlice walks through SliceGeometry"
 
 **Files:**
 - Modify: `src/main/java/me/batata_1/fractal_terrain/infinitetensor/NonIntersectingInfiniteTensor.java` (whole file)
-- Modify: `src/main/java/me/batata_1/fractal_terrain/relief/ReliefProvider.java:47-52` (constructor)
-- Modify: `src/main/java/me/batata_1/fractal_terrain/world/biome/BiomeProvider.java:139-142` (constructor)
+- Modify: `src/main/java/me/batata_1/fractal_terrain/relief/ReliefProvider.java:48-51` (constructor)
+- Modify: `src/main/java/me/batata_1/fractal_terrain/world/biome/BiomeProvider.java:145-147` (constructor)
 - Test: `src/test/java/me/batata_1/fractal_terrain/infinitetensor/NonIntersectingInfiniteTensorSliceTest.java`
 
 **Interfaces:**
@@ -456,7 +466,7 @@ import me.batata_1.fractal_terrain.storage.TileKey;
 public class NonIntersectingInfiniteTensor extends Storage<FloatTensor> {
 
     private final TensorWindow outWindow;
-    private final Function<TileKey, FloatTensor> entry_creating_function;
+    private final Function<TileKey, FloatTensor> entryCreatingFunction;
 
     /** Soft cap on cached bytes; {@code Long.MAX_VALUE} disables eviction. */
     private final long cacheLimitBytes;
@@ -469,7 +479,7 @@ public class NonIntersectingInfiniteTensor extends Storage<FloatTensor> {
     public NonIntersectingInfiniteTensor(
             String path, String name, int[] shape, Function<TileKey, FloatTensor> f, long cacheLimitBytes) {
         super(path, name, shape.length, new FloatTensor(new int[] {1}));
-        this.entry_creating_function = f;
+        this.entryCreatingFunction = f;
         this.outWindow = new TensorWindow(shape);
         this.cacheLimitBytes = cacheLimitBytes;
     }
@@ -482,7 +492,7 @@ public class NonIntersectingInfiniteTensor extends Storage<FloatTensor> {
         try {
             super.loadInto(key, promise);
         } catch (EntryNotLoadableException miss) {
-            final FloatTensor entry = entry_creating_function.apply(key);
+            final FloatTensor entry = entryCreatingFunction.apply(key);
             persistAndRecord(key, entry);
             promise.complete(entry);
         }
@@ -542,7 +552,7 @@ and change the constructor to:
 
 ```java
     public ReliefProvider(String path) {
-        final_tiles = new NonIntersectingInfiniteTensor(
+        finalTiles = new NonIntersectingInfiniteTensor(
                 path,
                 "final_relief_tiles",
                 new int[] {RELIEF_CHANNELS, INNER, INNER},
@@ -568,7 +578,7 @@ In `src/main/java/me/batata_1/fractal_terrain/world/biome/BiomeProvider.java`, a
 and change the constructor's first statement to:
 
 ```java
-        final_tiles = new NonIntersectingInfiniteTensor(
+        finalTiles = new NonIntersectingInfiniteTensor(
                 path, "final_biome_tiles", new int[] {TILE_CHANNELS, 512, 512}, buildTile(), CACHE_LIMIT_BYTES);
 ```
 
@@ -1077,7 +1087,7 @@ In `src/main/java/me/batata_1/fractal_terrain/relief/ReliefProvider.java`, repla
 
     public Float get_entry(final int[] mutableCoords, final int ch) {
         mutableCoords[FractalTerrainConfig.CH] = ch;
-        return final_tiles.getValue(mutableCoords);
+        return finalTiles.getValue(mutableCoords);
     }
 
     /** Kept for {@code Infinite3DVisualizer}, the only caller left once the heightmap reads slices. */
@@ -1096,27 +1106,27 @@ In `src/main/java/me/batata_1/fractal_terrain/relief/ReliefProvider.java`, repla
 
     /** River-carved elevation for the 16x16 blocks of {@code pos}. Smoothstep, matching legacy getHeight. */
     public float[] fillElev(ChunkPos pos) {
-        return ChunkChannelFill.fillSmoothStep(final_tiles, 0, pos);
+        return ChunkChannelFill.fillSmoothStep(finalTiles, 0, pos);
     }
 
     public float[] fillBlurredElev(ChunkPos pos) {
-        return ChunkChannelFill.fillBilinear(final_tiles, 1, pos);
+        return ChunkChannelFill.fillBilinear(finalTiles, 1, pos);
     }
 
     public float[] fillGradX(ChunkPos pos) {
-        return ChunkChannelFill.fillBilinear(final_tiles, 2, pos);
+        return ChunkChannelFill.fillBilinear(finalTiles, 2, pos);
     }
 
     public float[] fillGradY(ChunkPos pos) {
-        return ChunkChannelFill.fillBilinear(final_tiles, 3, pos);
+        return ChunkChannelFill.fillBilinear(finalTiles, 3, pos);
     }
 
     public float[] fillRefinedGrad(ChunkPos pos) {
-        return ChunkChannelFill.fillBilinear(final_tiles, 4, pos);
+        return ChunkChannelFill.fillBilinear(finalTiles, 4, pos);
     }
 
     public float[] fillRes(ChunkPos pos) {
-        return ChunkChannelFill.fillBilinear(final_tiles, 6, pos);
+        return ChunkChannelFill.fillBilinear(finalTiles, 6, pos);
     }
 ```
 
@@ -1129,17 +1139,17 @@ In `src/main/java/me/batata_1/fractal_terrain/world/biome/BiomeProvider.java`, i
 ```java
     /** Continentalness for the 16x16 blocks of {@code pos}, indexed {@code x*16 + z}. */
     public float[] fillContinentalness(ChunkPos pos) {
-        return ChunkChannelFill.fillBilinear(final_tiles, BiomeChannels.CONTINENTALNESS.channel, pos);
+        return ChunkChannelFill.fillBilinear(finalTiles, BiomeChannels.CONTINENTALNESS.channel, pos);
     }
 
     /** Temperature for the 16x16 blocks of {@code pos}, indexed {@code x*16 + z}. */
     public float[] fillTemperature(ChunkPos pos) {
-        return ChunkChannelFill.fillBilinear(final_tiles, BiomeChannels.TEMPERATURE.channel, pos);
+        return ChunkChannelFill.fillBilinear(finalTiles, BiomeChannels.TEMPERATURE.channel, pos);
     }
 
     /** Vegetation/humidity for the 16x16 blocks of {@code pos}, indexed {@code x*16 + z}. */
     public float[] fillVegetation(ChunkPos pos) {
-        return ChunkChannelFill.fillBilinear(final_tiles, BiomeChannels.HUMIDITY.channel, pos);
+        return ChunkChannelFill.fillBilinear(finalTiles, BiomeChannels.HUMIDITY.channel, pos);
     }
 ```
 
@@ -1228,6 +1238,14 @@ The heightmap path is only part of the cost: `ErosionDensity.fillArray` adds 102
 - Consumes: `ChunkChannelFill.open`, `ChunkChannelFill.ChunkWindow`, `Interpolation.sampleWindowBilinear` (Tasks 3-4).
 - Produces: no new public API. `fillErosion(ChunkPos)`/`fillWeirdness(ChunkPos)` keep their existing signatures and behaviour.
 
+**One thing to confirm before trusting the batch path.** The new `fillArray(double[], ContextProvider)`
+calls `applier.forIndex(i)` **twice** per index — once in the bounding-box pass, once in the sampling
+pass — where today it is called once. That is safe only if `forIndex` is idempotent. Vanilla's
+`NoiseChunk` implements it by storing the index on itself and returning `this`, so it is; but read the
+`ContextProvider` implementations reachable here before relying on it, and if any one of them advances
+state per call, hoist the two ints per index into a scratch `int[]` on the first pass instead of asking
+twice. Do not skip this check — a stateful `forIndex` would corrupt every biome parameter silently.
+
 **What stays on `getValue`:** `compute(FunctionContext)`. It is a single point, where a slice is strictly more work than a lookup. `Climate.Sampler.sample` calls `compute`, not `fillArray`, so `compute` remains the dominant path for vanilla biome resolution and the biome share of this win is smaller than the channel count suggests. Converting it properly needs a per-thread slice cache, deliberately out of scope. This is also exactly why the budget in Task 2 is enforced in `loadInto` rather than in `getSlice`: a `getSlice`-side budget would leave every `getValue`-only reader unbounded, and for `final_biome_tiles` that is the dominant path.
 
 - [ ] **Step 1: Introduce a shared base for the three densities**
@@ -1277,7 +1295,7 @@ In `src/main/java/me/batata_1/fractal_terrain/world/biome/BiomeProvider.java`, a
 
         private ChunkChannelFill.ChunkWindow open(int minBlockX, int minBlockZ, int maxBlockX, int maxBlockZ) {
             return ChunkChannelFill.open(
-                    FractalTerrainInstance.getBiomeProvider().final_tiles,
+                    FractalTerrainInstance.getBiomeProvider().finalTiles,
                     channel,
                     minBlockX,
                     minBlockZ,
@@ -1366,7 +1384,7 @@ Replace the three nested classes with:
             super(ch);
             interpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
                 mutablePos[CH] = ch;
-                return FractalTerrainInstance.getBiomeProvider().final_tiles.getValue(mutablePos);
+                return FractalTerrainInstance.getBiomeProvider().finalTiles.getValue(mutablePos);
             });
         }
 
@@ -1397,7 +1415,7 @@ Replace the three nested classes with:
             super(ch);
             interpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
                 mutablePos[CH] = ch;
-                return FractalTerrainInstance.getBiomeProvider().final_tiles.getValue(mutablePos);
+                return FractalTerrainInstance.getBiomeProvider().finalTiles.getValue(mutablePos);
             });
         }
 
@@ -1434,12 +1452,12 @@ Replace the three nested classes with:
             valueInterpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
                 mutablePos[CH] = ch;
                 return Math.abs(
-                        FractalTerrainInstance.getBiomeProvider().final_tiles.getValue(mutablePos));
+                        FractalTerrainInstance.getBiomeProvider().finalTiles.getValue(mutablePos));
             });
             signInterpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
                 mutablePos[CH] = ch;
                 return Math.signum(
-                        FractalTerrainInstance.getBiomeProvider().final_tiles.getValue(mutablePos));
+                        FractalTerrainInstance.getBiomeProvider().finalTiles.getValue(mutablePos));
             });
         }
 
@@ -1674,7 +1692,14 @@ and extend the `math/` row:
 | `math/`      | `VectorOps` point-onto-segment projection; window-sampler equivalence to the per-pixel interpolation | Changing projection/clamping used by the hydrology carve, or the window samplers |
 ```
 
-Leave the Status section's baseline figures alone — they are still the measured pre-existing state — but append the new suites to the count if a fresh measurement was taken.
+Then correct the Status section. It quotes **81 tests, 19 failed, 1 skipped** with `ChannelGeometryTest`
+at 3, which the root `CLAUDE.md` superseded on 2026-08-31: the current figure is **77 tests, 18 failed,
+1 skipped** (`RosgenKeyTest` 4, `ChannelGeometryTest` 4, `ComputeRiverGridTest` 3, `RiverGoldenTest` 2,
+`MeandersGoldenTest` 2, `GlobalRiverGoldenTest` 1, `ReachMetricsSamplerTest` 1, `CentrelineTest` 1),
+still measured with `ConfluencePrimitiveTest` excluded. Replace the figures with whatever **you** measured
+in Step 9 rather than copying these — the point of the section is a measurement, not a quotation — and
+keep the "measured with a test file excluded, not a clean baseline" caveat and the re-measure instruction.
+Add the 14 new passes from Tasks 1-4 to the count.
 
 - [ ] **Step 8: Verify the temporary build exclusion is gone**
 

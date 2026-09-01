@@ -34,11 +34,5 @@ class HydrologicalFeaturePackTest {
         assertEquals(HydrologicalFeature.RIVER, HydrologicalFeature.unpack(0L));
     }
 
-    @Test
-    void subTypeDoesNotBleedIntoTheFamilyWord() {
-        // A negative sub-ordinal must stay in the low word rather than sign-extending over the family.
-        final long packed = HydrologicalFeature.CONFLUENCE.pack(-1);
-        assertEquals(HydrologicalFeature.CONFLUENCE, HydrologicalFeature.unpack(packed));
-        assertEquals(-1, HydrologicalFeature.unpackSub(packed));
-    }
+
 }

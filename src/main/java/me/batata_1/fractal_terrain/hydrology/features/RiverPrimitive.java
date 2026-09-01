@@ -82,10 +82,6 @@ public record RiverPrimitive(
         return elevation + profile.delta(seed, signedDist, width, curvature);
     }
 
-    public static double smoothMin(double a, double b, double lambda) {
-        return (a + b - Math.sqrt((a - b) * (a - b) + lambda)) / 2;
-    }
-
     @Override
     public long primitiveByteSize() {
         // rosgen tag + coord + normal + curvature + influence + width + elevation

@@ -39,7 +39,7 @@ class ReachMetricsSamplerTest {
 
         final double stage = 2.0
                 * me.batata_1.fractal_terrain.config.HydrologyTuning.DEPTH_MAX_FACTOR
-                * me.batata_1.fractal_terrain.hydrology.ChannelGeometry.depthForWidth(width);
+                * me.batata_1.fractal_terrain.hydrology.ChannelGeometry.depth(width);
         final double expected = (2.0 * stage / gradient) / width;
         // One transect step of tolerance: the walk stops at the first sample above the stage.
         final double step = Math.max(
