@@ -4,8 +4,10 @@ import static me.batata_1.fractal_terrain.FractalTerrainConfig.X;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.Z;
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.*;
 
+import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import java.util.*;
+import java.util.Arrays;
+import java.util.List;
 import java.util.function.Predicate;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
@@ -51,8 +53,12 @@ public class RiverProvider {
 
     /** Last few {@link #buildTile} results, so a tile whose primitives and carved elevation are both
      *  requested does not re-run the trace/carve pipeline twice. A miss only costs a recompute —
-     *  {@link #buildTile} is deterministic — never a correctness issue. */
-    private final Map<Long, HydrologyResult> recentTiles = newRecentTilesMap();
+     *  {@link #buildTile} is deterministic — never a correctness issue.
+     *
+     *  <p>Access-ordered by explicit {@code getAndMoveToFirst}: fastutil has no {@code accessOrder} flag, and a
+     *  plain {@code get} would silently degrade this to insertion-order eviction. */
+    private final Long2ObjectLinkedOpenHashMap<HydrologyResult> recentTiles =
+            new Long2ObjectLinkedOpenHashMap<>(RECENT_TILE_CAPACITY);
 
     /** Test-only override for the global river source; {@code null} → use the singleton. */
     @TestOnly
@@ -73,15 +79,6 @@ public class RiverProvider {
         hydrologyRelief = new NonIntersectingInfiniteTensor(
                 path, "hydrology_relief", new int[] {1, GRID, GRID}, key -> buildTile(key.get(X), key.get(Z), null)
                         .tile());
-    }
-
-    private static Map<Long, HydrologyResult> newRecentTilesMap() {
-        return Collections.synchronizedMap(new LinkedHashMap<>(RECENT_TILE_CAPACITY, 0.75f, true) {
-            @Override
-            protected boolean removeEldestEntry(Map.Entry<Long, HydrologyResult> eldest) {
-                return size() > RECENT_TILE_CAPACITY;
-            }
-        });
     }
 
     private static long tileMemoKey(int tileX, int tileZ) {
@@ -119,10 +116,15 @@ public class RiverProvider {
     private HydrologyResult buildTile(int tileX, int tileZ, @Nullable Stages stages) {
         if (stages == null) {
             final long memoKey = tileMemoKey(tileX, tileZ);
-            final HydrologyResult cached = recentTiles.get(memoKey);
-            if (cached != null) return cached;
+            synchronized (recentTiles) {
+                final HydrologyResult cached = recentTiles.getAndMoveToFirst(memoKey);
+                if (cached != null) return cached;
+            }
             final HydrologyResult computed = computeTile(tileX, tileZ, null);
-            recentTiles.put(memoKey, computed);
+            synchronized (recentTiles) {
+                recentTiles.putAndMoveToFirst(memoKey, computed);
+                while (recentTiles.size() > RECENT_TILE_CAPACITY) recentTiles.removeLast();
+            }
             return computed;
         }
         return computeTile(tileX, tileZ, stages);
