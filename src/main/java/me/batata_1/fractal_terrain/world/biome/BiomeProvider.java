@@ -112,7 +112,7 @@ public class BiomeProvider {
     /** Produces the {@link DensityFunction} that turns a stored tile channel into per-block values. */
     @FunctionalInterface
     private interface DensityFactory {
-        DensityFunction create(float scale, int channel);
+        DensityFunction create(float scale, int channel, NonIntersectingInfiniteTensor tiles);
     }
 
     /**
@@ -131,7 +131,7 @@ public class BiomeProvider {
         TEMPERATURE(2, BiomeProviderDensity::new),
         HUMIDITY(3, BiomeProviderDensity::new),
         WEIRDNESS(4, WeirdnessDensity::new),
-        DEPTH(-1, (scale, ch) -> DensityFunctions.yClampedGradient(-64, 63, -1, 0));
+        DEPTH(-1, (scale, ch, tiles) -> DensityFunctions.yClampedGradient(-64, 63, -1, 0));
 
         final int channel;
         final DensityFactory factory;
@@ -141,8 +141,8 @@ public class BiomeProvider {
             this.factory = factory;
         }
 
-        DensityFunction density(float scale) {
-            return factory.create(scale, channel);
+        DensityFunction density(float scale, NonIntersectingInfiniteTensor tiles) {
+            return factory.create(scale, channel, tiles);
         }
     }
 
@@ -156,14 +156,14 @@ public class BiomeProvider {
         // Vanilla Climate.Sampler order: temperature, humidity, continentalness, erosion, depth, weirdness.
         // Each channel produces its own density via its creator (DEPTH's is the vertical y-gradient).
         final float scale = 1;
-        erosionDensity = BiomeChannels.EROSION.density(scale);
-        weirdnessDensity = BiomeChannels.WEIRDNESS.density(scale);
+        erosionDensity = BiomeChannels.EROSION.density(scale, finalTiles);
+        weirdnessDensity = BiomeChannels.WEIRDNESS.density(scale, finalTiles);
         sampler = new Climate.Sampler(
-                BiomeChannels.TEMPERATURE.density(scale),
-                BiomeChannels.HUMIDITY.density(scale),
-                BiomeChannels.CONTINENTALNESS.density(scale),
+                BiomeChannels.TEMPERATURE.density(scale, finalTiles),
+                BiomeChannels.HUMIDITY.density(scale, finalTiles),
+                BiomeChannels.CONTINENTALNESS.density(scale, finalTiles),
                 erosionDensity,
-                BiomeChannels.DEPTH.density(scale),
+                BiomeChannels.DEPTH.density(scale, finalTiles),
                 weirdnessDensity,
                 List.of());
 
@@ -323,9 +323,10 @@ public class BiomeProvider {
      */
     private abstract static class ChannelDensity implements DensityFunction.SimpleFunction {
 
-        protected ChannelDensity(final int channel, final float pixelScale) {
+        protected ChannelDensity(final int channel, final float pixelScale, final NonIntersectingInfiniteTensor tiles) {
             this.channel = channel;
             this.pixelScale = pixelScale;
+            this.tiles = tiles;
         }
 
         /** Bounds the batch's block rectangle, slices it once, then samples. Falls back to per-point
@@ -414,6 +415,9 @@ public class BiomeProvider {
          *  into the window path rather than assumed, so the two cannot silently disagree. */
         protected final float pixelScale;
 
+        /** The enclosing provider's tile store, injected rather than reached through the service locator. */
+        protected final NonIntersectingInfiniteTensor tiles;
+
         /** Bilinear read of {@link #channel} out of an open window; the subclasses compose on top. */
         protected double read(ChunkChannelFill.ChunkWindow window, int blockX, int blockZ) {
             return Interpolation.sampleWindowBilinear(
@@ -426,25 +430,18 @@ public class BiomeProvider {
         }
 
         private ChunkChannelFill.ChunkWindow open(int minBlockX, int minBlockZ, int maxBlockX, int maxBlockZ) {
-            return ChunkChannelFill.open(
-                    FractalTerrainInstance.getBiomeProvider().finalTiles,
-                    channel,
-                    minBlockX,
-                    minBlockZ,
-                    maxBlockX,
-                    maxBlockZ,
-                    pixelScale);
+            return ChunkChannelFill.open(tiles, channel, minBlockX, minBlockZ, maxBlockX, maxBlockZ, pixelScale);
         }
     }
 
     /** Plain bilinear interpolation of a stored biome channel. */
     private static class BiomeProviderDensity extends ChannelDensity {
 
-        public BiomeProviderDensity(final float scale, final int ch) {
-            super(ch, scale * GLOBAL_SCALE_CORRECTION);
+        public BiomeProviderDensity(final float scale, final int ch, final NonIntersectingInfiniteTensor tiles) {
+            super(ch, scale * GLOBAL_SCALE_CORRECTION, tiles);
             interpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
                 mutablePos[CH] = ch;
-                return FractalTerrainInstance.getBiomeProvider().finalTiles.getValue(mutablePos);
+                return tiles.getValue(mutablePos);
             });
         }
 
@@ -468,11 +465,11 @@ public class BiomeProvider {
      */
     private static class ErosionDensity extends ChannelDensity {
 
-        public ErosionDensity(final float scale, final int ch) {
-            super(ch, scale * GLOBAL_SCALE_CORRECTION);
+        public ErosionDensity(final float scale, final int ch, final NonIntersectingInfiniteTensor tiles) {
+            super(ch, scale * GLOBAL_SCALE_CORRECTION, tiles);
             interpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
                 mutablePos[CH] = ch;
-                return FractalTerrainInstance.getBiomeProvider().finalTiles.getValue(mutablePos);
+                return tiles.getValue(mutablePos);
             });
         }
 
@@ -506,17 +503,15 @@ public class BiomeProvider {
      */
     private static class WeirdnessDensity extends ChannelDensity {
 
-        public WeirdnessDensity(final float scale, final int ch) {
-            super(ch, scale * GLOBAL_SCALE_CORRECTION);
+        public WeirdnessDensity(final float scale, final int ch, final NonIntersectingInfiniteTensor tiles) {
+            super(ch, scale * GLOBAL_SCALE_CORRECTION, tiles);
             valueInterpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
                 mutablePos[CH] = ch;
-                return Math.abs(
-                        FractalTerrainInstance.getBiomeProvider().finalTiles.getValue(mutablePos));
+                return Math.abs(tiles.getValue(mutablePos));
             });
             signInterpolation = new Interpolation(scale * GLOBAL_SCALE_CORRECTION, mutablePos -> {
                 mutablePos[CH] = ch;
-                return Math.signum(
-                        FractalTerrainInstance.getBiomeProvider().finalTiles.getValue(mutablePos));
+                return Math.signum(tiles.getValue(mutablePos));
             });
         }
 
