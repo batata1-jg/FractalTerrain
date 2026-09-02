@@ -4,6 +4,9 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import java.util.Objects;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
+import me.batata_1.fractal_terrain.config.HydrologyTuning;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.HydrologicalFeature;
+import me.batata_1.fractal_terrain.hydrology.profile.SurfaceMaterial;
 import me.batata_1.fractal_terrain.mixin.MaterialRuleContextAccessor;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
@@ -138,6 +141,11 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
 
         float[] relief_heightmap = (float[]) heightmaps.get(Types.ELEVATION);
         float[] water_heightmap = (float[]) heightmaps.get(Types.WATER_HEIGHT);
+        final long[] river_type = (long[]) heightmaps.get(Types.RIVER_TYPE);
+        final float[] river_dist = (float[]) heightmaps.get(Types.RIVER_DIST);
+        // :PERF: one scratch column per chunk, reused across all 256 columns; a per-column array would
+        // allocate on the surface path.
+        final SurfaceMaterial[] paint = new SurfaceMaterial[HydrologyTuning.MAX_RIVER_PAINT_DEPTH];
 
         for (int dx = 0; dx < 16; ++dx) {
             for (int dz = 0; dz < 16; ++dz) {
@@ -145,21 +153,44 @@ public class FractalTerrainSurfaceSystem extends SurfaceSystem {
                 final int z = startZ + dz;
                 mutable.setX(x).setZ(z);
                 materialRuleContext.updateXZ(x, z);
-                int relief_height = (int) relief_heightmap[16 * dx + dz];
+                final int pos = 16 * dx + dz;
+                int relief_height = (int) relief_heightmap[pos];
                 int stoneDepthAbove;
                 int stoneDepthBellow;
                 int fluid_height;
                 final int sedimentLayerDepth = sedimentDepth(dx, dz, heightmaps);
 
-                for (int d = 0; d <= sedimentLayerDepth; d++) {
+                final long tag = river_type[pos];
+                final HydrologicalFeature family =
+                        tag == HydrologicalFeature.NONE ? null : HydrologicalFeature.unpack(tag);
+                int riverPaintDepth = 0;
+                if (family != null) {
+                    final int sub = HydrologicalFeature.unpackSub(tag);
+                    riverPaintDepth = family.profileFor(sub).riverPaintDepth(sub, river_dist[pos], paint);
+                }
+                // A steep headwater -- the case that most wants cobble -- gets sedimentDepth -1 and no
+                // loop iterations at all, so a claim has to be able to extend the column, not just
+                // recolour it.
+                final float waterY = water_heightmap[pos];
+                final int lastDepth = Math.max(sedimentLayerDepth, riverPaintDepth - 1);
+
+                for (int d = 0; d <= lastDepth; d++) {
                     final int y = relief_height - d;
                     stoneDepthAbove = d + 1;
                     stoneDepthBellow = relief_height + 128 - d;
                     // 64
-                    final int fh = (int) (water_heightmap[16 * dx + dz] + seaLevel - relief_height);
+                    final int fh = (int) (water_heightmap[pos] + seaLevel - relief_height);
                     fluid_height = fh;
+                    // updateY runs on painted blocks too: SurfaceRules.Context caches per-column state
+                    // lazily and its tolerance for gaps in y is unverified.
                     materialRuleContext.updateY(stoneDepthAbove, stoneDepthBellow, fluid_height, x, y, z);
-                    BlockState newBlockState = blockStateRule.tryApply(x, y, z);
+                    BlockState newBlockState = null;
+                    if (d < riverPaintDepth) {
+                        newBlockState = HydrologySurfacePalette.of(paint[d], y < waterY);
+                    }
+                    if (newBlockState == null) {
+                        newBlockState = blockStateRule.tryApply(x, y, z);
+                    }
                     if (newBlockState != null) {
                         blockColumn.setBlock(y, newBlockState);
                     }

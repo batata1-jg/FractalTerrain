@@ -409,6 +409,10 @@ bands, in order of increasing cost:
   `ChannelDensity.fillArray` — the 16x16 sample loops every heightmap channel and every biome density
   runs per chunk. The window fields are hoisted into locals before each loop rather than read off the
   `ChunkWindow` record per pixel, for this reason.
+- `world/gen/surfacebuilder/FractalTerrainSurfaceSystem.java` `buildSurface`'s 16x16 column loop and the
+  depth loop inside it — runs for every chunk generated. The river paint column is tabulated once per
+  claimed column into a `SurfaceMaterial[]` allocated once per chunk, rather than the profile being
+  asked per block; `HydrologySurfacePalette`'s block states are `static final`.
 
 **Hot-path code that already follows the rule** — the reference patterns to copy:
 
