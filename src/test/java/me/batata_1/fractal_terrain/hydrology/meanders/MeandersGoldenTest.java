@@ -194,8 +194,11 @@ class MeandersGoldenTest {
         }
     }
 
-    /** Captured by running the golden test once; re-baseline only on an intended behaviour change. */
-    private static final String GOLDEN_MEANDERS_SIGNATURE = "channels=2 nodes=4 points=1656 checksum=438656243.300640";
+    /** Captured by running the golden test once; re-baseline only on an intended behaviour change.
+     *  Three channels, not two: {@code AtomicView.resolveCrossingEdges} inserts one shared node at a
+     *  geometric crossing, and invariant K1 allows that node a single outgoing edge, so a confluence is
+     *  forced by planarization. The two-channel value predates that and encodes an unreachable outcome. */
+    private static final String GOLDEN_MEANDERS_SIGNATURE = "channels=3 nodes=4 points=2442 checksum=614331415.075280";
 
     private static String networkSignature(Meanders sim) {
         List<Channel> channels = new ArrayList<>(sim.getChannels());
