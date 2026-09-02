@@ -10,6 +10,7 @@ import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfilePainter;
 import me.batata_1.fractal_terrain.hydrology.providers.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
+import me.batata_1.fractal_terrain.ml.models.ModelAssetManager;
 import me.batata_1.fractal_terrain.ml.models.PipelineModels;
 import me.batata_1.fractal_terrain.ml.pipeline.WorldPipeline;
 import me.batata_1.fractal_terrain.relief.ReliefProvider;
@@ -42,7 +43,7 @@ public class FractalTerrainInstance {
     /** Loads the models and builds the shared {@link WorldPipeline} once per JVM, moved out of class-init so a load failure surfaces as a normal exception instead of poisoning the class. */
     public static synchronized void initPipeline() {
         if (pipeline != null) return;
-        PipelineModels.load();
+        PipelineModels.load(ModelAssetManager.defaultAssets());
         PipelineModels.awaitLoad();
         PipelineModels models = PipelineModels.getInstance();
         if (models == null) throw new IllegalStateException("PipelineModels failed to load");

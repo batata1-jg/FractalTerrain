@@ -31,6 +31,11 @@ public final class PipelineModels implements AutoCloseable {
 
     /** Starts loading models on a background thread. Returns immediately. */
     public static synchronized void load() {
+        load(ModelAssetManager.defaultAssets());
+    }
+
+    /** Starts loading models on a background thread, sourcing assets from {@code assets}. Returns immediately. */
+    public static synchronized void load(ModelAssetManager assets) {
         if (INSTANCE != null) return;
         if (loadStarted) return;
         loadStarted = true;
@@ -41,7 +46,7 @@ public final class PipelineModels implements AutoCloseable {
                     try {
                         LOG.info("Loading terrain-diffusion ML models (background)...");
                         long start = System.currentTimeMillis();
-                        INSTANCE = new PipelineModels();
+                        INSTANCE = new PipelineModels(assets);
                         long elapsed = System.currentTimeMillis() - start;
                         LOG.info("Terrain-diffusion ML models loaded in {} ms", elapsed);
                     } catch (Throwable e) {
@@ -87,11 +92,11 @@ public final class PipelineModels implements AutoCloseable {
         return INSTANCE;
     }
 
-    private PipelineModels() {
-        ModelAssetManager.ensureAssetsReady();
-        this.coarseModel = new OnnxModel(ModelAssetManager.resolveAssetPath(COARSE_FILE_NAME), "coarse");
-        this.baseModel = new OnnxModel(ModelAssetManager.resolveAssetPath(BASE_FILE_NAME), "base");
-        this.decoderModel = new OnnxModel(ModelAssetManager.resolveAssetPath(DECODER_FILE_NAME), "decoder");
+    public PipelineModels(ModelAssetManager assets) {
+        assets.ensureReady();
+        this.coarseModel = new OnnxModel(assets.resolve(COARSE_FILE_NAME), "coarse");
+        this.baseModel = new OnnxModel(assets.resolve(BASE_FILE_NAME), "base");
+        this.decoderModel = new OnnxModel(assets.resolve(DECODER_FILE_NAME), "decoder");
 
         InputStream stream = PipelineModels.class.getResourceAsStream("/assets/fractal_terrain/ml_util/fuzed.onnx");
         assert (stream != null);

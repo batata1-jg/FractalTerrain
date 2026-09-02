@@ -36,46 +36,87 @@ public final class ModelAssetManager {
     private static final Logger LOG = LoggerFactory.getLogger(ModelAssetManager.class);
     private static final String MANIFEST_RESOURCE_PATH = "/model-assets-manifest.json";
     private static final long PROGRESS_LOG_THRESHOLD_BYTES = 100L * 1024L * 1024L;
-    private static final Path MODEL_DIRECTORY;
-    private static final AtomicBoolean READY = new AtomicBoolean(false);
     private static final Gson GSON = new Gson();
     private static final Type MANIFEST_TYPE = new TypeToken<ModelAssetManifest>() {}.getType();
 
-    static {
-        Path temp;
-        try {
-            temp = FabricLoader.getInstance().getGameDir().resolve("terrain-diffusion-models");
-        } catch (Exception e) {
-            LOG.info("resorting to \"run\" path because RidgeTracingTest is most likely running");
-            temp = (Path.of("run")).resolve("terrain-diffusion-models");
-            LOG.info("path is {}", temp);
-        }
-        MODEL_DIRECTORY = temp;
+    /** Lazily-created default instance backing the static delegates; double-checked locking, no Guava dependency. */
+    private static volatile ModelAssetManager defaultInstance;
+
+    private final Path modelDirectory;
+    private final AtomicBoolean ready = new AtomicBoolean(false);
+
+    public ModelAssetManager(Path modelDirectory) {
+        this.modelDirectory = modelDirectory;
     }
 
-    private ModelAssetManager() {}
+    /** The game dir's model directory, or {@code run/}'s when no Fabric game dir exists — the debug
+     *  harnesses run outside one. */
+    public static Path defaultModelDirectory() {
+        try {
+            return FabricLoader.getInstance().getGameDir().resolve("terrain-diffusion-models");
+        } catch (Exception e) {
+            LOG.info("no Fabric game dir; resolving model assets under run/");
+            return Path.of("run").resolve("terrain-diffusion-models");
+        }
+    }
+
+    /**
+     * The shared manager over {@link #defaultModelDirectory()}, for callers that want assets prepared once
+     * per JVM rather than a directory of their own. Verification is per-instance, so a second manager over
+     * the same directory re-hashes every model file.
+     */
+    public static ModelAssetManager defaultAssets() {
+        ModelAssetManager instance = defaultInstance;
+        if (instance == null) {
+            synchronized (ModelAssetManager.class) {
+                instance = defaultInstance;
+                if (instance == null) {
+                    instance = new ModelAssetManager(defaultModelDirectory());
+                    defaultInstance = instance;
+                }
+            }
+        }
+        return instance;
+    }
+
+    /**
+     * Ensures all required assets are present and verified.
+     *
+     * <p>Kept so the debug harnesses and the pipeline classes keep working while callers migrate to an
+     * injected instance; the composition root passes one explicitly.
+     */
+    public static void ensureAssetsReady() {
+        defaultAssets().ensureReady();
+    }
+
+    /**
+     * Returns the local path for an asset in the model directory.
+     */
+    public static Path resolveAssetPath(String fileName) {
+        return defaultAssets().resolve(fileName);
+    }
 
     /**
      * Ensures all required assets are present and verified.
      */
-    public static void ensureAssetsReady() {
-        if (READY.get()) {
+    public void ensureReady() {
+        if (ready.get()) {
             return;
         }
-        synchronized (ModelAssetManager.class) {
-            if (READY.get()) {
+        synchronized (this) {
+            if (ready.get()) {
                 return;
             }
             try {
-                Files.createDirectories(MODEL_DIRECTORY);
+                Files.createDirectories(modelDirectory);
                 ModelAssetManifest manifest = loadManifest();
                 String offlineHelpUrl = buildOfflineHelpUrl(manifest);
                 boolean shouldValidatePreExistingModels = FractalTerrainConfig.validateModel();
-                LOG.info("Preparing terrain diffusion model assets in {}", MODEL_DIRECTORY);
+                LOG.info("Preparing terrain diffusion model assets in {}", modelDirectory);
                 for (Map.Entry<String, ManifestAsset> assetEntry : manifest.assets.entrySet()) {
                     String fileName = assetEntry.getKey();
                     ManifestAsset assetMetadata = assetEntry.getValue();
-                    Path localAssetPath = MODEL_DIRECTORY.resolve(fileName);
+                    Path localAssetPath = modelDirectory.resolve(fileName);
                     ensureSingleAsset(
                             localAssetPath,
                             assetMetadata,
@@ -84,7 +125,7 @@ public final class ModelAssetManager {
                             shouldValidatePreExistingModels);
                 }
                 LOG.info("Terrain diffusion model assets ready");
-                READY.set(true);
+                ready.set(true);
             } catch (RuntimeException runtimeException) {
                 throw runtimeException;
             } catch (Exception exception) {
@@ -96,8 +137,8 @@ public final class ModelAssetManager {
     /**
      * Returns the local path for an asset in the model directory.
      */
-    public static Path resolveAssetPath(String fileName) {
-        return MODEL_DIRECTORY.resolve(fileName);
+    public Path resolve(String fileName) {
+        return modelDirectory.resolve(fileName);
     }
 
     private static void ensureSingleAsset(
