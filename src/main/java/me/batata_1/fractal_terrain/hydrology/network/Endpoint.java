@@ -1,7 +1,7 @@
 package me.batata_1.fractal_terrain.hydrology.network;
 
-import java.util.HashSet;
-import java.util.Set;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import it.unimi.dsi.fastutil.ints.IntSet;
 
 /**
  * A vertex of the river-network graph held by {@link RiverNetwork}, sitting on a channel endpoint.
@@ -34,7 +34,7 @@ public class Endpoint {
     public double elevation = Double.NaN;
 
     /** channelIds whose endNodeId == this.id (many allowed). */
-    public final Set<Integer> incoming = new HashSet<>();
+    public final IntSet incoming = new IntOpenHashSet();
 
     /** the single channelId whose startNodeId == this.id, or -1 if none. */
     public int outgoing = -1;

@@ -1,6 +1,8 @@
 package me.batata_1.fractal_terrain.math.ds;
 
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectSet;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.*;
@@ -42,7 +44,7 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
         // NAO COLOCA ISSO DENTRO DO NODE, VAI GASTAR MEMORIA DEMAIS.
         // nao quero acessar cada elemento como um indice. quero acessar todos de uma so vez.
         // TODO: implement storing only the index and the count;
-        public final Set<T> points = new HashSet<>();
+        public final ObjectSet<T> points = new ObjectOpenHashSet<>();
         public final int[] child = new int[4];
         public final double[] p0;
         public final double[] p1;

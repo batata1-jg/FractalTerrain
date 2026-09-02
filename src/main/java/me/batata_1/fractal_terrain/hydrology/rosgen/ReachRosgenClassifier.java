@@ -1,12 +1,12 @@
 package me.batata_1.fractal_terrain.hydrology.rosgen;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import it.unimi.dsi.fastutil.ints.IntSet;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.ArrayDeque;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive.RosgenType;
@@ -60,13 +60,13 @@ public final class ReachRosgenClassifier implements ChannelTyper {
     private static List<Channel> orderDownstreamFirst(RiverNetwork network) {
         final List<Channel> order = new ObjectArrayList<>();
         final ArrayDeque<Channel> frontier = new ArrayDeque<>();
-        final Map<Integer, Boolean> seen = new HashMap<>();
+        final IntSet seen = new IntOpenHashSet();
 
         for (Endpoint node : network.getNodes()) {
             if (node.type != Endpoint.Type.DRAIN) continue;
             for (int incomingId : node.incoming) {
                 final Channel ch = network.getChannel(incomingId);
-                if (ch != null && seen.putIfAbsent(incomingId, Boolean.TRUE) == null) frontier.add(ch);
+                if (ch != null && seen.add(incomingId)) frontier.add(ch);
             }
         }
         drainFrontier(network, frontier, seen, order);
@@ -79,7 +79,7 @@ public final class ReachRosgenClassifier implements ChannelTyper {
         final List<Channel> remaining = new ObjectArrayList<>(network.getChannels());
         remaining.sort(Comparator.comparingInt(ch -> ch.channelId));
         for (Channel ch : remaining) {
-            if (seen.putIfAbsent(ch.channelId, Boolean.TRUE) != null) continue;
+            if (!seen.add(ch.channelId)) continue;
             frontier.add(ch);
             drainFrontier(network, frontier, seen, order);
         }
@@ -89,7 +89,7 @@ public final class ReachRosgenClassifier implements ChannelTyper {
     /** Drains one BFS frontier to exhaustion. Run per root rather than once overall, so an injected
      *  dangling root cannot interleave with the drain-rooted walk. */
     private static void drainFrontier(
-            RiverNetwork network, ArrayDeque<Channel> frontier, Map<Integer, Boolean> seen, List<Channel> order) {
+            RiverNetwork network, ArrayDeque<Channel> frontier, IntSet seen, List<Channel> order) {
         while (!frontier.isEmpty()) {
             final Channel ch = frontier.poll();
             order.add(ch);
@@ -97,7 +97,7 @@ public final class ReachRosgenClassifier implements ChannelTyper {
             if (start == null) continue;
             for (int incomingId : start.incoming) {
                 final Channel upstream = network.getChannel(incomingId);
-                if (upstream != null && seen.putIfAbsent(incomingId, Boolean.TRUE) == null) frontier.add(upstream);
+                if (upstream != null && seen.add(incomingId)) frontier.add(upstream);
             }
         }
     }

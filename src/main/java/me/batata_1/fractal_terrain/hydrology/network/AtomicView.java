@@ -1,6 +1,8 @@
 package me.batata_1.fractal_terrain.hydrology.network;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.*;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
@@ -226,7 +228,7 @@ public final class AtomicView {
         // 1. Undirected position segments (dedup both directions of the same geometric edge), sorted for a
         //    deterministic crossing-node id assignment.
         final List<int[]> segments = new ObjectArrayList<>(); // {lo, hi}, lo < hi
-        final Set<Long> seen = new HashSet<>();
+        final LongSet seen = new LongOpenHashSet();
         for (int u = 0; u < originalSize; u++)
             for (int v : adjacency.get(u)) {
                 if (u == v) continue;

@@ -1,11 +1,11 @@
 package me.batata_1.fractal_terrain.math;
 
+import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import me.batata_1.fractal_terrain.math.spline.QuinticHermiteSpline;
 
 /**
@@ -88,7 +88,7 @@ public class MarchingSquares {
         if (width < 2) return new ObjectArrayList<>();
 
         final List<Segment> segments = new ObjectArrayList<>();
-        final Map<Long, Segment> bySource = new HashMap<>();
+        final Long2ObjectMap<Segment> bySource = new Long2ObjectOpenHashMap<>();
 
         for (int r = 0; r < height - 1; r++) {
             for (int c = 0; c < width - 1; c++) {
@@ -128,7 +128,7 @@ public class MarchingSquares {
         // Keys that are some segment's destination; a source that is NOT a destination starts an
         // open contour (a boundary that runs into the mask edge). Seed those first so open contours
         // come out whole, then sweep up the remaining closed loops.
-        final Set<Long> targets = new HashSet<>();
+        final LongSet targets = new LongOpenHashSet();
         for (Segment s : segments) targets.add(s.toKey);
 
         final List<List<double[]>> contours = new ObjectArrayList<>();
@@ -142,7 +142,7 @@ public class MarchingSquares {
     }
 
     /** Follow {@code from → to} links from {@code seed} until the contour closes or dead-ends. */
-    private static List<double[]> walk(Segment seed, Map<Long, Segment> bySource) {
+    private static List<double[]> walk(Segment seed, Long2ObjectMap<Segment> bySource) {
         final List<double[]> contour = new ObjectArrayList<>();
         final long startKey = seed.fromKey;
         contour.add(seed.from);
@@ -157,7 +157,7 @@ public class MarchingSquares {
     }
 
     private static void addSegment(
-            List<Segment> segments, Map<Long, Segment> bySource, int r, int c, Edge from, Edge to) {
+            List<Segment> segments, Long2ObjectMap<Segment> bySource, int r, int c, Edge from, Edge to) {
         final Segment seg = new Segment(from.point(r, c), to.point(r, c), from.key(r, c), to.key(r, c));
         segments.add(seg);
         bySource.putIfAbsent(seg.fromKey, seg);
