@@ -52,35 +52,30 @@ There is no checked-in `gradlew` wrapper — invoke Gradle via your IDE or a loc
 
 ## Test
 
-Two layers. A JUnit 5 suite (`useJUnitPlatform()`, 15 `*Test.java` classes under
+Two layers. A JUnit 5 suite (`useJUnitPlatform()`, 22 `*Test.java` classes under
 `src/test/java/`) gates the deterministic hydrology math:
 
 ```
 gradle test                   # JUnit 5 golden suite
 ```
 
-**Baseline, measured 2026-08-23:** `gradle compileJava compileClientJava spotlessCheck` **passes**, but
-`gradle build` **fails at `:compileTestJava`** — `src/test/.../hydrology/features/ConfluencePrimitiveTest.java`
-calls `ConfluencePrimitive.w(double[])` and `.d(double[])`, neither of which exists on
-`ConfluencePrimitive` (it implements only `h(double[])`); 9 errors. This is pre-existing and unrelated to
-the `RiverProvider`/`LocalNetworkBuilder` river refactor — that test file was last modified three commits
-before the refactor began. `gradle test` therefore cannot run at all as the tree stands.
+**Baseline, measured 2026-09-02 at `7bd587e`:** the suite compiles and runs —
+**102 tests, 9 failed, 1 skipped**. The nine are:
 
-**Re-measured 2026-08-31 at `18060cc`**, `ConfluencePrimitiveTest` excluded: **81 tests, 20 failed,
-1 skipped** — 20, not the 19 quoted here previously, and `ChannelGeometryTest` fails 4, not 3. Mark this
-figure explicitly as measured with a test file excluded, not as a clean baseline:
+> `RosgenKeyTest` (4), `RiverGoldenTest` (2), `MeandersGoldenTest` (1), `CentrelineTest` (1),
+> `ReachMetricsSamplerTest` (1).
 
-> `RosgenKeyTest` (6), `ChannelGeometryTest` (4), `ComputeRiverGridTest` (3), `RiverGoldenTest` (2),
-> `MeandersGoldenTest` (2), `GlobalRiverGoldenTest` (1), `ReachMetricsSamplerTest` (1), `CentrelineTest` (1).
+The full failure messages are archived in `.superpowers/conventions-alignment/post-migration-failures.txt`;
+comparing against that file rather than against this list is what proves a change left output untouched.
 
-After the 2026-08-31 refactor pass (Rosgen dead band deleted, so its 4 `RosgenKeyTest` cases are gone):
-**77 tests, 18 failed, 1 skipped** — the same set minus `RosgenKeyTest`'s two `deadBand*` failures, with
-every remaining failure message byte-identical, golden checksums included.
+Three of the nine are known-wrong expectations rather than defects. `RiverGoldenTest`'s two report
+`synthetic field produced no local channels — fixture is degenerate`: the fixture yields zero local
+channels, so those assertions never reach the traced network. `MeandersGoldenTest.independentCrossingsAreNotMerged`
+expects two channels where the code produces three — `AtomicView.resolveCrossingEdges` inserts one shared
+node at a geometric crossing and invariant K1 allows it a single outgoing edge, so a confluence is forced
+by planarization and the no-merge outcome is unreachable.
 
-`ComputeRiverGridTest`'s 3 failures are new relative to the last quoted baseline (which had it at 12
-passing), but are **not** caused by the river refactor: the only production file it exercises is
-`HydrologyProfileInprinter`, and the refactor's diff to that file is import renames and formatting only.
-Record it as pre-existing-but-newly-visible — the suite could not compile far enough to reach it before.
+`ConfluencePrimitiveTest`, which earlier baselines record as blocking `:compileTestJava`, no longer exists.
 
 The suite has broken and been repaired several times; treat any quoted baseline, including this one, as
 a claim to re-verify rather than a fact. Re-measure before blaming your own change: build a worktree at
