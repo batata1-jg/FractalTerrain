@@ -1,6 +1,8 @@
 package me.batata_1.fractal_terrain.hydrology.network;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.ints.IntAVLTreeSet;
+import it.unimi.dsi.fastutil.ints.IntSortedSet;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -124,11 +126,12 @@ public final class AtomicView {
         for (int v = 0; v < n; v++) remainingIn[v] = predecessors.get(v).size();
 
         final double[] totalFlow = new double[n];
-        final TreeSet<Integer> ready = new TreeSet<>(); // ascending atomic id — deterministic frontier
+        final IntSortedSet ready = new IntAVLTreeSet(); // ascending atomic id — deterministic frontier
         for (int v = 0; v < n; v++) if (remainingIn[v] == 0) ready.add(v);
 
         while (!ready.isEmpty()) {
-            final int node = ready.pollFirst();
+            final int node = ready.firstInt();
+            ready.remove(node);
             double sum = ownFlow.get(node);
             for (int tributary : predecessors.get(node)) sum += totalFlow[tributary];
             totalFlow[node] = sum;
@@ -259,7 +262,7 @@ public final class AtomicView {
             final int a = segments.get(si)[0], b = segments.get(si)[1];
             final double[] pa = pos(a), pb = pos(b);
 
-            final Set<Integer> candidates = new TreeSet<>(); // ascending -> deterministic
+            final IntSortedSet candidates = new IntAVLTreeSet(); // ascending -> deterministic
             nearby.clear();
             index.queryContaining(pa, nearby);
             index.queryContaining(pb, nearby);

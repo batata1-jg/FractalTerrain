@@ -6,13 +6,14 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.ints.IntAVLTreeSet;
+import it.unimi.dsi.fastutil.ints.IntSortedSet;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.TreeSet;
 import java.util.function.IntPredicate;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
@@ -302,7 +303,7 @@ public final class RiverNetwork {
 
         // structural nodes = source / drain / confluence (in-degree >= 2); sorted for a deterministic
         // emission order independent of HashMap/HashSet iteration.
-        final TreeSet<Integer> structural = new TreeSet<>();
+        final IntSortedSet structural = new IntAVLTreeSet();
         for (int id = 0; id < n; id++) {
             final Endpoint.Type role = atomic.role(id);
             if ((role != null && role.isSourceOrDrain()) || indegree[id] >= 2) {

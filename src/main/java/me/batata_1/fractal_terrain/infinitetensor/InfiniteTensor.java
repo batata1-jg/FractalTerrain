@@ -3,6 +3,7 @@ package me.batata_1.fractal_terrain.infinitetensor;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -122,7 +123,7 @@ public abstract class InfiniteTensor {
     /** Multi-range form of {@link #ensureComputed}. Dedupes rather than taking a bounding-box union,
      *  so scattered ranges do not drag in the windows between them. */
     protected void ensureComputedRanges(List<int[][]> pixelRanges) {
-        Set<TileKey> pendingSet = new LinkedHashSet<>();
+        ObjectLinkedOpenHashSet<TileKey> pendingSet = new ObjectLinkedOpenHashSet<>();
         for (int[][] range : pixelRanges) {
             int[] lo = outputWindow.getLowestIntersection(range);
             int[] hi = outputWindow.getHighestIntersection(range);

@@ -2,16 +2,14 @@ package me.batata_1.fractal_terrain.storage;
 
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
+import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -49,7 +47,7 @@ public class Storage<T extends Persistable<T>> {
     private final Object evictionLock = new Object();
 
     /** Cached keys mapped to byte size, in INSERTION ORDER (eldest entry iterates first). */
-    private final LinkedHashMap<TileKey, Long> cachedEntryByteSizes = new LinkedHashMap<>();
+    private final Object2LongLinkedOpenHashMap<TileKey> cachedEntryByteSizes = new Object2LongLinkedOpenHashMap<>();
 
     /** Running sum of {@link #cachedEntryByteSizes} values. */
     private long totalCachedBytes = 0;
@@ -314,8 +312,9 @@ public class Storage<T extends Persistable<T>> {
     /** Insert/refresh a cached key so it counts toward the budget and becomes the NEWEST entry. */
     private void recordCachedEntry(TileKey key, long byteSize) {
         synchronized (evictionLock) {
-            Long previousSize = cachedEntryByteSizes.remove(key); // remove first so re-put re-orders to newest
-            if (previousSize != null) totalCachedBytes -= previousSize;
+            if (cachedEntryByteSizes.containsKey(key)) {
+                totalCachedBytes -= cachedEntryByteSizes.removeLong(key); // remove first so re-put re-orders to newest
+            }
             cachedEntryByteSizes.put(key, byteSize);
             totalCachedBytes += byteSize;
         }
@@ -324,13 +323,10 @@ public class Storage<T extends Persistable<T>> {
     /** Picks an eviction victim. Call with {@link #evictionLock} held; the caller does the removal
      *  after releasing it. */
     private TileKey pollOldest() {
-        Iterator<Map.Entry<TileKey, Long>> iterator =
-                cachedEntryByteSizes.entrySet().iterator();
-        if (!iterator.hasNext()) return null;
-        Map.Entry<TileKey, Long> eldest = iterator.next();
-        iterator.remove();
-        totalCachedBytes -= eldest.getValue();
-        return eldest.getKey();
+        if (cachedEntryByteSizes.isEmpty()) return null;
+        final TileKey eldest = cachedEntryByteSizes.firstKey();
+        totalCachedBytes -= cachedEntryByteSizes.removeLong(eldest);
+        return eldest;
     }
 
     /** Trims the cache to its byte budget. Purge order matters for cache-only payloads, or a racing
