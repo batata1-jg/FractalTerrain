@@ -10,7 +10,9 @@ import me.batata_1.fractal_terrain.hydrology.network.Centreline;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
+import me.batata_1.fractal_terrain.hydrology.profile.DefaultProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
+import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexShape;
 import me.batata_1.fractal_terrain.storage.Persistable;
@@ -170,6 +172,11 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
                             bedElevation));
                 }
             }
+
+            @Override
+            public HydrologyProfile profileFor(int sub) {
+                return RosgenProfile.of(RiverPrimitive.RosgenType.byOrdinal(sub));
+            }
         },
         ABANDONED_RIVER(() -> AbandonedRiverPrimitive.PROTOTYPE) {
             @Override
@@ -238,6 +245,12 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
                 throw new IllegalStateException("no HydrologicalPrimitive record implements " + name() + " yet");
             }
             return prototypeSupplier.get();
+        }
+
+        /** The profile a packed cell's sub-classification carves and paints with. Exists because the
+         *  surface path holds a packed tag and never a primitive instance. */
+        public HydrologyProfile profileFor(int sub) {
+            return DefaultProfile.INSTANCE;
         }
 
         public abstract void addPrimitives(double[] offset, List<HydrologicalPrimitive> primitives, Object... args);

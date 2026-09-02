@@ -30,6 +30,15 @@ public enum RosgenProfile implements HydrologyProfile {
         protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
             return -depth * (1 - Math.abs(signedPerpDist));
         }
+
+        private static final SurfaceMaterial[] BED = {
+            SurfaceMaterial.COBBLE, SurfaceMaterial.COBBLE, SurfaceMaterial.GRAVEL
+        };
+
+        @Override
+        protected SurfaceMaterial[] bedColumn() {
+            return BED;
+        }
     },
     Aa {
 
@@ -48,6 +57,21 @@ public enum RosgenProfile implements HydrologyProfile {
                 long seed, double signedPerpDist, double width, double floodPlainLength, double curvature) {
             return 2 * (1 - Math.abs(signedPerpDist));
         }
+
+        private static final SurfaceMaterial[] BED = {
+            SurfaceMaterial.COBBLE, SurfaceMaterial.COBBLE, SurfaceMaterial.COBBLE
+        };
+        private static final SurfaceMaterial[] FLOOD_PLAIN = {SurfaceMaterial.COBBLE, SurfaceMaterial.GRAVEL};
+
+        @Override
+        protected SurfaceMaterial[] bedColumn() {
+            return BED;
+        }
+
+        @Override
+        protected SurfaceMaterial[] floodPlainColumn() {
+            return FLOOD_PLAIN;
+        }
     },
     B {
         @Override
@@ -64,6 +88,15 @@ public enum RosgenProfile implements HydrologyProfile {
         protected double floodPlainDelta(
                 long seed, double signedPerpDist, double width, double floodPlainLength, double curvature) {
             return 1 - Math.abs(signedPerpDist);
+        }
+
+        private static final SurfaceMaterial[] BED = {
+            SurfaceMaterial.GRAVEL, SurfaceMaterial.GRAVEL, SurfaceMaterial.COBBLE
+        };
+
+        @Override
+        protected SurfaceMaterial[] bedColumn() {
+            return BED;
         }
     },
     C {
@@ -92,6 +125,24 @@ public enum RosgenProfile implements HydrologyProfile {
                 long seed, double signedPerpDist, double width, double floodPlainLength, double curvature) {
             return -3 * (1 - Math.abs(signedPerpDist));
         }
+
+        private static final SurfaceMaterial[] BED = {SurfaceMaterial.SAND, SurfaceMaterial.SAND, SurfaceMaterial.GRAVEL
+        };
+        // DEFER at the surface keeps the biome's own top block on a lowland floodplain; the silt below
+        // is what a meander actually leaves behind.
+        private static final SurfaceMaterial[] FLOOD_PLAIN = {
+            SurfaceMaterial.DEFER, SurfaceMaterial.SILT, SurfaceMaterial.SILT
+        };
+
+        @Override
+        protected SurfaceMaterial[] bedColumn() {
+            return BED;
+        }
+
+        @Override
+        protected SurfaceMaterial[] floodPlainColumn() {
+            return FLOOD_PLAIN;
+        }
     },
     D {
         // TODO:Usar fnl
@@ -109,6 +160,21 @@ public enum RosgenProfile implements HydrologyProfile {
         protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
             // return -3 * Math.abs(noiseSampler.sample(1.0 / seed, signedPerpDist));
             return -3;
+        }
+
+        private static final SurfaceMaterial[] BED = {
+            SurfaceMaterial.GRAVEL, SurfaceMaterial.SAND, SurfaceMaterial.GRAVEL
+        };
+        private static final SurfaceMaterial[] FLOOD_PLAIN = {SurfaceMaterial.SAND, SurfaceMaterial.SAND};
+
+        @Override
+        protected SurfaceMaterial[] bedColumn() {
+            return BED;
+        }
+
+        @Override
+        protected SurfaceMaterial[] floodPlainColumn() {
+            return FLOOD_PLAIN;
         }
     },
     DA,
@@ -129,6 +195,19 @@ public enum RosgenProfile implements HydrologyProfile {
         protected double valleyDelta(double dist) {
             return Math.pow(dist, 2.5);
         }
+
+        private static final SurfaceMaterial[] BED = {SurfaceMaterial.SILT, SurfaceMaterial.CLAY, SurfaceMaterial.CLAY};
+        private static final SurfaceMaterial[] FLOOD_PLAIN = {SurfaceMaterial.DEFER, SurfaceMaterial.SILT};
+
+        @Override
+        protected SurfaceMaterial[] bedColumn() {
+            return BED;
+        }
+
+        @Override
+        protected SurfaceMaterial[] floodPlainColumn() {
+            return FLOOD_PLAIN;
+        }
     },
     F {
         private static final double maxHalfWidth = HydrologyTuning.MAX_WIDTH / 2;
@@ -142,16 +221,44 @@ public enum RosgenProfile implements HydrologyProfile {
         protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
             return -Math.max(1, 0.5 * depth * Math.pow(1 - signedPerpDist * signedPerpDist, 0.16)) - 3;
         }
+
+        private static final SurfaceMaterial[] BED = {SurfaceMaterial.SAND, SurfaceMaterial.SILT, SurfaceMaterial.SILT};
+        private static final SurfaceMaterial[] FLOOD_PLAIN = {SurfaceMaterial.DEFER, SurfaceMaterial.SILT};
+
+        @Override
+        protected SurfaceMaterial[] bedColumn() {
+            return BED;
+        }
+
+        @Override
+        protected SurfaceMaterial[] floodPlainColumn() {
+            return FLOOD_PLAIN;
+        }
     },
     G {
         @Override
         public double floodPlainLength(double width) {
             return 1.2 * (width / 2);
         }
+
+        private static final SurfaceMaterial[] BED = {
+            SurfaceMaterial.COBBLE, SurfaceMaterial.GRAVEL, SurfaceMaterial.GRAVEL
+        };
+
+        @Override
+        protected SurfaceMaterial[] bedColumn() {
+            return BED;
+        }
     };
 
     // ---- Horizontal extents (type-dependent; shared placeholder law, override per constant) ----
     private static final Logger LOG = LoggerFactory.getLogger(RosgenProfile.class);
+
+    private static final SurfaceMaterial[] DEFAULT_BED = {
+        SurfaceMaterial.GRAVEL, SurfaceMaterial.GRAVEL, SurfaceMaterial.GRAVEL
+    };
+
+    private static final SurfaceMaterial[] DEFAULT_FLOOD_PLAIN = {};
 
     public static double smoothMax(double a, double b, double lambda) {
         return (a + b + Math.sqrt((a - b) * (a - b) + lambda)) / 2;
@@ -249,6 +356,22 @@ public enum RosgenProfile implements HydrologyProfile {
         }
     }
 
+    @Override
+    public int riverPaintDepth(int subType, float dist, SurfaceMaterial[] out) {
+        final SurfaceMaterial[] column;
+        if (dist <= RiverInfluenceCarve.BED_EDGE) {
+            column = bedColumn();
+        } else if (dist <= RiverInfluenceCarve.FLOODPLAIN_EDGE) {
+            column = floodPlainColumn();
+        } else {
+            return 0;
+        }
+        // :PERF: arraycopy out of a shared static column; this runs once per claimed column of every
+        // chunk, and building the column per call would allocate on the surface path.
+        System.arraycopy(column, 0, out, 0, column.length);
+        return column.length;
+    }
+
     // range [-1,0] -> [-floodPlainLen,-marginLen] ;
     // range [0,1] -> [marginLen,floodPlainLen] ;
     protected double floodPlainDelta(
@@ -259,6 +382,18 @@ public enum RosgenProfile implements HydrologyProfile {
     // should be between the range -1 and 1
     protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
         return -Math.max(1, depth * Math.sqrt(1 - signedPerpDist * signedPerpDist));
+    }
+
+    /** What this type's wetted bed exposes, surface first. Placeholder gravel shared by all types;
+     *  override per constant. */
+    protected SurfaceMaterial[] bedColumn() {
+        return DEFAULT_BED;
+    }
+
+    /** What this type's floodplain exposes, surface first. Empty by default, leaving the valley floor
+     *  to whatever biome it runs through; override per constant. */
+    protected SurfaceMaterial[] floodPlainColumn() {
+        return DEFAULT_FLOOD_PLAIN;
     }
 
     /** The profile for a primitive's Rosgen type. */

@@ -194,5 +194,15 @@ public record RiverPrimitive(
         public static RosgenType orDefault(RosgenType type) {
             return type == null ? A : type;
         }
+
+        /** {@code values()} without the defensive array copy; indexed by ordinal, as the packed
+         *  {@code RIVER_TYPE} sub-word stores it. */
+        private static final RosgenType[] VALUES = values();
+
+        /** The type a packed sub-word names. Read on the surface path, which holds an ordinal and never
+         *  a primitive. */
+        public static RosgenType byOrdinal(int ordinal) {
+            return VALUES[ordinal];
+        }
     }
 }

@@ -122,6 +122,32 @@ wrote — to compute `riverWaterTop` (fills water down to `reliefHeight - diff` 
 and tests channel membership (`insideChannel`, `pt` within `width/2` of a primitive) via the same influence
 query used by the inprinter.
 
+**Paint contract.** `HydrologyProfile.riverPaintDepth` is the paint half of the profile's contract, the
+twin of `shellElevation`. It tabulates a column of `SurfaceMaterial` tokens into a caller-owned scratch
+array and returns how many entries it filled, rather than answering per block: the caller's 16x16
+surface loop sits below the hot/cold line and cannot afford a virtual call per block. This mirrors
+`RosgenProfile.sampleCrossSection`, which tabulates a cross-section LUT once per primitive for the same
+reason.
+
+Tokens, not blocks, because nothing under `hydrology/` may import `net.minecraft` — that is what lets
+the golden suite run as plain JUnit. `world/gen/surfacebuilder/HydrologySurfacePalette` owns the
+mapping, including the substitution a token with no vanilla counterpart needs.
+
+`RosgenProfile` splits the law the way `delta` is split: one shared body maps the banded coordinate to a
+band, and per-constant `bedColumn`/`floodPlainColumn` hooks name that band's materials. The columns are
+`static final` arrays so a constant's override allocates nothing. `DA` overrides neither and takes the
+enum-level defaults, the same "overrides nothing" position it holds for the elevation laws.
+`DEFAULT_FLOOD_PLAIN` is empty, so a type that has not been given a floodplain material leaves the
+valley floor to whatever biome it runs through rather than guessing.
+
+`DEFER` exists so a claimed column need not paint every layer: `C`, `E` and `F` defer their floodplain's
+top block, keeping the biome's own grass while replacing the material underneath it.
+
+`HydrologicalFeature.profileFor` resolves a packed `RIVER_TYPE` tag to a profile. It lives on the family
+enum rather than on the primitive because the surface path holds a packed tag and never a primitive
+instance. Every family but `RIVER` answers `DefaultProfile.INSTANCE`, whose `riverPaintDepth` returns
+zero — so a newly added feature type stays as invisible to the surface as it already is to the carve.
+
 ## Design decisions / known limitations
 
 **Bed-trench depth is a hard-coded function of width, not a true cross-section.** `RosgenProfile

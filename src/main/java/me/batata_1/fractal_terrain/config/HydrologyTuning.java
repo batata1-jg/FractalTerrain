@@ -110,6 +110,9 @@ public final class HydrologyTuning {
     /** Border margin kept clear, wider than the influence radius — see README. */
     public static final double MARGIN_INFLUENCE_FACTOR = 5.0;
 
+    /** Contract bound on {@code HydrologyProfile.riverPaintDepth}'s scratch column; a profile returning more is a programming error. */
+    public static final int MAX_RIVER_PAINT_DEPTH = 8;
+
     public static double influence(double width) {
         return Math.clamp(width * 5, MIN_INFLUENCE_RADIUS, MAX_INFLUENCE_RADIUS);
     }
