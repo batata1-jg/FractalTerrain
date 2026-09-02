@@ -114,8 +114,7 @@ public final class RiverInfluenceCarve {
      *  1 sits outside every primitive's rectangle, so the first primitive to reach a point wins outright. */
     public static final double UNSET_MIN_DIST = 64;
 
-    /** The banded coordinate at a primitive's bank, where the bed gives way to the floodplain. Fixed for
-     *  every primitive regardless of width, so a paint consumer needs no access to the primitive. */
+    /** Fixed regardless of primitive width, so a paint consumer classifies a point with no access to it. */
     public static final double BED_EDGE = 0.25;
 
     /** The banded coordinate at a primitive's floodplain edge, where the influence band begins. */
@@ -400,10 +399,9 @@ public final class RiverInfluenceCarve {
     }
 
     /**
-     * A raw footprint scale remapped onto the banded coordinate the paint side reads. Exists so bed and
-     * floodplain assert themselves in the merge — a tributary's bed outranks a trunk's influence band —
-     * and so a consumer classifies a point against {@link #BED_EDGE} and {@link #FLOODPLAIN_EDGE}
-     * without knowing which primitive claimed it.
+     * A raw footprint scale remapped onto the banded coordinate the paint side reads. Bed and floodplain
+     * assert themselves in the merge, and a consumer classifies against {@link #BED_EDGE} and {@link
+     * #FLOODPLAIN_EDGE} without access to the primitive.
      */
     // :PERF: six primitive parameters instead of a control-point object; this runs per lattice point,
     // and an object would allocate per primitive and dispatch per point.
