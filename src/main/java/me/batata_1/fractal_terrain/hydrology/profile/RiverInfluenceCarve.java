@@ -114,6 +114,13 @@ public final class RiverInfluenceCarve {
      *  1 sits outside every primitive's rectangle, so the first primitive to reach a point wins outright. */
     public static final double UNSET_MIN_DIST = 64;
 
+    /** The banded coordinate at a primitive's bank, where the bed gives way to the floodplain. Fixed for
+     *  every primitive regardless of width, so a paint consumer needs no access to the primitive. */
+    public static final double BED_EDGE = 0.25;
+
+    /** The banded coordinate at a primitive's floodplain edge, where the influence band begins. */
+    public static final double FLOODPLAIN_EDGE = 0.5;
+
     /** One instance of this class serves every tile build, so the carve buffers cannot be fields. */
     private static final ThreadLocal<GridBuffers> SHELL_BUFFERS = ThreadLocal.withInitial(GridBuffers::new);
 
@@ -229,6 +236,20 @@ public final class RiverInfluenceCarve {
 
         final double invLen = 1.0 / influenceLen;
         final double invWidth = 1.0 / influenceWidth;
+        // Control points clamped into [0, 1] and into order. floodPlainLength is a free per-type law:
+        // RosgenProfile.E returns less than marginLen at maximum width, a minimum-influence primitive
+        // can push its floodplain past its own rim, and the HydrologyProfile default returns exactly
+        // marginLen. Each inversion would give the band a negative slope.
+        final double marginNorm = Math.min(Math.max(marginLen * invLen, marginLen * invWidth), 1.0);
+        final double floodPlainNorm =
+                Math.min(Math.max(Math.max(floodPlainLen * invLen, floodPlainLen * invWidth), marginNorm), 1.0);
+        // :PERF: reciprocals hoisted per primitive; the merge loop below runs per lattice point and
+        // carries no division. A zero denominator means the piece it scales is empty, so the slope is
+        // never read and 0 keeps it finite.
+        final double bedSlope = marginNorm > 0.0 ? BED_EDGE / marginNorm : 0.0;
+        final double floodPlainSlope =
+                floodPlainNorm > marginNorm ? (FLOODPLAIN_EDGE - BED_EDGE) / (floodPlainNorm - marginNorm) : 0.0;
+        final double outerSlope = floodPlainNorm < 1.0 ? (1.0 - FLOODPLAIN_EDGE) / (1.0 - floodPlainNorm) : 0.0;
         for (int row = rowMin; row <= rowMax; row++) {
             final int rowBase = row * gridSize;
             final double perpAtRow = perpRow[row];
@@ -239,8 +260,11 @@ public final class RiverInfluenceCarve {
                 final double tang = tangAtRow + tangCol[col];
                 // How far the footprint rectangle must be scaled to swallow the point: 1 exactly at the
                 // rim, so the recurrence ranks primitives by rectangle penetration, not radial distance.
-                final double d = Math.max(Math.abs(tang) * invLen, Math.abs(perp) * invWidth);
-                final double mask = d <= 1.0 ? 1.0 : 0.0;
+                final double raw = Math.max(Math.abs(tang) * invLen, Math.abs(perp) * invWidth);
+                final double d = band(raw, marginNorm, floodPlainNorm, bedSlope, floodPlainSlope, outerSlope);
+                // Tested on the raw scale rather than the banded one: where floodPlainNorm clamps to 1
+                // the band saturates at FLOODPLAIN_EDGE and a point past the rim would read as in-band.
+                final double mask = raw <= 1.0 ? 1.0 : 0.0;
                 final double t = Math.clamp(((dist[i] - d) / HydrologyTuning.PRIMITIVE_BLEND_STRENGTH + 1) * 0.5, 0, 1);
                 final double w = t * t * (3.0 - 2.0 * t) * mask;
                 final double f = perp * invStep - baseIdx;
@@ -373,6 +397,26 @@ public final class RiverInfluenceCarve {
                 elevs[i] = (float) Math.min(elevs[i], acc[a] * (1 - testeW) + h * testeW);
             }
         }
+    }
+
+    /**
+     * A raw footprint scale remapped onto the banded coordinate the paint side reads. Exists so bed and
+     * floodplain assert themselves in the merge — a tributary's bed outranks a trunk's influence band —
+     * and so a consumer classifies a point against {@link #BED_EDGE} and {@link #FLOODPLAIN_EDGE}
+     * without knowing which primitive claimed it.
+     */
+    // :PERF: six primitive parameters instead of a control-point object; this runs per lattice point,
+    // and an object would allocate per primitive and dispatch per point.
+    static double band(
+            double raw,
+            double marginNorm,
+            double floodPlainNorm,
+            double bedSlope,
+            double floodPlainSlope,
+            double outerSlope) {
+        if (raw <= marginNorm) return raw * bedSlope;
+        if (raw <= floodPlainNorm) return BED_EDGE + (raw - marginNorm) * floodPlainSlope;
+        return FLOODPLAIN_EDGE + (raw - floodPlainNorm) * outerSlope;
     }
 
     /**

@@ -36,14 +36,42 @@ index shared by every primitive), then walks only the lattice cells its influenc
 interpolating the LUT instead of re-evaluating `RosgenProfile.delta`'s branchy per-region logic at every
 point.
 
-**`d` is a rectangle scale, not a radius.** Each primitive's footprint is the rotated rectangle the spatial
-index stores it under — `influenceLen` along the flow tangent, `influenceWidth` across it. `d` is the factor
-that rectangle must be scaled by to contain the lattice point,
-`max(|tang| / influenceLen, |perp| / influenceWidth)`, so `d <= 1` is exactly "inside the footprint" and one
-comparison serves as both the rank and the in-band mask. It is dimensionless: `UNSET_MIN_DIST` and the
-`SMOOTH_STEP_DIVISOR` blend width are read against that normalised scale, not against relief-pixels. Both
-half-extents come from `RiverPrimitive.getLength()` / `getWidth()`, so a primitive indexed under a
-non-square rectangle carves the shape it was indexed under; today both return `influence * 2`.
+**`d` is a banded rectangle scale, not a radius.** Each primitive's footprint is the rotated rectangle
+the spatial index stores it under — `influenceLen` along the flow tangent, `influenceWidth` across it.
+The raw scale is the factor that rectangle must be scaled by to contain the lattice point,
+`max(|tang| / influenceLen, |perp| / influenceWidth)`, so `raw <= 1` is exactly "inside the footprint"
+and is what the in-band mask tests. `carvePrimitive` then remaps that raw scale through
+`RiverInfluenceCarve.band`, three linear pieces pinned so `BED_EDGE` (0.25) always lands on the bank and
+`FLOODPLAIN_EDGE` (0.5) always lands on the floodplain edge, whatever the primitive's width. `d` is
+dimensionless: `UNSET_MIN_DIST` and the blend width are read against that banded scale, not against
+relief-pixels. Both half-extents come from `RiverPrimitive.getLength()` / `getWidth()`, so a primitive
+indexed under a non-square rectangle carves the shape it was indexed under.
+
+The banding is load-bearing in two directions. It gives the paint side a width-independent coordinate: a
+consumer classifies a point into bed / floodplain / influence with two comparisons against constants and
+no access to the primitive. And because the banded value feeds the smoothed-min recurrence, it changes
+which primitive wins where — a small tributary's bed and floodplain outrank a large trunk's influence
+band — and the same value drives the `acc[]` blend weight through
+`acc[a + 2] = 1 - clamp(dist, 0, 1)`, so carved elevation moves too: a floodplain edge that weighted
+near 1 weights 0.5. Retune `BED_EDGE` and `FLOODPLAIN_EDGE` if the reach is wrong; the paint side needs
+a width-independent coordinate either way.
+
+The control points are clamped into `[0, 1]` and into order before the slopes are taken.
+`RosgenProfile.floodPlainLength` is a free per-type law: `E` returns less than `marginLen` at maximum
+width, a minimum-influence primitive can push its floodplain past its own rim, and the
+`HydrologyProfile` default (which `DA` inherits) returns exactly `marginLen`. Each inversion would
+otherwise give the band a negative slope or a division by zero.
+
+`marginLen` and `floodPlainLen` are substituted into the same `max` the raw scale itself comes out of,
+not applied to the perpendicular axis alone. So the bed band extends along the flow tangent as well as
+across it, and a channel's last primitive ends in an isotropic cap of the bed's own radius rather than
+being cut off square — which is what a segment ending should look like. The alternative, banding only
+the perpendicular axis, would leave the along-flow coordinate unbanded and break the paint side's
+width-independence at every channel end.
+
+`carvePrimitiveInfluence`, the tile-level shell carve, keeps its own two-piece `dd` remap and is not
+banded. Unifying the two would move shell terrain and bed terrain together, leaving any regression
+unattributable.
 
 **Merge law.** Both lattices run the bed's original sequential smoothed-min-distance recurrence: a running
 per-lattice-point `dist[i]` seeded at 64, updated per primitive by a smoothstep of

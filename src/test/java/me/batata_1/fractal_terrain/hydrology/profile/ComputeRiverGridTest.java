@@ -383,4 +383,159 @@ class ComputeRiverGridTest {
         assertEquals(RosgenType.C.ordinal(), HydrologicalFeature.unpackSub(b.typeMask[idx(9, 8)]));
         assertEquals(RosgenType.A.ordinal(), HydrologicalFeature.unpackSub(b.typeMask[idx(7, 8)]));
     }
+
+    // ---- Banded footprint coordinate ----
+
+    private static double bandOf(double raw, double marginNorm, double floodPlainNorm) {
+        final double bedSlope = marginNorm > 0 ? RiverInfluenceCarve.BED_EDGE / marginNorm : 0.0;
+        final double floodPlainSlope = floodPlainNorm > marginNorm
+                ? (RiverInfluenceCarve.FLOODPLAIN_EDGE - RiverInfluenceCarve.BED_EDGE) / (floodPlainNorm - marginNorm)
+                : 0.0;
+        final double outerSlope =
+                floodPlainNorm < 1.0 ? (1.0 - RiverInfluenceCarve.FLOODPLAIN_EDGE) / (1.0 - floodPlainNorm) : 0.0;
+        return RiverInfluenceCarve.band(raw, marginNorm, floodPlainNorm, bedSlope, floodPlainSlope, outerSlope);
+    }
+
+    @Test
+    void bandPinsTheControlPointsToTheFixedBreakpoints() {
+        final double margin = 0.2;
+        final double floodPlain = 0.24;
+
+        assertEquals(0.0, bandOf(0.0, margin, floodPlain), 1e-12, "the centreline");
+        assertEquals(RiverInfluenceCarve.BED_EDGE, bandOf(margin, margin, floodPlain), 1e-12, "the bank");
+        assertEquals(
+                RiverInfluenceCarve.FLOODPLAIN_EDGE,
+                bandOf(floodPlain, margin, floodPlain),
+                1e-12,
+                "the floodplain edge");
+        assertEquals(1.0, bandOf(1.0, margin, floodPlain), 1e-12, "the influence rim");
+    }
+
+    @Test
+    void bandIsMonotonicAcrossTheSweptRange() {
+        final double margin = 0.2;
+        final double floodPlain = 0.24;
+        double previous = Double.NEGATIVE_INFINITY;
+        for (int i = 0; i <= 1000; i++) {
+            final double raw = i / 500.0;
+            final double banded = bandOf(raw, margin, floodPlain);
+            assertTrue(banded >= previous, "band fell at raw " + raw);
+            previous = banded;
+        }
+    }
+
+    @Test
+    void bandIsFiniteWhenTheMarginAndFloodPlainCoincide() {
+        // HydrologyProfile's default floodPlainLength returns width / 2, which is marginLen exactly;
+        // RosgenProfile.DA inherits it, so the middle piece is empty for a real profile.
+        final double coincident = 0.2;
+        for (int i = 0; i <= 100; i++) {
+            final double raw = i / 50.0;
+            assertTrue(Double.isFinite(bandOf(raw, coincident, coincident)), "not finite at raw " + raw);
+        }
+        assertEquals(RiverInfluenceCarve.BED_EDGE, bandOf(coincident, coincident, coincident), 1e-12);
+    }
+
+    @Test
+    void bandIsFiniteWhenTheFloodPlainReachesTheRim() {
+        // A minimum-influence primitive can push floodPlainLength past its own rim; the clamp lands the
+        // control point on exactly 1 and the outer piece becomes empty.
+        for (int i = 0; i <= 100; i++) {
+            final double raw = i / 50.0;
+            assertTrue(Double.isFinite(bandOf(raw, 0.2, 1.0)), "not finite at raw " + raw);
+        }
+    }
+
+    @Test
+    void theCarveWritesTheBandedCoordinateIntoDist() {
+        // dist starts at UNSET_MIN_DIST, so a lone primitive owns every cell it reaches outright and
+        // dist lands on the banded value exactly, with no blend against a competitor. knot() gives
+        // influenceLen 5, influenceWidth 7.5, marginLen 1 and (type A) floodPlainLen 1.2.
+        final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
+        final RiverInfluenceCarve.GridBuffers b = buffers();
+
+        RiverInfluenceCarve.computeRiverGrid(
+                0,
+                0,
+                RES,
+                GRID,
+                List.of(river),
+                b.acc,
+                b.typeMask,
+                b.dist,
+                b.lut,
+                b.perpRow,
+                b.perpCol,
+                b.tangRow,
+                b.tangCol,
+                null);
+
+        // (8, 8) is the centreline: raw 0.
+        assertEquals(0.0f, b.dist[idx(8, 8)], 1e-6f, "the centreline is the bottom of the bed band");
+        // (8, 7) sits one pixel along the flow tangent, so raw == marginNorm exactly.
+        assertEquals(
+                (float) RiverInfluenceCarve.BED_EDGE,
+                b.dist[idx(8, 7)],
+                1e-6f,
+                "one margin length out is the bed/floodplain boundary");
+        // (8, 3) sits influenceLen along the flow tangent, so raw == 1 exactly.
+        assertEquals(1.0f, b.dist[idx(8, 3)], 1e-6f, "the influence rim");
+    }
+
+    @Test
+    void theBandedCoordinateIsIndependentOfPrimitiveWidth() {
+        // The whole point of D1: a consumer classifies a point against BED_EDGE without knowing which
+        // primitive claimed it. A ten-times-wider primitive still calls its own bank the bed edge, so
+        // lattice cells that were floodplain for the narrow knot above are bed here.
+        final RiverPrimitive wide = new RiverPrimitive(
+                new double[] {8.0, 8.0}, 50.0, RosgenType.A, new double[] {1.0, 0.0}, 0.0, 20.0, 100.0, 0L);
+        final RiverInfluenceCarve.GridBuffers b = buffers();
+
+        RiverInfluenceCarve.computeRiverGrid(
+                0,
+                0,
+                RES,
+                GRID,
+                List.of(wide),
+                b.acc,
+                b.typeMask,
+                b.dist,
+                b.lut,
+                b.perpRow,
+                b.perpCol,
+                b.tangRow,
+                b.tangCol,
+                null);
+
+        assertEquals(0.0f, b.dist[idx(8, 8)], 1e-6f, "the centreline");
+        assertTrue(
+                b.dist[idx(8, 3)] < RiverInfluenceCarve.BED_EDGE, "five pixels out is still bed for a 20-wide channel");
+    }
+
+    @Test
+    void unclaimedCellsKeepTheUnsetSeedRatherThanABandedValue() {
+        // Task 2 publishes dist into a heightmap channel gated on RIVER_TYPE; an unclaimed cell must
+        // stay recognisably unset rather than reading as a valid influence-band coordinate.
+        final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
+        final RiverInfluenceCarve.GridBuffers b = buffers();
+
+        RiverInfluenceCarve.computeRiverGrid(
+                0,
+                0,
+                RES,
+                GRID,
+                List.of(river),
+                b.acc,
+                b.typeMask,
+                b.dist,
+                b.lut,
+                b.perpRow,
+                b.perpCol,
+                b.tangRow,
+                b.tangCol,
+                null);
+
+        assertEquals((float) RiverInfluenceCarve.UNSET_MIN_DIST, b.dist[idx(0, 0)], "the corner is unclaimed");
+        assertEquals(HydrologicalFeature.NONE, b.typeMask[idx(0, 0)], "and its type agrees");
+    }
 }
