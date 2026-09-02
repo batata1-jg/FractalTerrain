@@ -210,15 +210,13 @@ Create `src/main/java/me/batata_1/fractal_terrain/hydrology/profile/RadialProfil
 ```java
 package me.batata_1.fractal_terrain.hydrology.profile;
 
-import me.batata_1.fractal_terrain.hydrology.features.RadialPrimitive;
-
 /**
  * The cross-section of a feature with no flow direction — what a junction pool cuts, and what a spring
  * cuts, as a function of distance from its centre alone.
  *
  * <p>The radial twin of {@link RosgenProfile}: same split, where the enum constant owns the shape and
- * the carve owns the walk. {@link RadialPrimitive} routes here rather than to a Rosgen type because a
- * bowl has no tangent to take a cross-section across.
+ * the carve owns the walk. A radial primitive routes here rather than to a Rosgen type because a bowl
+ * has no tangent to take a cross-section across.
  */
 public enum RadialProfile implements HydrologyProfile {
 
@@ -258,9 +256,7 @@ public enum RadialProfile implements HydrologyProfile {
 }
 ```
 
-The `RadialPrimitive` import is for the javadoc link only and will not resolve until Task 2. Write the
-class body now and leave the import out until Task 2 adds the type, replacing the `{@link
-RadialPrimitive}` reference with plain `RadialPrimitive` text in the interim.
+This file compiles on its own — it references no type Task 2 adds.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
@@ -311,6 +307,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.HydrologicalFeature;
@@ -325,10 +322,9 @@ import org.junit.jupiter.params.provider.MethodSource;
  */
 class RadialPrimitiveCodecTest {
 
+    /** Task 3 adds the SourcePrimitive entry; every test below is written to cover both. */
     private static Stream<RadialPrimitive> radialPrimitives() {
-        return Stream.of(
-                new ConfluencePrimitive(new double[] {12.5, -40.25}, 6.0, 71.5),
-                new SourcePrimitive(new double[] {-3.0, 8.75}, 1.25, 130.0));
+        return Stream.of(new ConfluencePrimitive(new double[] {12.5, -40.25}, 6.0, 71.5));
     }
 
     @ParameterizedTest
@@ -396,7 +392,7 @@ class RadialPrimitiveCodecTest {
     void sortsAfterEveryRiverPrimitive() {
         // computeRiverGrid's river loop stops at the first non-river entry; a radial family sorting
         // before RIVER would truncate the river run and silently drop carve.
-        final List<HydrologicalPrimitive> primitives = new java.util.ArrayList<>(List.of(
+        final List<HydrologicalPrimitive> primitives = new ObjectArrayList<>(List.of(
                 new ConfluencePrimitive(new double[] {0.0, 0.0}, 1.0, 0.0),
                 new RiverPrimitive(new double[] {0.0, 0.0}, 5.0, RiverPrimitive.RosgenType.A, null, 0, 2, 0)));
         primitives.sort(HydrologicalPrimitive.comparator);
@@ -409,9 +405,7 @@ class RadialPrimitiveCodecTest {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `gradle test --tests "*RadialPrimitiveCodecTest"`
-Expected: FAIL — `:compileTestJava` errors, `RadialPrimitive` and `ConfluencePrimitive` do not exist,
-and `SourcePrimitive` has no 3-arg constructor yet. The `SourcePrimitive` half of the parameterized
-source stays red until Task 3; that is expected and is what makes Task 3's deliverable visible.
+Expected: FAIL — `:compileTestJava` errors, `RadialPrimitive` and `ConfluencePrimitive` do not exist.
 
 - [ ] **Step 3: Create `RadialPrimitive`**
 
@@ -571,10 +565,7 @@ Leave `addPrimitives` empty for now — Task 4 fills it. Change `DELTA`'s termin
 - [ ] **Step 6: Run the tests**
 
 Run: `gradle spotlessApply` then `gradle test --tests "*RadialPrimitiveCodecTest"`
-Expected: the `ConfluencePrimitive` parameterizations and both `@Test` methods PASS; the
-`SourcePrimitive` parameterizations still FAIL to compile. If compilation blocks the whole class,
-temporarily reduce `radialPrimitives()` to the `ConfluencePrimitive` entry alone and restore it in
-Task 3 Step 1.
+Expected: PASS, 7 tests (5 parameterized over the single `ConfluencePrimitive` entry, plus 2 plain).
 
 - [ ] **Step 7: Commit**
 
@@ -610,10 +601,10 @@ git commit -m "feat(hydrology): add the RadialPrimitive family and ConfluencePri
 This task changes the on-disk payload of an existing type tag. The store rename is not optional and
 not deferrable: without it, a cached tile is read with a payload two doubles short.
 
-- [ ] **Step 1: Restore the full parameterized source**
+- [ ] **Step 1: Add `SourcePrimitive` to the parameterized source**
 
-In `RadialPrimitiveCodecTest.radialPrimitives()`, ensure both entries are present (restore the
-`SourcePrimitive` line if Task 2 Step 6 removed it):
+In `RadialPrimitiveCodecTest`, extend `radialPrimitives()` to both records and drop the Task-3 note
+above it:
 
 ```java
     private static Stream<RadialPrimitive> radialPrimitives() {
@@ -844,6 +835,8 @@ import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.HydrologicalFeature;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
+import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork.EdgeSpec;
+import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork.NodeSpec;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -862,15 +855,15 @@ class RadialEmissionTest {
 
     /** Two sources into one junction into a drain: the smallest graph with a real confluence. */
     private static RiverNetwork confluenceNetwork() {
-        final List<RiverNetwork.NodeSpec> nodeSpecs = List.of(
-                new RiverNetwork.NodeSpec(SOURCE_A[0], SOURCE_A[1], Endpoint.Type.SOURCE), // 0
-                new RiverNetwork.NodeSpec(SOURCE_B[0], SOURCE_B[1], Endpoint.Type.SOURCE), // 1
-                new RiverNetwork.NodeSpec(JUNCTION[0], JUNCTION[1], Endpoint.Type.JUNCTION), // 2
-                new RiverNetwork.NodeSpec(DRAIN[0], DRAIN[1], Endpoint.Type.DRAIN)); // 3
-        final List<RiverNetwork.EdgeSpec> edgeSpecs = List.of(
-                new RiverNetwork.EdgeSpec(0, 2, segment(SOURCE_A, JUNCTION, 24), 8.0),
-                new RiverNetwork.EdgeSpec(1, 2, segment(SOURCE_B, JUNCTION, 24), 8.0),
-                new RiverNetwork.EdgeSpec(2, 3, segment(JUNCTION, DRAIN, 24), 12.0));
+        final List<NodeSpec> nodeSpecs = List.of(
+                new NodeSpec(SOURCE_A[0], SOURCE_A[1], Endpoint.Type.SOURCE), // 0
+                new NodeSpec(SOURCE_B[0], SOURCE_B[1], Endpoint.Type.SOURCE), // 1
+                new NodeSpec(JUNCTION[0], JUNCTION[1], Endpoint.Type.JUNCTION), // 2
+                new NodeSpec(DRAIN[0], DRAIN[1], Endpoint.Type.DRAIN)); // 3
+        final List<EdgeSpec> edgeSpecs = List.of(
+                new EdgeSpec(0, 2, segment(SOURCE_A, JUNCTION, 24), 8.0),
+                new EdgeSpec(1, 2, segment(SOURCE_B, JUNCTION, 24), 8.0),
+                new EdgeSpec(2, 3, segment(JUNCTION, DRAIN, 24), 12.0));
         return new RiverNetwork(GRID, nodeSpecs, edgeSpecs, false, 0, RESAMPLE_DIST);
     }
 
@@ -976,10 +969,10 @@ class RadialEmissionTest {
 }
 ```
 
-If `RiverNetwork.NodeSpec` / `EdgeSpec` are not nested public types with those constructor shapes,
-copy the exact fixture form from
+The fixture mirrors
 `src/test/java/me/batata_1/fractal_terrain/hydrology/meanders/RiverNetworkSeamGoldenTest.java:43-63`,
-which builds this same graph and is known to compile.
+which builds the same graph. `NodeSpec` and `EdgeSpec` are public records nested in `RiverNetwork`
+(`RiverNetwork.java:109,117`), and the six-argument constructor is at `RiverNetwork.java:127`.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -1138,6 +1131,7 @@ Create `src/test/java/me/batata_1/fractal_terrain/hydrology/profile/RadialCarveT
 ```java
 package me.batata_1.fractal_terrain.hydrology.profile;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -1145,6 +1139,7 @@ import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.features.ConfluencePrimitive;
+import me.batata_1.fractal_terrain.hydrology.features.DeltaPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive.RosgenType;
@@ -1276,17 +1271,23 @@ class RadialCarveTest {
                 HydrologicalPrimitive.HydrologicalFeature.unpack(b.typeMask[idx(8, 8)]));
     }
 
-    /** A river-only list must come out exactly as it did before the second pass existed. */
+    /** D2's filter: a non-river, non-radial tail entry must leave every lane byte-identical. */
     @Test
-    void leavesARiverOnlyCarveUntouched() {
-        final RiverInfluenceCarve.GridBuffers withPass = buffers();
-        carve(withPass, List.of(knot(CENTRE, 100.0)));
+    void ignoresANonRadialTailPrimitive() {
+        final RiverInfluenceCarve.GridBuffers riverOnly = buffers();
+        carve(riverOnly, List.of(knot(CENTRE, 100.0)));
+        final float[] accBefore = riverOnly.acc.clone();
+        final long[] maskBefore = riverOnly.typeMask.clone();
+        // dist is deliberately not compared: the radial pass reseeds it, so both runs leave it at
+        // UNSET_MIN_DIST and the comparison would pass without asserting anything.
 
-        // The radial pass runs over an empty tail, so every lane must equal a pure river carve.
-        for (int i = 0; i < GRID * GRID; i++) {
-            assertTrue(Float.isFinite(withPass.acc[3 * i]), "cell " + i + " went non-finite");
-        }
-        assertEquals(100.0 - depthOf(2.0), withPass.acc[3 * idx(8, 8)], 1e-3);
+        // DELTA sorts between SOURCE and CONFLUENCE and implements no radial interface, so the second
+        // pass must walk straight past it rather than treat the list tail as carveable.
+        final RiverInfluenceCarve.GridBuffers withDelta = buffers();
+        carve(withDelta, List.of(knot(CENTRE, 100.0), new DeltaPrimitive(new double[] {CENTRE, CENTRE})));
+
+        assertArrayEquals(accBefore, withDelta.acc, "a delta in the tail perturbed the merged surface");
+        assertArrayEquals(maskBefore, withDelta.typeMask, "a delta in the tail perturbed the type mask");
     }
 }
 ```
