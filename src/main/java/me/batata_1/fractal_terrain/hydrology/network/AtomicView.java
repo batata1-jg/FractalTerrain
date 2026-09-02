@@ -2,6 +2,7 @@ package me.batata_1.fractal_terrain.hydrology.network;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntAVLTreeSet;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntSortedSet;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
@@ -182,10 +183,10 @@ public final class AtomicView {
     /** All atomic nodes upstream of {@code drain} (reverse-reachable via predecessors), including it. */
     private static List<Integer> basinOf(int drain, List<List<Integer>> predecessors) {
         final List<Integer> basin = new ObjectArrayList<>();
-        final ArrayDeque<Integer> stack = new ArrayDeque<>();
+        final IntArrayList stack = new IntArrayList();
         stack.push(drain);
         while (!stack.isEmpty()) {
-            final int node = stack.pop();
+            final int node = stack.popInt();
             basin.add(node);
             for (int up : predecessors.get(node)) stack.push(up);
         }

@@ -5,7 +5,8 @@ import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.sample
 import it.unimi.dsi.fastutil.ints.Int2DoubleMap;
 import it.unimi.dsi.fastutil.ints.Int2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
-import java.util.ArrayDeque;
+import it.unimi.dsi.fastutil.ints.IntArrayFIFOQueue;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import java.util.List;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
@@ -43,19 +44,19 @@ public final class ChannelElevationAssigner {
         pendingIncoming.defaultReturnValue(-1);
         final Int2DoubleOpenHashMap junctionElev = new Int2DoubleOpenHashMap();
         junctionElev.defaultReturnValue(Double.NaN);
-        final ArrayDeque<Integer> ready = new ArrayDeque<>();
+        final IntArrayFIFOQueue ready = new IntArrayFIFOQueue();
         for (Endpoint endpoint : network.getNodes()) {
             if (endpoint.type == Endpoint.Type.JUNCTION) {
                 pendingIncoming.put(endpoint.id, endpoint.incoming.size());
                 junctionElev.put(endpoint.id, Double.POSITIVE_INFINITY);
             } else if (endpoint.type == Endpoint.Type.SOURCE && endpoint.outgoing != -1) {
-                ready.add(endpoint.outgoing);
+                ready.enqueue(endpoint.outgoing);
             }
         }
 
         // calculate the correct elevations for the junctions, and sources
         while (!ready.isEmpty()) {
-            final Channel ch = network.getChannel(ready.poll());
+            final Channel ch = network.getChannel(ready.dequeueInt());
             if (ch == null) throw new IllegalArgumentException("channel is null");
             final Endpoint startPoint = network.getNode(ch.startNodeId);
             if (startPoint == null) throw new IllegalArgumentException("startPoint is null");
@@ -74,7 +75,7 @@ public final class ChannelElevationAssigner {
                 final int remaining = pendingIncoming.mergeInt(endEndpoint.id, -1, Integer::sum);
                 if (remaining == 0) {
                     endEndpoint.elevation = junctionElev.get(endEndpoint.id);
-                    if (endEndpoint.outgoing != -1) ready.add(endEndpoint.outgoing);
+                    if (endEndpoint.outgoing != -1) ready.enqueue(endEndpoint.outgoing);
                 }
             }
         }
@@ -104,7 +105,7 @@ public final class ChannelElevationAssigner {
     private static Int2DoubleMap resolveDrainElevations(RiverNetwork network) {
         final Int2DoubleOpenHashMap drainElevByNodeId = new Int2DoubleOpenHashMap();
         drainElevByNodeId.defaultReturnValue(Double.NaN);
-        final ArrayDeque<Integer> pathToDrain = new ArrayDeque<>();
+        final IntArrayList pathToDrain = new IntArrayList();
         for (Endpoint start : network.getNodes()) {
             if (drainElevByNodeId.containsKey(start.id)) continue;
             pathToDrain.clear();

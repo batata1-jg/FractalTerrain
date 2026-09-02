@@ -1,9 +1,8 @@
 package me.batata_1.fractal_terrain.hydrology;
 
-import java.util.ArrayDeque;
+import it.unimi.dsi.fastutil.ints.IntArrayFIFOQueue;
 import java.util.Arrays;
 import java.util.BitSet;
-import java.util.Deque;
 
 /**
  * Flow-routing math shared by the global and local river providers: drainage direction, flow
@@ -89,10 +88,10 @@ public class Drainage {
 
         /** The headwater frontier a topological walk starts from. Queue and in-degrees are caller-owned
          *  scratch consumed by the walk, so call this once per traversal. */
-        public Deque<Integer> sources() {
-            final Deque<Integer> queue = new ArrayDeque<>();
+        public IntArrayFIFOQueue sources() {
+            final IntArrayFIFOQueue queue = new IntArrayFIFOQueue();
             for (int cellIndex = 0; cellIndex < inDegree.length; cellIndex++) {
-                if (inDegree[cellIndex] == 0) queue.add(cellIndex);
+                if (inDegree[cellIndex] == 0) queue.enqueue(cellIndex);
             }
             return queue;
         }
@@ -110,12 +109,12 @@ public class Drainage {
         final float[] flow = new float[gridSize * gridSize];
         Arrays.fill(flow, initialFlow);
 
-        final Deque<Integer> frontier = graph.sources();
+        final IntArrayFIFOQueue frontier = graph.sources();
         while (!frontier.isEmpty()) {
-            final int current = frontier.poll();
+            final int current = frontier.dequeueInt();
             final int next = downstream[current];
             if (next == -1) continue;
-            if ((--inDegree[next]) == 0) frontier.add(next);
+            if ((--inDegree[next]) == 0) frontier.enqueue(next);
             flow[next] += flow[current] + flowPerCell;
         }
 

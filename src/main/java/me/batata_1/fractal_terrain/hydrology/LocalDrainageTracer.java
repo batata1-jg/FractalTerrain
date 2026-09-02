@@ -5,6 +5,7 @@ import static me.batata_1.fractal_terrain.config.HydrologyTuning.*;
 import static me.batata_1.fractal_terrain.hydrology.Drainage.*;
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.*;
 
+import it.unimi.dsi.fastutil.ints.IntArrayFIFOQueue;
 import java.util.*;
 import java.util.function.Predicate;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
@@ -60,7 +61,7 @@ public final class LocalDrainageTracer {
         final Drainage.FlowGraph graph = Drainage.FlowGraph.of(drainage, PADDED);
         final int[] downstream = graph.downstream();
         final int[] inDegree = graph.inDegree();
-        final Deque<Integer> sourceQueue = graph.sources();
+        final IntArrayFIFOQueue sourceQueue = graph.sources();
 
         final int[] nodeIndex = new int[cellCount];
         Arrays.fill(nodeIndex, -1);
@@ -77,7 +78,7 @@ public final class LocalDrainageTracer {
         final QuadTree<CoordPoint> sources =
                 new QuadTree<>(new double[] {0, 0}, new double[] {PADDED + 1, PADDED + 1}, 7);
         while (!sourceQueue.isEmpty()) {
-            final int current = sourceQueue.poll();
+            final int current = sourceQueue.dequeueInt();
             if (elev[current] < 0) continue;
             final int next = downstream[current];
             if (next == -1) continue;
@@ -113,7 +114,7 @@ public final class LocalDrainageTracer {
                 }
                 if (nodeIndex[current] != -1) net.addDirectedEdge(nodeIndex[current], nodeIndex[next]);
             }
-            if ((--inDegree[next]) == 0) sourceQueue.add(next);
+            if ((--inDegree[next]) == 0) sourceQueue.enqueue(next);
         }
 
         sources.clear();
