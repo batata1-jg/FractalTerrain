@@ -1,17 +1,21 @@
 package me.batata_1.fractal_terrain.hydrology.profile;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Arrays;
+import java.util.stream.Stream;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.HydrologicalFeature;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive.RosgenType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.MethodSource;
 
 /** The paint contract every profile answers: a bounded material column, keyed by the banded coordinate. */
 class RiverPaintDepthTest {
@@ -27,8 +31,64 @@ class RiverPaintDepthTest {
         1.0f
     };
 
+    /** Squarely inside the bed band, away from either boundary swept above. */
+    private static final float BED_BAND = 0.0f;
+
+    /** Squarely inside the floodplain band, away from either boundary swept above. */
+    private static final float FLOOD_PLAIN_BAND =
+            (float) ((RiverInfluenceCarve.BED_EDGE + RiverInfluenceCarve.FLOODPLAIN_EDGE) / 2);
+
     private static SurfaceMaterial[] scratch() {
         return new SurfaceMaterial[HydrologyTuning.MAX_RIVER_PAINT_DEPTH];
+    }
+
+    /** One constant's expected bed and floodplain columns, matched against what {@code riverPaintDepth}
+     *  actually returns — the check a reviewer otherwise has to do by hand, constant by constant. */
+    private static Stream<Arguments> columnFixtures() {
+        return Stream.of(
+                Arguments.of(
+                        RosgenProfile.A,
+                        new SurfaceMaterial[] {SurfaceMaterial.COBBLE, SurfaceMaterial.COBBLE, SurfaceMaterial.GRAVEL},
+                        new SurfaceMaterial[] {}),
+                Arguments.of(
+                        RosgenProfile.Aa,
+                        new SurfaceMaterial[] {SurfaceMaterial.COBBLE, SurfaceMaterial.COBBLE, SurfaceMaterial.COBBLE},
+                        new SurfaceMaterial[] {SurfaceMaterial.COBBLE, SurfaceMaterial.GRAVEL}),
+                Arguments.of(
+                        RosgenProfile.B,
+                        new SurfaceMaterial[] {SurfaceMaterial.GRAVEL, SurfaceMaterial.GRAVEL, SurfaceMaterial.COBBLE},
+                        new SurfaceMaterial[] {}),
+                Arguments.of(
+                        RosgenProfile.C,
+                        new SurfaceMaterial[] {SurfaceMaterial.SAND, SurfaceMaterial.SAND, SurfaceMaterial.GRAVEL},
+                        new SurfaceMaterial[] {SurfaceMaterial.DEFER, SurfaceMaterial.SILT, SurfaceMaterial.SILT}),
+                Arguments.of(
+                        RosgenProfile.D,
+                        new SurfaceMaterial[] {SurfaceMaterial.GRAVEL, SurfaceMaterial.SAND, SurfaceMaterial.GRAVEL},
+                        new SurfaceMaterial[] {SurfaceMaterial.SAND, SurfaceMaterial.SAND}),
+                Arguments.of(
+                        RosgenProfile.DA,
+                        new SurfaceMaterial[] {SurfaceMaterial.GRAVEL, SurfaceMaterial.GRAVEL, SurfaceMaterial.GRAVEL},
+                        new SurfaceMaterial[] {}),
+                Arguments.of(
+                        RosgenProfile.E,
+                        new SurfaceMaterial[] {SurfaceMaterial.SILT, SurfaceMaterial.CLAY, SurfaceMaterial.CLAY},
+                        new SurfaceMaterial[] {SurfaceMaterial.DEFER, SurfaceMaterial.SILT}),
+                Arguments.of(
+                        RosgenProfile.F,
+                        new SurfaceMaterial[] {SurfaceMaterial.SAND, SurfaceMaterial.SILT, SurfaceMaterial.SILT},
+                        new SurfaceMaterial[] {SurfaceMaterial.DEFER, SurfaceMaterial.SILT}),
+                Arguments.of(
+                        RosgenProfile.G,
+                        new SurfaceMaterial[] {SurfaceMaterial.COBBLE, SurfaceMaterial.GRAVEL, SurfaceMaterial.GRAVEL},
+                        new SurfaceMaterial[] {}));
+    }
+
+    private static void assertColumn(RosgenProfile profile, float dist, SurfaceMaterial[] expected, String band) {
+        final SurfaceMaterial[] out = scratch();
+        final int depth = profile.riverPaintDepth(0, dist, out);
+        assertEquals(expected.length, depth, profile + " " + band + " depth");
+        assertArrayEquals(expected, Arrays.copyOf(out, depth), profile + " " + band + " column");
     }
 
     @ParameterizedTest
@@ -86,6 +146,36 @@ class RiverPaintDepthTest {
     void paintsSomethingInTheBed(RosgenProfile profile) {
         // Without this every profile could satisfy the bounds above by painting nothing at all.
         assertTrue(profile.riverPaintDepth(0, 0.0f, scratch()) > 0, profile + " left its own bed unpainted");
+    }
+
+    @ParameterizedTest
+    @MethodSource("columnFixtures")
+    void eachConstantPaintsItsOwnMaterialColumns(
+            RosgenProfile profile, SurfaceMaterial[] bed, SurfaceMaterial[] floodPlain) {
+        assertColumn(profile, BED_BAND, bed, "bed");
+        assertColumn(profile, FLOOD_PLAIN_BAND, floodPlain, "floodplain");
+    }
+
+    @Test
+    void aTypeAHeadwaterTrenchComesUpCobble() {
+        final SurfaceMaterial[] out = scratch();
+        RosgenProfile.A.riverPaintDepth(0, BED_BAND, out);
+        assertEquals(SurfaceMaterial.COBBLE, out[0]);
+    }
+
+    @Test
+    void aTypeCLowlandMeanderComesUpSand() {
+        final SurfaceMaterial[] out = scratch();
+        RosgenProfile.C.riverPaintDepth(0, BED_BAND, out);
+        assertEquals(SurfaceMaterial.SAND, out[0]);
+    }
+
+    @Test
+    void aTypeCFloodplainDefersToTheBiomeWithSiltBeneath() {
+        final SurfaceMaterial[] out = scratch();
+        RosgenProfile.C.riverPaintDepth(0, FLOOD_PLAIN_BAND, out);
+        assertEquals(SurfaceMaterial.DEFER, out[0]);
+        assertEquals(SurfaceMaterial.SILT, out[1]);
     }
 
     @Test

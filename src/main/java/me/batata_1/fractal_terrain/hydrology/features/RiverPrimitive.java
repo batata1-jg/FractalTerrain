@@ -195,8 +195,7 @@ public record RiverPrimitive(
             return type == null ? A : type;
         }
 
-        /** {@code values()} without the defensive array copy; indexed by ordinal, as the packed
-         *  {@code RIVER_TYPE} sub-word stores it. */
+        /** No defensive copy; ordinal-indexed since the packed {@code RIVER_TYPE} sub-word stores an ordinal. */
         private static final RosgenType[] VALUES = values();
 
         /** The type a packed sub-word names. Read on the surface path, which holds an ordinal and never
