@@ -1,5 +1,6 @@
 package me.batata_1.fractal_terrain.hydrology.network;
 
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.*;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
@@ -38,7 +39,7 @@ public final class AtomicView {
     /**
      * canonical channelId -> atomic id per spline point (only populated by {@link #viewAtomic()}).
      */
-    final Map<Integer, int[]> pointAtomicIds = new HashMap<>();
+    final Int2ObjectOpenHashMap<int[]> pointAtomicIds = new Int2ObjectOpenHashMap<>();
 
     public int size() {
         return position.size();

@@ -2,10 +2,11 @@ package me.batata_1.fractal_terrain.hydrology;
 
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.sampleBilinear;
 
+import it.unimi.dsi.fastutil.ints.Int2DoubleMap;
+import it.unimi.dsi.fastutil.ints.Int2DoubleOpenHashMap;
+import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import java.util.ArrayDeque;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
@@ -29,17 +30,19 @@ public final class ChannelElevationAssigner {
 
     private ChannelElevationAssigner() {}
 
-    public static void assign(RiverNetwork network, Map<Integer, Double> boundaryElevByNodeIdx, float[] decodedElev) {
+    public static void assign(RiverNetwork network, Int2DoubleMap boundaryElevByNodeIdx, float[] decodedElev) {
         for (Endpoint endpoint : network.getNodes()) {
             if (endpoint.isSourceOrDrain()) {
                 endpoint.elevation = boundaryElevByNodeIdx.getOrDefault(endpoint.id, 0.0);
             }
         }
 
-        final Map<Integer, Double> drainElevByNodeId = resolveDrainElevations(network);
+        final Int2DoubleMap drainElevByNodeId = resolveDrainElevations(network);
 
-        final Map<Integer, Integer> pendingIncoming = new HashMap<>();
-        final Map<Integer, Double> junctionElev = new HashMap<>();
+        final Int2IntOpenHashMap pendingIncoming = new Int2IntOpenHashMap();
+        pendingIncoming.defaultReturnValue(-1);
+        final Int2DoubleOpenHashMap junctionElev = new Int2DoubleOpenHashMap();
+        junctionElev.defaultReturnValue(Double.NaN);
         final ArrayDeque<Integer> ready = new ArrayDeque<>();
         for (Endpoint endpoint : network.getNodes()) {
             if (endpoint.type == Endpoint.Type.JUNCTION) {
@@ -67,8 +70,8 @@ public final class ChannelElevationAssigner {
             final Endpoint endEndpoint = network.getNode(ch.endNodeId);
             if (endEndpoint == null) throw new IllegalArgumentException("endEndpoint is null");
             if (endEndpoint.type == Endpoint.Type.JUNCTION) {
-                junctionElev.merge(endEndpoint.id, lastPointElev, Math::min);
-                final int remaining = pendingIncoming.merge(endEndpoint.id, -1, Integer::sum);
+                junctionElev.mergeDouble(endEndpoint.id, lastPointElev, Math::min);
+                final int remaining = pendingIncoming.mergeInt(endEndpoint.id, -1, Integer::sum);
                 if (remaining == 0) {
                     endEndpoint.elevation = junctionElev.get(endEndpoint.id);
                     if (endEndpoint.outgoing != -1) ready.add(endEndpoint.outgoing);
@@ -98,8 +101,9 @@ public final class ChannelElevationAssigner {
 
     /** Resolves every node's terminal drain up front, so the elevation pass never re-walks downstream
      *  per junction. Unreachable nodes map to NaN, which the caller treats as broken topology. */
-    private static Map<Integer, Double> resolveDrainElevations(RiverNetwork network) {
-        final Map<Integer, Double> drainElevByNodeId = new HashMap<>();
+    private static Int2DoubleMap resolveDrainElevations(RiverNetwork network) {
+        final Int2DoubleOpenHashMap drainElevByNodeId = new Int2DoubleOpenHashMap();
+        drainElevByNodeId.defaultReturnValue(Double.NaN);
         final ArrayDeque<Integer> pathToDrain = new ArrayDeque<>();
         for (Endpoint start : network.getNodes()) {
             if (drainElevByNodeId.containsKey(start.id)) continue;
@@ -107,9 +111,8 @@ public final class ChannelElevationAssigner {
             int currentId = start.id;
             double drainElev = Double.NaN;
             while (currentId != -1) {
-                final Double memoized = drainElevByNodeId.get(currentId);
-                if (memoized != null) {
-                    drainElev = memoized;
+                if (drainElevByNodeId.containsKey(currentId)) {
+                    drainElev = drainElevByNodeId.get(currentId);
                     break;
                 }
                 final Endpoint current = network.getNode(currentId);

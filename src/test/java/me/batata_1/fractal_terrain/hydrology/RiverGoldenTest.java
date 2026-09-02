@@ -3,10 +3,10 @@ package me.batata_1.fractal_terrain.hydrology;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import it.unimi.dsi.fastutil.ints.Int2DoubleMap;
+import it.unimi.dsi.fastutil.ints.Int2DoubleOpenHashMap;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Random;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
@@ -130,7 +130,7 @@ class RiverGoldenTest {
         // <= every upstream source's ceiling, so boundary data must itself be physically sensible
         // (sources high, drains low) -- a flat decoded-terrain sampler plus these two constants is enough
         // to exercise the propagation without violating that precondition.
-        final Map<Integer, Double> boundaryElev = new HashMap<>();
+        final Int2DoubleMap boundaryElev = new Int2DoubleOpenHashMap();
         for (Endpoint n : network.getNodes()) {
             if (n.type == Endpoint.Type.SOURCE) boundaryElev.put(n.id, 100.0);
             else if (n.type == Endpoint.Type.DRAIN) boundaryElev.put(n.id, 0.0);

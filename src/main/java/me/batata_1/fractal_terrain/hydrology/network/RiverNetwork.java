@@ -4,14 +4,14 @@ import static me.batata_1.fractal_terrain.config.DebugConfig.DEBUG_CROSSING_WINN
 import static me.batata_1.fractal_terrain.config.DebugConfig.DEBUG_STEPS;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
+import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.TreeSet;
 import java.util.function.IntPredicate;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
@@ -51,8 +51,8 @@ public final class RiverNetwork {
             new QuadTree<>(new double[] {-INF, -INF}, new double[] {INF, INF});
 
     // graph storage: stable channel/node ids (sparse after prune/rewire)
-    private final Map<Integer, Channel> channels = new HashMap<>();
-    private final Map<Integer, Endpoint> nodes = new HashMap<>();
+    private final Int2ObjectOpenHashMap<Channel> channels = new Int2ObjectOpenHashMap<>();
+    private final Int2ObjectOpenHashMap<Endpoint> nodes = new Int2ObjectOpenHashMap<>();
     private int nextChannelId = 0;
     private int nextNodeId = 0;
 
@@ -223,7 +223,8 @@ public final class RiverNetwork {
      *  (flow, planarization, capture) can work uniformly. {@link #update} folds the result back. */
     public AtomicView viewAtomic() {
         final AtomicView atomic = new AtomicView();
-        final Map<Integer, Integer> endpointToAtomicId = new HashMap<>(); // canonical Endpoint id -> atomic id
+        final Int2IntOpenHashMap endpointToAtomicId = new Int2IntOpenHashMap(); // canonical Endpoint id -> atomic id
+        endpointToAtomicId.defaultReturnValue(-1);
 
         final List<Integer> channelIds = new ObjectArrayList<>(channels.keySet());
         Collections.sort(channelIds);
@@ -244,8 +245,8 @@ public final class RiverNetwork {
                 }
                 // endpoint point: collapse keyed on the canonical Endpoint node id.
                 final int endpointNodeId = (i == 0) ? ch.startNodeId : ch.endNodeId;
-                final Integer existing = endpointToAtomicId.get(endpointNodeId);
-                if (existing != null) {
+                final int existing = endpointToAtomicId.get(endpointNodeId);
+                if (existing != -1) {
                     atomicIdOfPoint[i] = existing;
                     continue;
                 }
@@ -595,7 +596,8 @@ public final class RiverNetwork {
         for (int channelAId : channelIds) {
             final Channel channelA = channels.get(channelAId);
             final int[] aAtomic = atomic.pointAtomicIds.get(channelAId);
-            final Map<Integer, double[]> bestByPartner = new HashMap<>(); // partnerId -> {atomA, atomB, dist}
+            final Int2ObjectOpenHashMap<double[]> bestByPartner =
+                    new Int2ObjectOpenHashMap<>(); // partnerId -> {atomA, atomB, dist}
             for (int posA = 0; posA < channelA.numPts(); posA++) {
                 final double[] pointA = channelA.spline.points().get(posA);
                 final double halfA = ChannelGeometry.bedHalfWidth(channelA.widthAt(posA));

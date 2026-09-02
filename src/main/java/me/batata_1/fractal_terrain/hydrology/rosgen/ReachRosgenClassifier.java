@@ -1,5 +1,6 @@
 package me.batata_1.fractal_terrain.hydrology.rosgen;
 
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.ArrayDeque;
 import java.util.Comparator;
@@ -28,7 +29,7 @@ public final class ReachRosgenClassifier implements ChannelTyper {
 
     private static final Logger LOG = LoggerFactory.getLogger(ReachRosgenClassifier.class);
     private final ReachMetricsSampler sampler;
-    private final Map<Integer, RosgenType[]> typesByChannelId = new HashMap<>();
+    private final Int2ObjectOpenHashMap<RosgenType[]> typesByChannelId = new Int2ObjectOpenHashMap<>();
     private Centreline centreline;
 
     /** @param elev <b>raw</b> decoded elevation — never a carved buffer */

@@ -6,10 +6,14 @@ import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.PAD;
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.PADDED;
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.sampleBilinear;
 
+import it.unimi.dsi.fastutil.ints.Int2DoubleMap;
+import it.unimi.dsi.fastutil.ints.Int2DoubleOpenHashMap;
+import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
+import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Random;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
@@ -71,20 +75,22 @@ public final class GlobalNetworkBuilder {
     public record Result(
             RiverNetwork network,
             int[] drainage,
-            Map<Integer, Double> boundaryElevByNodeIdx,
+            Int2DoubleMap boundaryElevByNodeIdx,
             ChannelTyper typer,
             float[] elevCarvedGlobalOnly) {}
 
     public static Result build(int tileX, int tileZ, float[][] base, GlobalRiverProvider grp) {
         final float[] elevCarvedGlobalOnly = base[0].clone();
 
-        final Map<Long, CellInfo> cells = resolveCellDrains(tileX, tileZ, grp, elevCarvedGlobalOnly);
+        final Long2ObjectMap<CellInfo> cells = resolveCellDrains(tileX, tileZ, grp, elevCarvedGlobalOnly);
 
         final List<RiverNetwork.NodeSpec> nodeSpecs = new ObjectArrayList<>();
         final List<RiverNetwork.EdgeSpec> edgeSpecs = new ObjectArrayList<>();
-        final Map<Long, Integer> centerIdx = new HashMap<>();
-        final Map<EdgeKey, Integer> edgeNodeIdx = new HashMap<>();
-        final Map<Integer, Double> boundaryElevByNodeIdx = new HashMap<>();
+        final Long2IntOpenHashMap centerIdx = new Long2IntOpenHashMap();
+        centerIdx.defaultReturnValue(-1);
+        final Object2IntOpenHashMap<EdgeKey> edgeNodeIdx = new Object2IntOpenHashMap<>();
+        edgeNodeIdx.defaultReturnValue(-1);
+        final Int2DoubleOpenHashMap boundaryElevByNodeIdx = new Int2DoubleOpenHashMap();
 
         addOwnedCentreNodes(tileX, tileZ, cells, nodeSpecs, centerIdx, boundaryElevByNodeIdx);
         stitchEdgesAndSources(
@@ -133,9 +139,9 @@ public final class GlobalNetworkBuilder {
     /** Resolves each owned-plus-halo coarse cell's drain point — downstream if the coarse arrow field
      *  gives one, otherwise the cell's lowest interior point — the map every later phase of {@link #build}
      *  reads. */
-    private static Map<Long, CellInfo> resolveCellDrains(
+    private static Long2ObjectMap<CellInfo> resolveCellDrains(
             int tileX, int tileZ, GlobalRiverProvider grp, float[] elevCarvedGlobalOnly) {
-        final Map<Long, CellInfo> cells = new HashMap<>();
+        final Long2ObjectMap<CellInfo> cells = new Long2ObjectOpenHashMap<>();
         for (int a = -1; a <= 2; a++) {
             for (int b = -1; b <= 2; b++) {
                 final int ccx = tileX * 2 + a;
@@ -181,10 +187,10 @@ public final class GlobalNetworkBuilder {
     private static void addOwnedCentreNodes(
             int tileX,
             int tileZ,
-            Map<Long, CellInfo> cells,
+            Long2ObjectMap<CellInfo> cells,
             List<RiverNetwork.NodeSpec> nodeSpecs,
-            Map<Long, Integer> centerIdx,
-            Map<Integer, Double> boundaryElevByNodeIdx) {
+            Long2IntOpenHashMap centerIdx,
+            Int2DoubleOpenHashMap boundaryElevByNodeIdx) {
         for (int a = 0; a <= 1; a++) {
             for (int b = 0; b <= 1; b++) {
                 final int ccx = tileX * 2 + a;
@@ -214,12 +220,12 @@ public final class GlobalNetworkBuilder {
     private static void stitchEdgesAndSources(
             int tileX,
             int tileZ,
-            Map<Long, CellInfo> cells,
+            Long2ObjectMap<CellInfo> cells,
             List<RiverNetwork.NodeSpec> nodeSpecs,
             List<RiverNetwork.EdgeSpec> edgeSpecs,
-            Map<Long, Integer> centerIdx,
-            Map<EdgeKey, Integer> edgeNodeIdx,
-            Map<Integer, Double> boundaryElevByNodeIdx,
+            Long2IntOpenHashMap centerIdx,
+            Object2IntOpenHashMap<EdgeKey> edgeNodeIdx,
+            Int2DoubleOpenHashMap boundaryElevByNodeIdx,
             float[] elevCarvedGlobalOnly,
             GlobalRiverProvider grp) {
         for (int a = 0; a <= 1; a++) {
@@ -292,7 +298,7 @@ public final class GlobalNetworkBuilder {
 
     /** Relaxation step count grows with the elevation of the tile's primary owned cell (2*tileCoords), so
      *  higher terrain relaxes more; the caller caps the result at {@link #MAX_RELAX_STEPS}. */
-    private static int relaxStepsFor(int tileX, int tileZ, Map<Long, CellInfo> cells, GlobalRiverProvider grp) {
+    private static int relaxStepsFor(int tileX, int tileZ, Long2ObjectMap<CellInfo> cells, GlobalRiverProvider grp) {
         final CellInfo primaryCell = cells.get(cellKey(tileX * 2, tileZ * 2));
         final double primaryElev = (primaryCell != null) ? grp.getElevation(primaryCell.ccx(), primaryCell.ccz()) : 0.0;
         return MIN_RELAX_STEPS + (int) Math.round(Math.max(0.0, primaryElev) * RELAX_STEPS_PER_ELEV);
@@ -308,11 +314,11 @@ public final class GlobalNetworkBuilder {
     /** Drops the build scaffolding once the graph has copied it, so a tile build does not hold it for
      *  the lifetime of the returned {@link Result}. */
     private static void clearBuildState(
-            Map<Long, CellInfo> cells,
+            Long2ObjectMap<CellInfo> cells,
             List<RiverNetwork.NodeSpec> nodeSpecs,
             List<RiverNetwork.EdgeSpec> edgeSpecs,
-            Map<Long, Integer> centerIdx,
-            Map<EdgeKey, Integer> edgeNodeIdx) {
+            Long2IntOpenHashMap centerIdx,
+            Object2IntOpenHashMap<EdgeKey> edgeNodeIdx) {
         cells.clear();
         nodeSpecs.clear();
         edgeSpecs.clear();
@@ -325,7 +331,7 @@ public final class GlobalNetworkBuilder {
     private static void addSourceNode(
             List<RiverNetwork.NodeSpec> nodeSpecs,
             List<RiverNetwork.EdgeSpec> edgeSpecs,
-            Map<Integer, Double> boundaryElevByNodeIdx,
+            Int2DoubleOpenHashMap boundaryElevByNodeIdx,
             CellInfo c,
             int centre,
             double[] centreCoord,
@@ -393,15 +399,15 @@ public final class GlobalNetworkBuilder {
 
     private static int getOrCreateEdgeNode(
             List<RiverNetwork.NodeSpec> nodes,
-            Map<EdgeKey, Integer> edgeNodeIdx,
+            Object2IntOpenHashMap<EdgeKey> edgeNodeIdx,
             int c1x,
             int c1z,
             int c2x,
             int c2z,
             double[] coord) {
         final EdgeKey key = edgeKey(c1x, c1z, c2x, c2z);
-        final Integer existing = edgeNodeIdx.get(key);
-        if (existing != null) return existing;
+        final int existing = edgeNodeIdx.getInt(key);
+        if (existing != -1) return existing;
         final int created = addNode(nodes, coord[0], coord[1], Endpoint.Type.JUNCTION);
         edgeNodeIdx.put(key, created);
         return created;
