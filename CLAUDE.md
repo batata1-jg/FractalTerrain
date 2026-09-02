@@ -16,6 +16,7 @@ deep-learning diffusion model, plus a procedural hydrology (riverUnit) system.
 | `LICENSE.txt`      | License                                                  | Legal questions                                                       |
 | `quick-tips-optimizing-jvm.md` | JVM hot-path optimization techniques; a reference essay, not project-specific | General JVM performance technique lookup |
 | `river-dynamics.md` | Research notes deriving Rosgen Level-I classification from a DEM; basis for `hydrology/rosgen/` | Understanding why the Rosgen classifier works the way it does |
+| `2026-08-25-202445-local-command-caveatcaveat-the-messages-below.txt` | Checked-in Claude Code transcript of the carve-ordering discussion. Not source; not built | Never edit; read only to recover the intent behind the carve reordering |
 
 ## Subdirectories
 
@@ -59,7 +60,7 @@ Two layers. A JUnit 5 suite (`useJUnitPlatform()`, 22 `*Test.java` classes under
 gradle test                   # JUnit 5 golden suite
 ```
 
-**Baseline, measured 2026-09-02 at `7bd587e`:** the suite compiles and runs —
+**Baseline, measured 2026-09-02 at `df7ca2e`:** the suite compiles and runs —
 **102 tests, 9 failed, 1 skipped**. The nine are:
 
 > `RosgenKeyTest` (4), `RiverGoldenTest` (2), `MeandersGoldenTest` (1), `CentrelineTest` (1),

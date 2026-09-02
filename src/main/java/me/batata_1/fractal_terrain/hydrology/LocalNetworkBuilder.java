@@ -15,11 +15,11 @@ import org.jetbrains.annotations.Nullable;
 /**
  * The local-trace half of the per-tile hydrology pipeline, symmetric with {@link GlobalNetworkBuilder}.
  *
- * <p>Runs after it over the same per-tile graph: attaches the drainage-derived local network, re-assigns
- * bed elevations across the unified graph, carves the shell into a fresh elevation clone, then re-points
- * the already-collected river primitives at the final bed elevations and cuts the bed trench into that
- * same buffer. Returns the shell-carved and bed-carved padded ({@code PADDED x PADDED}) elevation; step
- * order is load-bearing — see {@code hydrology/README.md} Invariants.
+ * <p>Runs after it over the same per-tile graph, and exists to give {@link LocalDrainageTracer} a carved
+ * surface to walk: it assigns bed elevations, shell-carves a private clone of the decoded elevation, then
+ * traces the local network against that clone and attaches it onto the graph in place. The clone is
+ * scratch — the published elevation comes from {@code RiverProvider.carveRivers}, after {@code Meanders}.
+ * Step order is load-bearing; see {@code hydrology/README.md} Invariants.
  */
 public final class LocalNetworkBuilder {
 

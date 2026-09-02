@@ -12,27 +12,28 @@ JUnit 5 golden-gate tests, run via `gradle test` (`useJUnitPlatform()`).
 | `infinitetensor/` | Window-walk geometry and `NonIntersectingInfiniteTensor` slice/budget behaviour | Changing slice assembly, window intersection, or a cache budget |
 | `storage/`   | Chunk-window channel fill: equivalence and tile-touch against the per-pixel path | Changing the heightmap fill or the window bounds |
 
-## Status
+## Test
 
-Does not compile as of `feature/hydrology`, measured 2026-08-23: `gradle build` fails at
-`:compileTestJava` — `hydrology/features/ConfluencePrimitiveTest.java` calls
-`ConfluencePrimitive.w(double[])` and `.d(double[])`, neither of which exists (it implements only
-`h(double[])`); 9 errors. Pre-existing, unrelated to the river-provider refactor — the file was last
-modified three commits before that refactor began.
+```
+gradle test
+```
 
-With `ConfluencePrimitiveTest` excluded, a run measured 2026-08-31 after the heightmap slice-sampling
-change reports **95 tests, 18 failed, 1 skipped** — measured with a test file excluded, not a clean
-baseline. The 18 failures: `RosgenKeyTest` (4), `ChannelGeometryTest` (4), `ComputeRiverGridTest` (3,
-newly visible now the suite reaches it, not caused by the river refactor), `RiverGoldenTest` (2),
-`MeandersGoldenTest` (2), `GlobalRiverGoldenTest` (1), `ReachMetricsSamplerTest` (1), `CentrelineTest`
-(1).
+A worktree needs `libs/onnxruntime/teste.jar` copied in (`libs/` is git-ignored) or the build reports
+~132 phantom errors.
 
-That count is 77 pre-change plus the 18 passes slice sampling added — `SliceGeometryTest` (4),
-`NonIntersectingInfiniteTensorSliceTest` (5), `InterpolationWindowSampleTest` (3), `ChunkChannelFillTest`
-(2), `InterpolationSignedWindowTest` (4). The same 18 failures, with byte-identical messages, held across
-every step of that change; that equality is what evidenced the conversion left generation output
-untouched.
+**Recorded baseline, measured 2026-09-02 at `df7ca2e`: 102 tests, 9 failed, 1 skipped.** The nine:
+`RosgenKeyTest` (4), `RiverGoldenTest` (2), `MeandersGoldenTest` (1), `CentrelineTest` (1),
+`ReachMetricsSamplerTest` (1). Full failure messages are archived in
+`.superpowers/conventions-alignment/post-migration-failures.txt`.
 
-Re-measure before blaming your own change; compare the failure *messages* in
-`build/test-results/test/*.xml`, not just which test names fail. A worktree needs
-`libs/onnxruntime/teste.jar` copied in (`libs/` is git-ignored) or the build reports ~132 phantom errors.
+This suite has broken and been repaired several times, so treat the figure above as a claim to
+re-verify, not a fact — `HEAD` may have moved since it was taken. Re-measure before blaming your own
+change, and compare the failure *messages* in `build/test-results/test/*.xml`, not just which test names
+fail; message equality is what evidences that a refactor left generation output untouched.
+
+Three of the nine are wrong expectations rather than defects. `RiverGoldenTest`'s two report `synthetic
+field produced no local channels — fixture is degenerate`: the fixture yields zero local channels, so
+those assertions never reach the traced network. `MeandersGoldenTest.independentCrossingsAreNotMerged`
+expects two channels where the code produces three — `AtomicView.resolveCrossingEdges` inserts one shared
+node at a geometric crossing and invariant K1 allows it a single outgoing edge, so a confluence is forced
+by planarization and the no-merge outcome is unreachable.

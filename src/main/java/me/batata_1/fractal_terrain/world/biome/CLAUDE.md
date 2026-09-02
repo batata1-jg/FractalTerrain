@@ -1,13 +1,12 @@
 # biome/
 
-Climate+relief → vanilla biome parameters. `ClimateVariableTransform` is a thin facade over
-`ClimateToBiomeTransformer`; `BiomeProvider` is the separate per-tile builder/density-function wiring.
+Climate+relief → vanilla biome parameters. `ClimateToBiomeTransformer` does the transform;
+`BiomeProvider` is the separate per-tile builder/density-function wiring.
 
 ## Files
 
 | File                            | What                                                                 | When to read                                       |
 | ------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------- |
-| `ClimateVariableTransform.java` | Thin public facade forwarding to `ClimateToBiomeTransformer`         | Facade entry point; new code uses the transformer  |
 | `ClimateToBiomeTransformer.java`| Samples climate+relief and produces biome parameters                 | Transform math, shore/parameter wiring             |
 | `BiomeParameterClassifier.java` | `is…(value)` band predicates over parameter values                   | Parameter band classification                      |
 | `ShoreDistanceCalculator.java`  | Distance-to-shore upscaling                                          | Shore-distance computation                         |

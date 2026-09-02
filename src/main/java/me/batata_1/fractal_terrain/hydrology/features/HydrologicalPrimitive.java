@@ -24,9 +24,10 @@ import org.slf4j.LoggerFactory;
  * <p>Exists so heterogeneous feature types share one index and one persistence payload: every primitive is
  * indexed as an influence circle, and the type tag lets one {@code Storage} payload round-trip them all.
  *
- * <p>Carve behavior is split so the carve stages never switch on the concrete record type: {@link
- * #getProfile()} answers where and how much, {@link #h} answers what. Implementations
- * must override {@code equals}/{@code hashCode} — see {@link PrimitiveCodec#coordsEqual}.
+ * <p>Carve behavior is split so the carve never switches on the concrete record type: {@link
+ * #getProfile()} answers what cross-section to cut, and the geometry it is cut along comes off the
+ * record's own accessors. Implementations must override {@code equals}/{@code hashCode} — see
+ * {@link PrimitiveCodec#coordsEqual}.
  */
 public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<HydrologicalPrimitive> {
 
@@ -48,9 +49,8 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
         return 0;
     };
 
-    /** The {@link RiverPrimitive} a primitive carves as — itself, or the wrapped river for an {@link
-     *  ExtendedRiverPrimitive} — or {@code null} for every other type. The single place {@link
-     *  #comparator} and the lattice carve both learn that an extended primitive carves like a plain one. */
+    /** The {@link RiverPrimitive} a primitive carves as, or {@code null} for every other family. The one
+     *  place {@link #comparator} and the lattice carve agree on what counts as a river. */
     static @Nullable RiverPrimitive asRiver(HydrologicalPrimitive primitive) {
         if (primitive instanceof RiverPrimitive river) return river;
         return null;
