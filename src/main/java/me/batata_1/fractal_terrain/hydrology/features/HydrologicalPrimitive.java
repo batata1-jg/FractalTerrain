@@ -53,7 +53,6 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
      *  #comparator} and the lattice carve both learn that an extended primitive carves like a plain one. */
     static @Nullable RiverPrimitive asRiver(HydrologicalPrimitive primitive) {
         if (primitive instanceof RiverPrimitive river) return river;
-        if (primitive instanceof ExtendedRiverPrimitive extended) return extended.river();
         return null;
     }
 

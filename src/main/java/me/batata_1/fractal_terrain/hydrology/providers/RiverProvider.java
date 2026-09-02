@@ -197,7 +197,7 @@ public class RiverProvider {
     }
 
     private static List<HydrologicalPrimitive> collect(RiverNetwork network, ChannelTyper typer, float[] elev) {
-        final List<HydrologicalPrimitive> list = network.collectExtendedPrimitives(
+        final List<HydrologicalPrimitive> list = network.collectPrimitives(
                 0, 0, channelId -> true, typer, HydrologyTileGeometry.influenceSampler(elev));
         list.sort(HydrologicalPrimitive.comparator);
         return list;

@@ -4,7 +4,7 @@ import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.PADDED
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.sampleBilinear;
 
 import java.util.List;
-import me.batata_1.fractal_terrain.hydrology.features.ExtendedRiverPrimitive;
+
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
@@ -46,28 +46,10 @@ public final class LocalNetworkBuilder {
     }
 
     private static List<HydrologicalPrimitive> collect(RiverNetwork network, ChannelTyper typer, float[] elev) {
-        final List<HydrologicalPrimitive> list = network.collectExtendedPrimitives(
+        final List<HydrologicalPrimitive> list = network.collectPrimitives(
                 0, 0, channelId -> true, typer, HydrologyTileGeometry.influenceSampler(elev));
         list.sort(HydrologicalPrimitive.comparator);
         return list;
     }
 
-    /**
-     * Re-points every {@link ExtendedRiverPrimitive} in {@code primitives} at the bed elevation the just
-     * completed {@code ChannelElevationAssigner.assign} produced, in place — an update, not a re-collect,
-     * so {@link RiverNetwork#collectExtendedPrimitives} still runs exactly once per tile. Only the bed
-     * moves: the influence radius is untouched, which is also what keeps the list's {@link
-     * HydrologicalPrimitive#comparator} order valid without re-sorting. Skips a primitive whose channel,
-     * {@code bedElevations} or knot index no longer resolves rather than failing the whole tile.
-     */
-    private static void refreshBedElevations(List<HydrologicalPrimitive> primitives, RiverNetwork network) {
-        for (int i = 0; i < primitives.size(); i++) {
-            if (!(primitives.get(i) instanceof ExtendedRiverPrimitive extended)) continue;
-            final Channel ch = network.getChannel(extended.channelId());
-            if (ch == null || ch.bedElevations == null) continue;
-            final int pointIndex = extended.pointIndex();
-            if (pointIndex < 0 || pointIndex >= ch.bedElevations.length) continue;
-            primitives.set(i, extended.withBedElevation(ch.bedElevations[pointIndex]));
-        }
-    }
 }
