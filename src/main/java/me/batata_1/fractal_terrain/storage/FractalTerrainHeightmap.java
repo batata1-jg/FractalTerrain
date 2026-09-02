@@ -52,6 +52,9 @@ public record FractalTerrainHeightmap(Object[] data) {
                 throw new UnsupportedOperationException("RIVER_TYPE is a long[]; read the raw payload");
             }
         },
+        // The winning primitive's banded footprint coordinate, from RiverInfluenceCarve.band. Only
+        // meaningful where RIVER_TYPE is not NONE; elsewhere it holds the carve's unset seed.
+        RIVER_DIST(pos -> new float[1 << 8]),
 
         WATER_HEIGHT(pos -> new float[1 << 8]),
         ;

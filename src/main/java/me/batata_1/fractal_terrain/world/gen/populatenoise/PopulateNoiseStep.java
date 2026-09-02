@@ -50,14 +50,15 @@ public class PopulateNoiseStep {
     }
 
     /** Cuts the river bed into the tile-carved shell, the last elevation pass before blocks are
-     *  placed. The shell-to-bed delta lands in {@link Types#RIVER_DIFFERENCE}, which is what the
-     *  water fill later reads. */
+     *  placed. The shell-to-bed delta lands in {@link Types#RIVER_DIFFERENCE}, which the water fill
+     *  reads; {@link Types#RIVER_TYPE} and {@link Types#RIVER_DIST} are what the surface painter reads. */
     public void fineGrainedPrimitivePass(ChunkPos chunkPos, FractalTerrainHeightmap heightmap) {
         final int seaLevel = settings.seaLevel();
         final int bottom = settings.noiseSettings().minY();
         final float[] interpolatedElevs = (float[]) heightmap.get(Types.ELEVATION);
         final float[] riverDifference = (float[]) heightmap.get(Types.RIVER_DIFFERENCE);
         final long[] riverType = (long[]) heightmap.get(Types.RIVER_TYPE);
+        final float[] riverDist = (float[]) heightmap.get(Types.RIVER_DIST);
         final float[] waterElev = (float[]) heightmap.get(Types.WATER_HEIGHT);
         final HydrologyProfileInprinter imprinter = FractalTerrainInstance.getHydrologyInprinter();
         // One influence query serves the whole chunk: prefetch every primitive that could reach any of the
@@ -98,6 +99,7 @@ public class PopulateNoiseStep {
             riverDifference[pos] = (float) (merged - ambient);
             waterElev[pos] = weight > 0 ? (acc[3 * pos + 1] + seaLevel - 1) : 0f;
             riverType[pos] = buffers.typeMask[pos];
+            riverDist[pos] = buffers.dist[pos];
             interpolatedElevs[pos] = (float) (Math.max(bottom, merged) + seaLevel - 1);
         }
     }
