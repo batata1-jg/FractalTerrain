@@ -4,9 +4,7 @@ import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.PADDED
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.sampleBilinear;
 
 import java.util.List;
-
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
-import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
@@ -46,10 +44,9 @@ public final class LocalNetworkBuilder {
     }
 
     private static List<HydrologicalPrimitive> collect(RiverNetwork network, ChannelTyper typer, float[] elev) {
-        final List<HydrologicalPrimitive> list = network.collectPrimitives(
-                0, 0, channelId -> true, typer, HydrologyTileGeometry.influenceSampler(elev));
+        final List<HydrologicalPrimitive> list =
+                network.collectPrimitives(0, 0, channelId -> true, typer, HydrologyTileGeometry.influenceSampler(elev));
         list.sort(HydrologicalPrimitive.comparator);
         return list;
     }
-
 }

@@ -22,7 +22,6 @@ import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.HydrologicalFeature;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.InfluenceSampler;
-import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import org.jetbrains.annotations.Nullable;
@@ -723,8 +722,6 @@ public final class RiverNetwork {
     // Conversion to the queryable, persistable primitive tree
     // ---------------------------------------------------------------------------------------------
 
-
-
     public List<HydrologicalPrimitive> collectPrimitives(
             double offsetX,
             double offsetZ,
@@ -763,7 +760,7 @@ public final class RiverNetwork {
         }
 
         for (Channel ch : emitting) {
-                HydrologicalFeature.RIVER.addPrimitives(offset, primitives, typer, ch, centreline, surface);
+            HydrologicalFeature.RIVER.addPrimitives(offset, primitives, typer, ch, centreline, surface);
         }
 
         for (RemovedPath rp : removedPaths) {

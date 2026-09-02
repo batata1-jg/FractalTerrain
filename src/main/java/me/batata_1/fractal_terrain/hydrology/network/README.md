@@ -88,11 +88,16 @@ here in `RiverNetwork`.
 intersection, preserving flow direction. It exists because meander migration lets channels drift across
 each other, and the downstream carve assumes a planar network.
 
-Candidate pairs are pruned with an R-tree over node positions: meander edges are short (spacing ~`DX`,
-migration ≤ `MAX_MIGRATION`), so two edges can only cross when their endpoints sit within
-`MAX_MIGRATION * 5` of each other. Two straight segments meet in at most one point, so resolving every
-original pair once fully planarizes the set in a single pass — the new sub-segments meet only at the
-shared crossing nodes.
+Candidate pairs come from an x-ordered sweep line over segment bounding boxes: segments enter the sweep
+in ascending `minX` order and leave once their `maxX` falls behind the sweep position, with the segments
+currently spanning the line held in a status structure keyed by `minY` so a bounded key-range scan finds
+every box that could still overlap. The sweep is exact — a candidate pair is only missed if its boxes
+truly do not overlap — rather than pruned by a fixed radius. Two straight segments meet in at most one
+point, so resolving every original pair once fully planarizes the set in a single pass — the new
+sub-segments meet only at the shared crossing nodes. Detection and the exact intersection test stay
+separated: the sweep only emits candidate pairs, sorted ascending; a second pass runs the intersection
+test and assigns crossing-node ids over that sorted order, because the intersection determinant is not
+symmetric in floating point and the ids must not depend on the order the sweep happens to discover pairs.
 
 ## Invariants
 

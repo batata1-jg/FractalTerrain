@@ -1,16 +1,17 @@
 package me.batata_1.fractal_terrain.hydrology.network;
 
+import it.unimi.dsi.fastutil.doubles.Double2ObjectAVLTreeMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntAVLTreeSet;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntArrays;
 import it.unimi.dsi.fastutil.ints.IntSortedSet;
+import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.*;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
-import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
-import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
 
 /**
  * Atomic (node) view of the network: parallel per-node data plus a directed adjacency where every
@@ -202,20 +203,6 @@ public final class AtomicView {
         return best;
     }
 
-    // the edges itself can cross
-    public record nodePrimitive(double[] coord, double radius, int id) implements SpatialIndexCircle {
-
-        @Override
-        public double[] getCenter() {
-            return coord;
-        }
-
-        @Override
-        public double getRadius() {
-            return radius;
-        }
-    }
-
     /** canonicalId value for interior / crossing atomic nodes (mirrors {@code RiverNetwork.NONE}). */
     private static final int NO_CANONICAL_ID = -1;
 
@@ -241,44 +228,38 @@ public final class AtomicView {
             }
         segments.sort(Comparator.<int[]>comparingInt(s -> s[0]).thenComparingInt(s -> s[1]));
 
-        // node -> indices of segments incident to it (candidate lookup keyed on a shared / near node).
-        final List<List<Integer>> incident = new ObjectArrayList<>(originalSize);
-        for (int i = 0; i < originalSize; i++) incident.add(new ObjectArrayList<>());
-        for (int si = 0; si < segments.size(); si++) {
-            incident.get(segments.get(si)[0]).add(si);
-            incident.get(segments.get(si)[1]).add(si);
+        // Node positions read once, before any crossing node is appended below (pos(i) clones per call).
+        final double[] px = new double[originalSize];
+        final double[] py = new double[originalSize];
+        for (int i = 0; i < originalSize; i++) {
+            final double[] p = pos(i);
+            px[i] = p[0];
+            py[i] = p[1];
         }
 
-        // 2. Node R-tree; each node's proximity circle bounds how far a crossing partner's endpoint can sit.
-        final double radius = HydrologyTuning.MAX_MIGRATION * 5;
-        final List<nodePrimitive> primitives = new ObjectArrayList<>(originalSize);
-        for (int i = 0; i < originalSize; i++) primitives.add(new nodePrimitive(pos(i), radius, i));
-        final ImmutableRTree<nodePrimitive> index = new ImmutableRTree<>(primitives, null);
+        // 2. Candidate segment pairs whose bounding boxes overlap, found by an x-ordered sweep.
+        final LongArrayList candidatePairs = crossingCandidatePairs(segments, px, py);
 
-        // 3. Detect crossings; record the (t, crossingNodeId) split points per segment (t = param along lo->hi).
+        // 3. Exact test in ascending (lo, hi) order, so segmentCrossing's non-symmetric floating-point
+        //    result and each crossing node's id depend only on segment index, never on discovery order.
         final List<List<double[]>> splits = new ObjectArrayList<>(segments.size());
         for (int i = 0; i < segments.size(); i++) splits.add(new ObjectArrayList<>());
-        final List<nodePrimitive> nearby = new ObjectArrayList<>();
-        for (int si = 0; si < segments.size(); si++) {
+        for (final long packed : candidatePairs) {
+            final int si = (int) (packed >>> 32);
+            final int sj = (int) packed;
             final int a = segments.get(si)[0], b = segments.get(si)[1];
-            final double[] pa = pos(a), pb = pos(b);
-
-            final IntSortedSet candidates = new IntAVLTreeSet(); // ascending -> deterministic
-            nearby.clear();
-            index.queryContaining(pa, nearby);
-            index.queryContaining(pb, nearby);
-            for (nodePrimitive nu : nearby) for (int sj : incident.get(nu.id())) if (sj > si) candidates.add(sj);
-
-            for (int sj : candidates) {
-                final int c = segments.get(sj)[0], d = segments.get(sj)[1];
-                if (a == c || a == d || b == c || b == d) continue; // share an endpoint -> touch, not cross
-                final double[] hit = segmentCrossing(pa, pb, pos(c), pos(d));
-                if (hit == null) continue;
-                final int xId = addNode(
-                        new double[] {hit[2], hit[3]}, null, NO_CANONICAL_ID, HydrologyTuning.FLOW_PER_CELL_LOCAL, -1);
-                splits.get(si).add(new double[] {hit[0], xId});
-                splits.get(sj).add(new double[] {hit[1], xId});
-            }
+            final int c = segments.get(sj)[0], d = segments.get(sj)[1];
+            if (a == c || a == d || b == c || b == d) continue; // share an endpoint -> touch, not cross
+            final double[] pa = {px[a], py[a]};
+            final double[] pb = {px[b], py[b]};
+            final double[] pc = {px[c], py[c]};
+            final double[] pd = {px[d], py[d]};
+            final double[] hit = segmentCrossing(pa, pb, pc, pd);
+            if (hit == null) continue;
+            final int xId = addNode(
+                    new double[] {hit[2], hit[3]}, null, NO_CANONICAL_ID, HydrologyTuning.FLOW_PER_CELL_LOCAL, -1);
+            splits.get(si).add(new double[] {hit[0], xId});
+            splits.get(sj).add(new double[] {hit[1], xId});
         }
 
         // 4. Re-route each crossed segment's directed edge(s) through its crossing nodes (ordered by param).
@@ -303,6 +284,78 @@ public final class AtomicView {
                 for (int k = chain.length - 1; k - 1 >= 0; k--) addDirectedEdge(chain[k], chain[k - 1]);
             }
         }
+    }
+
+    /** Candidate segment-index pairs for {@link #resolveCrossingEdges}, found by an x-ordered sweep over
+     *  segment bounding boxes rather than a fixed-radius proximity query, so every geometric crossing is
+     *  found regardless of segment length. Returns packed {@code (lo << 32) | hi} pairs, {@code lo < hi},
+     *  sorted ascending — exactly lexicographic order since both halves are non-negative ints. */
+    private static LongArrayList crossingCandidatePairs(List<int[]> segments, double[] px, double[] py) {
+        final int m = segments.size();
+        final double[] minX = new double[m], maxX = new double[m], minY = new double[m], maxY = new double[m];
+        double maxHeight = 0;
+        for (int si = 0; si < m; si++) {
+            final int a = segments.get(si)[0], b = segments.get(si)[1];
+            minX[si] = Math.min(px[a], px[b]);
+            maxX[si] = Math.max(px[a], px[b]);
+            minY[si] = Math.min(py[a], py[b]);
+            maxY[si] = Math.max(py[a], py[b]);
+            maxHeight = Math.max(maxHeight, maxY[si] - minY[si]);
+        }
+
+        // Two index orders driving the sweep: entry by ascending minX, eviction by ascending maxX.
+        final int[] byMinX = new int[m];
+        final int[] byMaxX = new int[m];
+        for (int i = 0; i < m; i++) {
+            byMinX[i] = i;
+            byMaxX[i] = i;
+        }
+        IntArrays.quickSort(byMinX, (i, j) -> {
+            final int c = Double.compare(minX[i], minX[j]);
+            return c != 0 ? c : Integer.compare(i, j);
+        });
+        IntArrays.quickSort(byMaxX, (i, j) -> {
+            final int c = Double.compare(maxX[i], maxX[j]);
+            return c != 0 ? c : Integer.compare(i, j);
+        });
+
+        // Segments currently spanning the sweep line, bucketed by minY so a y-range scan finds every
+        // segment whose box could still overlap the one being handled.
+        final Double2ObjectAVLTreeMap<IntArrayList> status = new Double2ObjectAVLTreeMap<>();
+        final LongArrayList pairs = new LongArrayList();
+        int evictCursor = 0;
+        for (final int si : byMinX) {
+            while (evictCursor < m && maxX[byMaxX[evictCursor]] < minX[si]) {
+                final int gone = byMaxX[evictCursor];
+                final IntArrayList bucket = status.get(minY[gone]);
+                bucket.rem(gone);
+                if (bucket.isEmpty()) status.remove(minY[gone]);
+                evictCursor++;
+            }
+
+            // minY[si] - maxHeight is sound because no resident segment is taller than maxHeight, so one
+            // shorter than that cannot reach up to minY[si]; the ulp nudge keeps an exact-touch in range,
+            // since subMap's upper bound is exclusive.
+            for (IntArrayList bucket : status.subMap(minY[si] - maxHeight, maxY[si] + Math.ulp(maxY[si]))
+                    .values()) {
+                for (final int sj : bucket) {
+                    if (maxY[sj] < minY[si]) continue;
+                    final int lo = Math.min(si, sj), hi = Math.max(si, sj);
+                    pairs.add(((long) lo << 32) | (hi & 0xffffffffL));
+                }
+            }
+
+            IntArrayList bucket = status.get(minY[si]);
+            if (bucket == null) {
+                bucket = new IntArrayList();
+                status.put(minY[si], bucket);
+            }
+            bucket.add(si);
+        }
+
+        final long[] sorted = pairs.toLongArray();
+        Arrays.sort(sorted);
+        return new LongArrayList(sorted);
     }
 
     /** Interior-only segment intersection for {@link #resolveCrossingEdges}; endpoint touches are not
