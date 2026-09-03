@@ -83,7 +83,6 @@ public abstract class ChannelMigrator {
             ch.spline = QuinticHermiteSpline.createCatmullRom(ch.spline.points());
         }
         dumpNetwork("05_final");
-        network.recordState(i);
     }
 
     /** Dumps the whole network into {@code step_<currentStep>/<name>.png} when

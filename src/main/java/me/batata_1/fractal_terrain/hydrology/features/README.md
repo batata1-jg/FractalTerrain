@@ -6,10 +6,12 @@ Seven feature families share one spatial index and one persistence payload; thre
 and the same three are ever carved. `HydrologicalFeature.RIVER.addPrimitives` walks a channel's spline
 points and emits a `RiverPrimitive` per point; `SOURCE` emits one `SourcePrimitive` per headwater endpoint
 whose emitting channel has positive width; `CONFLUENCE` emits one `ConfluencePrimitive` per `JUNCTION`
-endpoint of degree three or more where at least two incident channels emitted. `ABANDONED_RIVER`,
-`OXBOW_LAKE`, `WATERFALL` and `DELTA` all still override `addPrimitives` with an empty body. The records
-for those four exist so the type tag, the codec and the `HydrologyProfile` extension point are already in
-place when they grow real behaviour — not because anything produces them today.
+endpoint of degree three or more where at least two incident channels emitted. `ABANDONED_RIVER` and
+`OXBOW_LAKE` re-mint what `RiverNetwork`'s history deque already shed, shifting it into the collect frame;
+`WATERFALL` and `DELTA` still override `addPrimitives` with an empty body, so their records exist only to
+hold the type tag, the codec and the `HydrologyProfile` extension point until they grow real behaviour.
+Nothing produces a history primitive in practice: every `RiverNetwork` in the pipeline is built with
+history disabled.
 
 ## Architecture
 

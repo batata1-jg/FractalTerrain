@@ -187,11 +187,27 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
         },
         ABANDONED_RIVER(() -> AbandonedRiverPrimitive.PROTOTYPE) {
             @Override
-            public void addPrimitives(double[] offset, List<HydrologicalPrimitive> primitives, Object... args) {}
+            public void addPrimitives(double[] offset, List<HydrologicalPrimitive> primitives, Object... args) {
+                final AbandonedRiverPrimitive shed = (AbandonedRiverPrimitive) args[0];
+                primitives.add(new AbandonedRiverPrimitive(
+                        VectorOps.sub(shed.coord(), offset),
+                        shed.time(),
+                        shed.width(),
+                        shed.influence(),
+                        shed.elevation()));
+            }
         },
         OXBOW_LAKE(() -> OxbowLakePrimitive.PROTOTYPE) {
             @Override
-            public void addPrimitives(double[] offset, List<HydrologicalPrimitive> primitives, Object... args) {}
+            public void addPrimitives(double[] offset, List<HydrologicalPrimitive> primitives, Object... args) {
+                final OxbowLakePrimitive shed = (OxbowLakePrimitive) args[0];
+                primitives.add(new OxbowLakePrimitive(
+                        VectorOps.sub(shed.coord(), offset),
+                        shed.time(),
+                        shed.width(),
+                        shed.influence(),
+                        shed.elevation()));
+            }
         },
         SOURCE(() -> SourcePrimitive.PROTOTYPE) {
             @Override

@@ -17,13 +17,16 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.IntPredicate;
+import java.util.function.UnaryOperator;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
+import me.batata_1.fractal_terrain.hydrology.features.AbandonedRiverPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.HydrologicalFeature;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.InfluenceSampler;
+import me.batata_1.fractal_terrain.hydrology.features.OxbowLakePrimitive;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
 import org.jetbrains.annotations.Nullable;
@@ -57,11 +60,12 @@ public final class RiverNetwork {
     private int nextChannelId = 0;
     private int nextNodeId = 0;
 
-    // history (only populated when savePreviousStates is true)
-    private final boolean savePreviousStates;
+    // history (only populated when saveHistory is true)
+    private final boolean saveHistory;
     private final int maxSavedStates;
-    private final ArrayDeque<List<List<double[]>>> previousStates = new ArrayDeque<>();
-    private final List<RemovedPath> removedPaths = new ObjectArrayList<>();
+
+    /** Oxbow and abandoned-channel primitives already shed, oldest first; drained by {@link #collectPrimitives}. */
+    private final ArrayDeque<HydrologicalPrimitive> lastStates = new ArrayDeque<>();
 
     // for each endpoint, if it is source/drain, update the channels to match it. If it is junction, take the average of
     // the channels end positions.
@@ -118,9 +122,6 @@ public final class RiverNetwork {
      */
     public record EdgeSpec(int startNodeIdx, int endNodeIdx, List<double[]> pts, double flow) {}
 
-    /** A geometry removed from the active network, retained for {@link #collectPrimitives}. */
-    private record RemovedPath(HydrologicalFeature type, List<double[]> pts, double width, int time) {}
-
     /** The production construction path: a graph that keeps no history, resampled at the default spacing. */
     public RiverNetwork(int gridSize, List<NodeSpec> nodeSpecs, List<EdgeSpec> edgeSpecs) {
         this(gridSize, nodeSpecs, edgeSpecs, false, 0, HydrologyTuning.DX);
@@ -130,12 +131,12 @@ public final class RiverNetwork {
             int gridSize,
             List<NodeSpec> nodeSpecs,
             List<EdgeSpec> edgeSpecs,
-            boolean savePreviousStates,
+            boolean saveHistory,
             int maxSavedStates,
             double resampleDist) {
 
         this.gridSize = gridSize;
-        this.savePreviousStates = savePreviousStates;
+        this.saveHistory = saveHistory;
         this.maxSavedStates = maxSavedStates;
         if (FractalTerrainConfig.DEBUG_RIVER_NET)
             Debug.river.seeNetwork(gridSize, nodeSpecs, edgeSpecs, "river_network", "_");
@@ -430,7 +431,7 @@ public final class RiverNetwork {
         final ReachTree reach = reverseBfsCapture(atomic);
 
         // step 3: record each unreached dangling sub-path as an abandoned river (history only).
-        if (savePreviousStates) recordAbandoned(atomic, reach.alive(), step);
+        if (saveHistory) recordAbandoned(atomic, reach.alive(), step);
 
         // step 4: build the oriented compact view, derive flow, fold back in place.
         final AtomicView oriented = buildOriented(atomic, reach.alive(), reach.outgoing());
@@ -552,8 +553,8 @@ public final class RiverNetwork {
         return oriented;
     }
 
-    /** Records each pruned sub-path the collision pass drops, staged for {@link #collectPrimitives} to emit
-     *  as an {@link HydrologicalFeature#ABANDONED_RIVER} entry. */
+    /** Mints each pruned sub-path the collision pass drops as {@link HydrologicalFeature#ABANDONED_RIVER}
+     *  history, so a captured channel survives as a trace rather than vanishing. */
     private void recordAbandoned(AtomicView atomic, boolean[] alive, int step) {
         final int n = atomic.size();
         final boolean[] hasUnmarkedPred = new boolean[n];
@@ -572,10 +573,15 @@ public final class RiverNetwork {
                         ? NONE
                         : atomic.adjacency.get(cur).get(0);
             }
-            if (pts.size() >= 10)
-                removedPaths.add(new RemovedPath(
-                        HydrologicalFeature.ABANDONED_RIVER, pts, HydrologyTuning.widthFromFlow(maxOwn), step));
+            if (pts.size() < 10) continue;
+            // One width for the whole path: ownFlow is the per-cell constant on interior atomic nodes,
+            // so a per-point widthFromFlow would give a uniform hairline instead of the channel's size.
+            final double width = HydrologyTuning.widthFromFlow(maxOwn);
+            for (double[] p : pts) {
+                lastStates.addLast(new AbandonedRiverPrimitive(p.clone(), (byte) step, width, 0, 0));
+            }
         }
+        evictOlderThan(step);
     }
 
     /** Finds one crossing edge per overlapping channel pair (closest overlapping points, tested via
@@ -673,7 +679,7 @@ public final class RiverNetwork {
             }
         }
         newPathIndexes.add(ch.numPts() - 1);
-        if (savePreviousStates) recordRemovedComplement(ch, newPathIndexes, HydrologicalFeature.OXBOW_LAKE, step);
+        if (saveHistory) recordRemovedComplement(ch, newPathIndexes, step);
         ch.keepOnly(newPathIndexes);
     }
 
@@ -688,36 +694,43 @@ public final class RiverNetwork {
         for (int i = from; i < to; i++) quadTree.removePoint(ch.pt(i));
     }
 
-    /** Record the points of {@code ch} NOT in {@code keptIndexes} as a removed feature (oxbow loop). */
-    private void recordRemovedComplement(Channel ch, List<Integer> keptIndexes, HydrologicalFeature type, int step) {
+    /** Records the points of {@code ch} NOT in {@code keptIndexes} as the oxbow the cutoff left behind. */
+    private void recordRemovedComplement(Channel ch, List<Integer> keptIndexes, int step) {
         final boolean[] kept = new boolean[ch.numPts()];
         for (int idx : keptIndexes) if (idx >= 0 && idx < kept.length) kept[idx] = true;
-        final List<double[]> removed = new ObjectArrayList<>();
-        int firstRemovedIndex = -1;
-        for (int i = 0; i < ch.numPts(); i++)
-            if (!kept[i]) {
-                if (firstRemovedIndex == -1) firstRemovedIndex = i;
-                removed.add(ch.spline.points().get(i).clone());
-            }
-        // Retained-path read: derived width of the FIRST removed spline point (serves OXBOW_LAKE primitives).
-        if (removed.size() >= 2) removedPaths.add(new RemovedPath(type, removed, ch.widthAt(firstRemovedIndex), step));
+        int removedCount = 0;
+        for (int i = 0; i < ch.numPts(); i++) if (!kept[i]) removedCount++;
+        if (removedCount < 2) return; // a single stray point is not a loop
+
+        for (int i = 0; i < ch.numPts(); i++) {
+            if (kept[i]) continue;
+            // Elevation and influence stay 0 here: neither is knowable at the cut, and both are filled
+            // in later through remapHistory.
+            lastStates.addLast(
+                    new OxbowLakePrimitive(ch.spline.points().get(i).clone(), (byte) step, ch.widthAt(i), 0, 0));
+        }
+        evictOlderThan(step);
     }
 
     // ---------------------------------------------------------------------------------------------
     // History
     // ---------------------------------------------------------------------------------------------
 
-    /** Snapshot the current channel geometry (bounded to {@code maxSavedStates}); no-op if disabled. */
-    public void recordState(int step) {
-        if (!savePreviousStates) return;
-        final List<List<double[]>> snapshot = new ObjectArrayList<>(channels.size());
-        for (Channel ch : channels.values()) {
-            final List<double[]> copy = new ObjectArrayList<>(ch.numPts());
-            for (double[] p : ch.spline.points()) copy.add(p.clone());
-            snapshot.add(copy);
+    /** Drops history older than the step window; runs after every mint, and only ever inspects the head
+     *  because steps are non-decreasing across mints. */
+    private void evictOlderThan(int step) {
+        while (!lastStates.isEmpty() && step - lastStates.peekFirst().time() > maxSavedStates) {
+            lastStates.removeFirst();
         }
-        previousStates.addLast(snapshot);
-        while (previousStates.size() > maxSavedStates) previousStates.removeFirst();
+    }
+
+    /** Rewrites every stored history primitive, preserving deque order. Exists because elevation and
+     *  influence are known only long after the cutoff that minted the primitive, and must be filled in
+     *  before {@link #collectPrimitives} copies them into the index. */
+    public void remapHistory(UnaryOperator<HydrologicalPrimitive> resolver) {
+        final List<HydrologicalPrimitive> staged = new ObjectArrayList<>(lastStates);
+        lastStates.clear();
+        for (HydrologicalPrimitive p : staged) lastStates.addLast(resolver.apply(p));
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -774,8 +787,10 @@ public final class RiverNetwork {
             HydrologicalFeature.RIVER.addPrimitives(offset, primitives, typer, ch, centreline, surface);
         }
 
-        for (RemovedPath rp : removedPaths) {
-            HydrologicalFeature.ABANDONED_RIVER.addPrimitives(offset, primitives, rp);
+        // Shed features were minted in network frame at the step that cut them; addPrimitives shifts each
+        // into the frame this collect emits in.
+        for (HydrologicalPrimitive shed : lastStates) {
+            shed.getType().addPrimitives(offset, primitives, shed);
         }
         return primitives;
     }
