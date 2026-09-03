@@ -29,7 +29,7 @@ import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.Infl
 import me.batata_1.fractal_terrain.hydrology.features.OxbowLakePrimitive;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
-import me.batata_1.fractal_terrain.math.ds.QuadTree;
+import me.batata_1.fractal_terrain.math.ds.SpatialHashGrid;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -46,15 +46,17 @@ import org.slf4j.Logger;
  */
 public final class RiverNetwork {
 
-    private static final double INF = 1e3;
     /** Floor on the resample spacing used when converting features to {@link HydrologicalPrimitive}s. */
     private static final double MIN_CONVERT_SPACING = 0.5;
+
+    /** {@code manageCutoffs}'s own query radius is {@code sqrt(width)}; sizing cells to that keeps
+     *  expected occupancy near one query's worth of area across the tuning range. */
+    private static final double CUTOFF_GRID_CELL_SIZE = Math.ceil(Math.sqrt(HydrologyTuning.maxNativeWidth()));
 
     private static final Logger LOG = getLogger(RiverNetwork.class);
 
     private final int gridSize;
-    private final QuadTree<Channel.ChannelPt> quadTree =
-            new QuadTree<>(new double[] {-INF, -INF}, new double[] {INF, INF});
+    private final SpatialHashGrid<Channel.ChannelPt> spatialHashGrid = new SpatialHashGrid<>(CUTOFF_GRID_CELL_SIZE);
 
     // graph storage: stable channel/node ids (sparse after prune/rewire)
     private final Int2ObjectOpenHashMap<Channel> channels = new Int2ObjectOpenHashMap<>();
@@ -330,7 +332,7 @@ public final class RiverNetwork {
         // IN-PLACE reset: wipe the canonical view; set the node counter PAST every preserved id.
         this.channels.clear();
         this.nodes.clear();
-        this.quadTree.clear();
+        this.spatialHashGrid.clear();
         this.nextChannelId = 0;
         this.nextNodeId = maxPreserved + 1;
 
@@ -386,7 +388,7 @@ public final class RiverNetwork {
         channels.put(id, ch);
         start.outgoing = id;
         end.incoming.add(id);
-        insertChannelInQuadTree(ch); // kept QuadTree helper (also used by manageCutoffs)
+        insertChannelInQuadTree(ch); // shared helper, also used by manageCutoffs
         // bedElevations intentionally NOT preserved — the seam is bed-elevation-agnostic
     }
 
@@ -668,7 +670,7 @@ public final class RiverNetwork {
 
     /** Clears the working spatial index at the start of a step. */
     public void beginStep() {
-        quadTree.clear();
+        spatialHashGrid.clear();
     }
 
     public int getGridSize() {
@@ -681,7 +683,7 @@ public final class RiverNetwork {
 
     private List<Channel.ChannelPt> getPtsCloseTo(Channel.ChannelPt pt) {
         // Retained-path read (manageCutoffs): derived width of the CURRENT point.
-        return quadTree.getPointsInCircle(
+        return spatialHashGrid.getPointsInCircle(
                 pt.toArray(), Math.sqrt(channels.get(pt.channelId()).widthAt(pt.index())));
     }
 
@@ -689,12 +691,12 @@ public final class RiverNetwork {
         if (ch.spline.checkNaN()) {
             throw new RuntimeException("cannot cut becuse spline is NaN");
         }
-        quadTree.clear();
+        spatialHashGrid.clear();
         insertChannelInQuadTree(ch);
         List<Integer> newPathIndexes = new ObjectArrayList<>();
 
         for (int id = 0; id < ch.numPts() - 1; id++) {
-            if (!quadTree.containsPoint(ch.pt(id))) continue;
+            if (!spatialHashGrid.containsPoint(ch.pt(id))) continue;
             newPathIndexes.add(id);
             List<Channel.ChannelPt> ptList = getPtsCloseTo(ch.pt(id));
             ptList.sort(null);
@@ -711,12 +713,12 @@ public final class RiverNetwork {
     private void insertChannelInQuadTree(Channel ch) {
         Channel.ChannelPt[] pts = ch.getChannelAsPts();
         for (Channel.ChannelPt pt : pts) {
-            quadTree.insertPoint(pt);
+            spatialHashGrid.insertPoint(pt);
         }
     }
 
     private void cutRiverSection(int from, int to, Channel ch) {
-        for (int i = from; i < to; i++) quadTree.removePoint(ch.pt(i));
+        for (int i = from; i < to; i++) spatialHashGrid.removePoint(ch.pt(i));
     }
 
     /** Records the points of {@code ch} NOT in {@code keptIndexes} as the oxbow the cutoff left behind. */
