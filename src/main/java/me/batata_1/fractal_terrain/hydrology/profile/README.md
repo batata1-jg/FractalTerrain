@@ -99,12 +99,16 @@ scale and a channel's banded rectangle scale are not comparable, so ranking them
 distance would blend a bowl against a bed by two different measures of "inside"; and `dist` is live
 data — `PopulateNoiseStep` publishes it into `Types.RIVER_DIST` for the surface painter to read after the
 carve returns, so the river pass's values in it must survive untouched. The radial contribution is gated
-on the river pass's own weight lane, read before the radial pass rewrites it: a cell no river reached
-(`acc[a+2] == 0`) samples the radial profile directly, while a cell a river already claimed clamps to
-`min(acc[a], sampled)`, so the deeper of the two surfaces wins rather than the bowl overwriting the bed.
-The weight lane itself is maxed rather than assigned (`acc[a+2] = max(acc[a+2], …)`), because a cell
-inside a radial primitive's clipped AABB but outside its disc carries radial weight zero, and assigning
-would erase the river's own claim there.
+on the weight lane's prior claim — the river pass's for the first radial primitive to reach a cell, or an
+earlier radial primitive's for the next one — read before this primitive's own write can raise it: a cell
+no earlier pass reached (`acc[a+2] == 0`) samples the radial profile directly, while a cell already
+claimed clamps to `min(acc[a], sampled)`, so the deeper of the two surfaces wins rather than the bowl
+overwriting the bed. The same prior claim gates `typeMask`: a disc runs to `width()`, twice a channel's
+painted bed, so a radial primitive stamps its own type only where that prior weight is zero, leaving the
+tag a river or an earlier radial primitive already claimed in place rather than stripping it. The weight
+lane itself is maxed rather than assigned (`acc[a+2] = max(acc[a+2], …)`), because a cell inside a radial
+primitive's clipped AABB but outside its disc carries radial weight zero, and assigning would erase the
+earlier claim there.
 
 **Cut-only.** `computeRiverGrid`'s output `h` is a pure weighted blend with no ambient clamp folded in.
 Each call site recovers its carved elevation as `(1 - w) * ambient + w * min(h, ambient)`, applying the

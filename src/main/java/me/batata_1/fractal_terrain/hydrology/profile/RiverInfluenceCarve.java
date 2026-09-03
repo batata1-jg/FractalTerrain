@@ -53,8 +53,8 @@ public final class RiverInfluenceCarve {
     }
 
     /** Longest cross-section table any primitive can need on this grid: a primitive cannot span more
-     *  perp than the grid's diagonal, nor its own influence diameter. Assumes influence is capped at
-     *  {@link HydrologyTuning#MAX_INFLUENCE_RADIUS}; unenforced by the constructor. */
+     *  perp than the grid's diagonal, nor its own influence diameter. The radial pass is bounded the
+     *  same way, by the clipped box's diagonal, with one entry of margin. */
     public static int maxLutLen(int gridSize, double resolution) {
         final int diagonal = (int) Math.ceil((gridSize - 1) * Math.sqrt(2.0));
         final int influence = (int) Math.ceil(
@@ -384,14 +384,19 @@ public final class RiverInfluenceCarve {
                 final int i0 = Math.clamp((int) f, 0, n - 2);
                 final double sampled = lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]);
                 final double bounded = (elevs != null) ? Math.min(elevs[i], sampled) : sampled;
-                // Gated on the river pass's weight, not on acc alone: acc is zero-filled, so an
+                // The prior pass's claim on this cell, read before the write below can raise it.
+                final float priorWeight = acc[a + 2];
+                // Gated on the prior weight, not on acc alone: acc is zero-filled, so an
                 // unconditional min would clamp a bowl standing on high ground down to zero.
-                final double h = acc[a + 2] > 0 ? Math.min(acc[a], bounded) : bounded;
+                final double h = priorWeight > 0 ? Math.min(acc[a], bounded) : bounded;
 
                 radialDist[i] = (float) ((1 - w) * radialDist[i] + w * d);
                 acc[a] = (float) ((1 - w) * acc[a] + w * h);
                 acc[a + 1] = (float) ((1 - w) * acc[a + 1] + w * waterSurface);
-                typeMask[i] = w > 0.5 ? packed : typeMask[i];
+                // Only ground no earlier primitive claimed: the disc runs to width(), twice a
+                // channel's painted bed, so assigning here would strip the RIVER tag — and with it
+                // the surface painter's riverbed materials — from beds passing through the disc.
+                typeMask[i] = (w > 0.5 && priorWeight <= 0) ? packed : typeMask[i];
                 // Maxed rather than assigned: cells inside the square footprint but outside the disc
                 // take w = 0, and assigning would erase the river's own claim on them.
                 acc[a + 2] = Math.max(acc[a + 2], (float) (1 - Math.clamp(radialDist[i], 0, 1)));

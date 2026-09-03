@@ -406,9 +406,10 @@ bands, in order of increasing cost:
   at lines 85–96 — runs 256 times per chunk, for every chunk generated.
 - `hydrology/profile/RiverInfluenceCarve.java` `computeRiverGrid` and the per-primitive helpers it
   drives (`carveRiverPrimitive`, `carveRadialPrimitive`, `carvePrimitiveInfluence`) — once per chunk over
-  every prefetched primitive, plus once per tile over the whole 514×514 lattice. Its scratch arrays live in a `ThreadLocal<GridBuffers>` resized in place rather than being
-  allocated per call, and each primitive's cross-section is tabulated into a LUT once instead of being
-  re-evaluated per lattice cell. `RosgenProfile.sampleCrossSection` and `HydrologyProfile` sit under it.
+  every prefetched primitive, plus once per tile over the whole 514×514 lattice. Its scratch arrays live
+  in a `ThreadLocal<GridBuffers>` resized in place rather than being allocated per call, and each
+  primitive's cross-section is tabulated into a LUT once instead of being re-evaluated per lattice cell.
+  `RosgenProfile.sampleCrossSection` and `HydrologyProfile` sit under it.
 - `hydrology/features/HydrologicalPrimitive.java` `HydrologicalFeature.addPrimitives` and `comparator` —
   warm rather than hot (once per tile build), but the primitives they produce are what the hot carve
   iterates. The `Object... args` varargs on `addPrimitives` is an allocation-per-call hazard, an example

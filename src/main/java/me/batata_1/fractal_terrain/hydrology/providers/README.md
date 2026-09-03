@@ -75,3 +75,10 @@ reads the coarse tensor through the static `pipeline` field and cannot otherwise
   in the other. `GlobalNetworkBuilder` owns the conversion — see the frames table in `../README.md`.
 - **Only `primitives` enforces a byte budget.** `hydrology_relief` extends `Storage` directly and has no soft
   cap of its own; see `../README.md` for where the cap is applied.
+- **A store-name version bump orphans the old directory permanently.** `primitives` is named
+  `"local_river_units_v3"` (`RiverProvider.java:75`) rather than `"local_river_units"` because
+  `SourcePrimitive`'s payload grew a width and an elevation under its existing type tag, and a stale tile
+  would otherwise misparse two doubles short. The bump has no migration step: an existing world silently
+  rebuilds every primitive tile from scratch on first load under the new name, and the old
+  `local_river_units/` directory is never read, deleted, or reclaimed — it sits on disk indefinitely. The
+  next payload change needs the same bump, and the same disk cost.

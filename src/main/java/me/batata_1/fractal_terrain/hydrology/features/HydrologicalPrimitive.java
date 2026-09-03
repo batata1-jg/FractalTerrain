@@ -195,7 +195,7 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
                 final RiverNetwork network = (RiverNetwork) args[1];
                 final IntSet emitting = (IntSet) args[2];
                 final double width = maxIncidentWidth(endpoint, network, emitting);
-                if (width <= 0 || Double.isNaN(endpoint.elevation)) return;
+                if (!(width > 0) || Double.isNaN(endpoint.elevation)) return;
                 primitives.add(new SourcePrimitive(VectorOps.sub(endpoint.coord, offset), width, endpoint.elevation));
             }
         },
@@ -217,7 +217,7 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
                 final IntSet emitting = (IntSet) args[2];
                 if (countEmitting(endpoint, emitting) < 2) return;
                 final double width = maxIncidentWidth(endpoint, network, emitting);
-                if (width <= 0 || Double.isNaN(endpoint.elevation)) return;
+                if (!(width > 0) || Double.isNaN(endpoint.elevation)) return;
                 primitives.add(
                         new ConfluencePrimitive(VectorOps.sub(endpoint.coord, offset), width, endpoint.elevation));
             }

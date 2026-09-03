@@ -1,17 +1,21 @@
 package me.batata_1.fractal_terrain.hydrology.profile;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.Arrays;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
+import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.features.ConfluencePrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.DeltaPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive.RosgenType;
+import me.batata_1.fractal_terrain.hydrology.features.SourcePrimitive;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -35,6 +39,10 @@ class RadialCarveTest {
 
     private static ConfluencePrimitive bowl(double width, double elevation) {
         return new ConfluencePrimitive(new double[] {CENTRE, CENTRE}, width, elevation);
+    }
+
+    private static SourcePrimitive cone(double width, double elevation) {
+        return new SourcePrimitive(new double[] {CENTRE, CENTRE}, width, elevation);
     }
 
     private static RiverInfluenceCarve.GridBuffers buffers() {
@@ -68,6 +76,27 @@ class RadialCarveTest {
                 b.tangRow,
                 b.tangCol,
                 null);
+    }
+
+    /** Second helper so the elevs-less {@link #carve} stays untouched for the tests that rely on it. */
+    private static void carveWithElevs(
+            RiverInfluenceCarve.GridBuffers b, List<HydrologicalPrimitive> primitives, float[] elevs) {
+        RiverInfluenceCarve.computeRiverGrid(
+                0,
+                0,
+                RES,
+                GRID,
+                primitives,
+                b.acc,
+                b.typeMask,
+                b.dist,
+                b.radialDist,
+                b.lut,
+                b.perpRow,
+                b.perpCol,
+                b.tangRow,
+                b.tangCol,
+                elevs);
     }
 
     /** D5: a bowl reaching ground no river touched carves to its own law, not toward the zero fill. */
@@ -141,6 +170,24 @@ class RadialCarveTest {
                 HydrologicalPrimitive.HydrologicalFeature.unpack(b.typeMask[idx(8, 8)]));
     }
 
+    /** The disc runs to width(), well past a channel's painted bed, so a bowl overlapping a river
+     *  must leave the RIVER tag — and the surface painter's riverbed materials — in place. */
+    @Test
+    void leavesTheRiverTypeTagOnCellsTheRiverClaimed() {
+        final RiverInfluenceCarve.GridBuffers riverOnly = buffers();
+        carve(riverOnly, List.of(knot(CENTRE, 100.0)));
+        final long riverTag = riverOnly.typeMask[idx(8, 8)];
+
+        final RiverInfluenceCarve.GridBuffers b = buffers();
+        carve(b, List.of(knot(CENTRE, 100.0), bowl(4.0, 100.0)));
+
+        assertEquals(
+                HydrologicalPrimitive.HydrologicalFeature.RIVER,
+                HydrologicalPrimitive.HydrologicalFeature.unpack(riverTag),
+                "fixture check: the river must claim the centre for this test to mean anything");
+        assertEquals(riverTag, b.typeMask[idx(8, 8)], "the radial pass overwrote the river's tag");
+    }
+
     /** D2's filter: a non-river, non-radial tail entry must leave every lane byte-identical. */
     @Test
     void ignoresANonRadialTailPrimitive() {
@@ -172,5 +219,73 @@ class RadialCarveTest {
         carve(withBowl, List.of(knot(CENTRE, 100.0), bowl(4.0, 100.0)));
 
         assertArrayEquals(distBefore, withBowl.dist, "the radial pass overwrote the painter's input");
+    }
+
+    /** The source's cone gives up depth linearly, so half radius has given up half depth — where the
+     *  bowl's parabola would have given up only a quarter. Exercises {@code SourcePrimitive} through
+     *  the carve; every other radial test here carves a bowl. */
+    @Test
+    void carvesToTheSourceConeLawAtHalfRadius() {
+        final RiverInfluenceCarve.GridBuffers b = buffers();
+        carve(b, List.of(cone(4.0, 100.0)));
+
+        final int halfRadius = idx(8, 10);
+        assertEquals(
+                100.0 - 0.5 * depthOf(4.0),
+                b.acc[3 * halfRadius],
+                1e-3,
+                "the cone gives up depth linearly: half depth at half radius");
+    }
+
+    /** No radial test above passes a non-null {@code elevs}, so the ambient-clamp branch is dead in
+     *  test. An ambient below the bowl's own floor must pull the merged surface down to it. */
+    @Test
+    void clampsToAmbientElevationBelowTheBowlFloor() {
+        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final float lowAmbient = (float) (100.0 - depthOf(4.0) - 10.0);
+        final float[] elevs = new float[GRID * GRID];
+        Arrays.fill(elevs, lowAmbient);
+
+        carveWithElevs(b, List.of(bowl(4.0, 100.0)), elevs);
+
+        assertEquals(
+                lowAmbient,
+                b.acc[3 * idx(8, 8)],
+                1e-3,
+                "the ambient clamp must pull the bowl's sampled floor down to the lower ambient");
+    }
+
+    /** Every test above runs at RES = 1.0, never the production tile resolution, so nothing pins
+     *  {@link RiverInfluenceCarve#maxLutLen}'s radial-span bound. A {@code MAX_WIDTH} disc at
+     *  {@code GRID_RESOLUTION} must stay inside the LUT it is sized against. */
+    @Test
+    void productionResolutionRadialDiscStaysWithinTheLut() {
+        final double prodRes = 1.0 / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION;
+        final RiverInfluenceCarve.GridBuffers b = new RiverInfluenceCarve.GridBuffers();
+        b.ensure(GRID, RiverInfluenceCarve.maxLutLen(GRID, prodRes));
+        final double centre = GRID / 2.0 * prodRes;
+        final List<HydrologicalPrimitive> primitives =
+                List.of(new ConfluencePrimitive(new double[] {centre, centre}, HydrologyTuning.MAX_WIDTH, 100.0));
+
+        assertDoesNotThrow(
+                () -> RiverInfluenceCarve.computeRiverGrid(
+                        0,
+                        0,
+                        prodRes,
+                        GRID,
+                        primitives,
+                        b.acc,
+                        b.typeMask,
+                        b.dist,
+                        b.radialDist,
+                        b.lut,
+                        b.perpRow,
+                        b.perpCol,
+                        b.tangRow,
+                        b.tangCol,
+                        null),
+                "a MAX_WIDTH disc at production resolution must not overrun maxLutLen's table");
+
+        assertTrue(b.acc[3 * idx(GRID / 2, GRID / 2) + 2] > 0, "the disc must claim the grid centre");
     }
 }
