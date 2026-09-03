@@ -76,7 +76,9 @@ public record ConfluencePrimitive(double[] coord, double width, double elevation
     }
 
     private static long computeHashCode(double[] coord, double width, double elevation) {
-        return 31L * Objects.hash(width, elevation) + Arrays.hashCode(coord);
+        int result = Objects.hash(width, elevation);
+        result = 31 * result + Arrays.hashCode(coord);
+        return result;
     }
 
     @Override

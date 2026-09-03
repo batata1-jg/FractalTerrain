@@ -87,6 +87,15 @@ class RadialPrimitiveCodecTest {
     }
 
     @Test
+    void hashesContentWhoseSeedWouldOverflowIntArithmetic() {
+        // Accumulating the seed in long makes hashCode()'s toIntExact throw for most real inputs.
+        // This fixture is one of them, and it is the one the tests above already construct.
+        final ConfluencePrimitive primitive = new ConfluencePrimitive(new double[] {0.0, 0.0}, 1.0, 0.0);
+
+        assertEquals(primitive.hashCode(), new ConfluencePrimitive(new double[] {0.0, 0.0}, 1.0, 0.0).hashCode());
+    }
+
+    @Test
     void sortsAfterEveryRiverPrimitive() {
         // computeRiverGrid's river loop stops at the first non-river entry; a radial family sorting
         // before RIVER would truncate the river run and silently drop carve.
