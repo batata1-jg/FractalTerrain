@@ -67,11 +67,12 @@ public class RiverProvider {
     public RiverProvider(String path) {
         // The one-primitive prototype index keeps Storage's serializability probe exercising primitive
         // serialization, so the store stays disk-backed. Primitive coords are persisted in the WORLD
-        // relief-pixel frame (see buildTile), which is why the store name carries a _v2-equivalent
-        // identity ("local_river_units") distinct from the tile-local coordinate scheme it replaced.
+        // relief-pixel frame (see buildTile). The name carries the schema identity: "_v3" is what
+        // orphans tiles written before SourcePrimitive's payload grew a width and an elevation, which
+        // would otherwise be read two doubles short under an unchanged type tag.
         primitives = new NonIntersectingSpatialIndex<>(
                 path,
-                "local_river_units",
+                "local_river_units_v3",
                 new int[] {GRID, GRID},
                 new ImmutableRTree<>(List.of(), HydrologicalPrimitive.PROTOTYPE),
                 key -> buildTile(key.get(0), key.get(1), null).primitive(),

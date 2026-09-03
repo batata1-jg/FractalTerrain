@@ -196,7 +196,7 @@ class ComputeRiverGridTest {
     void stopsAtTheFirstNonRiverPrimitiveAndReportsWhere() {
         final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
         final HydrologicalPrimitive source =
-                new me.batata_1.fractal_terrain.hydrology.features.SourcePrimitive(new double[] {8.0, 8.0});
+                new me.batata_1.fractal_terrain.hydrology.features.SourcePrimitive(new double[] {8.0, 8.0}, 2.0, 100.0);
         final RiverInfluenceCarve.GridBuffers b = buffers();
 
         final int stop = RiverInfluenceCarve.computeRiverGrid(
@@ -215,6 +215,8 @@ class ComputeRiverGridTest {
                 b.tangCol,
                 null);
 
+        // The return value bounds the RIVER run only; the source is carved by the radial pass that
+        // runs after it, not skipped.
         assertEquals(1, stop, "the river run ends at index 1");
     }
 

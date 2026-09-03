@@ -9,7 +9,6 @@ import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.network.Centreline;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
-import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.profile.DefaultProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
@@ -188,10 +187,7 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
         },
         SOURCE(() -> SourcePrimitive.PROTOTYPE) {
             @Override
-            public void addPrimitives(double[] offset, List<HydrologicalPrimitive> primitives, Object... args) {
-                Endpoint endpoint = (Endpoint) args[0];
-                primitives.add(new SourcePrimitive(VectorOps.sub(endpoint.coord, offset)));
-            }
+            public void addPrimitives(double[] offset, List<HydrologicalPrimitive> primitives, Object... args) {}
         },
         WATERFALL(() -> WaterfallPrimitive.PROTOTYPE) {
             @Override

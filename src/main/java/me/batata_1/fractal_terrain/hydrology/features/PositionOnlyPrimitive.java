@@ -8,10 +8,10 @@ import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
  * Shared behaviour for a skeleton feature that carries only a position: a fixed-radius influence disc
  * that blends as a plain {@link DefaultProfile} and carves no cross-section of its own.
  *
- * <p>{@link SourcePrimitive}, {@link DeltaPrimitive}, {@link WaterfallPrimitive}, {@link
- * OxbowLakePrimitive} and {@link AbandonedRiverPrimitive} implement this and keep only {@code
- * getType()}, {@code deserializePrimitive()} and their {@code coord} component — {@code equals}/{@code
- * hashCode} stay on each record because an interface default cannot override {@link Object}'s.
+ * <p>{@link DeltaPrimitive}, {@link WaterfallPrimitive}, {@link OxbowLakePrimitive} and {@link
+ * AbandonedRiverPrimitive} implement this and keep only {@code getType()}, {@code
+ * deserializePrimitive()} and their {@code coord} component — {@code equals}/{@code hashCode} stay on
+ * each record because an interface default cannot override {@link Object}'s.
  */
 interface PositionOnlyPrimitive extends HydrologicalPrimitive, SpatialIndexCircle {
 

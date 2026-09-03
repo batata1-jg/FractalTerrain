@@ -21,9 +21,10 @@ import org.junit.jupiter.params.provider.MethodSource;
  */
 class RadialPrimitiveCodecTest {
 
-    /** Task 3 adds the SourcePrimitive entry; every test below is written to cover both. */
     private static Stream<RadialPrimitive> radialPrimitives() {
-        return Stream.of(new ConfluencePrimitive(new double[] {12.5, -40.25}, 6.0, 71.5));
+        return Stream.of(
+                new ConfluencePrimitive(new double[] {12.5, -40.25}, 6.0, 71.5),
+                new SourcePrimitive(new double[] {-3.0, 8.75}, 1.25, 130.0));
     }
 
     @ParameterizedTest
@@ -93,6 +94,14 @@ class RadialPrimitiveCodecTest {
         final ConfluencePrimitive primitive = new ConfluencePrimitive(new double[] {0.0, 0.0}, 1.0, 0.0);
 
         assertEquals(primitive.hashCode(), new ConfluencePrimitive(new double[] {0.0, 0.0}, 1.0, 0.0).hashCode());
+    }
+
+    @Test
+    void sourceHashesContentWhoseSeedWouldOverflowIntArithmetic() {
+        // Same failure mode as the ConfluencePrimitive case above, over the same fixture shape.
+        final SourcePrimitive primitive = new SourcePrimitive(new double[] {0.0, 0.0}, 1.0, 0.0);
+
+        assertEquals(primitive.hashCode(), new SourcePrimitive(new double[] {0.0, 0.0}, 1.0, 0.0).hashCode());
     }
 
     @Test
