@@ -3,8 +3,13 @@
 Date: 2026-09-03
 Status: proposed — nothing here has been implemented
 Branch: `feature/hydrology`
-Measured at: `780356f`, plus one uncommitted line in `RiverNetwork.recordAbandoned` raising the
+Measured at: `755d731`, plus one uncommitted line in `RiverNetwork.recordAbandoned` raising the
 abandoned-path minimum from `pts.size() >= 2` to `>= 10`. This design preserves that line.
+
+Re-measured 2026-09-03 after `780356f` and `755d731` (confluence/source emission and the radial carve
+pass) landed mid-design. They changed nothing this design touches — `RiverNetwork`'s history fields and
+both empty `addPrimitives` bodies are as described — but they did establish `RadialPrimitive` as the
+template D3 follows, and they left `features/README.md` describing a codebase that no longer exists.
 
 ## Problem
 
@@ -33,8 +38,8 @@ for (RemovedPath rp : removedPaths) {
 
 and `ABANDONED_RIVER.addPrimitives` is an empty body. `OXBOW_LAKE`'s is too, and nothing calls it at all,
 so cutoff loops are recorded and then dropped without even the gesture of a call. No history feature has
-ever reached the spatial index. `features/README.md` states the consequence as fact: of six families,
-only two are ever minted.
+ever reached the spatial index. Of the seven families, `RIVER`, `SOURCE` and `CONFLUENCE` mint; these two
+and `WATERFALL`/`DELTA` do not.
 
 **The two shapes disagree, and the useful one is discarded at the boundary.** `RemovedPath` already
 carries the step it was created at:
@@ -92,6 +97,13 @@ byte-size arithmetic or the contents-equality override.
 
 It is **public**, unlike `PositionOnlyPrimitive`: `ChannelElevationAssigner` lives in `hydrology/`, not
 `hydrology/features/`, and `resolved` is the method it drives.
+
+This is not a new pattern. `RadialPrimitive` (added in `780356f`) is the same shape for the same reason —
+a public interface over `HydrologicalPrimitive, SpatialIndexCircle`, exposing `width()` and `elevation()`,
+defaulting `getCenter`/`getRadius`/`getProfile`. `HistoricPrimitive` mirrors it, and both history records
+follow `SourcePrimitive`'s record shape: a canonical constructor carrying a `long seed`, a public
+convenience constructor computing it, `hashCode` as `Math.toIntExact(seed)`, and `seed` excluded from
+the serialized body.
 
 ```java
 /**
@@ -271,7 +283,7 @@ steps must not collide.
 | `network/RiverNetwork.java` | The whole of D1, D5, D6, D7; `remapHistory`. |
 | `meanders/ChannelMigrator.java` | Drops the `network.recordState(i)` call. |
 | `features/CLAUDE.md` | A row for `HistoricPrimitive.java`. |
-| `features/README.md` | Overview: four families no longer have empty `addPrimitives` bodies; two do. |
+| `features/README.md` | Overview: the empty-`addPrimitives` list drops the two history families. |
 
 ## Out of scope
 
@@ -282,6 +294,10 @@ steps must not collide.
   remains reserved and unused.
 - **`WATERFALL`, `DELTA` and `CONFLUENCE`** keep their empty `addPrimitives` bodies.
 - **Enabling history** (D8).
+- **`features/README.md`'s pre-existing drift.** Its Overview still says six families, only two minted,
+  and "no such pass exists" of the radial carve — all of which `780356f` and `755d731` falsified. This
+  change corrects only the sentence naming the empty `addPrimitives` bodies, because that sentence is the
+  one it makes wrong. Repairing the rest is separate work.
 
 ## Verification
 
