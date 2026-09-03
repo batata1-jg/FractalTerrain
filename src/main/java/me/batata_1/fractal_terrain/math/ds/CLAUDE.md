@@ -1,6 +1,7 @@
 # ds/
 
-Spatial-index data structures: a mutable `QuadTree` and immutable, build-once `ImmutableQuadTree`/`ImmutableRTree` variants.
+Spatial-index data structures: mutable `QuadTree`/`SpatialHashGrid` and immutable, build-once
+`ImmutableQuadTree`/`ImmutableRTree` variants.
 
 ## Files
 
@@ -9,6 +10,7 @@ Spatial-index data structures: a mutable `QuadTree` and immutable, build-once `I
 | `README.md` | Index-choice rationale, the `ImmutableQuadTree` alignment bug, locking invariants | Choosing an index, debugging dropped points, before adding a mutation path |
 | `SpatialIndex.java`           | Query interface over indexed shapes                        | Consuming a spatial index                       |
 | `QuadTree.java`               | Mutable quadtree with read/write lock                      | Building a quadtree, concurrent-read contract   |
+| `SpatialHashGrid.java`        | Mutable bucketed point index, no lock                      | Live insert/remove interleaved with circle queries |
 | `ImmutableQuadTree.java`      | Immutable, frozen quadtree                                 | Cached per-tile point indexes                   |
 | `ImmutableRTree.java`         | Immutable R-tree (backs the `HydrologicalPrimitive` index)      | Rectangle/shape range queries per tile          |
 | `SpatialIndexShape.java`      | Base shape type indexed by the structures                  | Adding a shape type                             |

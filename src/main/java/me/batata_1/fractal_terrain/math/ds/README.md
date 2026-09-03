@@ -2,11 +2,13 @@
 
 ## Overview
 
-Three spatial-index implementations serve two different access patterns: `QuadTree` is a mutable,
-long-lived index that supports insert/remove during use; `ImmutableQuadTree` and `ImmutableRTree` are
-build-once, query-many indexes constructed fresh from a fully-known point/shape set on every per-tile
-hydrology build. `ImmutableQuadTree` backs cached per-tile point indexes; `ImmutableRTree` backs the
-`HydrologicalPrimitive` index.
+Four spatial-index implementations serve two different access patterns: `QuadTree` and
+`SpatialHashGrid` are mutable, long-lived indexes that support insert/remove during use;
+`ImmutableQuadTree` and `ImmutableRTree` are build-once, query-many indexes constructed fresh from a
+fully-known point/shape set on every per-tile hydrology build. `ImmutableQuadTree` backs cached per-tile
+point indexes; `ImmutableRTree` backs the `HydrologicalPrimitive` index and `RiverNetwork`'s
+crossing-detection candidate search; `SpatialHashGrid` backs `RiverNetwork`'s cutoff search, which needs
+live removal interleaved with queries — the one access pattern neither immutable index supports.
 
 ## Architecture
 
@@ -19,6 +21,16 @@ interfere with each other.
 supplied once at construction, the tree is packed (euler-tour sort for the quadtree, Sort-Tile-Recursive
 bulk load for the R-tree), and there is no insert/remove path afterward. Because nothing ever mutates
 post-construction, both are safe to share across threads with no lock at all.
+
+`SpatialHashGrid` buckets points by `floor(coord / cellSize)` into a `Long2ObjectOpenHashMap` of
+per-cell lists. `insertPoint`/`removePoint` touch only the point's own bucket; `getPointsInCircle` scans
+the query circle's covering cells and applies the same exact squared-distance test
+`SpatialIndexCircle.containsPoint` does, rather than returning the bucket scan's superset. Like
+`QuadTree` it supports live mutation; unlike `QuadTree` it carries no lock (see Invariants). Cell size is
+a constructor parameter, not a hardcoded constant — the class is otherwise general-purpose, and a
+different caller may have a different natural query scale. `RiverNetwork` sizes it to
+`ceil(sqrt(HydrologyTuning.maxNativeWidth()))`, keeping expected cell occupancy near one query's worth of
+area across the tuning range, since its own cutoff query radius is `sqrt(width)`.
 
 ## Known Issue: `ImmutableQuadTree` root-square alignment
 
@@ -54,3 +66,7 @@ its stated rationale is stale.
   mutation API post-construction, so no lock is needed for concurrent queries. Do not add an
   insert/remove path to either class without re-adding the locking `QuadTree` relies on — the "no lock
   needed" property depends entirely on the structure staying frozen after construction.
+- **`SpatialHashGrid` carries no lock, unlike `QuadTree`.** Both rely on the same single-writer-per-tile
+  invariant above; `QuadTree` pays its `ReentrantReadWriteLock` on every `insertPoint`/`removePoint`/
+  `clear` call regardless, uncontended overhead under that invariant. `SpatialHashGrid` was added after
+  this was understood, so it simply does not pay for a guarantee nothing needs.
