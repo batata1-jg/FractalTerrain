@@ -572,7 +572,7 @@ public final class RiverNetwork {
                         ? NONE
                         : atomic.adjacency.get(cur).get(0);
             }
-            if (pts.size() >= 2)
+            if (pts.size() >= 10)
                 removedPaths.add(new RemovedPath(
                         HydrologicalFeature.ABANDONED_RIVER, pts, HydrologyTuning.widthFromFlow(maxOwn), step));
         }
