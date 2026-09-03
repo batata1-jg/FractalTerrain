@@ -200,6 +200,12 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
         DELTA(() -> DeltaPrimitive.PROTOTYPE) {
             @Override
             public void addPrimitives(double[] offset, List<HydrologicalPrimitive> primitives, Object... args) {}
+        },
+        // :SCHEMA: appended, never reordered; the ordinal is the on-disk type tag, so moving a
+        // constant reinterprets every primitive already cached.
+        CONFLUENCE(() -> ConfluencePrimitive.PROTOTYPE) {
+            @Override
+            public void addPrimitives(double[] offset, List<HydrologicalPrimitive> primitives, Object... args) {}
         };
         /** {@code values()} without the defensive copy; indexed by the on-disk type tag. */
         private static final HydrologicalFeature[] VALUES = values();
