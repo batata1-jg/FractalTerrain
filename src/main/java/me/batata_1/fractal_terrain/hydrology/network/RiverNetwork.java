@@ -28,7 +28,9 @@ import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.Hydr
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.InfluenceSampler;
 import me.batata_1.fractal_terrain.hydrology.features.OxbowLakePrimitive;
 import me.batata_1.fractal_terrain.math.VectorOps;
+import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 import me.batata_1.fractal_terrain.math.ds.QuadTree;
+import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -584,13 +586,32 @@ public final class RiverNetwork {
         evictOlderThan(step);
     }
 
+    /** Zero-radius adapter so a {@link Channel.ChannelPt} can be stored in an {@link ImmutableRTree} —
+     *  its stabbing query reduces to a circle query exactly when every stored shape has zero radius (see
+     *  {@code math/ds/README.md}). */
+    private record CrossingPoint(Channel.ChannelPt pt) implements SpatialIndexCircle {
+        @Override
+        public double[] getCenter() {
+            return pt.toArray();
+        }
+
+        @Override
+        public double getRadius() {
+            return 0.0;
+        }
+    }
+
     /** Finds one crossing edge per overlapping channel pair (closest overlapping points, tested via
      *  {@link ChannelGeometry#channelsOverlap}), feeding the collision/orientation pass below. */
     private List<int[]> detectCrossings(AtomicView atomic) {
-        quadTree.clear();
         final List<Integer> channelIds = new ObjectArrayList<>(channels.keySet());
         Collections.sort(channelIds);
-        for (int channelId : channelIds) insertChannelInQuadTree(channels.get(channelId));
+
+        final List<CrossingPoint> points = new ObjectArrayList<>();
+        for (int channelId : channelIds) {
+            for (Channel.ChannelPt pt : channels.get(channelId).getChannelAsPts()) points.add(new CrossingPoint(pt));
+        }
+        final ImmutableRTree<CrossingPoint> rtree = new ImmutableRTree<>(points, null); // never persisted
 
         double maxHalf = 0.0;
         for (int channelId : channelIds) {
@@ -600,6 +621,7 @@ public final class RiverNetwork {
         }
 
         final List<int[]> edges = new ObjectArrayList<>();
+        final List<CrossingPoint> nearbyBuffer = new ObjectArrayList<>();
         for (int channelAId : channelIds) {
             final Channel channelA = channels.get(channelAId);
             final int[] aAtomic = atomic.pointAtomicIds.get(channelAId);
@@ -608,7 +630,10 @@ public final class RiverNetwork {
             for (int posA = 0; posA < channelA.numPts(); posA++) {
                 final double[] pointA = channelA.spline.points().get(posA);
                 final double halfA = ChannelGeometry.bedHalfWidth(channelA.widthAt(posA));
-                final List<Channel.ChannelPt> nearby = quadTree.getPointsInCircle(pointA, halfA + maxHalf);
+                nearbyBuffer.clear();
+                rtree.queryContaining(pointA, halfA + maxHalf, nearbyBuffer);
+                final List<Channel.ChannelPt> nearby = new ObjectArrayList<>(nearbyBuffer.size());
+                for (CrossingPoint cp : nearbyBuffer) nearby.add(cp.pt());
                 nearby.sort(null);
                 for (Channel.ChannelPt np : nearby) {
                     final int channelBId = np.channelId();
