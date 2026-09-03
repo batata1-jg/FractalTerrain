@@ -94,6 +94,11 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
 
     double[] coord();
 
+    /** Migration step this primitive was cut at; 0 means it belongs to the live network. */
+    default byte time() {
+        return 0;
+    }
+
     /** Whether the point is inside open water. Defaults to no, so a wetted type opts in. */
     default boolean channelContains(double distSqFromCentre) {
         return false;

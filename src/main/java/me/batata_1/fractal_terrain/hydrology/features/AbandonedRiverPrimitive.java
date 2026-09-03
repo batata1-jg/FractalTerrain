@@ -1,18 +1,33 @@
 package me.batata_1.fractal_terrain.hydrology.features;
 
+import java.util.Arrays;
 import me.batata_1.fractal_terrain.hydrology.profile.DefaultProfile;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * A former channel the river has since migrated out of — a dry trace the terrain still remembers.
  *
- * <p><b>Skeleton.</b> Only the position exists so far — no width, no normal, no record of how long ago
- * it was abandoned — so it carves nothing of its own and blends as a plain {@link DefaultProfile}
- * influence disc. It will most likely end up claiming a shallow, aged variant of the river zones rather
- * than one of its own.
+ * <p><b>Skeleton.</b> It records how long ago it was abandoned and how wide it ran, but has no normal
+ * and no cross-section, so it carves nothing of its own and blends as a plain
+ * {@link DefaultProfile} influence disc. It will most likely end up claiming a shallow, aged variant of
+ * the river zones rather than one of its own.
  */
-public record AbandonedRiverPrimitive(double[] coord) implements PositionOnlyPrimitive {
+public record AbandonedRiverPrimitive(
+        double[] coord, byte time, double width, double influence, double elevation, long seed)
+        implements HistoricPrimitive {
 
-    static final AbandonedRiverPrimitive PROTOTYPE = new AbandonedRiverPrimitive(new double[] {0.0, 0.0});
+    static final AbandonedRiverPrimitive PROTOTYPE =
+            new AbandonedRiverPrimitive(new double[] {0.0, 0.0}, (byte) 0, 0, 0, 0);
+
+    public AbandonedRiverPrimitive(double[] coord, byte time, double width, double influence, double elevation) {
+        this(
+                coord,
+                time,
+                width,
+                influence,
+                elevation,
+                PrimitiveCodec.historicHash(coord, time, width, influence, elevation));
+    }
 
     @Override
     public HydrologicalFeature getType() {
@@ -20,17 +35,41 @@ public record AbandonedRiverPrimitive(double[] coord) implements PositionOnlyPri
     }
 
     @Override
-    public HydrologicalPrimitive deserializePrimitive(byte[] rawBytes) {
-        return new AbandonedRiverPrimitive(PrimitiveCodec.readCoord(rawBytes));
+    public HistoricPrimitive resolved(double elevation, double influence) {
+        return new AbandonedRiverPrimitive(coord, time, width, influence, elevation);
     }
 
     @Override
+    public long primitiveByteSize() {
+        return PrimitiveCodec.historicByteSize(coord);
+    }
+
+    @Override
+    public byte[] serializePrimitive() {
+        return PrimitiveCodec.writeHistoric(coord, time, width, influence, elevation);
+    }
+
+    @Override
+    public HydrologicalPrimitive deserializePrimitive(byte[] rawBytes) {
+        final PrimitiveCodec.HistoricFields fields = PrimitiveCodec.readHistoric(rawBytes);
+        return new AbandonedRiverPrimitive(
+                fields.coord(), fields.time(), fields.width(), fields.influence(), fields.elevation());
+    }
+
+    // Records compare array components by reference; these compare contents instead.
+    @Override
     public boolean equals(Object o) {
-        return PrimitiveCodec.coordsEqual(this, o, coord);
+        return PrimitiveCodec.historicEquals(this, o);
     }
 
     @Override
     public int hashCode() {
-        return PrimitiveCodec.coordsHash(coord);
+        return Math.toIntExact(seed);
+    }
+
+    @Override
+    public @NotNull String toString() {
+        return "Abandoned[coord=" + Arrays.toString(coord) + ", time=" + time + ", width=" + width + ", influence="
+                + influence + ", elevation=" + elevation + "]";
     }
 }
