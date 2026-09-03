@@ -1,5 +1,6 @@
 package me.batata_1.fractal_terrain.hydrology.features;
 
+import it.unimi.dsi.fastutil.ints.IntSet;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Comparator;
@@ -9,6 +10,8 @@ import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.network.Centreline;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
+import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
+import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import me.batata_1.fractal_terrain.hydrology.profile.DefaultProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
@@ -187,7 +190,14 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
         },
         SOURCE(() -> SourcePrimitive.PROTOTYPE) {
             @Override
-            public void addPrimitives(double[] offset, List<HydrologicalPrimitive> primitives, Object... args) {}
+            public void addPrimitives(double[] offset, List<HydrologicalPrimitive> primitives, Object... args) {
+                final Endpoint endpoint = (Endpoint) args[0];
+                final RiverNetwork network = (RiverNetwork) args[1];
+                final IntSet emitting = (IntSet) args[2];
+                final double width = maxIncidentWidth(endpoint, network, emitting);
+                if (width <= 0 || Double.isNaN(endpoint.elevation)) return;
+                primitives.add(new SourcePrimitive(VectorOps.sub(endpoint.coord, offset), width, endpoint.elevation));
+            }
         },
         WATERFALL(() -> WaterfallPrimitive.PROTOTYPE) {
             @Override
@@ -201,8 +211,18 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
         // constant reinterprets every primitive already cached.
         CONFLUENCE(() -> ConfluencePrimitive.PROTOTYPE) {
             @Override
-            public void addPrimitives(double[] offset, List<HydrologicalPrimitive> primitives, Object... args) {}
+            public void addPrimitives(double[] offset, List<HydrologicalPrimitive> primitives, Object... args) {
+                final Endpoint endpoint = (Endpoint) args[0];
+                final RiverNetwork network = (RiverNetwork) args[1];
+                final IntSet emitting = (IntSet) args[2];
+                if (countEmitting(endpoint, emitting) < 2) return;
+                final double width = maxIncidentWidth(endpoint, network, emitting);
+                if (width <= 0 || Double.isNaN(endpoint.elevation)) return;
+                primitives.add(
+                        new ConfluencePrimitive(VectorOps.sub(endpoint.coord, offset), width, endpoint.elevation));
+            }
         };
+
         /** {@code values()} without the defensive copy; indexed by the on-disk type tag. */
         private static final HydrologicalFeature[] VALUES = values();
 
@@ -256,5 +276,28 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
         }
 
         public abstract void addPrimitives(double[] offset, List<HydrologicalPrimitive> primitives, Object... args);
+
+        /** The widest channel meeting at a node, measured at the spline point touching it. Zero when
+         *  no incident channel emitted — a bowl sized off a dropped channel would carve into nothing. */
+        private static double maxIncidentWidth(Endpoint endpoint, RiverNetwork network, IntSet emitting) {
+            double width = 0;
+            for (final int id : endpoint.incoming) {
+                if (!emitting.contains(id)) continue;
+                final Channel ch = network.getChannel(id);
+                width = Math.max(width, ch.widthAt(ch.numPts() - 1));
+            }
+            if (endpoint.outgoing != -1 && emitting.contains(endpoint.outgoing)) {
+                width = Math.max(width, network.getChannel(endpoint.outgoing).widthAt(0));
+            }
+            return width;
+        }
+
+        /** Incident channels that actually emitted river primitives. */
+        private static int countEmitting(Endpoint endpoint, IntSet emitting) {
+            int count = 0;
+            for (final int id : endpoint.incoming) if (emitting.contains(id)) count++;
+            if (endpoint.outgoing != -1 && emitting.contains(endpoint.outgoing)) count++;
+            return count;
+        }
     }
 }

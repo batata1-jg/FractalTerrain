@@ -7,6 +7,8 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntAVLTreeSet;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import it.unimi.dsi.fastutil.ints.IntSet;
 import it.unimi.dsi.fastutil.ints.IntSortedSet;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.ArrayDeque;
@@ -747,13 +749,22 @@ public final class RiverNetwork {
             }
             emitting.add(ch);
         }
+        final IntSet emittingIds = new IntOpenHashSet(emitting.size());
+        for (final Channel ch : emitting) emittingIds.add(ch.channelId);
 
         // Phase 2: one classification pass over the whole graph.
         if (typer != null) typer.prepare(this);
         final Centreline centreline = new Centreline(this);
 
         for (Endpoint en : nodes.values()) {
-            if (en.type == Endpoint.Type.SOURCE) HydrologicalFeature.SOURCE.addPrimitives(offset, primitives, en);
+            if (en.type == Endpoint.Type.SOURCE) {
+                HydrologicalFeature.SOURCE.addPrimitives(offset, primitives, en, this, emittingIds);
+            }
+
+            // Degree three or more: two channels arriving is what makes a junction a confluence.
+            if (en.type == Endpoint.Type.JUNCTION && en.incoming.size() >= 2) {
+                HydrologicalFeature.CONFLUENCE.addPrimitives(offset, primitives, en, this, emittingIds);
+            }
 
             // TODO: fix this, not all drains are deltas
             if (en.type == Endpoint.Type.DRAIN) HydrologicalFeature.DELTA.addPrimitives(offset, primitives, en);
