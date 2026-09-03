@@ -2,22 +2,27 @@
 
 ## Overview
 
-Six feature families share one spatial index and one persistence payload, but only two of them are ever
-minted and only one of those is ever carved. `HydrologicalFeature.RIVER.addPrimitives` walks a channel's
-spline points and emits a `RiverPrimitive` per point; `SOURCE` emits one `SourcePrimitive` per headwater
-endpoint; `ABANDONED_RIVER`, `OXBOW_LAKE`, `WATERFALL` and `DELTA` all override `addPrimitives` with an
-empty body. The records for those four exist so the type tag, the codec and the `HydrologyProfile`
-extension point are already in place when they grow real behaviour — not because anything produces them
-today.
+Seven feature families share one spatial index and one persistence payload; three of them are ever minted
+and the same three are ever carved. `HydrologicalFeature.RIVER.addPrimitives` walks a channel's spline
+points and emits a `RiverPrimitive` per point; `SOURCE` emits one `SourcePrimitive` per headwater endpoint
+whose emitting channel has positive width; `CONFLUENCE` emits one `ConfluencePrimitive` per `JUNCTION`
+endpoint of degree three or more where at least two incident channels emitted. `ABANDONED_RIVER`,
+`OXBOW_LAKE`, `WATERFALL` and `DELTA` all still override `addPrimitives` with an empty body. The records
+for those four exist so the type tag, the codec and the `HydrologyProfile` extension point are already in
+place when they grow real behaviour — not because anything produces them today.
 
 ## Architecture
 
-**Carve reaches river primitives only, and the sort order is what makes that cheap.**
-`HydrologicalPrimitive.comparator` orders by `getType().ordinal()` first, and `RIVER` is ordinal 0, so
-every `RiverPrimitive` sorts ahead of every other family. `RiverInfluenceCarve.computeRiverGrid` relies on
-that: it walks the sorted list only while the entry is a `RiverPrimitive` and returns the index where the
-river run ended, so a later family pass could resume there. No such pass exists. A `SourcePrimitive` is
-therefore indexed, persisted and queryable, but contributes nothing to any elevation.
+**Carve reaches river primitives directly and radial primitives through a second pass, and the sort order
+is what makes both cheap.** `HydrologicalPrimitive.comparator` orders by `getType().ordinal()` first, and
+`RIVER` is ordinal 0, so every `RiverPrimitive` sorts ahead of every other family.
+`RiverInfluenceCarve.computeRiverGrid`'s first pass relies on that: it walks the sorted list only while the
+entry is a `RiverPrimitive` and returns the index where the river run ended. A second pass then walks the
+rest of the sorted list and carves every entry that implements `RadialPrimitive` — `SOURCE` and
+`CONFLUENCE` are not adjacent in comparator order (`DELTA` sorts between them), so this is a filtered walk
+to the end rather than a resume on a contiguous run. A `DeltaPrimitive`, `WaterfallPrimitive`,
+`OxbowLakePrimitive` or `AbandonedRiverPrimitive` is therefore indexed, persisted and queryable, but
+contributes nothing to any elevation.
 
 **No primitive carries a per-point carve method, and none should grow one.** The carve never asks a
 primitive for its elevation at a point: `RiverInfluenceCarve` tabulates each primitive's cross-section into
@@ -39,5 +44,9 @@ through a sampler the carve would have to invoke per pixel.
 - **A family that emits primitives must sort after `RIVER`.** `computeRiverGrid`'s stop condition is the
   first non-river entry, so a family with an ordinal below `RIVER`'s truncates the river run and silently
   drops carve.
+- **A family that carves radially must implement `RadialPrimitive`.** `computeRiverGrid`'s second pass
+  dispatches on `instanceof RadialPrimitive` and nothing else — a record that does not implement it is
+  indexed and persisted like any other primitive but never reaches the radial carve, however far past
+  `RIVER` its ordinal sorts.
 - Mark any allocation that looks avoidable but is intentional with `:PERF: [what]; [why]`
   (`.claude/conventions/intent-markers.md`) rather than leaving it for a reviewer to flag.

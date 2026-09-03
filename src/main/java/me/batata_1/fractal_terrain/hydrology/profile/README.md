@@ -40,12 +40,18 @@ point.
 the spatial index stores it under — `influenceLen` along the flow tangent, `influenceWidth` across it.
 The raw scale is the factor that rectangle must be scaled by to contain the lattice point,
 `max(|tang| / influenceLen, |perp| / influenceWidth)`, so `raw <= 1` is exactly "inside the footprint"
-and is what the in-band mask tests. `carvePrimitive` then remaps that raw scale through
+and is what the in-band mask tests. `carveRiverPrimitive` then remaps that raw scale through
 `RiverInfluenceCarve.band`, three linear pieces pinned so `BED_EDGE` (0.25) always lands on the bank and
 `FLOODPLAIN_EDGE` (0.5) always lands on the floodplain edge, whatever the primitive's width. `d` is
 dimensionless: `UNSET_MIN_DIST` and the blend width are read against that banded scale, not against
 relief-pixels. Both half-extents come from `RiverPrimitive.getLength()` / `getWidth()`, so a primitive
 indexed under a non-square rectangle carves the shape it was indexed under.
+
+For a `RadialPrimitive`, `d` *is* a radius scale — the plain Euclidean distance from the disc centre,
+divided by `width()` — because a bowl or a cone has no flow tangent to band a rectangle against. Both
+scales are dimensionless for the same reason: `UNSET_MIN_DIST` and `HydrologyTuning.PRIMITIVE_BLEND_STRENGTH`
+read against whichever one a primitive produces, without caring whether it measures a rectangle or a
+circle.
 
 The banding is load-bearing in two directions. It gives the paint side a width-independent coordinate: a
 consumer classifies a point into bed / floodplain / influence with two comparisons against constants and
@@ -85,6 +91,20 @@ from; the stop only lands at the true end of the river run because of the sort o
 loop tracks position itself. The blend carries no per-primitive footprint weighting — distance alone
 drives it — and there is no nearest-wins rule: near-equidistant competitors blend rather than one
 winning outright.
+
+**Radial pass.** After the river run, `computeRiverGrid` walks the rest of the sorted list and carves
+every entry implementing `RadialPrimitive` — a `ConfluencePrimitive` or `SourcePrimitive` — into the same
+`acc`, but ranked against its own `radialDist` buffer rather than `dist`. Two reasons: a disc's radius
+scale and a channel's banded rectangle scale are not comparable, so ranking them against one shared
+distance would blend a bowl against a bed by two different measures of "inside"; and `dist` is live
+data — `PopulateNoiseStep` publishes it into `Types.RIVER_DIST` for the surface painter to read after the
+carve returns, so the river pass's values in it must survive untouched. The radial contribution is gated
+on the river pass's own weight lane, read before the radial pass rewrites it: a cell no river reached
+(`acc[a+2] == 0`) samples the radial profile directly, while a cell a river already claimed clamps to
+`min(acc[a], sampled)`, so the deeper of the two surfaces wins rather than the bowl overwriting the bed.
+The weight lane itself is maxed rather than assigned (`acc[a+2] = max(acc[a+2], …)`), because a cell
+inside a radial primitive's clipped AABB but outside its disc carries radial weight zero, and assigning
+would erase the river's own claim there.
 
 **Cut-only.** `computeRiverGrid`'s output `h` is a pure weighted blend with no ambient clamp folded in.
 Each call site recovers its carved elevation as `(1 - w) * ambient + w * min(h, ambient)`, applying the
@@ -149,6 +169,11 @@ instance. Every family but `RIVER` answers `DefaultProfile.INSTANCE`, whose `riv
 zero — so a newly added feature type stays as invisible to the surface as it already is to the carve.
 
 ## Design decisions / known limitations
+
+**A `CONFLUENCE`/`SOURCE` cell is not painted.** `HydrologicalFeature.profileFor` defaults to
+`DefaultProfile`, whose `riverPaintDepth` returns zero, so a cell the radial pass stamps in `typeMask`
+falls through to the vanilla surface rules rather than the riverbed materials a `RIVER` cell gets — a
+deliberate scope cut, not an oversight: the radial pass carves elevation only.
 
 **Bed-trench depth is a hard-coded function of width, not a true cross-section.** `RosgenProfile
 .delta` computes the bed depth as `FractalTerrainConfig.GLOBAL_SCALE_CORRECTION *

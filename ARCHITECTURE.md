@@ -134,7 +134,13 @@ The two call sites:
    (chunk centre plus half-diagonal radius, relief-pixel frame) and sorts by
    `HydrologicalPrimitive.comparator` — the ordering `computeRiverGrid` requires, and what lets it stop
    at the first non-`RiverPrimitive` entry. `HydrologyProfilePainter` reads `RIVER_DIFFERENCE` back to
-   place river water.
+   place river water. After that river run, `computeRiverGrid` runs a second pass over the rest of the
+   prefetched list, carving every `RadialPrimitive` (`ConfluencePrimitive`/`SourcePrimitive`) into the
+   same lattice, ranked against its own `radialDist` buffer and gated on the river pass's weight so a
+   bowl or cone deepens a bed rather than overwriting it. `dist` — and the `Types.RIVER_DIST` it
+   publishes for the surface painter — is untouched by that second pass; see
+   `hydrology/profile/README.md`. The tile-level shell carve (`carveRiverInfluence` below) has no radial
+   pass; only the per-chunk bed carve does.
 
 There is no tile-level bed carve: `hydrology_relief` carries the valley shell only, and the trench is cut
 per chunk against it. `RIVER_DIFFERENCE` is therefore the full shell-to-bed depth, not a residual.
@@ -144,8 +150,10 @@ distance-weighted average over `HydrologyProfile.shellElevation`/`riverInfluence
 `resolveNearestPrimitiveIndex` + `sampleNearestChannel` → `NearestChannelSample.carveInto` polyline
 foot-point sample; the per-primitive `HydrologicalPrimitive.h`/`w`/`d` samplers the carve once invoked per
 pixel; the tile-level `carveRiverBed` and the `ExtendedRiverPrimitive` provenance record that fed it; the
-`ConfluencePrimitive` junction ray-set; and, before all of those, the `ZoneCategory` priority merge
-(`WATERFALL` > `BED` > `LAKE_BED` > `FLOODPLAIN` > `INFLUENCE`). None of those symbols exist any more. `ZoneCategory` itself
+ray-set junction merge an earlier `ConfluencePrimitive` implemented; and, before all of those, the
+`ZoneCategory` priority merge (`WATERFALL` > `BED` > `LAKE_BED` > `FLOODPLAIN` > `INFLUENCE`). None of
+those mechanisms exist any more — `ConfluencePrimitive` itself is live again, naming a radial-bowl carve
+unrelated to the ray-set it once named; see `hydrology/features/README.md`. `ZoneCategory` itself
 survives only as a reservation for feature types that have yet to grow real profiles.
 
 `HydrologyTuning.MAX_LOCAL_WIDTH` is retained but unread by live code, not even through the
@@ -396,9 +404,9 @@ bands, in order of increasing cost:
 
 - `world/gen/populatenoise/PopulateNoiseStep.java` `fineGrainedPrimitivePass`, the per-column blend loop
   at lines 85–96 — runs 256 times per chunk, for every chunk generated.
-- `hydrology/profile/RiverInfluenceCarve.java` `computeRiverGrid` and the `carvePrimitive*` helpers it
-  drives — once per chunk over every prefetched primitive, plus once per tile over the whole 514×514
-  lattice. Its scratch arrays live in a `ThreadLocal<GridBuffers>` resized in place rather than being
+- `hydrology/profile/RiverInfluenceCarve.java` `computeRiverGrid` and the per-primitive helpers it
+  drives (`carveRiverPrimitive`, `carveRadialPrimitive`, `carvePrimitiveInfluence`) — once per chunk over
+  every prefetched primitive, plus once per tile over the whole 514×514 lattice. Its scratch arrays live in a `ThreadLocal<GridBuffers>` resized in place rather than being
   allocated per call, and each primitive's cross-section is tabulated into a LUT once instead of being
   re-evaluated per lattice cell. `RosgenProfile.sampleCrossSection` and `HydrologyProfile` sit under it.
 - `hydrology/features/HydrologicalPrimitive.java` `HydrologicalFeature.addPrimitives` and `comparator` —
