@@ -82,6 +82,7 @@ public class PopulateNoiseStep {
                 acc,
                 buffers.typeMask,
                 buffers.dist,
+                buffers.radialDist,
                 buffers.lut,
                 buffers.perpRow,
                 buffers.perpCol,

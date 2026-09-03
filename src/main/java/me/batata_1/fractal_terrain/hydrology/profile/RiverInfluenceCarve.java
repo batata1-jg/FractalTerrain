@@ -6,13 +6,14 @@ import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
+import me.batata_1.fractal_terrain.hydrology.features.RadialPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
 import org.jetbrains.annotations.TestOnly;
 
 /**
  * The stateless lattice carve shared by every carve call site: {@link #computeRiverGrid} merges every
- * touching river primitive into one (height, water, weight) triple per lattice point, and
- * {@link #carveRiverInfluence} wraps it for the padded-tile shell pass.
+ * touching primitive — rivers first, then the radial families — into one (height, water, weight) triple
+ * per lattice point, and {@link #carveRiverInfluence} wraps it for the padded-tile shell pass.
  *
  * <p>Split out of {@link HydrologyProfileInprinter} so this pure lattice math carries no
  * {@code RiverProvider} dependency — an instance field here would force a cycle back onto
@@ -62,11 +63,14 @@ public final class RiverInfluenceCarve {
     }
 
     /**
-     * Merges every river primitive into a lattice of (height, water, weight) triples in {@code acc}.
-     * {@code primitives} MUST be sorted by {@link HydrologicalPrimitive#comparator} — the merge is a
-     * sequential recurrence, so order is load-bearing for determinism.
+     * Merges every river primitive, then every radial one, into a lattice of (height, water, weight)
+     * triples in {@code acc}. {@code primitives} MUST be sorted by {@link
+     * HydrologicalPrimitive#comparator} — the merge is a sequential recurrence, so order is load-bearing
+     * for determinism.
      *
-     * @return the index of the first non-river primitive, where a later family pass resumes
+     * @param radialDist the radial pass's own penetration ranking, kept off {@code dist} because the
+     *     surface painter consumes that one after the carve returns
+     * @return the index one past the last river primitive, bounding the river run
      */
     public static int computeRiverGrid(
             double startX,
@@ -77,6 +81,7 @@ public final class RiverInfluenceCarve {
             float[] acc,
             long[] typeMask,
             float[] dist,
+            float[] radialDist,
             float[] lut,
             double[] perpRow,
             double[] perpCol,
@@ -90,7 +95,7 @@ public final class RiverInfluenceCarve {
 
         int stop = 0;
         while (stop < primitives.size() && primitives.get(stop) instanceof RiverPrimitive river) {
-            carvePrimitive(
+            carveRiverPrimitive(
                     river,
                     startX,
                     startZ,
@@ -106,6 +111,22 @@ public final class RiverInfluenceCarve {
                     tangCol,
                     elevs);
             stop++;
+        }
+
+        // A separate ranking buffer on two counts. Radial penetration must rank among radial primitives
+        // only — a disc's radius scale and a channel's banded rectangle scale are not comparable, and
+        // letting them compete would rank a bowl against a bed by two different measures of "inside".
+        // And dist is live data: PopulateNoiseStep publishes it into Types.RIVER_DIST, which the surface
+        // painter reads to pick riverbed materials, so the river pass's values must survive the carve.
+        Arrays.fill(radialDist, 0, points, (float) UNSET_MIN_DIST);
+
+        // SOURCE and CONFLUENCE are not adjacent in comparator order (DELTA sorts between them), so
+        // the walk runs to the end rather than resuming on a contiguous run.
+        for (int i = stop; i < primitives.size(); i++) {
+            if (primitives.get(i) instanceof RadialPrimitive radial) {
+                carveRadialPrimitive(
+                        radial, startX, startZ, resolution, gridSize, acc, typeMask, radialDist, lut, elevs);
+            }
         }
         return stop;
     }
@@ -148,9 +169,10 @@ public final class RiverInfluenceCarve {
         }
     }
 
-    /** One primitive's contribution, clipped to the lattice points its footprint reaches. Primitive-outer
-     *  so the profile, the seed, the width-invariant extents and the LUT are computed once, not per point. */
-    private static void carvePrimitive(
+    /** One river primitive's contribution, clipped to the lattice points its footprint reaches.
+     *  Primitive-outer so the profile, the seed, the width-invariant extents and the LUT are computed
+     *  once, not per point. */
+    private static void carveRiverPrimitive(
             RiverPrimitive river,
             double startX,
             double startZ,
@@ -282,6 +304,98 @@ public final class RiverInfluenceCarve {
                 // the weight is a near-hard selector, so this is the true nearest bar a 0.1-wide band.
                 typeMask[i] = w > 0.5 ? packed : typeMask[i];
                 acc[a + 2] = 1 - Math.clamp(dist[i], 0, 1);
+            }
+        }
+    }
+
+    /**
+     * One radial primitive's contribution, clipped to the lattice points its disc reaches. Runs after
+     * every river against {@code radialDist}, so it deepens the merged river surface rather than
+     * competing with it for the same distance slot.
+     */
+    private static void carveRadialPrimitive(
+            RadialPrimitive radial,
+            double startX,
+            double startZ,
+            double resolution,
+            int gridSize,
+            float[] acc,
+            long[] typeMask,
+            float[] radialDist,
+            float[] lut,
+            float[] elevs) {
+        final double cx = radial.coord()[0], cz = radial.coord()[1];
+        final double radius = radial.getRadius();
+        if (radius <= 0) return;
+
+        // :PERF: conservative AABB clip; floor/ceil so a too-wide range is harmless while a too-narrow
+        // one would silently drop carve -- the exact disc test still runs per lattice point.
+        final long rowLo = (long) Math.floor((cx - radius - startX) / resolution);
+        final long rowHi = (long) Math.ceil((cx + radius - startX) / resolution);
+        final long colLo = (long) Math.floor((cz - radius - startZ) / resolution);
+        final long colHi = (long) Math.ceil((cz + radius - startZ) / resolution);
+        if (rowHi < 0 || rowLo > gridSize - 1 || colHi < 0 || colLo > gridSize - 1) return;
+        final int rowMin = (int) Math.max(rowLo, 0);
+        final int rowMax = (int) Math.min(rowHi, gridSize - 1);
+        final int colMin = (int) Math.max(colLo, 0);
+        final int colMax = (int) Math.min(colHi, gridSize - 1);
+
+        // The LUT spans only the radii the clipped box actually reaches. This is what caps n at the
+        // grid diagonal: a full-radius table would want radius/resolution entries, which at
+        // GRID_RESOLUTION overruns what maxLutLen sizes the buffer for.
+        final double x0 = startX + rowMin * resolution, x1 = startX + rowMax * resolution;
+        final double z0 = startZ + colMin * resolution, z1 = startZ + colMax * resolution;
+        final double nearX = Math.max(0.0, Math.max(x0 - cx, cx - x1));
+        final double nearZ = Math.max(0.0, Math.max(z0 - cz, cz - z1));
+        final double radMin = Math.sqrt(nearX * nearX + nearZ * nearZ);
+        final double farX = Math.max(Math.abs(x0 - cx), Math.abs(x1 - cx));
+        final double farZ = Math.max(Math.abs(z0 - cz), Math.abs(z1 - cz));
+        final double radMax = Math.min(Math.sqrt(farX * farX + farZ * farZ), radius);
+        if (radMin > radMax) return;
+
+        final double invStep = 1.0 / resolution;
+        final int baseIdx = (int) Math.floor(radMin * invStep);
+        final int n = (int) Math.floor(radMax * invStep) - baseIdx + 2;
+
+        final double width = radial.width();
+        final double elevation = radial.elevation();
+        final double invRadius = 1.0 / radius;
+        final double depth = FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depth(width);
+        final float waterSurface = (float) (elevation + HydrologicalPrimitive.waterLine(width));
+        final long packed = radial.getType().pack(0);
+        radial.getRadialProfile().sampleRadialSection(lut, n, resolution, baseIdx, elevation, invRadius, depth);
+
+        for (int row = rowMin; row <= rowMax; row++) {
+            final int rowBase = row * gridSize;
+            final double ddx = (startX + row * resolution) - cx;
+            for (int col = colMin; col <= colMax; col++) {
+                final int i = rowBase + col;
+                final int a = 3 * i;
+                final double ddz = (startZ + col * resolution) - cz;
+                // A circle admits no affine row/column split the way the river's two projections do,
+                // so the true distance is computed per cell rather than tabulated per axis.
+                final double rad = Math.sqrt(ddx * ddx + ddz * ddz);
+                final double d = rad * invRadius;
+                final double mask = d <= 1.0 ? 1.0 : 0.0;
+                final double t =
+                        Math.clamp(((radialDist[i] - d) / HydrologyTuning.PRIMITIVE_BLEND_STRENGTH + 1) * 0.5, 0, 1);
+                final double w = t * t * (3.0 - 2.0 * t) * mask;
+
+                final double f = rad * invStep - baseIdx;
+                final int i0 = Math.clamp((int) f, 0, n - 2);
+                final double sampled = lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]);
+                final double bounded = (elevs != null) ? Math.min(elevs[i], sampled) : sampled;
+                // Gated on the river pass's weight, not on acc alone: acc is zero-filled, so an
+                // unconditional min would clamp a bowl standing on high ground down to zero.
+                final double h = acc[a + 2] > 0 ? Math.min(acc[a], bounded) : bounded;
+
+                radialDist[i] = (float) ((1 - w) * radialDist[i] + w * d);
+                acc[a] = (float) ((1 - w) * acc[a] + w * h);
+                acc[a + 1] = (float) ((1 - w) * acc[a + 1] + w * waterSurface);
+                typeMask[i] = w > 0.5 ? packed : typeMask[i];
+                // Maxed rather than assigned: cells inside the square footprint but outside the disc
+                // take w = 0, and assigning would erase the river's own claim on them.
+                acc[a + 2] = Math.max(acc[a + 2], (float) (1 - Math.clamp(radialDist[i], 0, 1)));
             }
         }
     }
@@ -464,6 +578,9 @@ public final class RiverInfluenceCarve {
         public float[] acc = new float[0];
         public long[] typeMask = new long[0];
         public float[] dist = new float[0];
+        /** The radial pass's own ranking, so {@code dist} survives the carve for the surface painter. */
+        public float[] radialDist = new float[0];
+
         public float[] lut = new float[0];
         /** Scratch: the row half of each lattice point's across-flow projection. */
         public double[] perpRow = new double[0];
@@ -480,6 +597,7 @@ public final class RiverInfluenceCarve {
             if (acc.length < 3 * points) acc = new float[3 * points];
             if (typeMask.length < points) typeMask = new long[points];
             if (dist.length < points) dist = new float[points];
+            if (radialDist.length < points) radialDist = new float[points];
             if (lut.length < lutLen) lut = new float[lutLen];
             if (perpRow.length < gridSize) perpRow = new double[gridSize];
             if (perpCol.length < gridSize) perpCol = new double[gridSize];
