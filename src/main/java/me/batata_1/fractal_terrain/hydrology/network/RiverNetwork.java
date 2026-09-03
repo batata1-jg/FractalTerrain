@@ -649,7 +649,7 @@ public final class RiverNetwork {
     private List<Channel.ChannelPt> getPtsCloseTo(Channel.ChannelPt pt) {
         // Retained-path read (manageCutoffs): derived width of the CURRENT point.
         return quadTree.getPointsInCircle(
-                pt.toArray(), Math.sqrt(channels.get(pt.channelId()).widthAt(pt.index())));
+                pt.toArray(),1.5 * channels.get(pt.channelId()).widthAt(pt.index()));
     }
 
     public void manageCutoffs(Channel ch, int step) {
@@ -738,7 +738,7 @@ public final class RiverNetwork {
             if (!ch.isResampleable()) continue; // degenerate geometry (too few points or NaN): skip
             // Spacing must be <= half the NARROWEST (intake) derived width, so consecutive primitives'
             // width/2 discs always overlap (gap-free membership test + girth rendering).
-            final double dx = Math.max(ch.intakeWidth(), MIN_CONVERT_SPACING);
+            final double dx = Math.max(ch.intakeWidth()/2, MIN_CONVERT_SPACING);
             try {
                 ch.reSample(dx);
             } catch (RuntimeException runaway) {

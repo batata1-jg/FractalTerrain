@@ -129,8 +129,8 @@ public final class WorldPipeline implements AutoCloseable {
         return residual.getSlice(new int[] {0, i0, j0}, new int[] {DECODER_CHANNELS, i1, j1});
     }
 
-    public float[] getClimate(int x, int z, float[] elevFlat) {
-        return climateProvider.getClimate(x, z, elevFlat);
+    public float[] getClimate(int i1, int j1, int i2, int j2, float[] elevFlat, int H, int W) {
+        return climateProvider.getClimate(i1,j1,i2,j2,elevFlat,H,W);
     }
 
     // =========================================================================

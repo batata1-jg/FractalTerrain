@@ -50,13 +50,14 @@ public final class LocalDrainageTracer {
     public static void traceLocalNetwork(
             int[] drainage,
             float[] elev,
+            float[] humidity,
             float[] gradMag,
             RiverNetwork network,
             @Nullable RiverProvider.Stages stages) {
         final int cellCount = PADDED * PADDED;
         final AtomicView net = network.viewAtomic();
         final float[] flow =
-                computeFlow(drainage, PADDED, HydrologyTuning.FLOW_INITIAL_LOCAL, HydrologyTuning.FLOW_PER_CELL_LOCAL);
+                computeFlow(drainage, PADDED, HydrologyTuning.FLOW_INITIAL_LOCAL, flowFromHumidity(humidity,false));
 
         final Drainage.FlowGraph graph = Drainage.FlowGraph.of(drainage, PADDED);
         final int[] downstream = graph.downstream();

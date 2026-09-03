@@ -52,7 +52,7 @@ public class GlobalRiverProvider {
     private static final int RIVER_BIT = 1 << 11;
 
     // ---- Geometry -----------------------------------------------------------
-    private static final int TILE_SIZE = 64;
+    private static final int TILE_SIZE = 128;
     /** Halo giving border pixels neighbours for the gradient descent. */
     private static final int PAD = HydrologyTuning.RAMP_WIDTH;
 
@@ -137,16 +137,12 @@ public class GlobalRiverProvider {
         final int tileOriginCx = tx * TILE_SIZE;
         final int tileOriginCz = tz * TILE_SIZE;
 
+
+        var res = paddedCoarse(tileOriginCx,tileOriginCz);
         // 1. slice: padded, weight-normalized coarse elevation — the ONLY pipeline-sourced input.
-        final float[] elevation = paddedElevation(tileOriginCx, tileOriginCz);
+        final float[] elevation = res[0];
+        final float[] humdity = res[1];
 
-        return computeTileFromElevation(elevation, tileOriginCx, tileOriginCz, stages);
-    }
-
-    /** The tile pipeline minus its one pipeline-sourced input, split out so goldens can drive it over a
-     *  synthetic elevation grid without loading the ONNX model. */
-    private FloatTensor computeTileFromElevation(
-            float[] elevation, int tileOriginCx, int tileOriginCz, @Nullable Stages stages) {
         // 2. threshold on the RAW elevation (so the coast stays anchored to true elevation).
         final boolean[][] ridgeMask = new boolean[PADDED_SIDE][PADDED_SIDE];
         final boolean[][] lowerMask = new boolean[PADDED_SIDE][PADDED_SIDE];
@@ -202,7 +198,7 @@ public class GlobalRiverProvider {
                 drainageDirection,
                 PADDED_SIDE,
                 HydrologyTuning.FLOW_INITIAL_GLOBAL,
-                HydrologyTuning.FLOW_PER_CELL_GLOBAL);
+                HydrologyTuning.flowFromHumidity(humdity,true));
         final float[] widths = new float[PADDED_SIDE * PADDED_SIDE];
         for (int px = 0; px < arrows.length; px++) {
             if (arrows[px] != 0) widths[px] = (float) HydrologyTuning.widthFromFlow(flowAccumulation[px]);
@@ -213,7 +209,7 @@ public class GlobalRiverProvider {
         final float[] riverElevation = computeRiverElevation(arrows, elevation);
 
         // 7. result: crop the central 64×64 into a [GLOBAL_RIVER_CHANNELS,64,64] tile (channel 3 = flow).
-        final FloatTensor tile = getTile(arrows, widths, riverElevation, flowAccumulation);
+        final FloatTensor tile = cropTile(arrows, widths, riverElevation, flowAccumulation);
 
         if (stages != null) {
             stages.riverElevation = riverElevation;
@@ -235,7 +231,9 @@ public class GlobalRiverProvider {
         return tile;
     }
 
-    private static @NotNull FloatTensor getTile(int[] arrows, float[] widths, float[] riverElevation, float[] flows) {
+
+
+    private static @NotNull FloatTensor cropTile(int[] arrows, float[] widths, float[] riverElevation, float[] flows) {
         final FloatTensor tile = new FloatTensor(new int[] {GLOBAL_RIVER_CHANNELS, TILE_SIZE, TILE_SIZE});
         final int pixelsPerChannel = TILE_SIZE * TILE_SIZE;
         for (int x = 0; x < TILE_SIZE; x++) {
@@ -259,7 +257,7 @@ public class GlobalRiverProvider {
             int startPi, int startPj, int[] drainageDirection, int[] arrows, @Nullable List<List<int[]>> descentPaths) {
         arrows[startPi * PADDED_SIDE + startPj] |= SOURCE_BIT;
         final List<int[]> path = (descentPaths != null) ? new ObjectArrayList<>() : null;
-        if (path != null) path.add(new int[] {startPi, startPj});
+        if (path != null) path.add(new int[]{startPi, startPj});
 
         int pi = startPi;
         int pj = startPj;
@@ -271,7 +269,7 @@ public class GlobalRiverProvider {
             final int nextPi = pi + NEIGHBOR_OFFSET_X[direction];
             final int nextPj = pj + NEIGHBOR_OFFSET_Z[direction];
             arrows[pi * PADDED_SIDE + pj] |= (1 << (OUTGOING_SHIFT + direction));
-            if (path != null) path.add(new int[] {nextPi, nextPj});
+            if (path != null) path.add(new int[]{nextPi, nextPj});
             final int nextIndex = nextPi * PADDED_SIDE + nextPj;
             if (isCoast(arrows[nextIndex])) break;
             // next was already walked: its downstream path (deterministic steepest descent) is already
@@ -285,19 +283,20 @@ public class GlobalRiverProvider {
     }
 
     /** Pulls the padded coarse slice and normalizes elevation by the blend weight (channel 6). */
-    private float[] paddedElevation(int tileOriginCx, int tileOriginCz) {
+    private float[][] paddedCoarse(int tileOriginCx, int tileOriginCz) {
         final int ci0 = tileOriginCx - PAD;
         final int cj0 = tileOriginCz - PAD;
         final int ci1 = tileOriginCx + TILE_SIZE + PAD;
         final int cj1 = tileOriginCz + TILE_SIZE + PAD;
         final FloatTensor slice = pipeline.getCoarseSlice(ci0, cj0, ci1, cj1);
         final int pixelCount = PADDED_SIDE * PADDED_SIDE;
-        final float[] elevation = new float[pixelCount];
+        final float[][] res = new float[2][pixelCount];
         for (int px = 0; px < pixelCount; px++) {
             final float weight = slice.get(6 * pixelCount + px);
-            elevation[px] = (weight > 1e-6f) ? slice.get(px) / weight : 0f;
+            res[0][px] = (weight > 1e-6f) ? slice.get(px) / weight : 0f;
+            res[1][px] = (weight > 1e-6f ) ? slice.get(4 * pixelCount + px) / weight : 0f;
         }
-        return elevation;
+        return res;
     }
 
     /** Pushes flow inward so rivers terminate inside the tile instead of spilling across its borders.
@@ -388,7 +387,91 @@ public class GlobalRiverProvider {
     /** Headless seam for {@code GlobalRiverGoldenTest}; delegates to the production path. */
     @TestOnly
     public FloatTensor computeTileForTest(float[] paddedElevation) {
-        return computeTileFromElevation(paddedElevation, 0, 0, null);
+        // 2. threshold on the RAW elevation (so the coast stays anchored to true elevation).
+        final boolean[][] ridgeMask = new boolean[PADDED_SIDE][PADDED_SIDE];
+        final boolean[][] lowerMask = new boolean[PADDED_SIDE][PADDED_SIDE];
+        for (int pi = 0; pi < PADDED_SIDE; pi++) {
+            for (int pj = 0; pj < PADDED_SIDE; pj++) {
+                final float value = paddedElevation[pi * PADDED_SIDE + pj];
+                ridgeMask[pi][pj] = value >= RIDGE_THRESHOLD;
+                lowerMask[pi][pj] = value <= COAST_THRESHOLD;
+            }
+        }
+
+        // Zero out the outer PAD+1 rows/cols of upperMask so the skeletonizer never thins padded pixels.
+        for (int pi = 0; pi < PADDED_SIDE; pi++) {
+            for (int pj = 0; pj < PADDED_SIDE; pj++) {
+                if (pi < PAD + 1 || pi >= PADDED_SIDE - PAD - 1 || pj < PAD + 1 || pj >= PADDED_SIDE - PAD - 1) {
+                    ridgeMask[pi][pj] = false;
+                }
+            }
+        }
+
+        // 3. isolate: a ramp rising toward the border on a COPY used only for the descent gradient,
+        //    then a depression fill so every interior cell drains to a border outlet (no interior
+        //    sinks). Only this descent copy is affected — the real elevation is left untouched. The
+        //    ramp leaves ocean border pixels low, so flow exits the tile through the ocean.
+        final float[] rampedElevation = Drainage.fillSinks(applyBorderRamp(paddedElevation), PADDED_SIDE, 0);
+
+        // 4. ridge mask (thinned upper region) + coast mask (border of the lower region).
+        //        final boolean[][] ridgeMask = Skeletonizer.thin(upperMask);
+        final boolean[][] coastMask = MarchingSquares.borderMask(lowerMask);
+
+        // 5. gradient descent: steepest-descent D4 field over the sink-filled ramped elevation, then a
+        //    per-source walk recording outgoing bits along each path until it reaches a coast pixel or a
+        //    border outlet. Sink filling guarantees the walk never stalls in an interior depression.
+        final int[] drainageDirection = Drainage.computeDrainageDirectionCardinal(rampedElevation, PADDED_SIDE);
+        final int[] arrows = new int[PADDED_SIDE * PADDED_SIDE];
+        for (int i = 0; i < PADDED_SIDE; i++) {
+            for (int j = 0; j < PADDED_SIDE; j++) {
+                arrows[i * PADDED_SIDE + j] = coastMask[i][j] ? COAST_BIT : 0;
+            }
+        }
+        final List<List<int[]>> descentPaths = (null != null) ? new ObjectArrayList<>() : null;
+        for (int pi = 0; pi < PADDED_SIDE; pi++) {
+            for (int pj = 0; pj < PADDED_SIDE; pj++) {
+                if (!ridgeMask[pi][pj]) continue;
+                walkFromSource(pi, pj, drainageDirection, arrows, descentPaths);
+            }
+        }
+
+        // 6. width: flow-accumulation proxy mapped through globalRiverWidth, only on river pixels.
+        //    NOTE: flow accumulation comes from the raw steepest-descent field, so cells on a
+        //    sink-reroute segment get width from natural flow rather than the rerouted drainage.
+        final float[] flowAccumulation = Drainage.computeFlow(
+                drainageDirection,
+                PADDED_SIDE,
+                HydrologyTuning.FLOW_INITIAL_GLOBAL, null);
+        final float[] widths = new float[PADDED_SIDE * PADDED_SIDE];
+        for (int px = 0; px < arrows.length; px++) {
+            if (arrows[px] != 0) widths[px] = (float) HydrologyTuning.widthFromFlow(flowAccumulation[px]);
+        }
+
+        // 6b. river-bed elevation: original (un-ramped) coarse elevation mapped to native scale and
+        //     forced monotonically non-increasing downstream along the arrow network.
+        final float[] riverElevation = computeRiverElevation(arrows, paddedElevation);
+
+        // 7. result: crop the central 64×64 into a [GLOBAL_RIVER_CHANNELS,64,64] tile (channel 3 = flow).
+        final FloatTensor tile = cropTile(arrows, widths, riverElevation, flowAccumulation);
+
+        if (null != null) {
+            ((Stages) null).riverElevation = riverElevation;
+            ((Stages) null).paddedSide = PADDED_SIDE;
+            ((Stages) null).pad = PAD;
+            ((Stages) null).tileOriginCx = 0;
+            ((Stages) null).tileOriginCz = 0;
+            ((Stages) null).rawElevation = paddedElevation;
+            ((Stages) null).rampedElevation = rampedElevation;
+            ((Stages) null).upperMask = ridgeMask;
+            ((Stages) null).lowerMask = lowerMask;
+            ((Stages) null).ridgeMask = ridgeMask;
+            ((Stages) null).coastMask = coastMask;
+            ((Stages) null).descentPaths = descentPaths;
+            ((Stages) null).arrows = arrows;
+            ((Stages) null).widths = widths;
+            ((Stages) null).tile = tile;
+        }
+        return tile;
     }
 
     /** Snapshot of every intermediate artifact produced while building a single tile. */

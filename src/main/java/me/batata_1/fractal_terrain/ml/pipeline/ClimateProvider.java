@@ -65,11 +65,8 @@ final class ClimateProvider {
         return result;
     }
 
-    public float[] getClimate(int x, int z, float[] elevFlat) {
-        return computeClimate(x << 9, z << 9, (x + 1) << 9, (z + 1) << 9, elevFlat, 1 << 9, 1 << 9);
-    }
 
-    private float[] computeClimate(int i1, int j1, int i2, int j2, float[] elevFlat, int H, int W) {
+    public float[] getClimate(int i1, int j1, int i2, int j2, float[] elevFlat, int H, int W) {
         int S = 32 * WorldPipeline.LATENT_COMPRESSION; // native pixels per coarse pixel in stride sense
 
         int ci1 = Math.floorDiv(i1, S);

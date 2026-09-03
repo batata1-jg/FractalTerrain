@@ -63,9 +63,10 @@ public abstract class ChannelMigrator {
         network.beginStep();
         dumpNetwork("00_original");
         for (Channel ch : network.getChannels()) {
-            ch.reSample(dx);
+            final double localDx = Math.clamp(ch.intakeWidth()/2,1.5,dx);
+            ch.reSample(localDx);
             ch.spline = QuinticHermiteSpline.createCatmullRom(ch.spline.points());
-            migrate(ch, dx);
+            migrate(ch, localDx);
         }
 
         network.resolveEndpoints();
@@ -79,7 +80,8 @@ public abstract class ChannelMigrator {
         network.manageCollisions(i, network.viewAtomic());
         dumpNetwork("04_managed");
         for (Channel ch : network.getChannels()) {
-            ch.reSample(dx);
+            final double localDx = Math.clamp(ch.intakeWidth()/2,1.5,dx);
+            ch.reSample(localDx);
             ch.spline = QuinticHermiteSpline.createCatmullRom(ch.spline.points());
         }
         dumpNetwork("05_final");

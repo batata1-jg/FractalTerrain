@@ -1,6 +1,9 @@
 package me.batata_1.fractal_terrain.hydrology;
 
 import it.unimi.dsi.fastutil.ints.IntArrayFIFOQueue;
+import me.batata_1.fractal_terrain.config.HydrologyTuning;
+import org.jetbrains.annotations.Nullable;
+
 import java.util.Arrays;
 import java.util.BitSet;
 
@@ -101,7 +104,7 @@ public class Drainage {
      *  {@code initialFlow} scales flow with catchment area and {@code flowPerCell} with channel length;
      *  they are separate knobs so river size can be tuned along either axis. */
     public static float[] computeFlow(
-            final int[] drainageDirection, final int gridSize, final float initialFlow, final float flowPerCell) {
+            final int[] drainageDirection, final int gridSize, final float initialFlow, final @Nullable float[] flowPerCell) {
         final FlowGraph graph = FlowGraph.of(drainageDirection, gridSize);
         final int[] downstream = graph.downstream();
         final int[] inDegree = graph.inDegree();
@@ -115,7 +118,7 @@ public class Drainage {
             final int next = downstream[current];
             if (next == -1) continue;
             if ((--inDegree[next]) == 0) frontier.enqueue(next);
-            flow[next] += flow[current] + flowPerCell;
+            flow[next] += flow[current] + (flowPerCell!=null ? flowPerCell[current] : HydrologyTuning.FLOW_PER_CELL_GLOBAL);
         }
 
         return flow;

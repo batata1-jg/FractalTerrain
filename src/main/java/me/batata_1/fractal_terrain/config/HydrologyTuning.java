@@ -71,11 +71,11 @@ public final class HydrologyTuning {
     // only generate sources for local rivers above this to prevent weird behavior in plains.
     public static final float GRAD_THRESHOLD = 10f;
 
-    public static final float FLOW_INITIAL_GLOBAL = 0.4f;
+    public static final float FLOW_INITIAL_GLOBAL = 0.1f;
 
     public static final float FLOW_INITIAL_LOCAL = 0.02f;
 
-    public static final float FLOW_PER_CELL_GLOBAL = 2f;
+    public static final float FLOW_PER_CELL_GLOBAL = 15f;
 
     public static final float FLOW_PER_CELL_LOCAL = 0.01f;
 
@@ -84,6 +84,21 @@ public final class HydrologyTuning {
 
     public static final int DRAIN_FLOW_SMOOTH_MAX_NODES = 20;
 
+
+    public static float[] flowFromHumidity(float[] humdity,boolean isGlobal) {
+        float[] res = humdity.clone();
+        for(int px=0; px<humdity.length ; px++) {
+            res[px] /= 1000.0f;
+            if(isGlobal) res[px] *= FLOW_PER_CELL_GLOBAL;
+            else res[px] *= FLOW_PER_CELL_LOCAL;
+        }
+        return res;
+    }
+
+    public static double widthFromFlow(double rawFlow) {
+        final double lawWidth = WIDTH_FLOW_SCALE * Math.sqrt(rawFlow);
+        return Math.clamp(lawWidth, MIN_WIDTH, MAX_WIDTH);
+    }
     // ──────────────────────────────────────────────────────────────────────────
     // Hydrology — river width & carve-profile tuning (all property-overridable).
     // ──────────────────────────────────────────────────────────────────────────
@@ -124,10 +139,7 @@ public final class HydrologyTuning {
                 MAX_INFLUENCE_RADIUS);
     }
 
-    public static double widthFromFlow(double rawFlow) {
-        final double lawWidth = WIDTH_FLOW_SCALE * Math.sqrt(rawFlow);
-        return Math.clamp(lawWidth, MIN_WIDTH, MAX_WIDTH);
-    }
+
 
     public static double maxNativeWidth() {
         return MAX_WIDTH;
