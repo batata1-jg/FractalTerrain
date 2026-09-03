@@ -64,9 +64,8 @@ public final class RiverInfluenceCarve {
 
     /**
      * Merges every river primitive, then every radial one, into a lattice of (height, water, weight)
-     * triples in {@code acc}. {@code primitives} MUST be sorted by {@link
-     * HydrologicalPrimitive#comparator} — the merge is a sequential recurrence, so order is load-bearing
-     * for determinism.
+     * triples in {@code acc}. {@code primitives} MUST be sorted by {@link HydrologicalPrimitive#comparator}
+     * — the merge is a sequential recurrence, so order is load-bearing.
      *
      * @param radialDist the radial pass's own penetration ranking, kept off {@code dist} because the
      *     surface painter consumes that one after the carve returns
