@@ -13,13 +13,19 @@ import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.DebugConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.debug.Debug;
+import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
+import me.batata_1.fractal_terrain.hydrology.network.Channel;
+import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
 import me.batata_1.fractal_terrain.hydrology.providers.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
+import me.batata_1.fractal_terrain.math.ds.QuadTree;
+import me.batata_1.fractal_terrain.math.ds.SpatialHashGrid;
+import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexPoint;
 import me.batata_1.fractal_terrain.ml.models.ModelAssetManager;
 import org.jetbrains.annotations.TestOnly;
@@ -60,6 +66,20 @@ public class SpatialIndexBenchmark {
         @Override
         public double[] getCoords() {
             return primitive.coord();
+        }
+    }
+
+    /** Zero-radius adapter mirroring {@code RiverNetwork.CrossingPoint}, so a {@link Channel.ChannelPt}
+     *  can be stored in an {@link ImmutableRTree} stab query for this benchmark's own comparison. */
+    private record ChannelPointCircle(Channel.ChannelPt pt) implements SpatialIndexCircle {
+        @Override
+        public double[] getCenter() {
+            return pt.toArray();
+        }
+
+        @Override
+        public double getRadius() {
+            return 0.0;
         }
     }
 
@@ -151,6 +171,13 @@ public class SpatialIndexBenchmark {
                 worldInnerPoints(5, worldOriginX, worldOriginZ),
                 pt -> localRivers.queryInfluence(pt).toArray().length);
 
+        // ---- RiverNetwork spatial-index migration (2026-09-03 design): detectCrossings -> ImmutableRTree,
+        // manageCutoffs -> SpatialHashGrid, both against one real tile's channel set --------------------
+        LOG.info("building RiverNetwork debug stages for the crossing/cutoff benchmark...");
+        final RiverProvider.Stages riverNetworkStages = localRivers.debugStages(TILE_X, TILE_Z);
+        benchDetectCrossingsCandidateGeneration(riverNetworkStages.network);
+        benchManageCutoffsOpMix(riverNetworkStages.network);
+
         LOG.info(
                 "throughput ratio (rtree/quadtree): influence query {}x, insideChannel test {}x",
                 String.format("%.2f", rtreeInfluenceOpsPerSec / legacyInfluenceOpsPerSec),
@@ -230,6 +257,209 @@ public class SpatialIndexBenchmark {
                     quadTreeDeviations,
                     CROSS_CHECK_POINTS);
         LOG.info("cross-check passed: R-tree stab matches brute force on {} points", CROSS_CHECK_POINTS);
+    }
+
+    /** D1's regression gate: the R-tree candidate set must exactly match the QuadTree baseline
+     *  {@code detectCrossings} used to build, over real query radii from a real tile's channels. Then
+     *  queries/sec for each, at a representative radius. */
+    private static void benchDetectCrossingsCandidateGeneration(RiverNetwork network) {
+        final List<Channel.ChannelPt> channelPts = new ObjectArrayList<>();
+        double maxHalf = 0.0;
+        for (final Channel ch : network.getChannels()) {
+            for (final Channel.ChannelPt pt : ch.getChannelAsPts()) channelPts.add(pt);
+            for (int i = 0; i < ch.numPts(); i++)
+                maxHalf = Math.max(maxHalf, ChannelGeometry.bedHalfWidth(ch.widthAt(i)));
+        }
+        if (channelPts.isEmpty()) {
+            LOG.warn("detectCrossings benchmark skipped: tile has no channel points");
+            return;
+        }
+        LOG.info("detectCrossings benchmark: {} channels, {} points", network.getChannelCount(), channelPts.size());
+
+        final QuadTree<Channel.ChannelPt> quadTree = new QuadTree<>(new double[] {-1e3, -1e3}, new double[] {1e3, 1e3});
+        for (final Channel.ChannelPt pt : channelPts) quadTree.insertPoint(pt);
+
+        final List<ChannelPointCircle> circles = new ObjectArrayList<>(channelPts.size());
+        for (final Channel.ChannelPt pt : channelPts) circles.add(new ChannelPointCircle(pt));
+        final ImmutableRTree<ChannelPointCircle> rtree = new ImmutableRTree<>(circles, null);
+
+        final Random rng = new Random(7);
+        final List<ChannelPointCircle> stabBuffer = new ObjectArrayList<>(64);
+        int mismatches = 0;
+        for (int i = 0; i < CROSS_CHECK_POINTS; i++) {
+            final Channel.ChannelPt query = channelPts.get(rng.nextInt(channelPts.size()));
+            final double radius = ChannelGeometry.bedHalfWidth(query.width()) + maxHalf;
+
+            final Set<Channel.ChannelPt> quadHits = new HashSet<>(quadTree.getPointsInCircle(query.toArray(), radius));
+
+            stabBuffer.clear();
+            rtree.queryContaining(query.toArray(), radius, stabBuffer);
+            final Set<Channel.ChannelPt> stabHits = new HashSet<>();
+            for (final ChannelPointCircle circle : stabBuffer) stabHits.add(circle.pt());
+
+            if (!quadHits.equals(stabHits)) mismatches++;
+        }
+        if (mismatches > 0)
+            throw new IllegalStateException("detectCrossings R-tree candidate set disagreed with the QuadTree"
+                    + " baseline on " + mismatches + " of " + CROSS_CHECK_POINTS + " points");
+        LOG.info(
+                "detectCrossings cross-check passed: R-tree candidates match QuadTree on {} points",
+                CROSS_CHECK_POINTS);
+
+        final double benchRadius = maxHalf * 2;
+        final Random quadRng = new Random(8);
+        bench(
+                "detectCrossings quadtree candidate query",
+                () -> channelPts.get(quadRng.nextInt(channelPts.size())).toArray(),
+                pt -> quadTree.getPointsInCircle(pt, benchRadius).size());
+
+        final Random rtreeRng = new Random(9);
+        final List<ChannelPointCircle> queryBuffer = new ObjectArrayList<>(64);
+        bench(
+                "detectCrossings rtree candidate query",
+                () -> channelPts.get(rtreeRng.nextInt(channelPts.size())).toArray(),
+                pt -> {
+                    queryBuffer.clear();
+                    return rtree.queryContaining(pt, benchRadius, queryBuffer).size();
+                });
+    }
+
+    /** Minimal view over {@code manageCutoffs}'s four operations, so the same walk exercises the
+     *  QuadTree baseline and the SpatialHashGrid replacement without duplicating the algorithm. */
+    private interface CutoffIndex {
+        void insert(Channel.ChannelPt pt);
+
+        void remove(Channel.ChannelPt pt);
+
+        boolean contains(Channel.ChannelPt pt);
+
+        List<Channel.ChannelPt> closeTo(Channel.ChannelPt pt, double radius);
+    }
+
+    private record QuadTreeCutoffIndex(QuadTree<Channel.ChannelPt> tree) implements CutoffIndex {
+        @Override
+        public void insert(Channel.ChannelPt pt) {
+            tree.insertPoint(pt);
+        }
+
+        @Override
+        public void remove(Channel.ChannelPt pt) {
+            tree.removePoint(pt);
+        }
+
+        @Override
+        public boolean contains(Channel.ChannelPt pt) {
+            return tree.containsPoint(pt);
+        }
+
+        @Override
+        public List<Channel.ChannelPt> closeTo(Channel.ChannelPt pt, double radius) {
+            return tree.getPointsInCircle(pt.toArray(), radius);
+        }
+    }
+
+    private record HashGridCutoffIndex(SpatialHashGrid<Channel.ChannelPt> grid) implements CutoffIndex {
+        @Override
+        public void insert(Channel.ChannelPt pt) {
+            grid.insertPoint(pt);
+        }
+
+        @Override
+        public void remove(Channel.ChannelPt pt) {
+            grid.removePoint(pt);
+        }
+
+        @Override
+        public boolean contains(Channel.ChannelPt pt) {
+            return grid.containsPoint(pt);
+        }
+
+        @Override
+        public List<Channel.ChannelPt> closeTo(Channel.ChannelPt pt, double radius) {
+            return grid.getPointsInCircle(pt.toArray(), radius);
+        }
+    }
+
+    /** Replicates {@code RiverNetwork.manageCutoffs}'s walk exactly (insert the channel, walk id order,
+     *  query-then-cut), parameterized over {@link CutoffIndex} so the same algorithm exercises either
+     *  structure. Returns the surviving indexes {@code manageCutoffs} would keep. */
+    private static List<Integer> runCutoffWalk(CutoffIndex index, Channel.ChannelPt[] pts, int channelId) {
+        for (Channel.ChannelPt pt : pts) index.insert(pt);
+        final List<Integer> keptIndexes = new ObjectArrayList<>();
+        for (int id = 0; id < pts.length - 1; id++) {
+            if (!index.contains(pts[id])) continue;
+            keptIndexes.add(id);
+            final List<Channel.ChannelPt> close = index.closeTo(pts[id], Math.sqrt(pts[id].width()));
+            close.sort(null);
+            for (Channel.ChannelPt cpt : close) {
+                if (cpt.index() <= id + 1 || cpt.channelId() != channelId) continue;
+                for (int i = id; i < cpt.index(); i++) index.remove(pts[i]);
+            }
+        }
+        keptIndexes.add(pts.length - 1);
+        return keptIndexes;
+    }
+
+    /** D2's regression gate + throughput comparison: same manageCutoffs walk, QuadTree baseline vs
+     *  SpatialHashGrid replacement, over the tile's largest channel (most insert/remove/query traffic). */
+    private static void benchManageCutoffsOpMix(RiverNetwork network) {
+        Channel largest = null;
+        for (final Channel ch : network.getChannels())
+            if (largest == null || ch.numPts() > largest.numPts()) largest = ch;
+        if (largest == null) {
+            LOG.warn("manageCutoffs benchmark skipped: tile has no channels");
+            return;
+        }
+        final Channel.ChannelPt[] pts = largest.getChannelAsPts();
+        final int channelId = largest.channelId;
+        final double cellSize = Math.ceil(Math.sqrt(HydrologyTuning.maxNativeWidth()));
+
+        final List<Integer> quadKept = runCutoffWalk(
+                new QuadTreeCutoffIndex(new QuadTree<>(new double[] {-1e3, -1e3}, new double[] {1e3, 1e3})),
+                pts,
+                channelId);
+        final List<Integer> hashKept =
+                runCutoffWalk(new HashGridCutoffIndex(new SpatialHashGrid<>(cellSize)), pts, channelId);
+        if (!quadKept.equals(hashKept))
+            throw new IllegalStateException("manageCutoffs SpatialHashGrid walk diverged from the QuadTree"
+                    + " baseline: quadtree kept " + quadKept + ", hashgrid kept " + hashKept);
+        LOG.info(
+                "manageCutoffs cross-check passed: SpatialHashGrid kept indexes match QuadTree ({} points)",
+                pts.length);
+
+        benchOp(
+                "manageCutoffs quadtree op-mix (channel " + channelId + ", " + pts.length + " points)",
+                () -> runCutoffWalk(
+                        new QuadTreeCutoffIndex(new QuadTree<>(new double[] {-1e3, -1e3}, new double[] {1e3, 1e3})),
+                        pts,
+                        channelId));
+        benchOp(
+                "manageCutoffs hashgrid op-mix (channel " + channelId + ", " + pts.length + " points)",
+                () -> runCutoffWalk(new HashGridCutoffIndex(new SpatialHashGrid<>(cellSize)), pts, channelId));
+    }
+
+    /** {@link #bench} for a niladic op-mix pass (insert/remove/query all inside one call) instead of a
+     *  single query point — used by the manageCutoffs benchmark, which rebuilds its structure per call
+     *  exactly as {@code RiverNetwork.manageCutoffs} does. */
+    private static void benchOp(String label, Runnable op) {
+        final long warmupEnd = System.nanoTime() + WARMUP_NANOS;
+        while (System.nanoTime() < warmupEnd) op.run();
+
+        long ops = 0;
+        final long start = System.nanoTime();
+        final long measureEnd = start + MEASURE_NANOS;
+        long now;
+        while ((now = System.nanoTime()) < measureEnd) {
+            op.run();
+            ops++;
+        }
+        final double seconds = (now - start) / 1e9;
+        LOG.info(
+                "{}: {} ops/sec ({} ops in {}s)",
+                label,
+                Math.round(ops / seconds),
+                ops,
+                String.format("%.2f", seconds));
     }
 
     /** Deterministic uniform world-frame points spanning the tile — used by the index-level benchmarks,
