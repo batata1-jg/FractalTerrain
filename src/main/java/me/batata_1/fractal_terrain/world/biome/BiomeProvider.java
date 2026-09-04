@@ -185,11 +185,11 @@ public class BiomeProvider {
             final float[] grad = reliefTensor.copyRange(4 << 18, 5 << 18);
             final float[] lowFreqGrad = reliefTensor.copyRange(5 << 18, 6 << 18);
             final float[] res = reliefTensor.copyRange(6 << 18, 7 << 18);
-            final float[] climate = pipeline.getClimate(x, z, elev);
+            final float[] climate = pipeline.getClimate(x << 9, z << 9, (x + 1) << 9, (z + 1) << 9, elev, 1 << 9, 1 << 9);
             final int[] coarseDistShore = computeCoarseDistShore(x, z);
             // While the visualizer runs, also capture the per-pixel dist-to-shore for the debug channel.
             final float[] distShoreDebug = DEBUG_DSHORE_CHANNEL_ON ? new float[TILE_PIXELS] : null;
-            var humidityFromRiver = humidityFromBodiesOfWater(key);
+            var humidityFromRiver = FractalTerrainInstance.getRiverProvider().getRiverHumidity(x,z);
             final float[] biomeVariables = ClimateToBiomeTransformer.transform(
                     x, z, elev, grad, lowFreqGrad, climate, res, humidityFromRiver, coarseDistShore, distShoreDebug);
 
@@ -259,21 +259,6 @@ public class BiomeProvider {
         }
         // Adjacent ocean (Manhattan 1) ⇒ shore 0; corner ocean (Manhattan 8) ⇒ 7.
         return (minManhattan == Integer.MAX_VALUE) ? SHORE_DIST_NO_OCEAN : minManhattan - 1;
-    }
-
-    /** Dead: no call site, and the body is commented out, so it returns all zeros.
-     *  Intended to raise humidity near rivers. */
-    private static float[] humidityFromBodiesOfWater(TileKey key) {
-        final var primitives = FractalTerrainInstance.getRiverProvider().getPrimitivesInTile(key);
-        primitives.sort(HydrologicalPrimitive.comparator);
-        final var riverH = new float[TILE_PIXELS];
-        for (int ix = 0; ix < 512; ix++) {
-            for (int iz = 0; iz < 512; iz++) {
-                // final double dist = localRivers.nearestRiverDistance(blockOriginX + ix, blockOriginZ + iz);
-                // vegPdf[ix * 512 + iz] = (dist == Double.MAX_VALUE) ? 0f : (float) Math.exp(-dist / HUMIDITY_FALLOFF);
-            }
-        }
-        return new float[TILE_PIXELS];
     }
 
     // -------------------------------------------------------------------------

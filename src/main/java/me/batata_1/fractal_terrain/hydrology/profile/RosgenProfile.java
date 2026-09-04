@@ -81,7 +81,7 @@ public enum RosgenProfile implements HydrologyProfile {
 
         @Override
         protected double bedDelta(long seed, double signedPerpDist, double depth, double curvature) {
-            return Math.min(-1, 0.25 * super.bedDelta(seed, signedPerpDist, depth, curvature));
+            return Math.min(-1, 0.5 * super.bedDelta(seed, signedPerpDist, depth, curvature));
         }
 
         @Override
@@ -266,19 +266,6 @@ public enum RosgenProfile implements HydrologyProfile {
 
     public static double smoothMin(double a, double b, double lambda) {
         return (a + b - Math.sqrt((a - b) * (a - b) + lambda)) / 2;
-    }
-
-    /**
-     * Smooth minimum that is <em>exactly</em> {@link Math#min} once the inputs differ by more than
-     * {@code blendRange}.
-     *
-     * <p>Unlike {@link #smoothMin}, which biases its result downward even for equal inputs, this
-     * leaves terrain the river cannot reach bit-identical — the carve must not sink the whole map.
-     */
-    public static double blendMin(double a, double b, double blendRange) {
-        if (blendRange <= 0.0) return Math.min(a, b);
-        final double overlap = Math.max(blendRange - Math.abs(a - b), 0.0) / blendRange;
-        return Math.min(a, b) - overlap * overlap * blendRange * 0.25;
     }
 
     /** Floodplain half-extent. Placeholder law shared by all types; override per constant. */

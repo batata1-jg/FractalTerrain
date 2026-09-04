@@ -25,7 +25,7 @@ public final class LocalNetworkBuilder {
 
     private LocalNetworkBuilder() {}
 
-    public static void build(GlobalNetworkBuilder.Result ctx, float[][] base, @Nullable RiverProvider.Stages stages) {
+    public static void build(GlobalNetworkBuilder.Result ctx, float[][] base,float[] humidity, @Nullable RiverProvider.Stages stages) {
         final float[] elev = base[0].clone();
         final float[] gradMag = base[4];
 
@@ -40,7 +40,7 @@ public final class LocalNetworkBuilder {
         final List<HydrologicalPrimitive> primitives = collect(ctx.network(), ctx.typer(), elev);
         RiverInfluenceCarve.carveRiverInfluence(elev, primitives, PADDED);
 
-        LocalDrainageTracer.traceLocalNetwork(ctx.drainage(), elev, gradMag, ctx.network(), stages);
+        LocalDrainageTracer.traceLocalNetwork(ctx.drainage(), elev,humidity, gradMag, ctx.network(), stages);
     }
 
     private static List<HydrologicalPrimitive> collect(RiverNetwork network, ChannelTyper typer, float[] elev) {

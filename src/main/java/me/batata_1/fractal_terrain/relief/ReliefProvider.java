@@ -89,7 +89,7 @@ public class ReliefProvider {
                 DifferenceOfGaussians.run(base[0], DOG_PADDED, DOG_PADDED, RES_DOG_SIGMA1, RES_DOG_SIGMA2);
 
         // Inner-cropped 512x512 already, so it indexes by innerIndex rather than paddedIndex.
-        final float[] carvedElev = FractalTerrainInstance.getRiverProvider().getCarvedElevationTile(x, z).data;
+        final float[] carvedElev = FractalTerrainInstance.getRiverProvider().getElevation(x, z);
 
         final float[] entries = new float[RELIEF_CHANNELS * pixels];
         for (int ix = 0; ix < INNER; ix++) {

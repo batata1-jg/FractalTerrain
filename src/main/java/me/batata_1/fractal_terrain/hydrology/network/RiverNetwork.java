@@ -7,8 +7,6 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntAVLTreeSet;
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
-import it.unimi.dsi.fastutil.ints.IntSet;
 import it.unimi.dsi.fastutil.ints.IntSortedSet;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.ArrayDeque;
@@ -46,6 +44,7 @@ import org.slf4j.Logger;
  */
 public final class RiverNetwork {
 
+    private static final double INF = 1e3;
     /** Floor on the resample spacing used when converting features to {@link HydrologicalPrimitive}s. */
     private static final double MIN_CONVERT_SPACING = 0.5;
 
@@ -388,7 +387,7 @@ public final class RiverNetwork {
         channels.put(id, ch);
         start.outgoing = id;
         end.incoming.add(id);
-        insertChannelInQuadTree(ch); // shared helper, also used by manageCutoffs
+        insertChannelInQuadTree(ch); // kept QuadTree helper (also used by manageCutoffs)
         // bedElevations intentionally NOT preserved — the seam is bed-elevation-agnostic
     }
 
@@ -623,7 +622,6 @@ public final class RiverNetwork {
         }
 
         final List<int[]> edges = new ObjectArrayList<>();
-        final List<CrossingPoint> nearbyBuffer = new ObjectArrayList<>();
         for (int channelAId : channelIds) {
             final Channel channelA = channels.get(channelAId);
             final int[] aAtomic = atomic.pointAtomicIds.get(channelAId);
@@ -684,7 +682,7 @@ public final class RiverNetwork {
     private List<Channel.ChannelPt> getPtsCloseTo(Channel.ChannelPt pt) {
         // Retained-path read (manageCutoffs): derived width of the CURRENT point.
         return spatialHashGrid.getPointsInCircle(
-                pt.toArray(), Math.sqrt(channels.get(pt.channelId()).widthAt(pt.index())));
+                pt.toArray(), 1.5 * channels.get(pt.channelId()).widthAt(pt.index()));
     }
 
     public void manageCutoffs(Channel ch, int step) {
@@ -780,7 +778,7 @@ public final class RiverNetwork {
             if (!ch.isResampleable()) continue; // degenerate geometry (too few points or NaN): skip
             // Spacing must be <= half the NARROWEST (intake) derived width, so consecutive primitives'
             // width/2 discs always overlap (gap-free membership test + girth rendering).
-            final double dx = Math.max(ch.intakeWidth(), MIN_CONVERT_SPACING);
+            final double dx = Math.max(ch.intakeWidth()/2, MIN_CONVERT_SPACING);
             try {
                 ch.reSample(dx);
             } catch (RuntimeException runaway) {

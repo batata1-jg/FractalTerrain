@@ -30,7 +30,7 @@ public final class ChannelGeometry {
 
     /** Channel depth for the given width (native px), floored at 1. */
     public static double depth(double width) {
-        return 1.5 * Math.max(2, Math.pow(width / DEPTH_WIDTH_SCALE, 1.0 / DEPTH_WIDTH_EXP));
+        return Math.max(0.5, Math.pow(width / DEPTH_WIDTH_SCALE, 1.0 / DEPTH_WIDTH_EXP));
     }
 
     /** Prescribes the width-to-depth ratio the Rosgen classifier compares against {@code WD_NARROW}.

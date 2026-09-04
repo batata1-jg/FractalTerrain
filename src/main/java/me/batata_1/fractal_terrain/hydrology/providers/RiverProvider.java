@@ -2,6 +2,7 @@ package me.batata_1.fractal_terrain.hydrology.providers;
 
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.X;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.Z;
+import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.*;
 
 import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
@@ -78,7 +79,7 @@ public class RiverProvider {
                 key -> buildTile(key.get(0), key.get(1), null).primitive(),
                 PRIMITIVE_CACHE_LIMIT_BYTES);
         hydrologyRelief = new NonIntersectingInfiniteTensor(
-                path, "hydrology_relief", new int[] {1, GRID, GRID}, key -> buildTile(key.get(X), key.get(Z), null)
+                path, "hydrology_relief", new int[] {2, GRID, GRID}, key -> buildTile(key.get(X), key.get(Z), null)
                         .tile());
     }
 
@@ -96,8 +97,27 @@ public class RiverProvider {
         return data;
     }
 
-    public List<HydrologicalPrimitive> getPrimitivesInTile(TileKey key) {
-        return primitives.getEntry(key).getAllEntries();
+
+    public ImmutableRTree<HydrologicalPrimitive> getPrimitiveTree(int tileX, int tileZ) {
+        return primitives.getEntry(new int[] {tileX, tileZ});
+    }
+
+    public float[] getRiverHumidity(int tileX,int tileZ) {
+        return Arrays.copyOfRange(
+                getElevHumidityTile(tileX,tileZ),
+                GRID*GRID,2*GRID*GRID
+        );
+    }
+
+    public float[] getElevation(int tileX,int tileZ) {
+        return Arrays.copyOfRange(
+                getElevHumidityTile(tileX,tileZ),
+                0,GRID*GRID
+        );
+    }
+
+    public float[] getElevHumidityTile(int tileX, int tileZ) {
+        return hydrologyRelief.getEntry(new int[] {0, tileX, tileZ}).data;
     }
 
     private record HydrologyResult(ImmutableRTree<HydrologicalPrimitive> primitive, FloatTensor tile) {}
@@ -136,12 +156,13 @@ public class RiverProvider {
         final float[][] base = DecoderChannels.decode(tileX, tileZ, PAD); // padded 514, channels 0..6
 
         final GlobalNetworkBuilder.Result result = GlobalNetworkBuilder.build(tileX, tileZ, base, grp);
-
-        LocalNetworkBuilder.build(result, base, stages);
+        final var climate = pipeline.getClimate((tileX << 9) - PAD, (tileZ << 9) - PAD, ((tileX + 1) << 9) + PAD, ((tileZ + 1) << 9) + PAD,base[0],PADDED,PADDED);
+        final float[] humidity = Arrays.copyOfRange(climate,2*PADDED*PADDED,3*PADDED*PADDED);
+        LocalNetworkBuilder.build(result, base, humidity,stages);
 
         // base[4] (refinedGrad) is read-only for this consumer — Meanders only samples it, never mutates it.
         var lateralErosionSim = new Meanders(result.network(), base[4]);
-        lateralErosionSim.simulate(25);
+        lateralErosionSim.simulate(25,10);
 
         final float[] carvedElev = carveRivers(result, base[0].clone(), stages);
 
@@ -156,7 +177,12 @@ public class RiverProvider {
         final ImmutableRTree<HydrologicalPrimitive> primitiveIndex =
                 new ImmutableRTree<>(primitivePoints, HydrologicalPrimitive.PROTOTYPE);
 
-        final FloatTensor reliefTile = new FloatTensor(cropToTile(carvedElev), new int[] {1, GRID, GRID});
+        final float[] riverHumidity = new float[PADDED*PADDED];
+
+        final float[] res = new float[2*PADDED*PADDED];
+        System.arraycopy(carvedElev,0,res,0,PADDED*PADDED);
+        System.arraycopy(riverHumidity,0,res,PADDED*PADDED,PADDED*PADDED);
+        final FloatTensor reliefTile = new FloatTensor(cropToTile(res), new int[] {2, GRID, GRID});
 
         if (stages != null) {
             stages.channels = result.network().getChannels();
@@ -234,7 +260,7 @@ public class RiverProvider {
      *  place; the caller inspects it afterwards. */
     @TestOnly
     public void traceLocalNetworkForTest(int[] drainage, float[] elev, RiverNetwork network) {
-        LocalDrainageTracer.traceLocalNetwork(drainage, elev, new float[elev.length], network, null);
+        LocalDrainageTracer.traceLocalNetwork(drainage, elev, null, new float[elev.length], network, null);
     }
 
     /** Clears both stores' caches. */
@@ -289,16 +315,7 @@ public class RiverProvider {
         return queryInfluence(pt, 0.0);
     }
 
-    public ImmutableRTree<HydrologicalPrimitive> getPrimitiveTree(int tileX, int tileZ) {
-        return primitives.getEntry(new int[] {tileX, tileZ});
-    }
 
-    /** The carved elevation tile {@code [1, GRID, GRID]}, cropped to the inner grid. Feeds
-     *  {@code ReliefProvider}'s channel 0, so the published relief carries the same cut the primitives
-     *  in {@link #getPrimitiveTree} were stamped along. */
-    public FloatTensor getCarvedElevationTile(int tileX, int tileZ) {
-        return hydrologyRelief.getEntry(new int[] {0, tileX, tileZ});
-    }
 
     // -------------------------------------------------------------------------
     // Debug access

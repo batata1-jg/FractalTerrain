@@ -63,7 +63,7 @@ public class MeandersTest {
         for (int i = 0; i < n; i++) {
             pts.add(new double[] {10.0 + i * 5.0, 200.0 + 5.0 * Math.sin(2.0 * Math.PI * i / (n - 1))});
         }
-        double flow = 10;
+        double flow = 200;
         List<double[]> pts1 = new ObjectArrayList<>(n);
         for (int i = 0; i < n; i++) {
             pts1.add(new double[] {10.0 + i * 5.0, 300.0 + 5.0 * Math.sin(2.0 * Math.PI * i / (n - 1))});
@@ -83,7 +83,7 @@ public class MeandersTest {
         LOG.info("Before: sinuosity={}  points={}", String.format("%.4f", sBefore), before.size());
         Debug.river.see(sim, "before");
 
-        sim.simulate(100);
+        sim.simulate(100,10);
 
         List<double[]> result = sim.getChannelPts(0);
         int m = result.size();
@@ -119,7 +119,7 @@ public class MeandersTest {
     /** Wide channel b (horizontal) crossed by narrow channel a (vertical) at (250,256); both self-drain. */
     private static Meanders crossingInstance() {
         return twoChannelNetwork(
-                straightRun(100.0, 256.0, 400.0, 256.0, 60), 20.0, straightRun(250.0, 100.0, 250.0, 400.0, 60), 5.0);
+                straightRun(100.0, 256.0, 400.0, 256.0, 60), 200.0, straightRun(250.0, 100.0, 250.0, 400.0, 60), 200.0);
     }
 
     private static void testCrossingBecomesConfluence() {
