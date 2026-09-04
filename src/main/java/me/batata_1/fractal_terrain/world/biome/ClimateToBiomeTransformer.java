@@ -250,7 +250,7 @@ public class ClimateToBiomeTransformer {
             float[] lowFreqGrad,
             float[] climate,
             float[] res,
-            float[] vegPdf,
+            float[] riverHumidity,
             int[] coarseDistShore,
             @Nullable float[] distShoreOut) {
         float[] out = new float[(CHANNELS + 1) * TILE_SIZE_SQUARED];
@@ -307,7 +307,7 @@ public class ClimateToBiomeTransformer {
                 float elevVal = elev[idx];
                 float slope = grad[idx];
                 float residual = res[idx];
-
+                float riverH = riverHumidity[idx];
                 // Climate channels: [0]=temp, [1]=t_season, [2]=precip, [3]=p_cv
                 float temp = climate[CLIMATE_TEMP * TILE_SIZE_SQUARED + idx] + tempNoise[idx];
                 float tSeason = climate[CLIMATE_T_SEASON * TILE_SIZE_SQUARED + idx];
@@ -346,19 +346,22 @@ public class ClimateToBiomeTransformer {
                         normPrecip,
                         temperatureVar[idx]);
                 computeTemperature(biome, temp, tStd, precip, elevVal, tempNoise[idx], temperatureVar[idx], band);
-                computeVegetation(biome, temp, tStd, pCV, precip, slope, normPrecip, vegetationVar[idx], band);
+                computeVegetation(biome, temp, tStd, pCV, precip, slope, normPrecip,riverH, vegetationVar[idx], band);
                 computeWeirdness(biome, ocean, residual, weirdnessNoise[idx], elevVal, gradInfluence);
 
                 // Cross-parameter post-process: may rewrite erosion/weirdness at the coast.
                 stonyCliffaceCondition(biome);
                 erosionBufferZone(biome, elevVal);
 
+
+
+
                 out[idx] = biome[CONTINENTALNESS];
                 out[TILE_SIZE_SQUARED + idx] = biome[EROSION];
                 out[2 * TILE_SIZE_SQUARED + idx] = biome[TEMPERATURE];
                 out[3 * TILE_SIZE_SQUARED + idx] = biome[VEGETATION];
                 out[4 * TILE_SIZE_SQUARED + idx] = biome[WEIRDNESS];
-                out[5 * TILE_SIZE_SQUARED + idx] = 1;
+                out[5 * TILE_SIZE_SQUARED + idx] = computeVegPdf(biome,slope,riverH);
                 if (distShoreOut != null) distShoreOut[idx] = distShore;
             }
         }
@@ -506,6 +509,7 @@ public class ClimateToBiomeTransformer {
             float precip,
             float slope,
             float normPrecip,
+            float riverH,
             float vegetationVar,
             TempBand band) {
         // Tree-moisture model.
@@ -569,6 +573,14 @@ public class ClimateToBiomeTransformer {
                 + Math.clamp(VEG_TSTD_OFFSET - tStd, 0, VEG_TSTD_CLAMP_MAX);
         vegetation += vegetationVar * 0.2f;
         biome[VEGETATION] = vegetation;
+    }
+
+    private static float computeVegPdf(float[] biome, float slope, float riverH) {
+        float riverContribution = 0;
+        float slopePenalty = 0;
+        float humidityWeight = 0;
+
+        return Math.clamp(riverContribution+slopePenalty+humidityWeight,0,1);
     }
 
     /** Weirdness: magnitude from the relief residual, sign from noise — see {@code WeirdnessDensity}
