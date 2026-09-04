@@ -11,8 +11,8 @@ package me.batata_1.fractal_terrain.math.ds;
  */
 public interface SpatialIndexShape {
 
-    /** True when this shape and the box {@code [lowerCorner, upperCorner]} are disjoint (node pruning). */
-    boolean notIntersect(double[] lowerCorner, double[] upperCorner);
+    /** True when this shape and the box {@code [lowerCorner, upperCorner]} overlap (node pruning). */
+    boolean intersects(double[] lowerCorner, double[] upperCorner);
 
     /** True when this shape fully contains the box {@code [lowerCorner, upperCorner]} (node bulk-accept). */
     boolean contains(double[] lowerCorner, double[] upperCorner);

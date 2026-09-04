@@ -137,8 +137,7 @@ public class GlobalRiverProvider {
         final int tileOriginCx = tx * TILE_SIZE;
         final int tileOriginCz = tz * TILE_SIZE;
 
-
-        var res = paddedCoarse(tileOriginCx,tileOriginCz);
+        var res = paddedCoarse(tileOriginCx, tileOriginCz);
         // 1. slice: padded, weight-normalized coarse elevation — the ONLY pipeline-sourced input.
         final float[] elevation = res[0];
         final float[] humdity = res[1];
@@ -198,7 +197,7 @@ public class GlobalRiverProvider {
                 drainageDirection,
                 PADDED_SIDE,
                 HydrologyTuning.FLOW_INITIAL_GLOBAL,
-                HydrologyTuning.flowFromHumidity(humdity,true));
+                HydrologyTuning.flowFromHumidity(humdity, true));
         final float[] widths = new float[PADDED_SIDE * PADDED_SIDE];
         for (int px = 0; px < arrows.length; px++) {
             if (arrows[px] != 0) widths[px] = (float) HydrologyTuning.widthFromFlow(flowAccumulation[px]);
@@ -231,8 +230,6 @@ public class GlobalRiverProvider {
         return tile;
     }
 
-
-
     private static @NotNull FloatTensor cropTile(int[] arrows, float[] widths, float[] riverElevation, float[] flows) {
         final FloatTensor tile = new FloatTensor(new int[] {GLOBAL_RIVER_CHANNELS, TILE_SIZE, TILE_SIZE});
         final int pixelsPerChannel = TILE_SIZE * TILE_SIZE;
@@ -257,7 +254,7 @@ public class GlobalRiverProvider {
             int startPi, int startPj, int[] drainageDirection, int[] arrows, @Nullable List<List<int[]>> descentPaths) {
         arrows[startPi * PADDED_SIDE + startPj] |= SOURCE_BIT;
         final List<int[]> path = (descentPaths != null) ? new ObjectArrayList<>() : null;
-        if (path != null) path.add(new int[]{startPi, startPj});
+        if (path != null) path.add(new int[] {startPi, startPj});
 
         int pi = startPi;
         int pj = startPj;
@@ -269,7 +266,7 @@ public class GlobalRiverProvider {
             final int nextPi = pi + NEIGHBOR_OFFSET_X[direction];
             final int nextPj = pj + NEIGHBOR_OFFSET_Z[direction];
             arrows[pi * PADDED_SIDE + pj] |= (1 << (OUTGOING_SHIFT + direction));
-            if (path != null) path.add(new int[]{nextPi, nextPj});
+            if (path != null) path.add(new int[] {nextPi, nextPj});
             final int nextIndex = nextPi * PADDED_SIDE + nextPj;
             if (isCoast(arrows[nextIndex])) break;
             // next was already walked: its downstream path (deterministic steepest descent) is already
@@ -294,7 +291,7 @@ public class GlobalRiverProvider {
         for (int px = 0; px < pixelCount; px++) {
             final float weight = slice.get(6 * pixelCount + px);
             res[0][px] = (weight > 1e-6f) ? slice.get(px) / weight : 0f;
-            res[1][px] = (weight > 1e-6f ) ? slice.get(4 * pixelCount + px) / weight : 0f;
+            res[1][px] = (weight > 1e-6f) ? slice.get(4 * pixelCount + px) / weight : 0f;
         }
         return res;
     }
@@ -438,10 +435,8 @@ public class GlobalRiverProvider {
         // 6. width: flow-accumulation proxy mapped through globalRiverWidth, only on river pixels.
         //    NOTE: flow accumulation comes from the raw steepest-descent field, so cells on a
         //    sink-reroute segment get width from natural flow rather than the rerouted drainage.
-        final float[] flowAccumulation = Drainage.computeFlow(
-                drainageDirection,
-                PADDED_SIDE,
-                HydrologyTuning.FLOW_INITIAL_GLOBAL, null);
+        final float[] flowAccumulation =
+                Drainage.computeFlow(drainageDirection, PADDED_SIDE, HydrologyTuning.FLOW_INITIAL_GLOBAL, null);
         final float[] widths = new float[PADDED_SIDE * PADDED_SIDE];
         for (int px = 0; px < arrows.length; px++) {
             if (arrows[px] != 0) widths[px] = (float) HydrologyTuning.widthFromFlow(flowAccumulation[px]);

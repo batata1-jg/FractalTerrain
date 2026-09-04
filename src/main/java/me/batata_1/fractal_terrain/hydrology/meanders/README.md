@@ -14,7 +14,7 @@ over the same instance in sequence without any one of them holding it privately.
 **Both models run in the generation pipeline, in sequence.** `GlobalNetworkBuilder.build` constructs the
 tile's `RiverNetwork` and relaxes it with `GradientNetworkRelaxation` in place — step count scales with
 the elevation of the tile's primary owned cell, capped at `MAX_RELAX_STEPS`, at a fixed `dx` of 5. Later,
-`RiverProvider.computeTile` runs `new Meanders(result.network(), base[4]).simulate(50, 1)` between
+`RiverProvider.computeTile` runs `new Meanders(ctx.network(), base[4]).simulate(25, 10)` between
 `LocalNetworkBuilder.build` and `carveRivers`, so meander migration lands on the already-relaxed network
 right before the carve reads it.
 
@@ -45,8 +45,9 @@ under-damps near the centre — a known rough edge, not a tuned value.
 **Meander migration is attenuated by local terrain gradient magnitude, exponentially.** A confined,
 steep reach should not meander like a flat floodplain, so `Meanders` scales its displacement by
 `exp(-gradMag / GRAD_REF)`: flat ground (gradMag 0) migrates at full rate, and the rate decays toward
-zero as the sampled gradient grows. `GRAD_REF` is seeded from `HydrologyTuning.GRAD_THRESHOLD` (the
-existing "steep enough to matter" gate on the same raster) but is otherwise uncalibrated. The raster is
+zero as the sampled gradient grows. `GRAD_REF` is its own hardcoded constant in `Meanders` (currently
+`1.0`), not derived from `HydrologyTuning.GRAD_THRESHOLD`'s value despite both gating the same raster
+(decoder channel 4); it is otherwise uncalibrated. The raster is
 optional — a `Meanders` built without one (`meandersTest`, `captureSelectionTest`, `MeandersGoldenTest`)
 samples `0.0` everywhere, so `gradScale` is exactly `1.0` and behaves as if unattenuated.
 

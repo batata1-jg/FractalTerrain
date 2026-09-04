@@ -7,7 +7,7 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
 import java.util.Arrays;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
-import me.batata_1.fractal_terrain.FractalTerrainInstance;
+import me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry;
 import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
@@ -33,7 +33,6 @@ import org.slf4j.Logger;
 public class ReliefProvider {
 
     // ---- Geometry / tuning --------------------------------------------------
-    private static final int INNER = 512;
     /** DoG band-pass sigmas for the high-frequency res channel. */
     private static final double RES_DOG_SIGMA1 = 0.0;
 
@@ -41,24 +40,31 @@ public class ReliefProvider {
     /** Halo (px) needed so the cropped DoG is free of border artifacts. */
     private static final int DOG_PAD = DifferenceOfGaussians.padFor(RES_DOG_SIGMA1, RES_DOG_SIGMA2);
 
-    private static final int DOG_PADDED = INNER + 2 * DOG_PAD;
+    private static final int DOG_PADDED = HydrologyTileGeometry.GRID + 2 * DOG_PAD;
 
     /** Cached relief tiles. Far above the 1-4 tile working set (a tile is 160 chunks per axis) because
      *  Storage's byte accounting is FIFO, not LRU: a tile read every chunk still ages out. */
     private static final int MAX_CACHED_TILES = 8;
 
-    private static final long CACHE_LIMIT_BYTES =
-            (long) MAX_CACHED_TILES * RELIEF_CHANNELS * INNER * INNER * Float.BYTES;
+    private static final long CACHE_LIMIT_BYTES = (long) MAX_CACHED_TILES
+            * RELIEF_CHANNELS
+            * HydrologyTileGeometry.GRID
+            * HydrologyTileGeometry.GRID
+            * Float.BYTES;
 
     private static final Logger LOG = getLogger(ReliefProvider.class);
 
     private final NonIntersectingInfiniteTensor finalTiles;
 
-    public ReliefProvider(String path) {
+    /** Upstream carved-elevation source for channel 0; injected by {@code GenerationContext}. */
+    private final RiverProvider riverProvider;
+
+    public ReliefProvider(String path, RiverProvider riverProvider) {
+        this.riverProvider = riverProvider;
         finalTiles = new NonIntersectingInfiniteTensor(
                 path,
                 "final_relief_tiles",
-                new int[] {RELIEF_CHANNELS, INNER, INNER},
+                new int[] {RELIEF_CHANNELS, HydrologyTileGeometry.GRID, HydrologyTileGeometry.GRID},
                 this::buildReliefTile,
                 CACHE_LIMIT_BYTES);
     }
@@ -81,7 +87,7 @@ public class ReliefProvider {
     }
 
     private FloatTensor computeTile(int x, int z, @Nullable Stages stages) {
-        final int pixels = INNER * INNER;
+        final int pixels = HydrologyTileGeometry.GRID * HydrologyTileGeometry.GRID;
 
         // ch0..5 + the DoG source: decode a DoG-haloed slice once.
         final float[][] base = DecoderChannels.decode(x, z, DOG_PAD);
@@ -89,13 +95,13 @@ public class ReliefProvider {
                 DifferenceOfGaussians.run(base[0], DOG_PADDED, DOG_PADDED, RES_DOG_SIGMA1, RES_DOG_SIGMA2);
 
         // Inner-cropped 512x512 already, so it indexes by innerIndex rather than paddedIndex.
-        final float[] carvedElev = FractalTerrainInstance.getRiverProvider().getElevation(x, z);
+        final float[] carvedElev = riverProvider.getElevation(x, z);
 
         final float[] entries = new float[RELIEF_CHANNELS * pixels];
-        for (int ix = 0; ix < INNER; ix++) {
-            for (int iz = 0; iz < INNER; iz++) {
+        for (int ix = 0; ix < HydrologyTileGeometry.GRID; ix++) {
+            for (int iz = 0; iz < HydrologyTileGeometry.GRID; iz++) {
                 final int paddedIndex = (DOG_PAD + ix) * DOG_PADDED + (DOG_PAD + iz);
-                final int innerIndex = ix * INNER + iz;
+                final int innerIndex = ix * HydrologyTileGeometry.GRID + iz;
                 entries[innerIndex] = carvedElev[innerIndex]; // ch0 = river-carved elev
                 entries[1 * pixels + innerIndex] = base[1][paddedIndex]; // blurredElev
                 entries[2 * pixels + innerIndex] = base[2][paddedIndex]; // gradX
@@ -106,7 +112,8 @@ public class ReliefProvider {
             }
         }
 
-        final FloatTensor result = new FloatTensor(entries, new int[] {RELIEF_CHANNELS, INNER, INNER});
+        final FloatTensor result = new FloatTensor(
+                entries, new int[] {RELIEF_CHANNELS, HydrologyTileGeometry.GRID, HydrologyTileGeometry.GRID});
         if (stages != null) {
             stages.carvedElevation = Arrays.copyOfRange(entries, 0, pixels);
             stages.base = base;
@@ -119,14 +126,14 @@ public class ReliefProvider {
     // Pixel accessors
     // -------------------------------------------------------------------------
 
-    public Float get_entry(final int[] mutableCoords, final int ch) {
+    public Float getEntry(final int[] mutableCoords, final int ch) {
         mutableCoords[FractalTerrainConfig.CH] = ch;
         return finalTiles.getValue(mutableCoords);
     }
 
     /** Kept for {@code Infinite3DVisualizer}, the only caller left once the heightmap reads slices. */
     public Float getElev(int[] xz) {
-        return get_entry(xz, 0);
+        return getEntry(xz, 0);
     }
 
     // -------------------------------------------------------------------------

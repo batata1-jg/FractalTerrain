@@ -31,16 +31,16 @@ public final class HydrologyTuning {
     /** Coarse-px halo for {@code GlobalRiverProvider}'s isolate ramp, and that provider's padding. */
     public static final int RAMP_WIDTH = 6;
 
-    /** Sink-fill border-blend padding (native px) used by {@code RiverProvider}'s tile carve. */
+    /** Sink-fill border-blend padding (native px); read by {@code GlobalNetworkBuilder}'s {@code Drainage.fillSinks} call within the tile carve pipeline. */
     public static final int FILL_PADDING = 64;
 
-    /** Resample spacing (native px) for a freshly traced local channel, in {@code LocalDrainageTracer}. */
+    /** Resample spacing (native px) for a freshly traced local channel; read by {@code RiverNetwork#buildFromSpecs} (test-only in production today) — also exposed via {@code HydrologyConfig}. */
     public static final double RESAMPLE_DIST = 2.0;
 
-    /** Radius at which a local river is taken to meet a global channel. Uncalibrated — see README. */
+    /** Radius at which a local river is taken to meet a global channel. Uncalibrated — see README; also exposed via {@code HydrologyConfig}. */
     public static final double LOCAL_ATTACH_RADIUS = 4.0;
 
-    /** Default meander resample/migration step (native px); debug visualizers and tests reason about it too. */
+    /** Default meander resample/migration step (native px); read by {@code Meanders} and {@code RiverNetwork}'s default constructor — also exposed via {@code HydrologyConfig}; debug visualizers and tests reason about it too. */
     public static final double DX = 1.5;
 
     /** Max per-step displacement of a migration run resampled at {@code dx}: caps how far a point may
@@ -65,18 +65,23 @@ public final class HydrologyTuning {
     // Flow accumulation (see Drainage.computeFlow)
     // ──────────────────────────────────────────────────────────────────────────
 
-    /** Accumulated-flow floor for a cell to count as local river; one of three river-mask gates. */
+    /** Accumulated-flow floor for a cell to count as local river; one of three river-mask gates. Read by {@code LocalDrainageTracer} via {@code HydrologyConfig#getFlowThreshold}, which also exposes it for injection. */
     public static final float FLOW_THRESHOLD = 0.75f;
 
-    // only generate sources for local rivers above this to prevent weird behavior in plains.
+    // only generate sources for local rivers above this to prevent weird behavior in plains. Read by
+    // LocalDrainageTracer via HydrologyConfig#getGradThreshold, also exposed via HydrologyConfig.
     public static final float GRAD_THRESHOLD = 10f;
 
+    /** Seed flow for a global-network source cell in {@code Drainage.computeFlow}; read directly by {@code GlobalRiverProvider} — also exposed via {@code HydrologyConfig}. */
     public static final float FLOW_INITIAL_GLOBAL = 0.1f;
 
+    /** Seed flow for a local-network source cell in {@code Drainage.computeFlow}; read by {@code LocalDrainageTracer} via {@code HydrologyConfig#getFlowInitialLocal}, which also exposes it for injection. */
     public static final float FLOW_INITIAL_LOCAL = 0.02f;
 
+    /** Per-cell flow increment for the global network's accumulation; read by {@code Drainage}'s fallback and, via {@link #flowFromHumidity}, {@code GlobalRiverProvider} — also exposed via {@code HydrologyConfig}. */
     public static final float FLOW_PER_CELL_GLOBAL = 15f;
 
+    /** Per-cell flow increment for the local network; read by {@code LocalDrainageTracer}, {@code AtomicView} and {@code RiverNetwork}'s default {@code FLOW_PER_CELL} — also exposed via {@code HydrologyConfig}. */
     public static final float FLOW_PER_CELL_LOCAL = 0.01f;
 
     /** Flow jump triggering the near-drain ramp that keeps width continuous where a tributary joins. */
@@ -84,12 +89,11 @@ public final class HydrologyTuning {
 
     public static final int DRAIN_FLOW_SMOOTH_MAX_NODES = 20;
 
-
-    public static float[] flowFromHumidity(float[] humdity,boolean isGlobal) {
+    public static float[] flowFromHumidity(float[] humdity, boolean isGlobal) {
         float[] res = humdity.clone();
-        for(int px=0; px<humdity.length ; px++) {
+        for (int px = 0; px < humdity.length; px++) {
             res[px] /= 1000.0f;
-            if(isGlobal) res[px] *= FLOW_PER_CELL_GLOBAL;
+            if (isGlobal) res[px] *= FLOW_PER_CELL_GLOBAL;
             else res[px] *= FLOW_PER_CELL_LOCAL;
         }
         return res;
@@ -103,29 +107,30 @@ public final class HydrologyTuning {
     // Hydrology — river width & carve-profile tuning (all property-overridable).
     // ──────────────────────────────────────────────────────────────────────────
 
-    /** Floor on every river width, in native pixels. */
+    /** Floor on every river width, in native pixels; clamps {@link #widthFromFlow} and is read directly by {@code GlobalNetworkBuilder} and {@code ReachMetricsSampler} — also exposed via {@code HydrologyConfig}. */
     public static final double MIN_WIDTH = 0.6f;
 
-    /** Scale on {@code sqrt(flow)} shared by the global and local networks (see {@link #widthFromFlow}). */
+    /** Scale on {@code sqrt(flow)} shared by the global and local networks (see {@link #widthFromFlow}, read by {@code GlobalRiverProvider}, {@code Channel} and {@code RiverNetwork}) — also exposed via {@code HydrologyConfig}. */
     public static final double WIDTH_FLOW_SCALE = 0.4f;
 
+    /** Ceiling on every river width, in native pixels; clamps {@link #widthFromFlow} and sizes {@code RosgenProfile}'s channel-shape classes — also exposed via {@code HydrologyConfig}. */
     public static final double MAX_WIDTH = 16f;
 
-    /** Hard cap on influence radius, bounding both per-pixel carve work and the cross-tile query span. */
+    /** Hard cap on influence radius, bounding both per-pixel carve work and the cross-tile query span; read directly by {@code RiverProvider#queryInfluence} and clamps every {@link #influence} call — also exposed via {@code HydrologyConfig}. */
     public static final double MAX_INFLUENCE_RADIUS = 64.0f;
 
     /** Floor on influence radius, load-bearing rather than cosmetic: at zero,
      *  {@code RiverInfluenceCarve} divides by the influence half-width and the R-tree indexes the
-     *  primitive under a zero-area rectangle. */
+     *  primitive under a zero-area rectangle. Also exposed via {@code HydrologyConfig}. */
     public static final double MIN_INFLUENCE_RADIUS = 2.0;
 
-    /** Scale taking a channel's {@code depth × width} to its influence radius. Uncalibrated — see README. */
+    /** Scale taking a channel's {@code depth × width} to its influence radius. Uncalibrated — see README; feeds {@code HydrologyTileGeometry#influenceSampler}, used by all three tile-carve stages — also exposed via {@code HydrologyConfig}. */
     public static final double INFLUENCE_DEPTH_FACTOR = 2.0;
 
     /** Border margin kept clear, wider than the influence radius — see README. */
     public static final double MARGIN_INFLUENCE_FACTOR = 5.0;
 
-    /** Contract bound on {@code HydrologyProfile.riverPaintDepth}'s scratch column; a profile returning more is a programming error. */
+    /** Contract bound on {@code HydrologyProfile.riverPaintDepth}'s scratch column; a profile returning more is a programming error. The scratch array itself is sized by {@code FractalTerrainSurfaceSystem}. */
     public static final int MAX_RIVER_PAINT_DEPTH = 8;
 
     public static double influence(double width) {
@@ -141,8 +146,6 @@ public final class HydrologyTuning {
                 MIN_INFLUENCE_RADIUS,
                 MAX_INFLUENCE_RADIUS);
     }
-
-
 
     public static double maxNativeWidth() {
         return MAX_WIDTH;

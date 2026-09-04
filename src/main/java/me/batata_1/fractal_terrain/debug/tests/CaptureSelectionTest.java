@@ -17,7 +17,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Manual reproduction of {@code MeandersGoldenTest}'s stream-capture fixtures, so the DFS->BFS rework of
- * {@code RiverNetwork.manageCollisions} can be observed without a compiling JUnit suite.
+ * {@code RiverNetwork.detectAndResolveCaptures} can be observed without a compiling JUnit suite.
  *
  * <p>Prints facts rather than asserting: every scenario runs to completion regardless of outcome, and a
  * final summary reports which scenarios matched their expected result.
@@ -46,18 +46,18 @@ public class CaptureSelectionTest {
         Meanders sim = crossingInstance();
         final RiverNetwork network = sim.getNetwork();
 
-        // Diagnostic block: same call sim.manageCollisions() would make internally (currentStep starts at
-        // 0), but done by hand so we keep a reference to the AtomicView and can inspect it both sides of
-        // the pass. manageCollisions mutates its `atomic` argument in place, so this reference is valid
-        // after the call too.
+        // Diagnostic block: same call sim.detectAndResolveCaptures() would make internally (currentStep
+        // starts at 0), but done by hand so we keep a reference to the AtomicView and can inspect it both
+        // sides of the pass. detectAndResolveCaptures mutates its `atomic` argument in place, so this
+        // reference is valid after the call too.
         final AtomicView atomic = network.viewAtomic();
         LOG.info("[S1-DIAG] atomic view size right after viewAtomic(): {}", atomic.size());
         dumpAtomicNodes(atomic, "[S1-DIAG][pre-collision]");
 
-        network.manageCollisions(0, atomic);
+        network.detectAndResolveCaptures(0, atomic);
 
         LOG.info(
-                "[S1-DIAG] atomic view size after manageCollisions() returns (same AtomicView object; reflects "
+                "[S1-DIAG] atomic view size after detectAndResolveCaptures() returns (same AtomicView object; reflects "
                         + "any nodes resolveCrossingEdges added during planarization): {}",
                 atomic.size());
         dumpChannelsAndNodes(sim, "[S1-DIAG][post-collision]");
@@ -153,7 +153,7 @@ public class CaptureSelectionTest {
         final int tribSourceId = addDanglingTributary(atomic, farPoints());
         LOG.info("fixture precondition: tributary atomic id {} role={}", tribSourceId, atomic.role(tribSourceId));
 
-        sim.getNetwork().manageCollisions(0, atomic);
+        sim.getNetwork().detectAndResolveCaptures(0, atomic);
 
         int channelCount = sim.getChannelCount();
         int nodeCount = sim.getNodes().size();
@@ -201,7 +201,7 @@ public class CaptureSelectionTest {
     }
 
     /** Adds a dangling tributary directly through the atomic view, mirroring how {@code LocalDrainageTracer}
-     *  attaches a traced segment; the dangling end is what {@code manageCollisions} must resolve. */
+     *  attaches a traced segment; the dangling end is what {@code detectAndResolveCaptures} must resolve. */
     private static int addDanglingTributary(AtomicView atomic, List<double[]> pts) {
         final int sourceId = atomic.addNode(pts.get(0).clone(), Endpoint.Type.SOURCE, -1, TRIBUTARY_FLOW, -1);
         int prev = sourceId;

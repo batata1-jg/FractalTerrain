@@ -3,6 +3,7 @@ package me.batata_1.fractal_terrain.relief;
 import static me.batata_1.fractal_terrain.FractalTerrainConfig.DECODER_CHANNELS;
 import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 
+import me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry;
 import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 
@@ -17,15 +18,13 @@ public final class DecoderChannels {
 
     /** Relief base channel count (decoder channels 1..7, weight-normalized). */
     public static final int BASE_CHANNELS = DECODER_CHANNELS - 1; // 7
-    /** Relief tile side in native px. */
-    public static final int INNER = 512;
 
     private DecoderChannels() {}
 
     /** The pipeline's entry into hydrology: a haloed, weight-normalized decoder slice.
      *  Normalizing here means no downstream stage has to know about the blend weight. */
     public static float[][] decode(int tileX, int tileZ, int pad) {
-        final int padded = INNER + 2 * pad;
+        final int padded = HydrologyTileGeometry.GRID + 2 * pad;
         final FloatTensor slice = pipeline.getDecoderSlice(
                 (tileX << 9) - pad, (tileZ << 9) - pad, ((tileX + 1) << 9) + pad, ((tileZ + 1) << 9) + pad);
         final int pixelCount = padded * padded;

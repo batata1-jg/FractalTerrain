@@ -19,9 +19,20 @@ public final class PipelineModels implements AutoCloseable {
     private static final String BASE_FILE_NAME = "base_model.onnx";
     private static final String DECODER_FILE_NAME = "decoder_model.onnx";
 
+    /** Load lifecycle: {@code UNINITIALIZED} -> {@code LOADING} -> {@code LOADED} or {@code FAILED}.
+     *  {@code FAILED} and {@code UNINITIALIZED} both allow a retrying {@link #load()} call. */
+    private enum LoadState {
+        UNINITIALIZED,
+        LOADING,
+        LOADED,
+        FAILED
+    }
+
     private static volatile PipelineModels INSTANCE;
     private static volatile CountDownLatch loadDone;
-    private static volatile boolean loadStarted;
+    private static volatile LoadState state = LoadState.UNINITIALIZED;
+
+    /** The load failure cause when {@link #state} is {@code FAILED}; unset otherwise. */
     private static volatile Throwable loadFailure;
 
     private final OnnxModel coarseModel;
@@ -36,9 +47,8 @@ public final class PipelineModels implements AutoCloseable {
 
     /** Starts loading models on a background thread, sourcing assets from {@code assets}. Returns immediately. */
     public static synchronized void load(ModelAssetManager assets) {
-        if (INSTANCE != null) return;
-        if (loadStarted) return;
-        loadStarted = true;
+        if (state == LoadState.LOADED || state == LoadState.LOADING) return;
+        state = LoadState.LOADING;
         loadFailure = null;
         loadDone = new CountDownLatch(1);
         Thread t = new Thread(
@@ -47,11 +57,12 @@ public final class PipelineModels implements AutoCloseable {
                         LOG.info("Loading terrain-diffusion ML models (background)...");
                         long start = System.currentTimeMillis();
                         INSTANCE = new PipelineModels(assets);
+                        state = LoadState.LOADED;
                         long elapsed = System.currentTimeMillis() - start;
                         LOG.info("Terrain-diffusion ML models loaded in {} ms", elapsed);
                     } catch (Throwable e) {
                         loadFailure = e;
-                        loadStarted = false;
+                        state = LoadState.FAILED;
                         LOG.error("Failed to load terrain-diffusion models", e);
                     } finally {
                         loadDone.countDown();
@@ -65,8 +76,8 @@ public final class PipelineModels implements AutoCloseable {
     /** Blocks until models are loaded (or load failed). Starts load if not started. */
     public static void awaitLoad() {
         synchronized (PipelineModels.class) {
-            if (INSTANCE != null) return;
-            if (!loadStarted) load();
+            if (state == LoadState.LOADED) return;
+            if (state != LoadState.LOADING) load();
         }
         CountDownLatch latch = loadDone;
         if (latch != null) {
@@ -79,7 +90,7 @@ public final class PipelineModels implements AutoCloseable {
                 throw new RuntimeException("Interrupted waiting for terrain-diffusion models", e);
             }
         }
-        if (INSTANCE == null) {
+        if (state != LoadState.LOADED) {
             Throwable failureCause = loadFailure;
             if (failureCause != null) {
                 throw new IllegalStateException("Failed to load terrain-diffusion models", failureCause);
@@ -131,7 +142,7 @@ public final class PipelineModels implements AutoCloseable {
             fuzedModel.close();
         } finally {
             INSTANCE = null;
-            loadStarted = false;
+            state = LoadState.UNINITIALIZED;
             loadFailure = null;
         }
     }

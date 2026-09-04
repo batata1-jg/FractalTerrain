@@ -346,22 +346,19 @@ public class ClimateToBiomeTransformer {
                         normPrecip,
                         temperatureVar[idx]);
                 computeTemperature(biome, temp, tStd, precip, elevVal, tempNoise[idx], temperatureVar[idx], band);
-                computeVegetation(biome, temp, tStd, pCV, precip, slope, normPrecip,riverH, vegetationVar[idx], band);
+                computeVegetation(biome, temp, tStd, pCV, precip, slope, normPrecip, riverH, vegetationVar[idx], band);
                 computeWeirdness(biome, ocean, residual, weirdnessNoise[idx], elevVal, gradInfluence);
 
                 // Cross-parameter post-process: may rewrite erosion/weirdness at the coast.
                 stonyCliffaceCondition(biome);
                 erosionBufferZone(biome, elevVal);
 
-
-
-
                 out[idx] = biome[CONTINENTALNESS];
                 out[TILE_SIZE_SQUARED + idx] = biome[EROSION];
                 out[2 * TILE_SIZE_SQUARED + idx] = biome[TEMPERATURE];
                 out[3 * TILE_SIZE_SQUARED + idx] = biome[VEGETATION];
                 out[4 * TILE_SIZE_SQUARED + idx] = biome[WEIRDNESS];
-                out[5 * TILE_SIZE_SQUARED + idx] = computeVegPdf(biome,slope,riverH);
+                out[5 * TILE_SIZE_SQUARED + idx] = computeVegPdf(biome, slope, riverH);
                 if (distShoreOut != null) distShoreOut[idx] = distShore;
             }
         }
@@ -580,7 +577,7 @@ public class ClimateToBiomeTransformer {
         float slopePenalty = 0;
         float humidityWeight = 0;
 
-        return Math.clamp(riverContribution+slopePenalty+humidityWeight,0,1);
+        return Math.clamp(riverContribution + slopePenalty + humidityWeight, 0, 1);
     }
 
     /** Weirdness: magnitude from the relief residual, sign from noise — see {@code WeirdnessDensity}

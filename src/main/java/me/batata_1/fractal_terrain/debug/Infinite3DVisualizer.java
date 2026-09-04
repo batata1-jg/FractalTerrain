@@ -9,6 +9,7 @@ import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
+import me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
@@ -167,16 +168,16 @@ public class Infinite3DVisualizer {
     private Float getDecodedElev(int[] xz) {
         final int px = xz[1];
         final int pz = xz[2];
-        final int tileX = Math.floorDiv(px, DecoderChannels.INNER);
-        final int tileZ = Math.floorDiv(pz, DecoderChannels.INNER);
+        final int tileX = Math.floorDiv(px, HydrologyTileGeometry.GRID);
+        final int tileZ = Math.floorDiv(pz, HydrologyTileGeometry.GRID);
         final long key = (((long) tileX) << 32) ^ (tileZ & 0xffffffffL);
         if (decodedTileElev.get() == null || decodedTileKey.get()[0] != key) {
             decodedTileElev.set(DecoderChannels.decode(tileX, tileZ, 0)[0]);
             decodedTileKey.get()[0] = key;
         }
-        final int lx = px - tileX * DecoderChannels.INNER;
-        final int lz = pz - tileZ * DecoderChannels.INNER;
-        return decodedTileElev.get()[lx * DecoderChannels.INNER + lz];
+        final int lx = px - tileX * HydrologyTileGeometry.GRID;
+        final int lz = pz - tileZ * HydrologyTileGeometry.GRID;
+        return decodedTileElev.get()[lx * HydrologyTileGeometry.GRID + lz];
     }
 
     public Infinite3DVisualizer() {}

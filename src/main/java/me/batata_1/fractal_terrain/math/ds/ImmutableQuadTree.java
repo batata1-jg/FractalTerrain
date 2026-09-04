@@ -342,7 +342,7 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
             lo[1] = oz;
             hi[0] = ox + size;
             hi[1] = oz + size;
-            if (shape.notIntersect(lo, hi)) {
+            if (!shape.intersects(lo, hi)) {
                 if (DEBUG_QUERY) trace(depth, "  prune (disjoint from query shape)");
                 continue;
             }
@@ -428,7 +428,7 @@ public final class ImmutableQuadTree<T extends SpatialIndexPoint>
             lo[1] = oz;
             hi[0] = ox + size;
             hi[1] = oz + size;
-            if (shape.notIntersect(lo, hi)) continue;
+            if (!shape.intersects(lo, hi)) continue;
             // Bulk-accept and leaf-scan collapse into one scan here: either way every candidate in the
             // slice gets its distSq computed and offered to the test.
             final boolean leaf = n.count <= maxPointsNode || depth == maxDepth;

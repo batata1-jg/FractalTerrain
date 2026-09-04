@@ -45,7 +45,7 @@ clone is published:
 1. `GlobalNetworkBuilder.build` traces the global (coarse-arrow) subgraph for this tile over the owned 2x2
    coarse cells, then relaxes it down-gradient with `GradientNetworkRelaxation`. It builds the
    `ReachRosgenClassifier` typer against its clone before touching it, runs `ChannelElevationAssigner.assign`
-   over the global-only graph, shell-carves that clone with `RiverInfluenceCarve.carveRiverInfluence`, and
+   over the global-only graph, shell-carves that clone with `RiverInfluenceCarve.carveRiverInfluenceGrid`, and
    finishes with `Drainage.fillSinks` + `Drainage.computeDrainageDirection` over the carved result — so the
    drainage field the local trace walks next already sees valleys. It returns the network, that drainage
    field, the boundary-elevation map, the typer, and the carved clone. The clone feeds nothing downstream
@@ -108,7 +108,7 @@ after each local segment attaches.
 **Carve-before-trace exists to shape the surface a trace walks, not to filter primitives.** Stages 1 and 2
 each carve their own clone *before* the trace that reads it, so `fillSinks`/`computeDrainageDirection` and
 `LocalDrainageTracer` route drainage through carved valleys instead of raw decoder noise. Neither is an
-attempt to keep some subgraph out of the shell — every `carveRiverInfluence` call is unfiltered, as noted
+attempt to keep some subgraph out of the shell — every `carveRiverInfluenceGrid` call is unfiltered, as noted
 above. Their written values never reach `hydrology_relief`: stage 4 clones the raw elevation again rather
 than continuing from either, so what survives from stages 1 and 2 is where the traces ran, not what they
 wrote.

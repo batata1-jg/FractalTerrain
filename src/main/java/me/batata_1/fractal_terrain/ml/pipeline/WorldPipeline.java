@@ -130,7 +130,7 @@ public final class WorldPipeline implements AutoCloseable {
     }
 
     public float[] getClimate(int i1, int j1, int i2, int j2, float[] elevFlat, int H, int W) {
-        return climateProvider.getClimate(i1,j1,i2,j2,elevFlat,H,W);
+        return climateProvider.getClimate(i1, j1, i2, j2, elevFlat, H, W);
     }
 
     // =========================================================================

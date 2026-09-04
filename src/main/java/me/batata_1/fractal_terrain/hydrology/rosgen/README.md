@@ -70,7 +70,7 @@ that only arises in pruned components and no longer affects classification.
 ## Invariants
 
 - **`ReachMetricsSampler` must be handed raw decoded elevation, never a carved buffer.**
-  `carveRiverInfluence` *creates* the floodplain and writes in place, so measuring entrenchment on its
+  `carveRiverInfluenceGrid` *creates* the floodplain and writes in place, so measuring entrenchment on its
   output measures `FLOODPLAIN_BASE` and `FLOODPLAIN_WIDTH_FACTOR` — the carve's own tuning constants —
   instead of the terrain. `GlobalNetworkBuilder` clones `rawElev` before the first assign and first carve
   for exactly this reason.

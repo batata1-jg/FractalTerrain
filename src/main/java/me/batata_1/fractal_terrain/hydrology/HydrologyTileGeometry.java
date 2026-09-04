@@ -19,8 +19,8 @@ public final class HydrologyTileGeometry {
     public static final int GRID = 512;
     public static final int PAD = 1;
     public static final int PADDED = GRID + 2 * PAD; // 514
-    static final int COARSE_PX = 256;
-    static final int COARSE_HALF = COARSE_PX / 2;
+    public static final int COARSE_PX = 256;
+    public static final int COARSE_HALF = COARSE_PX / 2;
 
     public static double sampleBilinear(float[] field, double px, double pz) {
         return Interpolation.sampleBilinear(field, px, pz, PADDED);
@@ -41,7 +41,7 @@ public final class HydrologyTileGeometry {
                     width, Math.abs(Interpolation.sampleNearest(elev, x, z, PADDED) - bedElev));
             final double edge = Math.min(Math.min(x, z), Math.min(PADDED - 1 - x, PADDED - 1 - z));
             final double axisSpan = Math.abs(normal[0]) + Math.abs(normal[1]);
-            // RiverPrimitive.getLength()/getWidth() both return influence*2, so carvePrimitiveInfluence's
+            // RiverPrimitive.getLength()/getWidth() both return influence*2, so carveRiverPrimitiveInfluence's
             // half-extents (influenceLen*|nz| + influenceWidth*|nx| and influenceLen*|nx| + influenceWidth*|nz|)
             // collapse to influence*(|nx|+|nz|) — containment against the nearest tile edge is one division.
             // A degenerate (zero) normal makes that division meaningless, so it falls back to the unclamped raw

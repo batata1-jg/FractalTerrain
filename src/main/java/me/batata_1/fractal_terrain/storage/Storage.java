@@ -178,6 +178,7 @@ public class Storage<T extends Persistable<T>> {
         try {
             return getKeyFromName(tile, rank);
         } catch (RuntimeException e) {
+            LOG.warn("malformed coordinate token in tile filename '{}' in {}", tile, getEntryDir(), e);
             return null; // malformed coordinate token
         }
     }

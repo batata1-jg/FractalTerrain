@@ -34,7 +34,7 @@ import org.slf4j.Logger;
  *
  * <p>All mutation funnels through one validated seam between the canonical channel view and the atomic
  * node view ({@link AtomicView}), so topology rules are checked in exactly one place. Stream-capture
- * collision handling lives here in {@link #manageCollisions}, never split into its own resolver.
+ * collision handling lives here in {@link #detectAndResolveCaptures}, never split into its own resolver.
  *
  * <p>{@link #collectPrimitives} is the pipeline's exit: it packages the network into {@link HydrologicalPrimitive}s
  * for the caller to freeze into a spatial index. See {@code README.md} for the view seam in detail.
@@ -45,7 +45,7 @@ public final class RiverNetwork {
     /** Floor on the resample spacing used when converting features to {@link HydrologicalPrimitive}s. */
     private static final double MIN_CONVERT_SPACING = 0.5;
 
-    /** {@code manageCutoffs}'s own query radius is {@code sqrt(width)}; sizing cells to that keeps
+    /** {@code detectAndApplyCutoffs}'s own query radius is {@code sqrt(width)}; sizing cells to that keeps
      *  expected occupancy near one query's worth of area across the tuning range. */
     private static final double CUTOFF_GRID_CELL_SIZE = Math.ceil(Math.sqrt(HydrologyTuning.maxNativeWidth()));
 
@@ -384,7 +384,7 @@ public final class RiverNetwork {
         channels.put(id, ch);
         start.outgoing = id;
         end.incoming.add(id);
-        insertChannelInQuadTree(ch); // kept QuadTree helper (also used by manageCutoffs)
+        insertChannelInQuadTree(ch); // kept QuadTree helper (also used by detectAndApplyCutoffs)
         // bedElevations intentionally NOT preserved — the seam is bed-elevation-agnostic
     }
 
@@ -411,7 +411,7 @@ public final class RiverNetwork {
     /** Stream capture: re-orients the network so a drifted-together crossing merges into one channel and
      *  prunes what no longer reaches a drain. Orientation is an O(V+E) reverse BFS from every drain: the
      *  shortest hop-count path decides which continuation survives a merge. */
-    public void manageCollisions(int step, AtomicView atomic) {
+    public void detectAndResolveCaptures(int step, AtomicView atomic) {
 
         // step 1: undirected crossing edges, added to the adjacency in both directions, then planarized.
         if (DEBUG_STEPS) {
@@ -678,12 +678,12 @@ public final class RiverNetwork {
     // ---------------------------------------------------------------------------------------------
 
     private List<Channel.ChannelPt> getPtsCloseTo(Channel.ChannelPt pt) {
-        // Retained-path read (manageCutoffs): derived width of the CURRENT point.
+        // Retained-path read (detectAndApplyCutoffs): derived width of the CURRENT point.
         return spatialHashGrid.getPointsInCircle(
                 pt.toArray(), 1.5 * channels.get(pt.channelId()).widthAt(pt.index()));
     }
 
-    public void manageCutoffs(Channel ch, int step) {
+    public void detectAndApplyCutoffs(Channel ch, int step) {
         if (ch.spline.checkNaN()) {
             throw new RuntimeException("cannot cut becuse spline is NaN");
         }

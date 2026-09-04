@@ -65,7 +65,6 @@ final class ClimateProvider {
         return result;
     }
 
-
     public float[] getClimate(int i1, int j1, int i2, int j2, float[] elevFlat, int H, int W) {
         int S = 32 * WorldPipeline.LATENT_COMPRESSION; // native pixels per coarse pixel in stride sense
 

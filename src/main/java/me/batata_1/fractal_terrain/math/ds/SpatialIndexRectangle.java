@@ -16,13 +16,13 @@ public interface SpatialIndexRectangle extends SpatialIndexShape {
 
     /** Interval-overlap test per axis. */
     @Override
-    default boolean notIntersect(double[] lowerCorner, double[] upperCorner) {
+    default boolean intersects(double[] lowerCorner, double[] upperCorner) {
         final double[] thisLower = getLowerCorner();
         final double[] thisUpper = getUpperCorner();
-        return thisUpper[0] < lowerCorner[0]
-                || upperCorner[0] < thisLower[0]
-                || thisUpper[1] < lowerCorner[1]
-                || upperCorner[1] < thisLower[1];
+        return thisUpper[0] >= lowerCorner[0]
+                && upperCorner[0] >= thisLower[0]
+                && thisUpper[1] >= lowerCorner[1]
+                && upperCorner[1] >= thisLower[1];
     }
 
     /** The box is contained iff both its corners lie within this rectangle's intervals. */

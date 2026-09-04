@@ -287,7 +287,7 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
     private <S extends SpatialIndexShape> List<T> query(final S shape, final int id) {
         if (id == 0) return null;
         final Node<T> cur = tree.get(id);
-        if (shape.notIntersect(cur.p0, cur.p1)) return null;
+        if (!shape.intersects(cur.p0, cur.p1)) return null;
         if (shape.contains(cur.p0, cur.p1)) return new ObjectArrayList<>(cur.points);
         // terminal node: one point, or a depth-capped node that never split
         if (cur.points.size() == 1 || cur.depth >= maxTreeDepth) {
@@ -311,7 +311,7 @@ public class QuadTree<T extends SpatialIndexPoint> implements SpatialIndex<T>, P
         if (id == 0) return false;
         final Node<T> cur = tree.get(id);
         if (cur.points.isEmpty()) return false;
-        if (shape.notIntersect(cur.p0, cur.p1)) return false;
+        if (!shape.intersects(cur.p0, cur.p1)) return false;
         if (shape.contains(cur.p0, cur.p1)) return true;
         // terminal node: one point, or a depth-capped node that never split
         if (cur.points.size() == 1 || cur.depth >= maxTreeDepth) {

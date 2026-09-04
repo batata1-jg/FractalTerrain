@@ -48,7 +48,7 @@ rescale** — only a clamp to the anchor ceiling plus the local lerp.
 
 ## Stream capture
 
-`manageCollisions` rebuilds topology from scratch over the atomic view rather than patching it, which is
+`detectAndResolveCaptures` rebuilds topology from scratch over the atomic view rather than patching it, which is
 what keeps the result acyclic and single-outflow by construction:
 
 1. Detect crossings by bed overlap on per-point width; join the crossing node pairs with undirected edges.

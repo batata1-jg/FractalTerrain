@@ -172,7 +172,7 @@ public class SpatialIndexBenchmark {
                 pt -> localRivers.queryInfluence(pt).toArray().length);
 
         // ---- RiverNetwork spatial-index migration (2026-09-03 design): detectCrossings -> ImmutableRTree,
-        // manageCutoffs -> SpatialHashGrid, both against one real tile's channel set --------------------
+        // detectAndApplyCutoffs -> SpatialHashGrid, both against one real tile's channel set ------------
         LOG.info("building RiverNetwork debug stages for the crossing/cutoff benchmark...");
         final RiverProvider.Stages riverNetworkStages = localRivers.debugStages(TILE_X, TILE_Z);
         benchDetectCrossingsCandidateGeneration(riverNetworkStages.network);
@@ -324,7 +324,7 @@ public class SpatialIndexBenchmark {
                 });
     }
 
-    /** Minimal view over {@code manageCutoffs}'s four operations, so the same walk exercises the
+    /** Minimal view over {@code detectAndApplyCutoffs}'s four operations, so the same walk exercises the
      *  QuadTree baseline and the SpatialHashGrid replacement without duplicating the algorithm. */
     private interface CutoffIndex {
         void insert(Channel.ChannelPt pt);
@@ -380,9 +380,9 @@ public class SpatialIndexBenchmark {
         }
     }
 
-    /** Replicates {@code RiverNetwork.manageCutoffs}'s walk exactly (insert the channel, walk id order,
-     *  query-then-cut), parameterized over {@link CutoffIndex} so the same algorithm exercises either
-     *  structure. Returns the surviving indexes {@code manageCutoffs} would keep. */
+    /** Replicates {@code RiverNetwork.detectAndApplyCutoffs}'s walk exactly (insert the channel, walk id
+     *  order, query-then-cut), parameterized over {@link CutoffIndex} so the same algorithm exercises
+     *  either structure. Returns the surviving indexes {@code detectAndApplyCutoffs} would keep. */
     private static List<Integer> runCutoffWalk(CutoffIndex index, Channel.ChannelPt[] pts, int channelId) {
         for (Channel.ChannelPt pt : pts) index.insert(pt);
         final List<Integer> keptIndexes = new ObjectArrayList<>();
@@ -400,14 +400,14 @@ public class SpatialIndexBenchmark {
         return keptIndexes;
     }
 
-    /** D2's regression gate + throughput comparison: same manageCutoffs walk, QuadTree baseline vs
+    /** D2's regression gate + throughput comparison: same detectAndApplyCutoffs walk, QuadTree baseline vs
      *  SpatialHashGrid replacement, over the tile's largest channel (most insert/remove/query traffic). */
     private static void benchManageCutoffsOpMix(RiverNetwork network) {
         Channel largest = null;
         for (final Channel ch : network.getChannels())
             if (largest == null || ch.numPts() > largest.numPts()) largest = ch;
         if (largest == null) {
-            LOG.warn("manageCutoffs benchmark skipped: tile has no channels");
+            LOG.warn("detectAndApplyCutoffs benchmark skipped: tile has no channels");
             return;
         }
         final Channel.ChannelPt[] pts = largest.getChannelAsPts();
@@ -421,26 +421,26 @@ public class SpatialIndexBenchmark {
         final List<Integer> hashKept =
                 runCutoffWalk(new HashGridCutoffIndex(new SpatialHashGrid<>(cellSize)), pts, channelId);
         if (!quadKept.equals(hashKept))
-            throw new IllegalStateException("manageCutoffs SpatialHashGrid walk diverged from the QuadTree"
+            throw new IllegalStateException("detectAndApplyCutoffs SpatialHashGrid walk diverged from the QuadTree"
                     + " baseline: quadtree kept " + quadKept + ", hashgrid kept " + hashKept);
         LOG.info(
-                "manageCutoffs cross-check passed: SpatialHashGrid kept indexes match QuadTree ({} points)",
+                "detectAndApplyCutoffs cross-check passed: SpatialHashGrid kept indexes match QuadTree ({} points)",
                 pts.length);
 
         benchOp(
-                "manageCutoffs quadtree op-mix (channel " + channelId + ", " + pts.length + " points)",
+                "detectAndApplyCutoffs quadtree op-mix (channel " + channelId + ", " + pts.length + " points)",
                 () -> runCutoffWalk(
                         new QuadTreeCutoffIndex(new QuadTree<>(new double[] {-1e3, -1e3}, new double[] {1e3, 1e3})),
                         pts,
                         channelId));
         benchOp(
-                "manageCutoffs hashgrid op-mix (channel " + channelId + ", " + pts.length + " points)",
+                "detectAndApplyCutoffs hashgrid op-mix (channel " + channelId + ", " + pts.length + " points)",
                 () -> runCutoffWalk(new HashGridCutoffIndex(new SpatialHashGrid<>(cellSize)), pts, channelId));
     }
 
     /** {@link #bench} for a niladic op-mix pass (insert/remove/query all inside one call) instead of a
-     *  single query point — used by the manageCutoffs benchmark, which rebuilds its structure per call
-     *  exactly as {@code RiverNetwork.manageCutoffs} does. */
+     *  single query point — used by the detectAndApplyCutoffs benchmark, which rebuilds its structure per
+     *  call exactly as {@code RiverNetwork.detectAndApplyCutoffs} does. */
     private static void benchOp(String label, Runnable op) {
         final long warmupEnd = System.nanoTime() + WARMUP_NANOS;
         while (System.nanoTime() < warmupEnd) op.run();

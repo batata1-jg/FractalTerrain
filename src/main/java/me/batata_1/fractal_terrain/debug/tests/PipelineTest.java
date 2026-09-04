@@ -34,6 +34,7 @@ public class PipelineTest {
             }
             return 0;
         } catch (Exception e) {
+            LOG.warn("Failed to query per-process GPU memory via nvidia-smi", e);
             return -1;
         }
     }
@@ -47,6 +48,7 @@ public class PipelineTest {
             p.waitFor();
             return Long.parseLong(output.split("\n")[0].trim());
         } catch (Exception e) {
+            LOG.warn("Failed to query total GPU memory via nvidia-smi", e);
             return -1;
         }
     }

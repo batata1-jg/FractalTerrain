@@ -41,9 +41,6 @@ public class RiverTest {
 
     private static final String DEBUG_PATH = FractalTerrainConfig.DEFAULT_DEBUG_PATH + "/local_river";
 
-    /** {@link RiverProvider}'s padded working resolution ({@link HydrologyTileGeometry#GRID} + 1-px halo per side). */
-    private static final int PAD = 1;
-
     /** Tiles (tx, tz) to render. */
     private static final int[][] TILES = { // {-1, -2}
         // {0, -1},
@@ -104,12 +101,12 @@ public class RiverTest {
         // trace shifts its segments by +PAD into the padded graph frame on insertion (DL-005), so both
         // need the same PAD offset subtracted for tile-local pixel coords.
         seeFloat(
-                rasterizeChannels(stages.channels, PAD),
+                rasterizeChannels(stages.channels, HydrologyTileGeometry.PAD),
                 HydrologyTileGeometry.GRID,
                 HydrologyTileGeometry.GRID,
                 prefix + "05_global_channels");
         seeFloat(
-                rasterizeChannels(stages.localChannels, PAD),
+                rasterizeChannels(stages.localChannels, HydrologyTileGeometry.PAD),
                 HydrologyTileGeometry.GRID,
                 HydrologyTileGeometry.GRID,
                 prefix + "06_local_channels");

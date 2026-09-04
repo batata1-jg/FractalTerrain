@@ -1,5 +1,6 @@
 package me.batata_1.fractal_terrain.world.biome;
 
+import me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry;
 import me.batata_1.fractal_terrain.math.Interpolation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,12 +17,6 @@ import org.slf4j.LoggerFactory;
 public class ShoreDistanceCalculator {
     private static final Logger LOG = LoggerFactory.getLogger(ShoreDistanceCalculator.class);
 
-    /** Native pixels spanned by one coarse cell. */
-    private static final int COARSE_CELL_PX = 256;
-
-    /** Half of {@link #COARSE_CELL_PX}; offsets a pixel to its coarse-cell centre for bilinear sampling. */
-    private static final int COARSE_CELL_HALF = COARSE_CELL_PX / 2;
-
     /** Side of the per-coarse-cell distance grid passed in (2 owned cells + 1-cell halo each side). */
     private static final int DSHORE_GRID = 4;
 
@@ -36,7 +31,8 @@ public class ShoreDistanceCalculator {
 
     // Debug: log each dshore grid cell's coarse-pixel coordinate and value. The grid is row-major
     // [Xcell*DSHORE_GRID + Zcell] over the tile's owned coarse cells plus a 1-cell halo. x0/z0 are tile
-    // indices, a tile spans (TILE_SIZE/COARSE_CELL_PX) coarse cells, and the halo shifts the grid origin one
+    // indices, a tile spans (TILE_SIZE/HydrologyTileGeometry.COARSE_PX) coarse cells, and the halo shifts the grid
+    // origin one
     // coarse cell earlier: coarsePx = tileIndex*coarseCellsPerTile - 1 + gridIndex.
     public static void logDebugGrid(int x0, int z0, int[] coarseDistShore) {
         final int originCx = (x0 << 1);
@@ -53,10 +49,10 @@ public class ShoreDistanceCalculator {
     }
 
     // Per-pixel distance to shore, bilinearly upscaled from the coarse grid. dx=X axis, dz=Z axis;
-    // +COARSE_CELL_HALF shifts a pixel onto its coarse-cell centre. Drives the coast override.
+    // +HydrologyTileGeometry.COARSE_HALF shifts a pixel onto its coarse-cell centre. Drives the coast override.
     public static float sample(float[] distShoreGrid, int dx, int dz) {
-        double shoreGx = 1 + (dx / (double) COARSE_CELL_PX);
-        double shoreGz = 1 + (dz / (double) COARSE_CELL_PX);
+        double shoreGx = 1 + (dx / (double) HydrologyTileGeometry.COARSE_PX);
+        double shoreGz = 1 + (dz / (double) HydrologyTileGeometry.COARSE_PX);
         return (float) Interpolation.sampleSmoothStep(distShoreGrid, shoreGx, shoreGz, DSHORE_GRID);
     }
 }

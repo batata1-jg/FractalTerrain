@@ -9,7 +9,7 @@ import java.util.List;
  * pattern neither immutable index in this package covers, since {@link ImmutableQuadTree}/
  * {@link ImmutableRTree} have no mutation path by design (see {@code README.md}).
  *
- * <p>Exists for {@code RiverNetwork.manageCutoffs}'s cut-and-continue walk, which removes points
+ * <p>Exists for {@code RiverNetwork.detectAndApplyCutoffs}'s cut-and-continue walk, which removes points
  * mid-scan; rebuilding a whole immutable tree after every cut would cost far more than the bulk load it
  * amortizes elsewhere. No lock: per {@code README.md}'s invariant, every caller builds and mutates one
  * index per tile on a single thread, so {@link QuadTree}'s {@code ReentrantReadWriteLock} would only buy
@@ -73,6 +73,31 @@ public final class SpatialHashGrid<T extends SpatialIndexPoint> implements Spati
                     final double deltaX = pt.get(X) - center[X];
                     final double deltaZ = pt.get(Z) - center[Z];
                     if (deltaX * deltaX + deltaZ * deltaZ <= radiusSq) hits.add(pt);
+                }
+            }
+        }
+        return hits;
+    }
+
+    /** Exact box query, mirroring {@link QuadTree#getPointsInBox}: {@code b} is the box's lower corner,
+     *  {@code d} its upper corner. Same superset-then-filter shape as {@link #getPointsInCircle} — cell
+     *  cover the box, then re-test each candidate against the true interval bounds. */
+    public List<T> getPointsInBox(double[] b, double[] d) {
+        SpatialIndex.requirePlanar(b, "b");
+        SpatialIndex.requirePlanar(d, "d");
+        final List<T> hits = new ObjectArrayList<>();
+        final long minCellX = cellIndex(b[X]);
+        final long maxCellX = cellIndex(d[X]);
+        final long minCellZ = cellIndex(b[Z]);
+        final long maxCellZ = cellIndex(d[Z]);
+        for (long cx = minCellX; cx <= maxCellX; cx++) {
+            for (long cz = minCellZ; cz <= maxCellZ; cz++) {
+                final ObjectArrayList<T> bucket = buckets.get(packKey(cx, cz));
+                if (bucket == null) continue;
+                for (T pt : bucket) {
+                    if (pt.get(X) >= b[X] && pt.get(X) <= d[X] && pt.get(Z) >= b[Z] && pt.get(Z) <= d[Z]) {
+                        hits.add(pt);
+                    }
                 }
             }
         }

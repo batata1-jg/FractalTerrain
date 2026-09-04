@@ -39,7 +39,7 @@ public interface SpatialIndexRotatedRectangle extends SpatialIndexShape {
 
     /** Separating-axis test over the two world axes and the two local axes. */
     @Override
-    default boolean notIntersect(double[] lowerCorner, double[] upperCorner) {
+    default boolean intersects(double[] lowerCorner, double[] upperCorner) {
         final double[] center = coord();
         final double cosAngle = getCosAngle();
         final double sinAngle = getSinAngle();
@@ -50,11 +50,11 @@ public interface SpatialIndexRotatedRectangle extends SpatialIndexShape {
 
         final double worldRadiusX = halfLength * absCos + halfWidth * absSin;
         if (center[0] + worldRadiusX < lowerCorner[0] || upperCorner[0] < center[0] - worldRadiusX) {
-            return true;
+            return false;
         }
         final double worldRadiusZ = halfLength * absSin + halfWidth * absCos;
         if (center[1] + worldRadiusZ < lowerCorner[1] || upperCorner[1] < center[1] - worldRadiusZ) {
-            return true;
+            return false;
         }
 
         final double boxHalfX = (upperCorner[0] - lowerCorner[0]) * 0.5;
@@ -63,10 +63,10 @@ public interface SpatialIndexRotatedRectangle extends SpatialIndexShape {
         final double deltaZ = (lowerCorner[1] + upperCorner[1]) * 0.5 - center[1];
         final double localX = deltaX * cosAngle + deltaZ * sinAngle;
         if (Math.abs(localX) > halfLength + boxHalfX * absCos + boxHalfZ * absSin) {
-            return true;
+            return false;
         }
         final double localZ = deltaZ * cosAngle - deltaX * sinAngle;
-        return Math.abs(localZ) > halfWidth + boxHalfX * absSin + boxHalfZ * absCos;
+        return Math.abs(localZ) <= halfWidth + boxHalfX * absSin + boxHalfZ * absCos;
     }
 
     /** Convex, so containing all four box corners is the whole test. */

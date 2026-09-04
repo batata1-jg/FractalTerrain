@@ -49,7 +49,11 @@ public final class GlobalNetworkBuilder {
 
     private record EdgeKey(int lowerX, int lowerZ, int axis) {}
 
-    private record CellInfo(int ccx, int ccz, int outDirection, int dcx, int dcz, double[] drain) {}
+    private record CellInfo(int ccx, int ccz, int outDirection, int dcx, int dcz, double[] drain) {
+        boolean hasOutflow() {
+            return outDirection != -1;
+        }
+    }
 
     /** One coarse-cell edge scanned by {@link #findDrain}: which coordinate the edge fixes, the other's
      *  scan range, and whether the edge sits on a tile corner (needing the stricter corner margin) rather
@@ -65,22 +69,47 @@ public final class GlobalNetworkBuilder {
     }
 
     /**
-     * The relaxed {@link RiverNetwork} together with the boundary-elevation map {@link #build}
-     * accumulated for it (source/drain node datum keyed by minted node id), for the caller to hand to
-     * {@link ChannelElevationAssigner#assign}.
+     * Mutable holder for {@link #build}'s output, pre-allocated empty by the caller and filled in place as
+     * each piece is produced: the relaxed {@link RiverNetwork}, the boundary-elevation map (source/drain
+     * node datum keyed by minted node id) for {@link ChannelElevationAssigner#assign}, the drainage field,
+     * the Rosgen typer, and the carved elevation clone. Mutable rather than a record because
+     * {@link RiverNetwork} cannot be constructed empty and populated in place — it is only buildable from
+     * complete node/edge spec lists, which {@link #build} only has ready partway through tracing.
      *
      * <p>{@code elevCarvedGlobalOnly} is the elevation after the global-only carve, the drainage field is
      * computed over; {@code typer} is the Rosgen classifier {@link #build} built against that same buffer.
      */
-    public record Result(
-            RiverNetwork network,
-            int[] drainage,
-            Int2DoubleMap boundaryElevByNodeIdx,
-            ChannelTyper typer,
-            float[] elevCarvedGlobalOnly) {}
+    public static final class Context {
+        private RiverNetwork network;
+        private int[] drainage;
+        private Int2DoubleMap boundaryElevByNodeIdx;
+        private ChannelTyper typer;
+        private float[] elevCarvedGlobalOnly;
 
-    public static Result build(int tileX, int tileZ, float[][] base, GlobalRiverProvider grp) {
+        public RiverNetwork network() {
+            return network;
+        }
+
+        public int[] drainage() {
+            return drainage;
+        }
+
+        public Int2DoubleMap boundaryElevByNodeIdx() {
+            return boundaryElevByNodeIdx;
+        }
+
+        public ChannelTyper typer() {
+            return typer;
+        }
+
+        public float[] elevCarvedGlobalOnly() {
+            return elevCarvedGlobalOnly;
+        }
+    }
+
+    public static void build(Context ctx, int tileX, int tileZ, float[][] base, GlobalRiverProvider grp) {
         final float[] elevCarvedGlobalOnly = base[0].clone();
+        ctx.elevCarvedGlobalOnly = elevCarvedGlobalOnly;
 
         final Long2ObjectMap<CellInfo> cells = resolveCellDrains(tileX, tileZ, grp, elevCarvedGlobalOnly);
 
@@ -91,6 +120,7 @@ public final class GlobalNetworkBuilder {
         final Object2IntOpenHashMap<EdgeKey> edgeNodeIdx = new Object2IntOpenHashMap<>();
         edgeNodeIdx.defaultReturnValue(-1);
         final Int2DoubleOpenHashMap boundaryElevByNodeIdx = new Int2DoubleOpenHashMap();
+        ctx.boundaryElevByNodeIdx = boundaryElevByNodeIdx;
 
         addOwnedCentreNodes(tileX, tileZ, cells, nodeSpecs, centerIdx, boundaryElevByNodeIdx);
         stitchEdgesAndSources(
@@ -106,16 +136,14 @@ public final class GlobalNetworkBuilder {
                 grp);
 
         ChannelTyper typer = new ReachRosgenClassifier(elevCarvedGlobalOnly, PADDED);
+        ctx.typer = typer;
 
         final RiverNetwork network = new RiverNetwork(PADDED, nodeSpecs, edgeSpecs);
+        ctx.network = network;
         if (edgeSpecs.isEmpty()) {
-            return new Result(
-                    network,
-                    Drainage.computeDrainageDirection(
-                            Drainage.fillSinks(elevCarvedGlobalOnly, PADDED, HydrologyTuning.FILL_PADDING), PADDED),
-                    boundaryElevByNodeIdx,
-                    typer,
-                    elevCarvedGlobalOnly);
+            ctx.drainage = Drainage.computeDrainageDirection(
+                    Drainage.fillSinks(elevCarvedGlobalOnly, PADDED, HydrologyTuning.FILL_PADDING), PADDED);
+            return;
         }
 
         new GradientNetworkRelaxation(network, base[2].clone(), base[3].clone())
@@ -124,16 +152,11 @@ public final class GlobalNetworkBuilder {
 
         ChannelElevationAssigner.assign(network, boundaryElevByNodeIdx, elevCarvedGlobalOnly);
 
-        RiverInfluenceCarve.carveRiverInfluence(
+        RiverInfluenceCarve.carveRiverInfluenceGrid(
                 elevCarvedGlobalOnly, collect(network, typer, elevCarvedGlobalOnly), PADDED);
 
-        return new Result(
-                network,
-                Drainage.computeDrainageDirection(
-                        Drainage.fillSinks(elevCarvedGlobalOnly, PADDED, HydrologyTuning.FILL_PADDING), PADDED),
-                boundaryElevByNodeIdx,
-                typer,
-                elevCarvedGlobalOnly);
+        ctx.drainage = Drainage.computeDrainageDirection(
+                Drainage.fillSinks(elevCarvedGlobalOnly, PADDED, HydrologyTuning.FILL_PADDING), PADDED);
     }
 
     /** Resolves each owned-plus-halo coarse cell's drain point — downstream if the coarse arrow field
@@ -197,7 +220,7 @@ public final class GlobalNetworkBuilder {
                 final int ccz = tileZ * 2 + b;
                 final CellInfo c = cells.get(cellKey(ccx, ccz));
                 if (c == null) continue;
-                final Endpoint.Type type = (c.outDirection() != -1) ? Endpoint.Type.JUNCTION : Endpoint.Type.DRAIN;
+                final Endpoint.Type type = c.hasOutflow() ? Endpoint.Type.JUNCTION : Endpoint.Type.DRAIN;
                 // a lastPointElev cell drains to its lowest-elevation interior point; otherwise the hub sits at the
                 // centre.
                 final double cx = (type == Endpoint.Type.DRAIN && c.drain() != null)
@@ -239,7 +262,7 @@ public final class GlobalNetworkBuilder {
                 final double width = Math.max(grp.getWidth(ccx, ccz), HydrologyTuning.MIN_WIDTH);
 
                 // drains to another cell. Places the channel that connects the center to the drainage point
-                if (c.outDirection() != -1 && c.drain() != null) {
+                if (c.hasOutflow() && c.drain() != null) {
                     final boolean downOwned =
                             isOwned(tileX, tileZ, c.dcx(), c.dcz()) && cells.containsKey(cellKey(c.dcx(), c.dcz()));
                     final int exitNode;
@@ -342,8 +365,8 @@ public final class GlobalNetworkBuilder {
             GlobalRiverProvider grp) {
         final double minX = PAD + a * COARSE_PX;
         final double minZ = PAD + b * COARSE_PX;
-        final double downstreamBed = Math.max(
-                0, (c.outDirection() != -1) ? grp.getElevation(c.dcx(), c.dcz()) : grp.getElevation(c.ccx(), c.ccz()));
+        final double downstreamBed =
+                Math.max(0, c.hasOutflow() ? grp.getElevation(c.dcx(), c.dcz()) : grp.getElevation(c.ccx(), c.ccz()));
         final double[] seed = sourceSeed(c.ccx(), c.ccz(), minX, minZ, HydrologyTuning.influence(width));
         final int seedNode = addNode(nodeSpecs, seed[0], seed[1], Endpoint.Type.SOURCE);
         boundaryElevByNodeIdx.put(seedNode, Math.max(sampleBilinear(elev, seed[0], seed[1]), downstreamBed));

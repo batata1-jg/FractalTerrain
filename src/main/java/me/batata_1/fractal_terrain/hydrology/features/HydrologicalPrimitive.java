@@ -307,7 +307,7 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
                 final Channel ch = network.getChannel(id);
                 width = Math.max(width, ch.widthAt(ch.numPts() - 1));
             }
-            if (endpoint.outgoing != -1 && emitting.contains(endpoint.outgoing)) {
+            if (endpoint.hasOutgoing() && emitting.contains(endpoint.outgoing)) {
                 width = Math.max(width, network.getChannel(endpoint.outgoing).widthAt(0));
             }
             return width;
@@ -317,7 +317,7 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
         private static int countEmitting(Endpoint endpoint, IntSet emitting) {
             int count = 0;
             for (final int id : endpoint.incoming) if (emitting.contains(id)) count++;
-            if (endpoint.outgoing != -1 && emitting.contains(endpoint.outgoing)) count++;
+            if (endpoint.hasOutgoing() && emitting.contains(endpoint.outgoing)) count++;
             return count;
         }
     }

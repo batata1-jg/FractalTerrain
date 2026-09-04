@@ -6,11 +6,11 @@ import static me.batata_1.fractal_terrain.FractalTerrainInstance.pipeline;
 import com.google.common.base.Function;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
-import me.batata_1.fractal_terrain.FractalTerrainInstance;
-import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
+import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import me.batata_1.fractal_terrain.infinitetensor.FloatTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.math.Interpolation;
+import me.batata_1.fractal_terrain.relief.ReliefProvider;
 import me.batata_1.fractal_terrain.storage.ChunkChannelFill;
 import me.batata_1.fractal_terrain.storage.TileKey;
 import net.minecraft.util.KeyDispatchDataCodec;
@@ -101,6 +101,12 @@ public class BiomeProvider {
     private final DensityFunction erosionDensity;
     private final DensityFunction weirdnessDensity;
 
+    /** Upstream relief tensor source for {@link #buildTile}; injected by {@code GenerationContext}. */
+    private final ReliefProvider reliefProvider;
+
+    /** Upstream river-humidity source for {@link #buildTile}; injected by {@code GenerationContext}. */
+    private final RiverProvider riverProvider;
+
     /** Scale-5 bilinear sampler over the weirdness channel; backs {@link #getWeirdness(int, int)}. */
     @TestOnly
     private final Interpolation weirdnessInterpolation;
@@ -150,7 +156,9 @@ public class BiomeProvider {
     // Construction
     // -------------------------------------------------------------------------
 
-    public BiomeProvider(String path) {
+    public BiomeProvider(String path, ReliefProvider reliefProvider, RiverProvider riverProvider) {
+        this.reliefProvider = reliefProvider;
+        this.riverProvider = riverProvider;
         finalTiles = new NonIntersectingInfiniteTensor(
                 path, "final_biome_tiles", new int[] {TILE_CHANNELS, 512, 512}, buildTile(), CACHE_LIMIT_BYTES);
         // Vanilla Climate.Sampler order: temperature, humidity, continentalness, erosion, depth, weirdness.
@@ -173,23 +181,22 @@ public class BiomeProvider {
         });
     }
 
-    private static @NotNull Function<TileKey, FloatTensor> buildTile() {
+    private @NotNull Function<TileKey, FloatTensor> buildTile() {
         return key -> {
             int x = key.get(X);
             int z = key.get(Z);
-            FloatTensor reliefTensor = FractalTerrainInstance.getReliefProvider()
-                    .getInfiniteTensor()
-                    .getEntry(key);
+            FloatTensor reliefTensor = reliefProvider.getInfiniteTensor().getEntry(key);
 
             final float[] elev = reliefTensor.copyRange(0, 1 << 18);
             final float[] grad = reliefTensor.copyRange(4 << 18, 5 << 18);
             final float[] lowFreqGrad = reliefTensor.copyRange(5 << 18, 6 << 18);
             final float[] res = reliefTensor.copyRange(6 << 18, 7 << 18);
-            final float[] climate = pipeline.getClimate(x << 9, z << 9, (x + 1) << 9, (z + 1) << 9, elev, 1 << 9, 1 << 9);
+            final float[] climate =
+                    pipeline.getClimate(x << 9, z << 9, (x + 1) << 9, (z + 1) << 9, elev, 1 << 9, 1 << 9);
             final int[] coarseDistShore = computeCoarseDistShore(x, z);
             // While the visualizer runs, also capture the per-pixel dist-to-shore for the debug channel.
             final float[] distShoreDebug = DEBUG_DSHORE_CHANNEL_ON ? new float[TILE_PIXELS] : null;
-            var humidityFromRiver = FractalTerrainInstance.getRiverProvider().getRiverHumidity(x,z);
+            var humidityFromRiver = riverProvider.getRiverHumidity(x, z);
             final float[] biomeVariables = ClimateToBiomeTransformer.transform(
                     x, z, elev, grad, lowFreqGrad, climate, res, humidityFromRiver, coarseDistShore, distShoreDebug);
 

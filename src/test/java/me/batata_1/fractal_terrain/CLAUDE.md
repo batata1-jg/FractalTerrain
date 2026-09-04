@@ -7,6 +7,7 @@ JUnit 5 golden-gate tests, run via `gradle test` (`useJUnitPlatform()`).
 | Directory    | What                                                          | When to read                                                       |
 | ------------ | ------------------------------------------------------------- | ------------------------------------------------------------------ |
 | `hydrology/` | River goldens, channel geometry, primitive packing, lattice carve | Verifying or re-baselining river generation and the carve math   |
+| `config/`    | Proves an injected `HydrologyConfig` value actually changes traced output | Adding a new injectable config consumer, checking the injection path is real |
 | `ml/`        | ONNX pipeline session-lifecycle regression                    | Verifying session reload and model offload thread-safety           |
 | `math/`      | `VectorOps` point-onto-segment projection; window-sampler equivalence to the per-pixel interpolation | Changing projection/clamping used by the hydrology carve, or the window samplers |
 | `infinitetensor/` | Window-walk geometry and `NonIntersectingInfiniteTensor` slice/budget behaviour | Changing slice assembly, window intersection, or a cache budget |

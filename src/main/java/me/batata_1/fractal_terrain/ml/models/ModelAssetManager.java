@@ -55,7 +55,7 @@ public final class ModelAssetManager {
         try {
             return FabricLoader.getInstance().getGameDir().resolve("terrain-diffusion-models");
         } catch (Exception e) {
-            LOG.info("no Fabric game dir; resolving model assets under run/");
+            LOG.info("no Fabric game dir; resolving model assets under run/", e);
             return Path.of("run").resolve("terrain-diffusion-models");
         }
     }

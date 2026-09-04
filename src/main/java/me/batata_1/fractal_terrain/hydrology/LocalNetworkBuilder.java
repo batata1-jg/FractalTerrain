@@ -4,6 +4,7 @@ import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.PADDED
 import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.sampleBilinear;
 
 import java.util.List;
+import me.batata_1.fractal_terrain.config.StaticHydrologyConfig;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
@@ -25,7 +26,8 @@ public final class LocalNetworkBuilder {
 
     private LocalNetworkBuilder() {}
 
-    public static void build(GlobalNetworkBuilder.Result ctx, float[][] base,float[] humidity, @Nullable RiverProvider.Stages stages) {
+    public static void build(
+            GlobalNetworkBuilder.Context ctx, float[][] base, float[] humidity, @Nullable RiverProvider.Stages stages) {
         final float[] elev = base[0].clone();
         final float[] gradMag = base[4];
 
@@ -38,9 +40,10 @@ public final class LocalNetworkBuilder {
         ChannelElevationAssigner.assign(ctx.network(), ctx.boundaryElevByNodeIdx(), elev);
 
         final List<HydrologicalPrimitive> primitives = collect(ctx.network(), ctx.typer(), elev);
-        RiverInfluenceCarve.carveRiverInfluence(elev, primitives, PADDED);
+        RiverInfluenceCarve.carveRiverInfluenceGrid(elev, primitives, PADDED);
 
-        LocalDrainageTracer.traceLocalNetwork(ctx.drainage(), elev,humidity, gradMag, ctx.network(), stages);
+        LocalDrainageTracer.traceLocalNetwork(
+                ctx.drainage(), elev, humidity, gradMag, ctx.network(), stages, StaticHydrologyConfig.INSTANCE);
     }
 
     private static List<HydrologicalPrimitive> collect(RiverNetwork network, ChannelTyper typer, float[] elev) {

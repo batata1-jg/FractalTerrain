@@ -63,7 +63,7 @@ public abstract class ChannelMigrator {
         network.beginStep();
         dumpNetwork("00_original");
         for (Channel ch : network.getChannels()) {
-            final double localDx = Math.clamp(ch.intakeWidth()/2,1.5,dx);
+            final double localDx = Math.clamp(ch.intakeWidth() / 2, 1.5, dx);
             ch.reSample(localDx);
             ch.spline = QuinticHermiteSpline.createCatmullRom(ch.spline.points());
             migrate(ch, localDx);
@@ -73,14 +73,14 @@ public abstract class ChannelMigrator {
 
         for (Channel ch : network.getChannels()) {
             ch.reSample(Math.sqrt(ch.intakeWidth())); // intake: finest spacing, gap-free discs
-            network.manageCutoffs(ch, i);
+            network.detectAndApplyCutoffs(ch, i);
         }
         dumpNetwork("01_migrated");
 
-        network.manageCollisions(i, network.viewAtomic());
+        network.detectAndResolveCaptures(i, network.viewAtomic());
         dumpNetwork("04_managed");
         for (Channel ch : network.getChannels()) {
-            final double localDx = Math.clamp(ch.intakeWidth()/2,1.5,dx);
+            final double localDx = Math.clamp(ch.intakeWidth() / 2, 1.5, dx);
             ch.reSample(localDx);
             ch.spline = QuinticHermiteSpline.createCatmullRom(ch.spline.points());
         }
@@ -111,8 +111,8 @@ public abstract class ChannelMigrator {
     // ---------------------------------------------------------------------------------------------
 
     @TestOnly
-    public void manageCollisions() {
-        network.manageCollisions(currentStep, network.viewAtomic());
+    public void detectAndResolveCaptures() {
+        network.detectAndResolveCaptures(currentStep, network.viewAtomic());
     }
 
     public List<Channel> getChannels() {

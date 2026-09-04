@@ -14,16 +14,16 @@ public interface SpatialIndexCircle extends SpatialIndexShape {
 
     double getRadius();
 
-    /** Clamp-to-box nearest-point test: disjoint iff the box's closest point is farther than the radius. */
+    /** Clamp-to-box nearest-point test: intersecting iff the box's closest point is within the radius. */
     @Override
-    default boolean notIntersect(double[] lowerCorner, double[] upperCorner) {
+    default boolean intersects(double[] lowerCorner, double[] upperCorner) {
         final double[] center = getCenter();
         final double radius = getRadius();
         final double clampedX = Math.clamp(center[0], lowerCorner[0], upperCorner[0]);
         final double clampedZ = Math.clamp(center[1], lowerCorner[1], upperCorner[1]);
         final double deltaX = center[0] - clampedX;
         final double deltaZ = center[1] - clampedZ;
-        return deltaX * deltaX + deltaZ * deltaZ > radius * radius;
+        return deltaX * deltaX + deltaZ * deltaZ <= radius * radius;
     }
 
     /** Farthest-corner test: the box is contained iff its farthest corner is within the radius. */

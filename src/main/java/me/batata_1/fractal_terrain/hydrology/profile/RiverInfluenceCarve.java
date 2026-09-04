@@ -13,7 +13,7 @@ import org.jetbrains.annotations.TestOnly;
 /**
  * The stateless lattice carve shared by every carve call site: {@link #computeRiverGrid} merges every
  * touching primitive — rivers first, then the radial families — into one (height, water, weight) triple
- * per lattice point, and {@link #carveRiverInfluence} wraps it for the padded-tile shell pass.
+ * per lattice point, and {@link #carveRiverInfluenceGrid} wraps it for the padded-tile shell pass.
  *
  * <p>Split out of {@link HydrologyProfileInprinter} so this pure lattice math carries no
  * {@code RiverProvider} dependency — an instance field here would force a cycle back onto
@@ -28,7 +28,8 @@ public final class RiverInfluenceCarve {
      * renders; production passes {@code null}, which costs the carve one never-taken branch and no
      * allocation. Sized {@code paddedSize²} and zero-filled by the caller — the carve only maxes into it.
      */
-    public static void carveRiverInfluence(float[] elevation, List<HydrologicalPrimitive> primitives, int paddedSize) {
+    public static void carveRiverInfluenceGrid(
+            float[] elevation, List<HydrologicalPrimitive> primitives, int paddedSize) {
         if (primitives.isEmpty()) return;
         final GridBuffers buffers = SHELL_BUFFERS.get();
         buffers.ensure(paddedSize, maxLutLen(paddedSize, 1.0));
@@ -163,7 +164,7 @@ public final class RiverInfluenceCarve {
         while (stop < primitives.size()) {
             final RiverPrimitive river = HydrologicalPrimitive.asRiver(primitives.get(stop));
             if (river == null) break;
-            carvePrimitiveInfluence(river, gridSize, acc, dist, lut, perpRow, perpCol, tangRow, tangCol, elevs);
+            carveRiverPrimitiveInfluence(river, gridSize, acc, dist, lut, perpRow, perpCol, tangRow, tangCol, elevs);
             stop++;
         }
     }
@@ -404,7 +405,7 @@ public final class RiverInfluenceCarve {
         }
     }
 
-    private static void carvePrimitiveInfluence(
+    private static void carveRiverPrimitiveInfluence(
             RiverPrimitive river,
             int gridSize,
             float[] acc,
@@ -536,7 +537,7 @@ public final class RiverInfluenceCarve {
     }
 
     /**
-     * The elevation {@link #carveRiverInfluence}'s closing blend would publish at {@code (px, pz)} given
+     * The elevation {@link #carveRiverInfluenceGrid}'s closing blend would publish at {@code (px, pz)} given
      * only the primitives merged into {@code acc} so far. Lets a primitive cap its own bed against ground
      * its already-merged neighbours cut, so the influence carve cannot fill.
      */
@@ -561,7 +562,7 @@ public final class RiverInfluenceCarve {
     }
 
     /** One lattice point's merged elevation, on the same law the closing blend of {@link
-     *  #carveRiverInfluence} applies: ambient carried toward the merged river surface by its weight. */
+     *  #carveRiverInfluenceGrid} applies: ambient carried toward the merged river surface by its weight. */
     private static double mergedElevationAtPoint(int i, float[] acc, float[] elevs) {
         final double w = acc[3 * i + 1];
         return elevs[i] * (1 - w) + acc[3 * i] * w;
@@ -611,7 +612,7 @@ public final class RiverInfluenceCarve {
     }
 
     /**
-     * The distance field the last {@link #carveRiverInfluence} on THIS thread left behind: per lattice
+     * The distance field the last {@link #carveRiverInfluenceGrid} on THIS thread left behind: per lattice
      * point, the footprint scale at which the winning primitive swallows it, {@link #UNSET_MIN_DIST}
      * where none reached. The live scratch buffer, so a reader copies before the next carve overwrites
      * it, and a carve that returned early on an empty primitive list leaves the previous tile's values.

@@ -226,14 +226,16 @@ public final class OnnxModel implements AutoCloseable {
         if (cpuSession != null) {
             try {
                 cpuSession.close();
-            } catch (OrtException ignored) {
+            } catch (OrtException e) {
+                LOG.warn("Failed to close CPU session for '{}' during load-retry cleanup", name, e);
             }
             cpuSession = null;
         }
         if (gpuSession != null) {
             try {
                 gpuSession.close();
-            } catch (OrtException ignored) {
+            } catch (OrtException e) {
+                LOG.warn("Failed to close GPU session for '{}' during load-retry cleanup", name, e);
             }
             gpuSession = null;
         }
@@ -292,14 +294,14 @@ public final class OnnxModel implements AutoCloseable {
      *  shared GPU slot claimed via {@link #claimGpuSlot()}). */
     public float[] run(Object[][] inputs) {
         if (cpuSession != null) {
-            return runWithSession(cpuSession, inputs);
+            return runWithSession(cpuSession, inputs, name);
         }
         if (gpuSession != null) {
-            return runWithSession(gpuSession, inputs);
+            return runWithSession(gpuSession, inputs, name);
         }
         synchronized (GPU_SLOT_LOCK) {
             claimGpuSlot();
-            return runWithSession(activeGpuSession, inputs);
+            return runWithSession(activeGpuSession, inputs, name);
         }
     }
 
@@ -322,7 +324,12 @@ public final class OnnxModel implements AutoCloseable {
             LOG.debug("Evicting '{}' from GPU, loading '{}'", gpuSlotHolder != null ? gpuSlotHolder.name : "?", name);
             try {
                 activeGpuSession.close();
-            } catch (OrtException ignored) {
+            } catch (OrtException e) {
+                LOG.warn(
+                        "Failed to close GPU session for '{}' while evicting it to load '{}'",
+                        gpuSlotHolder != null ? gpuSlotHolder.name : "?",
+                        name,
+                        e);
             }
             activeGpuSession = null;
             gpuSlotHolder = null;
@@ -361,7 +368,7 @@ public final class OnnxModel implements AutoCloseable {
         }
     }
 
-    private static float[] runWithSession(OrtSession session, Object[][] inputs) {
+    private static float[] runWithSession(OrtSession session, Object[][] inputs, String modelName) {
         Map<String, OnnxTensor> feed = new LinkedHashMap<>();
         OrtEnvironment env = OrtEnvironment.getEnvironment();
         try {
@@ -377,7 +384,7 @@ public final class OnnxModel implements AutoCloseable {
                 return out;
             }
         } catch (OrtException e) {
-            throw new RuntimeException("ONNX inference failed", e);
+            throw new RuntimeException("ONNX inference failed for model '" + modelName + "'", e);
         } finally {
             for (OnnxTensor t : feed.values()) t.close();
         }
@@ -389,7 +396,8 @@ public final class OnnxModel implements AutoCloseable {
             if (gpuSlotHolder == this && activeGpuSession != null) {
                 try {
                     activeGpuSession.close();
-                } catch (OrtException ignored) {
+                } catch (OrtException e) {
+                    LOG.warn("Failed to close shared GPU-slot session for '{}' during model close", name, e);
                 }
                 activeGpuSession = null;
                 gpuSlotHolder = null;
@@ -398,14 +406,16 @@ public final class OnnxModel implements AutoCloseable {
         if (cpuSession != null) {
             try {
                 cpuSession.close();
-            } catch (OrtException ignored) {
+            } catch (OrtException e) {
+                LOG.warn("Failed to close CPU session for '{}' during model close", name, e);
             }
             cpuSession = null;
         }
         if (gpuSession != null) {
             try {
                 gpuSession.close();
-            } catch (OrtException ignored) {
+            } catch (OrtException e) {
+                LOG.warn("Failed to close dedicated GPU session for '{}' during model close", name, e);
             }
             gpuSession = null;
         }

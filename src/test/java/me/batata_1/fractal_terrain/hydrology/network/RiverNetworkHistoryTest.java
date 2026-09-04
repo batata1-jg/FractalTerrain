@@ -27,7 +27,7 @@ class RiverNetworkHistoryTest {
     private static final double RESAMPLE_DIST = 2.0;
     private static final int MAX_SAVED_STATES = 3;
 
-    /** Flow 100 gives width 4.0, so manageCutoffs searches a radius of sqrt(4) = 2.0. */
+    /** Flow 100 gives width 4.0, so detectAndApplyCutoffs searches a radius of sqrt(4) = 2.0. */
     private static final double FLOW = 100.0;
 
     /** Return-leg offset, well inside that 2.0 radius so the fold is found whatever the resample does. */
@@ -88,7 +88,7 @@ class RiverNetworkHistoryTest {
     void aCutoffShedsOxbowsStampedWithTheStepAndTheChannelWidth() {
         final RiverNetwork net = twoHairpins();
 
-        net.manageCutoffs(net.getChannels().get(0), 3);
+        net.detectAndApplyCutoffs(net.getChannels().get(0), 3);
 
         final List<HydrologicalPrimitive> shed = history(net);
         assertFalse(shed.isEmpty(), "fixture is degenerate: the hairpin produced no cutoff");
@@ -107,11 +107,11 @@ class RiverNetworkHistoryTest {
         final RiverNetwork net = twoHairpins();
         final List<Channel> channels = net.getChannels();
 
-        net.manageCutoffs(channels.get(0), 1);
+        net.detectAndApplyCutoffs(channels.get(0), 1);
         assertFalse(history(net).isEmpty(), "fixture is degenerate: the first hairpin produced no cutoff");
 
         // MAX_SAVED_STATES is 3, so at step 9 the step-1 entries are five steps past the window.
-        net.manageCutoffs(channels.get(1), 9);
+        net.detectAndApplyCutoffs(channels.get(1), 9);
 
         final List<HydrologicalPrimitive> shed = history(net);
         assertFalse(shed.isEmpty(), "fixture is degenerate: the second hairpin produced no cutoff");
@@ -123,7 +123,7 @@ class RiverNetworkHistoryTest {
     @Test
     void resolutionFillsTheDeferredElevationAndInfluence() {
         final RiverNetwork net = twoHairpins();
-        net.manageCutoffs(net.getChannels().get(0), 2);
+        net.detectAndApplyCutoffs(net.getChannels().get(0), 2);
         assertFalse(history(net).isEmpty(), "fixture is degenerate: the hairpin produced no cutoff");
 
         net.remapHistory(p -> ((HistoricPrimitive) p).resolved(64.0, 12.0));
@@ -139,7 +139,7 @@ class RiverNetworkHistoryTest {
     @Test
     void emissionShiftsShedPrimitivesIntoTheQueriedFrame() {
         final RiverNetwork net = twoHairpins();
-        net.manageCutoffs(net.getChannels().get(0), 4);
+        net.detectAndApplyCutoffs(net.getChannels().get(0), 4);
         final List<HydrologicalPrimitive> shed = history(net);
         assertFalse(shed.isEmpty(), "fixture is degenerate: the hairpin produced no cutoff");
         final HydrologicalPrimitive stored = shed.get(0);
@@ -156,7 +156,7 @@ class RiverNetworkHistoryTest {
     @Test
     void collectEmitsShedPrimitivesAlongsideTheLiveNetwork() {
         final RiverNetwork net = twoHairpins();
-        net.manageCutoffs(net.getChannels().get(0), 6);
+        net.detectAndApplyCutoffs(net.getChannels().get(0), 6);
         assertFalse(history(net).isEmpty(), "fixture is degenerate: the hairpin produced no cutoff");
         // collectPrimitives reads a bed elevation per emitted river point; no assigner ran here.
         for (final Channel ch : net.getChannels()) ch.bedElevations = new double[ch.numPts()];

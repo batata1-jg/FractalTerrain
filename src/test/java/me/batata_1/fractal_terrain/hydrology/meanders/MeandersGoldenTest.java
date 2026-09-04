@@ -40,7 +40,7 @@ class MeandersGoldenTest {
     @Test
     void independentCrossingsAreNotMerged() {
         Meanders sim = crossingInstance();
-        sim.manageCollisions();
+        sim.detectAndResolveCaptures();
 
         // The two channels' bed overlap planarizes into one shared node with two forward continuations;
         // K1 permits only one outgoing edge from it, so the BFS merges through whichever continuation is
@@ -72,7 +72,7 @@ class MeandersGoldenTest {
         Meanders sim = trunkInstance();
         final AtomicView atomic = sim.getNetwork().viewAtomic();
         addDanglingTributary(atomic, tributaryPoints(256.0)); // ends on the trunk line -> crosses it
-        sim.getNetwork().manageCollisions(0, atomic);
+        sim.getNetwork().detectAndResolveCaptures(0, atomic);
 
         boolean confluence = sim.getNodes().stream().anyMatch(n -> n.type == Endpoint.Type.JUNCTION);
         assertTrue(confluence, "dangling tributary was not captured into the trunk (no JUNCTION minted)");
@@ -101,7 +101,7 @@ class MeandersGoldenTest {
                 atomic.role(tribSourceId),
                 "fixture precondition: the tributary SOURCE should exist in the atomic view before the pass");
 
-        sim.getNetwork().manageCollisions(0, atomic);
+        sim.getNetwork().detectAndResolveCaptures(0, atomic);
 
         // The pruned tributary contributes no SOURCE to the rebuilt canonical view — only the trunk's.
         assertEquals(
@@ -123,7 +123,7 @@ class MeandersGoldenTest {
         assertEndpointsMatchNodes(trunkInstance(), "construction");
 
         Meanders captured = crossingInstance();
-        captured.manageCollisions();
+        captured.detectAndResolveCaptures();
         assertEndpointsMatchNodes(captured, "collision pass");
 
         Meanders simulated = crossingInstance();
@@ -259,7 +259,7 @@ class MeandersGoldenTest {
     private static final double TRIBUTARY_FLOW = 3.0;
 
     /** A tributary with a deliberately dangling end, mirroring how {@code LocalDrainageTracer} attaches
-     *  a traced segment. The dangling end is what {@link RiverNetwork#manageCollisions} must resolve. */
+     *  a traced segment. The dangling end is what {@link RiverNetwork#detectAndResolveCaptures} must resolve. */
     private static int addDanglingTributary(AtomicView atomic, List<double[]> pts) {
         final int sourceId = atomic.addNode(pts.get(0).clone(), Endpoint.Type.SOURCE, -1, TRIBUTARY_FLOW, -1);
         int prev = sourceId;

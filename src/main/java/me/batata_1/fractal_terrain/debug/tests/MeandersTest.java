@@ -83,7 +83,7 @@ public class MeandersTest {
         LOG.info("Before: sinuosity={}  points={}", String.format("%.4f", sBefore), before.size());
         Debug.river.see(sim, "before");
 
-        sim.simulate(100,10);
+        sim.simulate(100, 10);
 
         List<double[]> result = sim.getChannelPts(0);
         int m = result.size();
@@ -124,7 +124,7 @@ public class MeandersTest {
 
     private static void testCrossingBecomesConfluence() {
         Meanders sim = crossingInstance();
-        sim.manageCollisions();
+        sim.detectAndResolveCaptures();
 
         // Planarization inserts one shared atomic node at the geometric crossing, and invariant K1
         // (single outgoing edge per node) forces that shared node into a single confluence — two
@@ -144,7 +144,7 @@ public class MeandersTest {
     // -----------------------------------------------------------------------------------------
     private static void testLosingBranchPruned() {
         Meanders sim = crossingInstance();
-        sim.manageCollisions();
+        sim.detectAndResolveCaptures();
 
         // The reverse-BFS capture picks the shorter hop path to the surviving drain, so channel b's
         // downstream half and its original drain (node 1) are orphaned and dropped.
@@ -178,7 +178,7 @@ public class MeandersTest {
         int trunkPtsBefore = sim.getChannel(0).numPts();
         int otherPtsBefore = sim.getChannel(1).numPts();
 
-        sim.manageCollisions();
+        sim.detectAndResolveCaptures();
 
         check(sim.getChannelCount() == 2, "disjoint channels should not be merged");
         boolean junction = sim.getNodes().stream().anyMatch(nd -> nd.type == Endpoint.Type.JUNCTION);
@@ -212,7 +212,7 @@ public class MeandersTest {
         assertEndpointsMatchNodes(crossingInstance(), "construction");
 
         Meanders captured = crossingInstance();
-        captured.manageCollisions();
+        captured.detectAndResolveCaptures();
         assertEndpointsMatchNodes(captured, "collision pass");
 
         Meanders simulated = crossingInstance();

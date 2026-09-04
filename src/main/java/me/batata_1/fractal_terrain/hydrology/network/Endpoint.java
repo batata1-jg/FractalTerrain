@@ -53,6 +53,10 @@ public class Endpoint {
         return type.isSourceOrDrain();
     }
 
+    public boolean hasOutgoing() {
+        return outgoing != -1;
+    }
+
     @Override
     public String toString() {
         return "Endpoint{" + id + " " + type + " in=" + incoming + " out=" + outgoing + "}";

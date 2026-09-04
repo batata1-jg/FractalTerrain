@@ -5,7 +5,7 @@
 One function, `RiverInfluenceCarve.computeRiverGrid`, turns the hydrological-primitive index into
 elevation edits for every carve in the mod, plus one painter that turns the result into placed water.
 
-The tile-level shell carve (`carveRiverInfluence`, which wraps `computeRiverGrid` over the 514x514 padded
+The tile-level shell carve (`carveRiverInfluenceGrid`, which wraps `computeRiverGrid` over the 514x514 padded
 tile) runs **three** times per tile build, on three different elevation buffers:
 
 1. `GlobalNetworkBuilder.build` — global-only graph, into its own clone. Discarded except through the
@@ -75,7 +75,7 @@ being cut off square — which is what a segment ending should look like. The al
 the perpendicular axis, would leave the along-flow coordinate unbanded and break the paint side's
 width-independence at every channel end.
 
-`carvePrimitiveInfluence`, the tile-level shell carve, keeps its own two-piece `dd` remap and is not
+`carveRiverPrimitiveInfluence`, the tile-level shell carve, keeps its own two-piece `dd` remap and is not
 banded. Unifying the two would move shell terrain and bed terrain together, leaving any regression
 unattributable.
 
@@ -120,7 +120,7 @@ linearly, so it smears the `RosgenProfile` margin discontinuity (`perpDist <= ma
 one lattice cell — one block wide in the bed path, one pixel wide in the shell path. Accepted, not an
 oversight; revisit if bed rims read as unexpectedly soft.
 
-**Call sites.** `RiverInfluenceCarve.carveRiverInfluence` reads and writes a caller-supplied padded-tile
+**Call sites.** `RiverInfluenceCarve.carveRiverInfluenceGrid` reads and writes a caller-supplied padded-tile
 buffer, skipping pixels with negative ambient elevation (ocean). The three tile-level callers are listed in
 the Overview; each hands it a different buffer, and only `RiverProvider.carveRivers`' survives.
 `PopulateNoiseStep.fineGrainedPrimitivePass` carves the bed and, from `computeRiverGrid`'s water lane and

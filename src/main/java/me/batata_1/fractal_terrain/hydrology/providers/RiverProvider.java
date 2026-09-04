@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.function.Predicate;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
+import me.batata_1.fractal_terrain.config.StaticHydrologyConfig;
 import me.batata_1.fractal_terrain.hydrology.*;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
@@ -27,7 +28,6 @@ import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingInfiniteTensor;
 import me.batata_1.fractal_terrain.infinitetensor.NonIntersectingSpatialIndex;
 import me.batata_1.fractal_terrain.math.ds.ImmutableRTree;
 import me.batata_1.fractal_terrain.relief.DecoderChannels;
-import me.batata_1.fractal_terrain.storage.TileKey;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
 
@@ -65,7 +65,15 @@ public class RiverProvider {
     @TestOnly
     private @Nullable GlobalRiverProvider globalRiverOverride;
 
+    /** Peer instance from {@link me.batata_1.fractal_terrain.GenerationContext}; {@code null} → use the singleton. */
+    private final @Nullable GlobalRiverProvider injectedGlobalRiverProvider;
+
     public RiverProvider(String path) {
+        this(path, null);
+    }
+
+    public RiverProvider(String path, @Nullable GlobalRiverProvider globalRiverProvider) {
+        this.injectedGlobalRiverProvider = globalRiverProvider;
         // The one-primitive prototype index keeps Storage's serializability probe exercising primitive
         // serialization, so the store stays disk-backed. Primitive coords are persisted in the WORLD
         // relief-pixel frame (see buildTile). The name carries the schema identity: "_v3" is what
@@ -97,23 +105,16 @@ public class RiverProvider {
         return data;
     }
 
-
     public ImmutableRTree<HydrologicalPrimitive> getPrimitiveTree(int tileX, int tileZ) {
         return primitives.getEntry(new int[] {tileX, tileZ});
     }
 
-    public float[] getRiverHumidity(int tileX,int tileZ) {
-        return Arrays.copyOfRange(
-                getElevHumidityTile(tileX,tileZ),
-                GRID*GRID,2*GRID*GRID
-        );
+    public float[] getRiverHumidity(int tileX, int tileZ) {
+        return Arrays.copyOfRange(getElevHumidityTile(tileX, tileZ), GRID * GRID, 2 * GRID * GRID);
     }
 
-    public float[] getElevation(int tileX,int tileZ) {
-        return Arrays.copyOfRange(
-                getElevHumidityTile(tileX,tileZ),
-                0,GRID*GRID
-        );
+    public float[] getElevation(int tileX, int tileZ) {
+        return Arrays.copyOfRange(getElevHumidityTile(tileX, tileZ), 0, GRID * GRID);
     }
 
     public float[] getElevHumidityTile(int tileX, int tileZ) {
@@ -123,7 +124,9 @@ public class RiverProvider {
     private record HydrologyResult(ImmutableRTree<HydrologicalPrimitive> primitive, FloatTensor tile) {}
 
     private GlobalRiverProvider globalRiverProvider() {
-        return (globalRiverOverride != null) ? globalRiverOverride : FractalTerrainInstance.getGlobalRiverProvider();
+        if (globalRiverOverride != null) return globalRiverOverride;
+        if (injectedGlobalRiverProvider != null) return injectedGlobalRiverProvider;
+        return FractalTerrainInstance.getGlobalRiverProvider();
     }
 
     // -------------------------------------------------------------------------
@@ -151,20 +154,40 @@ public class RiverProvider {
         return computeTile(tileX, tileZ, stages);
     }
 
+    /**
+     * Orchestrates the tile's 5-stage trace/carve pipeline, in order:
+     * <ol>
+     *   <li>{@link GlobalNetworkBuilder#build} traces/relaxes the global network and carves its own clone.
+     *   <li>{@link LocalNetworkBuilder#build} attaches the local trace onto that graph, carving a second clone.
+     *   <li>{@link Meanders#simulate} migrates the unified graph's channel geometry laterally.
+     *   <li>{@link #carveRivers} carves a third clone — the one whose values are published.
+     *   <li>Primitives are collected off the raw (pre-carve) elevation into the world-frame R-tree.
+     * </ol>
+     * Order is load-bearing: the graph, not any buffer, accumulates state across stages, so each stage shapes
+     * what the next traces, migrates, or samples — reordering or skipping one changes the published output.
+     */
     private HydrologyResult computeTile(int tileX, int tileZ, @Nullable Stages stages) {
         final GlobalRiverProvider grp = globalRiverProvider();
         final float[][] base = DecoderChannels.decode(tileX, tileZ, PAD); // padded 514, channels 0..6
 
-        final GlobalNetworkBuilder.Result result = GlobalNetworkBuilder.build(tileX, tileZ, base, grp);
-        final var climate = pipeline.getClimate((tileX << 9) - PAD, (tileZ << 9) - PAD, ((tileX + 1) << 9) + PAD, ((tileZ + 1) << 9) + PAD,base[0],PADDED,PADDED);
-        final float[] humidity = Arrays.copyOfRange(climate,2*PADDED*PADDED,3*PADDED*PADDED);
-        LocalNetworkBuilder.build(result, base, humidity,stages);
+        final GlobalNetworkBuilder.Context ctx = new GlobalNetworkBuilder.Context();
+        GlobalNetworkBuilder.build(ctx, tileX, tileZ, base, grp);
+        final var climate = pipeline.getClimate(
+                (tileX << 9) - PAD,
+                (tileZ << 9) - PAD,
+                ((tileX + 1) << 9) + PAD,
+                ((tileZ + 1) << 9) + PAD,
+                base[0],
+                PADDED,
+                PADDED);
+        final float[] humidity = Arrays.copyOfRange(climate, 2 * PADDED * PADDED, 3 * PADDED * PADDED);
+        LocalNetworkBuilder.build(ctx, base, humidity, stages);
 
         // base[4] (refinedGrad) is read-only for this consumer — Meanders only samples it, never mutates it.
-        var lateralErosionSim = new Meanders(result.network(), base[4]);
-        lateralErosionSim.simulate(25,10);
+        var lateralErosionSim = new Meanders(ctx.network(), base[4]);
+        lateralErosionSim.simulate(25, 10);
 
-        final float[] carvedElev = carveRivers(result, base[0].clone(), stages);
+        final float[] carvedElev = carveRivers(ctx, base[0].clone(), stages);
 
         // Primitives are stamped in the WORLD relief-pixel frame: (PAD - tileOrigin) drops the halo pad
         // and adds the tile's world origin in one step, matching the offset-free frame every query path
@@ -173,31 +196,31 @@ public class RiverProvider {
         final int tileOriginX = tileX * GRID;
         final int tileOriginZ = tileZ * GRID;
         final List<HydrologicalPrimitive> primitivePoints =
-                collect(result.network(), base[0], PAD - tileOriginX, PAD - tileOriginZ);
+                collect(ctx.network(), base[0], PAD - tileOriginX, PAD - tileOriginZ);
         final ImmutableRTree<HydrologicalPrimitive> primitiveIndex =
                 new ImmutableRTree<>(primitivePoints, HydrologicalPrimitive.PROTOTYPE);
 
-        final float[] riverHumidity = new float[PADDED*PADDED];
+        final float[] riverHumidity = new float[PADDED * PADDED];
 
-        final float[] res = new float[2*PADDED*PADDED];
-        System.arraycopy(carvedElev,0,res,0,PADDED*PADDED);
-        System.arraycopy(riverHumidity,0,res,PADDED*PADDED,PADDED*PADDED);
+        final float[] res = new float[2 * PADDED * PADDED];
+        System.arraycopy(carvedElev, 0, res, 0, PADDED * PADDED);
+        System.arraycopy(riverHumidity, 0, res, PADDED * PADDED, PADDED * PADDED);
         final FloatTensor reliefTile = new FloatTensor(cropToTile(res), new int[] {2, GRID, GRID});
 
         if (stages != null) {
-            stages.channels = result.network().getChannels();
+            stages.channels = ctx.network().getChannels();
             stages.localChannels = new ObjectArrayList<>();
             stages.rawElevation = cropToTile(base[0]);
-            stages.elevationFirstPass = cropToTile(result.elevCarvedGlobalOnly());
+            stages.elevationFirstPass = cropToTile(ctx.elevCarvedGlobalOnly());
             stages.carvedElevation = cropToTile(carvedElev);
-            stages.network = result.network();
+            stages.network = ctx.network();
             stages.primitiveTree = primitiveIndex;
         }
 
         return new HydrologyResult(primitiveIndex, reliefTile);
     }
 
-    private float[] carveRivers(GlobalNetworkBuilder.Result ctx, float[] elev, @Nullable Stages stages) {
+    private float[] carveRivers(GlobalNetworkBuilder.Context ctx, float[] elev, @Nullable Stages stages) {
 
         for (Endpoint node : ctx.network().getNodes()) {
             if (!node.isSourceOrDrain()) continue;
@@ -207,7 +230,7 @@ public class RiverProvider {
         ChannelElevationAssigner.assign(ctx.network(), ctx.boundaryElevByNodeIdx(), elev);
 
         final List<HydrologicalPrimitive> primitives = collect(ctx.network(), ctx.typer(), elev);
-        RiverInfluenceCarve.carveRiverInfluence(elev, primitives, PADDED);
+        RiverInfluenceCarve.carveRiverInfluenceGrid(elev, primitives, PADDED);
 
         if (stages != null && !primitives.isEmpty()) {
             stages.distanceField = Arrays.copyOf(RiverInfluenceCarve.shellDistanceField(), PADDED * PADDED);
@@ -260,7 +283,8 @@ public class RiverProvider {
      *  place; the caller inspects it afterwards. */
     @TestOnly
     public void traceLocalNetworkForTest(int[] drainage, float[] elev, RiverNetwork network) {
-        LocalDrainageTracer.traceLocalNetwork(drainage, elev, null, new float[elev.length], network, null);
+        LocalDrainageTracer.traceLocalNetwork(
+                drainage, elev, null, new float[elev.length], network, null, StaticHydrologyConfig.INSTANCE);
     }
 
     /** Clears both stores' caches. */
@@ -314,8 +338,6 @@ public class RiverProvider {
     public List<HydrologicalPrimitive> queryInfluence(double[] pt) {
         return queryInfluence(pt, 0.0);
     }
-
-
 
     // -------------------------------------------------------------------------
     // Debug access

@@ -32,14 +32,26 @@ public final class ChannelElevationAssigner {
     private ChannelElevationAssigner() {}
 
     public static void assign(RiverNetwork network, Int2DoubleMap boundaryElevByNodeIdx, float[] decodedElev) {
+        assignBoundaryElevations(network, boundaryElevByNodeIdx);
+        final Int2DoubleMap drainElevByNodeId = resolveDrainElevations(network);
+        computeJunctionElevations(network, drainElevByNodeId, decodedElev);
+        interpolateBedElevations(network, decodedElev);
+    }
+
+    /** Seeds SOURCE/DRAIN elevations from the tile boundary; the phases below propagate from these. */
+    private static void assignBoundaryElevations(RiverNetwork network, Int2DoubleMap boundaryElevByNodeIdx) {
         for (Endpoint endpoint : network.getNodes()) {
             if (endpoint.isSourceOrDrain()) {
                 endpoint.elevation = boundaryElevByNodeIdx.getOrDefault(endpoint.id, 0.0);
             }
         }
+    }
 
-        final Int2DoubleMap drainElevByNodeId = resolveDrainElevations(network);
-
+    /** Propagates elevation downstream from each SOURCE to every JUNCTION once its incoming channels have
+     *  all resolved, floored along the way at the DEM sample and at the reach's terminal drain elevation.
+     *  Writes land on {@link Endpoint#elevation} in place; {@link #interpolateBedElevations} reads them back. */
+    private static void computeJunctionElevations(
+            RiverNetwork network, Int2DoubleMap drainElevByNodeId, float[] decodedElev) {
         final Int2IntOpenHashMap pendingIncoming = new Int2IntOpenHashMap();
         pendingIncoming.defaultReturnValue(-1);
         final Int2DoubleOpenHashMap junctionElev = new Int2DoubleOpenHashMap();
@@ -49,7 +61,7 @@ public final class ChannelElevationAssigner {
             if (endpoint.type == Endpoint.Type.JUNCTION) {
                 pendingIncoming.put(endpoint.id, endpoint.incoming.size());
                 junctionElev.put(endpoint.id, Double.POSITIVE_INFINITY);
-            } else if (endpoint.type == Endpoint.Type.SOURCE && endpoint.outgoing != -1) {
+            } else if (endpoint.type == Endpoint.Type.SOURCE && endpoint.hasOutgoing()) {
                 ready.enqueue(endpoint.outgoing);
             }
         }
@@ -57,29 +69,33 @@ public final class ChannelElevationAssigner {
         // calculate the correct elevations for the junctions, and sources
         while (!ready.isEmpty()) {
             final Channel ch = network.getChannel(ready.dequeueInt());
-            if (ch == null) throw new IllegalArgumentException("channel is null");
+            if (ch == null) throw new IllegalStateException("channel is null");
             final Endpoint startPoint = network.getNode(ch.startNodeId);
-            if (startPoint == null) throw new IllegalArgumentException("startPoint is null");
+            if (startPoint == null) throw new IllegalStateException("startPoint is null");
             final double endPointElev = drainElevByNodeId.getOrDefault(ch.endNodeId, Double.NaN);
-            if (Double.isNaN(endPointElev)) throw new IllegalArgumentException("endPointElev is NaN");
+            if (Double.isNaN(endPointElev)) throw new IllegalStateException("endPointElev is NaN");
             final double startElev = Math.max(startPoint.elevation, endPointElev);
-            if (Double.isNaN(startElev)) throw new IllegalArgumentException("startElev is NaN");
+            if (Double.isNaN(startElev)) throw new IllegalStateException("startElev is NaN");
             double lastPointElev = startElev;
             for (double[] p : ch.spline.points()) {
                 lastPointElev = Math.clamp(sampleBilinear(decodedElev, p[0], p[1]), endPointElev, lastPointElev);
             }
             final Endpoint endEndpoint = network.getNode(ch.endNodeId);
-            if (endEndpoint == null) throw new IllegalArgumentException("endEndpoint is null");
+            if (endEndpoint == null) throw new IllegalStateException("endEndpoint is null");
             if (endEndpoint.type == Endpoint.Type.JUNCTION) {
                 junctionElev.mergeDouble(endEndpoint.id, lastPointElev, Math::min);
                 final int remaining = pendingIncoming.mergeInt(endEndpoint.id, -1, Integer::sum);
                 if (remaining == 0) {
                     endEndpoint.elevation = junctionElev.get(endEndpoint.id);
-                    if (endEndpoint.outgoing != -1) ready.enqueue(endEndpoint.outgoing);
+                    if (endEndpoint.hasOutgoing()) ready.enqueue(endEndpoint.outgoing);
                 }
             }
         }
+    }
 
+    /** Interpolates each channel's per-point bed between its resolved endpoints, floored at the DEM sample
+     *  so the bed never rises above terrain the carve will cut into. */
+    private static void interpolateBedElevations(RiverNetwork network, float[] decodedElev) {
         for (Channel ch : network.getChannels()) {
             final Endpoint startEndpoint = network.getNode(ch.startNodeId);
             final Endpoint endEndpoint = network.getNode(ch.endNodeId);

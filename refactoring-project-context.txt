@@ -1,0 +1,795 @@
+  Summary
+
+  25 code-quality categories explored in parallel across
+  src/main/java/me/batata_1/fractal_terrain yielded 82 verified findings,
+  clustered into 26 issues. Two themes dominate: (1) the 2026-07 singleton→DI
+  migration stalled at Phase A, leaving 229 combined reach-throughs to
+  FractalTerrainInstance/static config across providers, storage, and generation
+  stages; (2) the core RiverNetwork/hydrology-builder methods bundle 3–5
+  unrelated phases into single long methods and are named too mildly for what
+  they actually do (manageCollisions, manageCutoffs mutate topology
+  destructively but read like light bookkeeping).
+
+  Recommended: 17 work items | Deferred (surface-level, listed at bottom): 9
+  items | Total complexity: high (driven by the DI and type-dispatch items; most
+  items are low/medium)
+
+  No obsoletes or conflicts_with relationships were found — every primary issue
+  needs direct action. Two amplifies pairs and one enables pair affect
+  sequencing only (noted in Execution Notes).
+
+  ---
+
+  Recommended Work Items
+
+  work-1: Inject GenerationContext into providers/storage instead of static 
+  FractalTerrainInstance reach-through
+
+  Complexity: high | Addresses: issue-1
+
+  Providers, storage, and generation stages fetch each other via
+  FractalTerrainInstance.getXxx() static accessors instead of receiving
+  GenerationContext at construction, continuing to block unit testing 3+ years
+  after Phase A introduced the container.
+
+  Evidence:
+  // PopulateNoiseStep.java:63
+  final HydrologyProfileInprinter imprinter =
+  FractalTerrainInstance.getHydrologyInprinter();
+  Why this matters: Blocks DI/unit testing across 7+ provider/storage classes;
+  storage fetching domain providers back through the same static point creates
+  bidirectional coupling that makes the provider graph impossible to reason
+  about.
+  Scope: 106 occurrences across 14+ files | Verify: grep -r 
+  'FractalTerrainInstance\.' src/main/java/me/batata_1/fractal_terrain --count
+
+  Proposed Change:
+  // Before
+  final GlobalRiverProvider globalRiverProvider() {
+      return (globalRiverOverride != null) ? globalRiverOverride :
+  FractalTerrainInstance.getGlobalRiverProvider();
+  }
+
+  // After
+  private final GlobalRiverProvider globalRiverProvider; // constructor-injected
+  via GenerationContext
+  Delta: Removes the static escape hatch entirely; test overrides
+  (globalRiverOverride) become unnecessary once the real dependency is
+  injectable.
+
+  Approach:
+  1. Add constructor parameters for peer providers to RiverProvider,
+     ReliefProvider, BiomeProvider (start with the 6 sites in issue-1/issue-67
+     that fetch peer providers — RiverProvider.java:126, ReliefProvider.java:92,
+     BiomeProvider.java:180,192).
+  2. Update GenerationContext to pass already-constructed providers into later
+     ones (it already builds them in dependency order — see work-4).
+  3. Migrate the 6 static-import pipeline reach-throughs
+     (GlobalRiverProvider.java, RiverProvider.java, BiomeProvider.java,
+     DecoderChannels.java, DifferenceOfGaussians.java) to receive WorldPipeline
+     via constructor.
+  4. Migrate the 4 storage-layer reach-throughs (FractalTerrainHeightmap.java,
+     FractalTerrainHeightmapCache.java,
+     FractalTerrainHeightmapCacheAccessor.java,
+     FractalTerrainSurfaceSystem.java:131) last, since storage currently depends
+     on providers that will depend on storage — resolve the cycle by having
+     GenerationContext own construction order explicitly.
+  5. Leave FractalTerrainInstance.getX() in place as a compatibility shim per
+     its own docstring ("existing reach-throughs keep working unchanged while
+     callers are migrated package-by-package") until all call sites are
+     migrated, then delete it.
+
+  Verification:
+  - grep -c 'FractalTerrainInstance\.' src/main/java/me/batata_1/fractal_terrain
+    -r should trend toward 0 (currently 106+).
+  - gradle test — no regression against the documented baseline (102 tests, 9
+    pre-existing failures).
+
+  ---
+
+  work-2: Extract an injectable Config interface from 
+  ModConfig/HydrologyTuning/DebugConfig
+
+  Complexity: high | Addresses: issue-2
+
+  Configuration is static-final constants read via static methods with no
+  abstraction layer, so hydrology math can't be tested against alternate tuning
+  without recompiling.
+
+  Evidence:
+  private static final Properties PROPERTIES = new Properties();
+  public static final float GLOBAL_SCALE_CORRECTION = 5f;
+  Why this matters: Hydrology business logic cannot be unit-tested with
+  different tuning parameters without recompiling; configuration changes require
+  a JVM restart.
+  Scope: 123 occurrences across 37 files | Verify: grep -r 
+  'ModConfig\.read\|HydrologyTuning\.\|DebugConfig\.' 
+  src/main/java/me/batata_1/fractal_terrain
+
+  Approach:
+  1. Define a HydrologyConfig interface exposing the ~15 tuning values actually
+     read by hydrology math (DX, RESAMPLE_DIST, LOCAL_ATTACH_RADIUS, etc. — see
+     HydrologyTuning.java:27-44).
+  2. Provide a StaticHydrologyConfig default implementation backed by the
+     current constants (zero behavior change).
+  3. Thread the interface through GenerationContext → hydrology classes as part
+     of the work-1 injection pass, since both stem from the same incomplete
+     migration.
+  4. Leave ModConfig/DebugConfig (non-hydrology config) as-is for now — narrower
+     payoff, defer to a follow-up.
+
+  Verification:
+  - gradle test unaffected (default impl preserves current values).
+  - New unit test instantiates hydrology math with a custom HydrologyConfig and
+    confirms output changes accordingly.
+
+  ---
+
+  work-3: Centralize RiverInfluenceCarve invocation behind RiverProvider
+
+  Complexity: medium | Addresses: issue-3
+
+  RiverInfluenceCarve.carveRiverInfluence() is called directly from 4 unrelated
+  call sites instead of being owned by one module.
+
+  Evidence:
+  // GlobalNetworkBuilder.java:127
+  RiverInfluenceCarve.carveRiverInfluence(
+      elevCarvedGlobalOnly, collect(network, typer, elevCarvedGlobalOnly),
+  PADDED);
+  // Also called from: LocalNetworkBuilder.java:41, RiverProvider.java:210, 
+  PopulateNoiseStep.java:76
+  Why this matters: Changes to carving parameters or algorithms require
+  coordinating updates across 4 files instead of one centralized decision point.
+  Scope: 19 occurrences | Verify: grep -r 'carveRiverInfluence' 
+  src/main/java/me/batata_1/fractal_terrain
+
+  Approach:
+  1. Add a RiverProvider.carve(...) facade method that wraps the current 4 call
+     patterns.
+  2. Migrate GlobalNetworkBuilder, LocalNetworkBuilder, and PopulateNoiseStep to
+     call the facade instead of RiverInfluenceCarve directly.
+  3. While touching this file, extract the duplicated bounds-check predicate
+     (work-8) — same file, same pass.
+
+  Verification: gradle riverTest / gradle globalRiverTest PNG output
+  byte-identical to baseline.
+
+  ---
+
+  work-4: Add staged construction with fallback to GenerationContext provider 
+  wiring
+
+  Complexity: medium | Addresses: issue-4
+
+  All 4 providers are constructed in one constructor with no fallback if any
+  throws.
+
+  Evidence:
+  GenerationContext(MinecraftServer server, WorldPipeline pipeline, Logger log)
+  {
+      this.globalRiverProvider = new GlobalRiverProvider(worldPath +
+  "/fractal_terrain");
+      this.riverProvider = new RiverProvider(worldPath + "/fractal_terrain");
+      this.reliefProvider = new ReliefProvider(worldPath + "/fractal_terrain");
+      this.biomeProvider = new BiomeProvider(worldPath + "/fractal_terrain");
+  }
+  Why this matters: Any provider initialization error (disk I/O, model-load
+  timeout) halts world load with no retry path.
+  Scope: 1 site, systemic blast radius | Verify: grep -n 'new 
+  GlobalRiverProvider\|new RiverProvider\|new ReliefProvider\|new BiomeProvider'
+  src/main/java/me/batata_1/fractal_terrain/GenerationContext.java
+
+  Approach:
+  1. Wrap each provider construction in a try/catch that logs the specific
+     provider and rethrows with context ("Failed to initialize ReliefProvider: "
+     + cause).
+  2. Decide (with the user) whether a failed provider should abort world load or
+     fall back to a degraded no-op provider — this is a product decision, not
+     purely mechanical.
+
+  Verification: Manual test — corrupt/remove a provider's data dir and confirm
+  the error message identifies which provider failed.
+
+  ---
+
+  work-5: Consolidate the 3 mixin classes behind one terrain-influence 
+  interceptor
+
+  Complexity: high | Addresses: issue-5
+
+  SteepSlopePredicateMixin, PlacedFeatureMixin, LevelUtilsMixin each patch
+  unrelated Minecraft classes to check FractalTerrainInstance.exists().
+
+  Evidence:
+  // SteepSlopePredicateMixin.java:23
+  if (FractalTerrainInstance.exists()) {
+  Why this matters: Adding a new generation influence requires touching multiple
+  unrelated Minecraft classes via mixins.
+  Scope: 4 occurrences | Verify: grep -r '@Mixin' 
+  src/main/java/me/batata_1/fractal_terrain/mixin/
+
+  Approach:
+  1. Define a TerrainInfluenceHook interface with the 3 methods each mixin
+     currently open-codes.
+  2. Have each mixin delegate to a single implementation instead of inlining
+     logic.
+  3. This is architectural risk in Fabric/Mixin internals — recommend a
+     dedicated design review before implementation, not a mechanical pass.
+
+  Verification: gradle runClient — steep-slope placement and feature placement
+  behave identically to baseline (manual visual check, since these are worldgen
+  mixins).
+
+  ---
+
+  work-6: Split hydrology builder orchestrator methods into named phases
+
+  Complexity: high | Addresses: issue-6
+
+  ChannelElevationAssigner.assign, LocalNetworkBuilder.build,
+  LocalDrainageTracer.traceLocalNetwork,
+  GlobalNetworkBuilder.stitchEdgesAndSources, and RiverNetwork.collectPrimitives
+  each bundle 3–5 unrelated phases into one long method.
+
+  Evidence:
+  public static void assign(RiverNetwork network, Int2DoubleMap
+  boundaryElevByNodeIdx, float[] decodedElev) {
+      // Phase 1: assign source/drain elevations
+      // Phase 2: resolve drain reachability via walkdown
+      // Phase 3: BFS to compute junction elevations
+      // Phase 4: interpolate channel bed elevations
+  Why this matters: Cannot test bed interpolation without junction BFS; step
+  reordering requires modifying the orchestrator rather than composing phases.
+  Scope: 11 occurrences across 5 methods | Verify: grep -r 
+  'collectPrimitives\|stitchEdgesAndSources\|ChannelElevationAssigner.assign\|Lo
+  calNetworkBuilder.build\|traceLocalNetwork' 
+  src/main/java/me/batata_1/fractal_terrain/hydrology
+
+  Approach:
+  1. Start with ChannelElevationAssigner.assign (34-101) — extract the 4
+     documented phases into private methods (assignBoundaryElevations,
+     resolveDrainReachability, computeJunctionElevations,
+     interpolateBedElevations), called in sequence from assign.
+  2. Repeat for LocalDrainageTracer.traceLocalNetwork (compute flow / build
+     graph / topological trace / manage collisions / stage results).
+  3. Repeat for GlobalNetworkBuilder.stitchEdgesAndSources (drain wiring /
+     source seeding / cross-owned edges).
+  4. Do not change the resulting external behavior — this is pure extraction,
+     not redesign; each phase keeps its current parameter list until work-1's DI
+     pass gives a natural place to shrink them.
+  5. Combine with work-7: while splitting, this is the natural point to also
+     rename manageCollisions/manageCutoffs since they're touched anyway.
+
+  Verification: gradle test baseline unchanged (9 known failures, same failure
+  messages in build/test-results/test/*.xml); gradle riverTest/globalRiverTest
+  PNG output byte-identical.
+
+  ---
+
+  work-7: Rename RiverNetwork/AtomicView mutating methods to reflect their 
+  actual scope
+
+  Complexity: medium | Addresses: issue-7
+
+  resolveEndpoints, resolveCrossingEdges, manageCollisions, manageCutoffs all
+  perform destructive multi-phase topology rewrites but are named like
+  passive/light operations.
+
+  Evidence:
+  public void manageCollisions(int step, AtomicView atomic) {
+      List<int[]> crossings = detectCrossings(atomic);
+      atomic.resolveCrossingEdges();
+      final ReachTree reach = reverseBfsCapture(atomic);
+      update(oriented);
+  Why this matters: The misleadingly modest names obscure that these calls
+  perform major topology reconstruction, so callers cannot reason about when
+  network state actually changes.
+  Scope: 12 occurrences across 4 methods | Verify: grep -n 'public void 
+  manageCollisions\|public void manageCutoffs\|public void 
+  resolveEndpoints\|public void resolveCrossingEdges' 
+  src/main/java/me/batata_1/fractal_terrain/hydrology/network/*.java
+
+  Proposed Change:
+  // Before
+  public void manageCollisions(int step, AtomicView atomic)
+  public void manageCutoffs(Channel ch, int step)
+
+  // After (suggested — confirm naming with the user before applying)
+  public void detectAndResolveCaptures(int step, AtomicView atomic)
+  public void detectAndApplyCutoffs(Channel ch, int step)
+  Delta: Names now signal both the detection and the destructive resolution the
+  method performs, matching what work-6's phase-split will make explicit in the
+  method body.
+
+  Approach:
+  1. Do this together with work-6 (same files, same review pass) — renaming
+     after splitting into phases lets you also name the phases consistently.
+  2. Update all call sites (LocalDrainageTracer.java:127,
+     ChannelMigrator.java:114, Meanders.java, and both RiverNetwork internal
+     callers).
+  3. Update the two Javadoc references that already describe the old method
+     names in ChannelMigrator.java:16,59 (also covered by deferred issue-18).
+
+  Verification: gradle build compiles; gradle test baseline unchanged; git grep
+  for old method names returns 0 outside history/changelog.
+
+  ---
+
+  work-8: Extract a named grid-bounds-check predicate in 
+  RiverInfluenceCarve/GlobalRiverProvider
+
+  Complexity: low | Addresses: issue-8
+
+  A 4-clause "is this bounding box outside the grid" check is duplicated
+  verbatim 3× in RiverInfluenceCarve and repeated in a related form in
+  GlobalRiverProvider.
+
+  Evidence:
+  if (rowHi < 0 || rowLo > gridSize - 1 || colHi < 0 || colLo > gridSize - 1)
+  return;
+  Why this matters: Bounds-rule changes require updating 3+ locations across 2
+  files; implementations can diverge if one update is missed.
+  Scope: 8 occurrences | Verify: grep -n 'if (rowHi < 0\|if (pi < PAD' src/main/
+  java/me/batata_1/fractal_terrain/hydrology/profile/RiverInfluenceCarve.java 
+  src/main/java/me/batata_1/fractal_terrain/hydrology/providers/GlobalRiverProvi
+  der.java
+
+  Proposed Change:
+  // Before (repeated 3x at lines 208, 336, 437)
+  if (rowHi < 0 || rowLo > gridSize - 1 || colHi < 0 || colLo > gridSize - 1)
+  return;
+
+  // After
+  private static boolean isOutsideGrid(long rowLo, long rowHi, long colLo, long
+  colHi, int gridSize) {
+      return rowHi < 0 || rowLo > gridSize - 1 || colHi < 0 || colLo > gridSize
+  - 1;
+  }
+  ...
+  if (isOutsideGrid(rowLo, rowHi, colLo, colHi, gridSize)) return;
+  Delta: Single named predicate replaces 3 inline duplicates; a bounds-rule
+  change now happens in one place.
+
+  Approach:
+  1. Extract isOutsideGrid(...) as a private static method in
+     RiverInfluenceCarve.java.
+  2. Replace all 3 call sites (208, 336, 437).
+  3. Extract a parallel isInPadBorder(...) predicate for
+     GlobalRiverProvider.java:160,404's similar pattern.
+
+  Verification: gradle riverTest PNG output byte-identical to baseline.
+
+  ---
+
+  work-9: Add logging to swallowed exceptions in 
+  OnnxModel/PipelineTest/ModelAssetManager/Storage
+
+  Complexity: low | Addresses: issue-9
+
+  Catch blocks across the ONNX runtime, debug harness, and storage layers
+  swallow exceptions without logging.
+
+  Evidence:
+  private void closeLoadedSessions() {
+      if (cpuSession != null) {
+          try {
+              cpuSession.close();
+          } catch (OrtException ignored) {
+          }
+  Why this matters: When ONNX sessions fail to close or fallback paths trigger
+  unexpectedly, no trace remains, hindering GPU-leak and corrupted-cache
+  troubleshooting.
+  Scope: 10 occurrences across 4 files | Verify: git grep -n 'catch 
+  (OrtException ignored)' src/main/java/me/batata_1/fractal_terrain
+
+  Approach:
+  1. OnnxModel.java:229,236,325,392,401,408 — replace catch (OrtException 
+     ignored) {} with catch (OrtException e) { LOG.warn("failed to close 
+     session", e); }.
+  2. PipelineTest.java:36-38,49-51 — log the exception before returning -1.
+  3. ModelAssetManager.java:57-60 — include e in the existing log call.
+  4. Storage.java:180-181 — log the malformed filename and the exception before
+     returning null.
+
+  Verification: git grep -c 'catch.*ignored\|catch (Exception e) {\s*return' 
+  src/main/java/me/batata_1/fractal_terrain should drop from 10 toward 0;
+  behavior unchanged (same return values, just logged).
+
+  ---
+
+  work-10: Standardize exception types and error-wrapping across 
+  hydrology/storage/ML
+
+  Complexity: medium | Addresses: issue-10
+
+  ChannelElevationAssigner throws IllegalArgumentException; RiverNetwork throws
+  IllegalStateException for equivalent topology violations at the same
+  abstraction level; Storage/ML modules wrap errors inconsistently.
+
+  Evidence:
+  if (ch == null) throw new IllegalArgumentException("channel is null");
+  ...
+  throw new IllegalStateException("node " + start.id + " would have >1 outgoing 
+  crossingEdge");
+  Why this matters: Callers cannot catch hydrology failures with a single
+  exception type across modules, forcing fragile multi-catch patterns; error
+  messages lose critical cache/model identifiers at abstraction boundaries.
+  Scope: 30 occurrences | Verify: grep -rn 'throw new 
+  IllegalArgumentException\|throw new IllegalStateException' 
+  src/main/java/me/batata_1/fractal_terrain/hydrology
+
+  Approach:
+  1. Adopt one convention: IllegalStateException for topology/graph-invariant
+     violations (RiverNetwork's existing style), IllegalArgumentException
+     reserved for actual bad caller input.
+  2. Migrate ChannelElevationAssigner.java:60,62,64,66,72 (null/NaN checks on
+     internally-computed values, not caller args → should be
+     IllegalStateException).
+  3. Replace the 6 manual if-null-throw guards (ChannelElevationAssigner,
+     InfiniteTensor, FractalTerrainInstance) with Objects.requireNonNull(x, 
+     "message").
+  4. Add key/tile context consistently to Storage/OnnxModel/SyntheticMapFactory
+     error wrapping (this one first per work-9's logging pass, since it's the
+     same files).
+
+  Verification: gradle test baseline unchanged; new assertion in a hydrology
+  test that a topology violation throws IllegalStateException specifically.
+
+  ---
+
+  work-11: Unify spatial-index and provider API naming/coordinate conventions
+
+  Complexity: medium | Addresses: issue-11
+
+  ImmutableRTree.queryContaining() vs
+  QuadTree.getPointsInCircle()/getPointsInBox(); ReliefProvider.get_entry()
+  (snake_case); providers mix (tileX,tileZ), int[] xz, and region-bounds
+  coordinate conventions; SpatialHashGrid is missing getPointsInBox();
+  notIntersect() reads worse than intersects().
+
+  Evidence:
+  // ImmutableRTree.java:320
+  public List<T> queryContaining(final double[] queryPoint) {
+  // QuadTree.java:358
+  public List<T> getPointsInCircle(final double[] pt, final double r) {
+  Why this matters: Forces callers to remember different names/parameter orders
+  for the same conceptual operation across implementations, increasing
+  refactoring risk.
+  Scope: 47 occurrences | Verify: grep -rn 
+  'public.*queryContaining\|public.*getPoints\|get_entry\|notIntersect' 
+  src/main/java/me/batata_1/fractal_terrain/math/ds 
+  src/main/java/me/batata_1/fractal_terrain/relief
+
+  Approach:
+  1. Rename ReliefProvider.get_entry() → getEntry() (mechanical, 3 call sites) —
+     do this first, it's the cheapest fix.
+  2. Standardize spatial-index query naming to queryX/getPointsInY conventions
+     across ImmutableRTree, QuadTree, ImmutableQuadTree, SpatialHashGrid — pick
+     one prefix and apply consistently (recommend query* since ImmutableRTree
+     already uses it and queryInfluence in RiverProvider sets precedent).
+  3. Add the missing getPointsInBox() to SpatialHashGrid for parity with
+     QuadTree/ImmutableQuadTree.
+  4. Rename notIntersect() → intersects() and invert the 8 call sites
+     (!shape.intersects(...)).
+  5. This is a naming-only pass — no behavior changes, but touches ~15 files, so
+     land it as its own PR separate from work-6/7/8.
+
+  Verification: gradle build compiles; gradle spatialIndexBenchmark unaffected;
+  git grep -c 'notIntersect\|get_entry' returns 0.
+
+  ---
+
+  work-12: Align GlobalNetworkBuilder.build/LocalNetworkBuilder.build 
+  return-type contracts
+
+  Complexity: medium | Addresses: issue-12
+
+  Parallel builder methods in the same pipeline stage return Result vs void.
+
+  Evidence:
+  // GlobalNetworkBuilder.java:82
+  public static Result build(int tileX, int tileZ, float[][] base,
+  GlobalRiverProvider grp) {
+  // LocalNetworkBuilder.java:28
+  public static void build(GlobalNetworkBuilder.Result ctx, float[][] base,
+  float[] humidity, @Nullable RiverProvider.Stages stages) {
+  Why this matters: Callers cannot treat both builders uniformly, forcing
+  different handling logic for similar operations.
+  Scope: 2 sites | Verify: grep -rn 'public static.*build(' 
+  src/main/java/me/batata_1/fractal_terrain/hydrology
+
+  Approach:
+  1. LocalNetworkBuilder.build currently mutates ctx in place — decide whether
+     to (a) have it return a Result-shaped value too, or (b) rename
+     GlobalNetworkBuilder.build to make clear it's the outlier. Given
+     LocalNetworkBuilder mutates its input GlobalNetworkBuilder.Result, option
+     (a) likely means returning the same ctx reference for chainability rather
+     than a new type — confirm with the user before implementing, since this
+     changes a public contract used at 2 call sites.
+  2. Update RiverProvider.computeTile (the sole caller of both) accordingly.
+
+  Verification: gradle riverTest/globalRiverTest PNG output byte-identical.
+
+  ---
+
+  work-13: Consolidate duplicated geometry/tile-size constants into 
+  HydrologyTileGeometry
+
+  Complexity: low | Addresses: issue-13
+
+  Chunk size (16), chunk payload (256=1<<8), tile size (512), and PAD=1 each
+  have a canonical home but are re-declared locally under different names in 10+
+  files.
+
+  Evidence:
+  // HydrologyTileGeometry.java:19
+  public static final int GRID = 512;
+  // DecoderChannels.java:21
+  public static final int INNER = 512;
+  // ReliefProvider.java:36
+  private static final int INNER = 512;
+  Why this matters: Tile-size changes require updating multiple independent
+  definitions; a fix in one location silently fails to propagate to the others.
+  Scope: 62 occurrences | Verify: grep -r '512\|1 << 8\|COARSE_CELL_PX' 
+  src/main/java/me/batata_1/fractal_terrain --include='*.java'
+
+  Approach:
+  1. DecoderChannels.INNER and ReliefProvider.INNER → replace with
+     HydrologyTileGeometry.GRID (mechanical, 2 files).
+  2. ShoreDistanceCalculator.COARSE_CELL_PX/COARSE_CELL_HALF → replace with
+     HydrologyTileGeometry.COARSE_PX/COARSE_HALF.
+  3. RiverTest.PAD → replace with HydrologyTileGeometry.PAD.
+  4. Chunk-size literal 16 and 1<<8 (256): add a
+     HydrologyTileGeometry.CHUNK_SIDE = 16 constant and migrate
+     ChunkChannelFill, FractalTerrainSurfaceSystem,
+     FractalTerrainChunkGenerator, FractalTerrainHeightmap, BiomeProvider,
+     RockStrata, GlobalRiverProvider — largest sub-item, do last and separately
+     since it touches 7 files with a very common literal (grep carefully to
+     avoid touching unrelated 16s).
+
+  Verification: gradle build; gradle test baseline unchanged; grep -c 'private 
+  static final int INNER = 512\|COARSE_CELL_PX = 256' returns 0.
+
+  ---
+
+  work-14: Extract named predicate methods for repeated sentinel/null checks in 
+  graph code
+
+  Complexity: low | Addresses: issue-14
+
+  outgoing != -1, outDirection() != -1, drain() != null are copy-pasted across
+  HydrologicalPrimitive, ChannelElevationAssigner, GlobalNetworkBuilder instead
+  of named predicates.
+
+  Evidence:
+  if (endpoint.outgoing != -1) {
+      // ... channel exists
+  Why this matters: If the sentinel representation changes (e.g. to null or a
+  boolean flag), every scattered occurrence must be found and updated, inviting
+  bugs.
+  Scope: 16 occurrences | Verify: grep -r 'outgoing != -1\|outDirection() != -1'
+  src/main/java/me/batata_1/fractal_terrain
+
+  Approach:
+  1. Add Endpoint.hasOutgoing() wrapping outgoing != -1 — 5 call sites.
+  2. Add CellInfo.hasOutflow() wrapping outDirection() != -1 — 3 call sites in
+     GlobalNetworkBuilder.
+  3. Leave InfiniteTensor's 4 storage == null guards as-is — those are
+     legitimate repeated preconditions, not a sentinel-encoding smell; addressed
+     instead by work-10's Objects.requireNonNull migration.
+
+  Verification: gradle test baseline unchanged.
+
+  ---
+
+  work-15: Replace instanceof-based primitive type dispatch with polymorphic 
+  methods
+
+  Complexity: high | Addresses: issue-16
+
+  RiverPrimitive/RadialPrimitive dispatch via instanceof checks scattered across
+  RiverInfluenceCarve, HydrologyPrimitiveVisualizer, Infinite3DVisualizer.
+
+  Evidence:
+  int stop = 0;
+  while (stop < primitives.size() && primitives.get(stop) instanceof
+  RiverPrimitive river) {
+      carveRiverPrimitive(river, startX, startZ, ...);
+      stop++;
+  }
+  Why this matters: Adding a new primitive family requires updating type checks
+  across 3+ unrelated modules instead of implementing an interface once.
+  Scope: 12 occurrences | Verify: grep -r 'instanceof RiverPrimitive\|instanceof
+  RadialPrimitive' src/main/java/me/batata_1/fractal_terrain
+
+  Approach:
+  1. Add carve(RiverInfluenceCarve.Context ctx), colorHint(), and
+     widthOrDefault() default methods to the HydrologicalPrimitive interface (or
+     a visitor if double-dispatch is cleaner given RiverInfluenceCarve's
+     two-phase loop structure — worth a short design discussion since this
+     changes a core interface used throughout hydrology).
+  2. Migrate RiverInfluenceCarve.java:96,125 to call the interface method
+     instead of branching.
+  3. Migrate HydrologyPrimitiveVisualizer.java:81,121,172,202 similarly.
+  4. This is the highest-risk item in the list (interface change touching the
+     primitive hierarchy) — recommend doing it last, after work-6/7 have
+     stabilized the hydrology method surface it interacts with.
+
+  Verification: gradle riverTest/globalRiverTest PNG output byte-identical to
+  baseline; gradle build.
+
+  ---
+
+  work-16: Document and assert hydrology pipeline stage ordering
+
+  Complexity: low | Addresses: issue-19
+
+  The 5-stage RiverProvider.computeTile pipeline, GenerationContext's provider
+  construction order, and RiverNetwork's spatial-index clear-then-insert
+  contract are enforced only by execution order, with at most a single inline
+  comment.
+
+  Evidence:
+  final float[][] base = DecoderChannels.decode(tileX, tileZ, PAD);
+  final GlobalNetworkBuilder.Result result = GlobalNetworkBuilder.build(tileX,
+  tileZ, base, grp);
+  LocalNetworkBuilder.build(result, base, humidity, stages);
+  var lateralErosionSim = new Meanders(result.network(), base[4]);
+  lateralErosionSim.simulate(25, 10);
+  Why this matters: Stages could be reordered to compile successfully but
+  produce wrong river geometry, surfacing only at runtime in visual terrain
+  artifacts.
+  Scope: 64 occurrences (mostly HydrologyTuning constant fan-out) | Verify: grep
+  -n 'GlobalNetworkBuilder.build' src/main/java/me/batata_1/fractal_terrain/hyd
+  rology/providers/RiverProvider.java
+
+  Approach:
+  1. Add a class-level Javadoc to RiverProvider.computeTile naming each of the 5
+     stages and why the order is load-bearing (per this project's docstring
+     convention: WHY, not HOW).
+  2. Add a one-line comment at each HydrologyTuning constant declaration listing
+     its 2-3 primary consumer classes, so the 57-usage fan-out isn't invisible.
+  3. This is documentation-only — do not add runtime assertions unless the user
+     asks, since stage-order bugs are architectural and better caught by the
+     golden PNG tests already in place (riverTest/globalRiverTest).
+
+  Verification: No code-behavior verification needed; review that the added
+  comments correctly describe current behavior.
+
+  ---
+
+  work-17: Replace PipelineModels' 4-flag implicit state machine with an 
+  explicit state enum
+
+  Complexity: medium | Addresses: issue-20
+
+  INSTANCE, loadStarted, loadFailure, loadDone interact to encode 4 states
+  implicitly.
+
+  Evidence:
+  private static volatile PipelineModels INSTANCE;
+  private static volatile CountDownLatch loadDone;
+  private static volatile boolean loadStarted;
+  private static volatile Throwable loadFailure;
+  Why this matters: Understanding valid state combinations requires tracking
+  interdependencies across load()/awaitLoad(); an explicit state would prevent
+  invalid combinations.
+  Scope: 19 occurrences | Verify: grep -rn 'INSTANCE\|loadStarted\|loadFailure' 
+  src/main/java/me/batata_1/fractal_terrain/ml/models/PipelineModels.java
+
+  Proposed Change:
+  // Before
+  private static volatile PipelineModels INSTANCE;
+  private static volatile boolean loadStarted;
+  private static volatile Throwable loadFailure;
+
+  // After
+  private enum LoadState { UNINITIALIZED, LOADING, LOADED, FAILED }
+  private static volatile LoadState state = LoadState.UNINITIALIZED;
+  Delta: Collapses 3 of the 4 fields into one explicit state; CountDownLatch 
+  loadDone stays (still needed for blocking wait), but load()/awaitLoad() branch
+  on state instead of inferring it from field combinations.
+
+  Approach:
+  1. Introduce the LoadState enum and migrate the 19 read/write sites in load()
+     (39-42), the background thread (49,53,54), awaitLoad() (68,69,82,83), and
+     close() (125,133-135).
+  2. Since this is concurrency-sensitive code, keep the volatile/CountDownLatch
+     synchronization strategy unchanged — this is a state-representation
+     refactor, not a concurrency redesign.
+
+  Verification: gradle test; manual check that model-load failure/retry behavior
+  is unchanged (start with a missing model file, confirm the same error
+  surfaces).
+
+  ---
+
+  Superseded Items (No Action Needed)
+
+  All identified issues require direct action — no obsoletes relationships were
+  found during clustering.
+
+  ---
+
+  Execution Notes
+
+  Suggested order (grouped by shared files/root cause):
+
+  1. work-3 → work-8 (same file, RiverInfluenceCarve.java) — centralize the call
+     sites, then extract the bounds predicate while already in there.
+  2. work-6 → work-7 — split hydrology orchestrator methods into phases, then
+     rename them (amplifies: doing both together produces clearer, well-scoped
+     methods rather than a rename that leaves the god-method structure intact).
+  3. work-9 → work-10 (enables: adding logging to swallowed exceptions surfaces
+     the failures that inconsistent exception types currently obscure, making
+     the taxonomy cleanup safer to verify) — do work-9 first.
+  4. work-11 → work-12 (amplifies: both are API-consistency cleanups in the same
+     hydrology/spatial-index surface — land as one PR to avoid two churn passes
+     over the same files).
+  5. work-1 → work-2 — same incomplete-DI root cause (amplifies); work-2's
+     config injection naturally threads through the same GenerationContext
+     plumbing work-1 builds.
+  6. work-15 last — highest risk (core interface change); recommend sequencing
+     after work-6/7 stabilize the hydrology method surface it touches.
+
+  Everything else (work-4, work-5, work-13, work-14, work-16, work-17) is
+  independent and can be done in any order alongside the above.
+
+  ---
+
+  Deferred (surface-level, not included above)
+
+  Per the comprehensive/system-wide scope of "across this repo," these 9 issues
+  were judged lower-value relative to the 17 above and are noted for awareness
+  rather than action:
+
+  Issue: issue-15
+  What: Compound boolean conditionals (Centreline, AtomicView, Skeletonizer,
+  LocalDrainageTracer)
+  Why deferred: File-scoped, 6 occurrences, real but narrow
+  ────────────────────────────────────────
+  Issue: issue-17
+  What: ML-pipeline constants (COND_MEANS/STDS/DIMS, OCTAVES) hardcoded vs
+  config-driven
+  Why deferred: Specialized domain, 7 occurrences
+  ────────────────────────────────────────
+  Issue: issue-18
+  What: ChannelMigrator docstrings narrate HOW not WHY
+  Why deferred: Documentation-only
+  ────────────────────────────────────────
+  Issue: issue-21
+  What: DebugConfig derived flag + ModelAssetManager double-checked-lock
+  coupling
+  Why deferred: File-scoped, 5 occurrences
+  ────────────────────────────────────────
+  Issue: issue-22
+  What: DEBUG_STEPS flag evaluated inconsistently (negation/import style)
+  Why deferred: Flag sprawl itself is intentional per a 2026-07-21 team decision
+
+  — only evaluation-style noted, not for reduction
+  ────────────────────────────────────────
+  Issue: issue-23
+  What: Pre-Java-16 idioms (instanceof-then-cast, manual null ternaries)
+  Why deferred: Cosmetic, 6 occurrences
+  ────────────────────────────────────────
+  Issue: issue-24
+  What: ONNX vendored jar (libs/onnxruntime/teste.jar) lacks provenance docs
+  Why deferred: Documentation-only
+  ────────────────────────────────────────
+  Issue: issue-25
+  What: FractalTerrain.onInitialize() readability (magic -1,-1, undocumented
+  lambdas)
+  Why deferred: Cosmetic, 1 file
+  ────────────────────────────────────────
+  Issue: issue-26
+  What: ModelAssetManager class name is a vague umbrella term
+  Why deferred: Single occurrence
+
+  ---
+
+  Say which work items to execute (individually or a batch like "work-1 through
+  work-4"), and I'll delegate each to a general-purpose subagent per this
+  project's CLAUDE.md workflow, with the guideline read-order and acceptance
+  checks (gradle spotlessApply → gradle build, plus gradle test against the
+  documented baseline for anything touching hydrology math).
