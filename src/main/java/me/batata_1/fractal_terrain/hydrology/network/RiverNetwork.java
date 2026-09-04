@@ -4,10 +4,7 @@ import static me.batata_1.fractal_terrain.config.DebugConfig.DEBUG_CROSSING_WINN
 import static me.batata_1.fractal_terrain.config.DebugConfig.DEBUG_STEPS;
 import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 
-import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
-import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.ints.IntAVLTreeSet;
-import it.unimi.dsi.fastutil.ints.IntSortedSet;
+import it.unimi.dsi.fastutil.ints.*;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.ArrayDeque;
 import java.util.Arrays;
@@ -622,6 +619,7 @@ public final class RiverNetwork {
         }
 
         final List<int[]> edges = new ObjectArrayList<>();
+        final List<CrossingPoint> nearbyBuffer = new ObjectArrayList<>();
         for (int channelAId : channelIds) {
             final Channel channelA = channels.get(channelAId);
             final int[] aAtomic = atomic.pointAtomicIds.get(channelAId);
@@ -778,7 +776,7 @@ public final class RiverNetwork {
             if (!ch.isResampleable()) continue; // degenerate geometry (too few points or NaN): skip
             // Spacing must be <= half the NARROWEST (intake) derived width, so consecutive primitives'
             // width/2 discs always overlap (gap-free membership test + girth rendering).
-            final double dx = Math.max(ch.intakeWidth()/2, MIN_CONVERT_SPACING);
+            final double dx = Math.max(ch.intakeWidth() / 2, MIN_CONVERT_SPACING);
             try {
                 ch.reSample(dx);
             } catch (RuntimeException runaway) {
