@@ -24,7 +24,8 @@ class RadialPrimitiveCodecTest {
     private static Stream<RadialPrimitive> radialPrimitives() {
         return Stream.of(
                 new ConfluencePrimitive(new double[] {12.5, -40.25}, 6.0, 71.5),
-                new SourcePrimitive(new double[] {-3.0, 8.75}, 1.25, 130.0));
+                new SourcePrimitive(new double[] {-3.0, 8.75}, 1.25, 130.0),
+                new AbandonedRiverPrimitive(new double[] {40.0, -12.0}, (byte) 5, 2.5, 88.0));
     }
 
     @ParameterizedTest

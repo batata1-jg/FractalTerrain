@@ -102,20 +102,7 @@ final class PrimitiveCodec {
         return new HistoricFields(coord, time, width, influence, elevation);
     }
 
-    /** Content equality for a shed feature. Exists because records compare {@code double[]} by reference,
-     *  which would make every primitive unequal to its own reloaded copy. */
-    static boolean historicEquals(HistoricPrimitive self, Object other) {
-        if (self == other) return true;
-        if (other == null || self.getClass() != other.getClass()) return false;
-        final HistoricPrimitive that = (HistoricPrimitive) other;
-        return Arrays.equals(self.coord(), that.coord())
-                && self.time() == that.time()
-                && Double.compare(self.width(), that.width()) == 0
-                && Double.compare(self.influence(), that.influence()) == 0
-                && Double.compare(self.elevation(), that.elevation()) == 0;
-    }
-
-    /** The {@link #historicEquals} counterpart, cached in the record's {@code seed} component. */
+    /** A hash over a shed feature's fields, cached in the record's {@code seed} component. */
     static long historicHash(double[] coord, byte time, double width, double influence, double elevation) {
         int result = Objects.hash(time, width, influence, elevation);
         result = 31 * result + Arrays.hashCode(coord);

@@ -12,7 +12,8 @@ import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
  * <p>{@link DeltaPrimitive} and {@link WaterfallPrimitive} implement this and keep only {@code
  * getType()}, {@code deserializePrimitive()} and their {@code coord} component — {@code equals}/{@code
  * hashCode} stay on each record because an interface default cannot override {@link Object}'s. The shed
- * families outgrew it and moved to {@link HistoricPrimitive}.
+ * families outgrew it: {@link OxbowLakePrimitive} moved to {@link RosgenCarvedPrimitive},
+ * {@link AbandonedRiverPrimitive} to {@link RadialPrimitive}.
  */
 interface PositionOnlyPrimitive extends HydrologicalPrimitive, SpatialIndexCircle {
 

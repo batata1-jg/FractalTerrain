@@ -578,7 +578,7 @@ public final class RiverNetwork {
             // so a per-point widthFromFlow would give a uniform hairline instead of the channel's size.
             final double width = HydrologyTuning.widthFromFlow(maxOwn);
             for (double[] p : pts) {
-                lastStates.addLast(new AbandonedRiverPrimitive(p.clone(), (byte) step, width, 0, 0));
+                lastStates.addLast(new AbandonedRiverPrimitive(p.clone(), (byte) step, width, 0));
             }
         }
         evictOlderThan(step);

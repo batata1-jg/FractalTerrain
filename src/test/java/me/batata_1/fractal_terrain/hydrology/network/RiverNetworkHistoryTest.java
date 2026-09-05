@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import me.batata_1.fractal_terrain.hydrology.features.HistoricPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.OxbowLakePrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive.RosgenType;
@@ -126,12 +125,13 @@ class RiverNetworkHistoryTest {
         net.detectAndApplyCutoffs(net.getChannels().get(0), 2);
         assertFalse(history(net).isEmpty(), "fixture is degenerate: the hairpin produced no cutoff");
 
-        net.remapHistory(p -> ((HistoricPrimitive) p).resolved(64.0, 12.0));
+        net.remapHistory(p -> ((OxbowLakePrimitive) p).resolved(64.0, 12.0));
 
         for (final HydrologicalPrimitive p : history(net)) {
-            final HistoricPrimitive resolved = (HistoricPrimitive) p;
+            final OxbowLakePrimitive resolved = (OxbowLakePrimitive) p;
             assertEquals(64.0, resolved.elevation(), 1e-12);
-            assertEquals(12.0, resolved.getRadius(), 1e-12, "a resolved primitive finally has a footprint");
+            assertEquals(24.0, resolved.getLength(), 1e-12, "a resolved primitive finally has a footprint");
+            assertEquals(36.0, resolved.getWidth(), 1e-12, "a resolved primitive finally has a footprint");
             assertEquals((byte) 2, p.time(), "resolving must not disturb the cut step");
         }
     }
