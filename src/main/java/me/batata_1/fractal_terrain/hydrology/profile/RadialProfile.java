@@ -26,8 +26,7 @@ public enum RadialProfile implements HydrologyProfile {
         }
     },
 
-    /** A cutoff trace has been silting in since it was abandoned, so it reads shallower than a
-     *  still-active confluence pool at the same width — 40% of CONFLUENCE's depth fraction. */
+    /** An abandoned trace silts after cutoff, so it reads shallower than an active confluence pool. */
     ABANDONED_RIVER {
         @Override
         protected double radialDelta(double normalizedRadius, double depth) {
