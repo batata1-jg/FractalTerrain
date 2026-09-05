@@ -24,7 +24,8 @@ class RadialProfileTest {
     @ParameterizedTest
     @EnumSource(RadialProfile.class)
     void bottomsOutAtTheFullDepthInTheCentre(RadialProfile profile) {
-        assertEquals(-DEPTH, profile.radialDelta(0.0, DEPTH), 1e-12, profile + " floor is not the depth");
+        final double expected = profile == RadialProfile.ABANDONED_RIVER ? -DEPTH * 0.4 : -DEPTH;
+        assertEquals(expected, profile.radialDelta(0.0, DEPTH), 1e-12, profile + " floor is not the depth");
     }
 
     @ParameterizedTest
@@ -64,5 +65,26 @@ class RadialProfileTest {
         RadialProfile.SOURCE.sampleRadialSection(lut, 7, 1.0, 0, 100.0, 1.0 / 4.0, DEPTH);
 
         assertEquals(100.0f, lut[6], 1e-4f, "radius 6 on a radius-4 disc must clamp to the rim");
+    }
+
+    @Test
+    void abandonedRiverIsShallowerThanAConfluenceAtTheSameRadius() {
+        final float[] lutA = new float[8];
+        final float[] lutB = new float[8];
+        RadialProfile.ABANDONED_RIVER.sampleRadialSection(lutA, 8, 1.0, 0, 0.0, 1.0 / 7.0, 10.0);
+        RadialProfile.CONFLUENCE.sampleRadialSection(lutB, 8, 1.0, 0, 0.0, 1.0 / 7.0, 10.0);
+
+        // Index 0 is the disc centre (deepest point of both).
+        assertTrue(
+                lutA[0] > lutB[0],
+                "an abandoned trace has been silting in since it was cut off; it should not out-cut a live confluence pool");
+    }
+
+    @Test
+    void abandonedRiverReachesTheRimElevationAtTheEdge() {
+        final float[] lut = new float[8];
+        RadialProfile.ABANDONED_RIVER.sampleRadialSection(lut, 8, 1.0, 0, 5.0, 1.0 / 7.0, 10.0);
+
+        assertEquals(5.0, lut[7], 1e-6, "the rim carries no depth, matching CONFLUENCE/SOURCE's own boundary");
     }
 }
