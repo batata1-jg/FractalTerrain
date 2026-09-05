@@ -400,9 +400,14 @@ public final class RiverInfluenceCarve {
 
         final double nx = normal[0], nz = normal[1];
         final double cx = primitive.coord()[0], cz = primitive.coord()[1];
+        // Half-extents of the primitive's footprint rectangle: along the flow tangent (nz, -nx), and across
+        // it along the normal. Read from the same accessors the spatial index stabs, so a primitive whose
+        // rectangle stops being square carves the shape it was indexed under.
         final double influenceLen = primitive.getLength() * 0.5;
         final double influenceWidth = primitive.getWidth() * 0.5;
 
+        // :PERF: conservative AABB clip; floor/ceil so a too-wide range is harmless while a too-narrow one
+        // would silently drop carve -- the exact containment test still runs per lattice point.
         final double halfExtentX = influenceLen * Math.abs(nz) + influenceWidth * Math.abs(nx);
         final double halfExtentZ = influenceLen * Math.abs(nx) + influenceWidth * Math.abs(nz);
         final long rowLo = (long) Math.floor(cx - halfExtentX);
@@ -415,6 +420,8 @@ public final class RiverInfluenceCarve {
         final int colMin = (int) Math.max(colLo, 0);
         final int colMax = (int) Math.min(colHi, gridSize - 1);
 
+        // perp is affine in the lattice coordinates, so its extrema over the clipped box are at the four
+        // corners. Intersecting with the influence band is what caps the LUT at the grid diagonal.
         final double x0 = rowMin, x1 = rowMax, z0 = colMin, z1 = colMax;
         final double p00 = nx * (x0 - cx) + nz * (z0 - cz);
         final double p01 = nx * (x0 - cx) + nz * (z1 - cz);
@@ -429,6 +436,9 @@ public final class RiverInfluenceCarve {
 
         final double width = primitive.width();
         final double curvature = primitive.curvature();
+        // The assigner picks a bed elevation from the uncarved field, so a primitive whose neighbours have
+        // already cut through this point would sit above them and fill rather than cut. Capping against
+        // the surface merged so far keeps the influence carve cut-only.
         final double elevation = primitive.elevation();
         final RosgenProfile profile = (RosgenProfile) primitive.getProfile();
         final long seed = primitive.seed();
@@ -438,6 +448,8 @@ public final class RiverInfluenceCarve {
         profile.sampleCrossSection(lut, n, 1.0, baseIdx, seed, elevation, floodPlainLen, marginLen, depth, curvature);
         for (int i = 0; i < lut.length; i++) if (lut[i] < elevation) lut[i] = (float) elevation;
 
+        // :PERF: both projections are affine, so each splits into a row term and a column term; tabulating
+        // the two axes costs 2 * gridSize entries and lets the merge rebuild any point with one add.
         for (int row = rowMin; row <= rowMax; row++) {
             final double ddx = row - cx;
             perpRow[row] = nx * ddx;
@@ -462,10 +474,14 @@ public final class RiverInfluenceCarve {
                 final int i = rowBase + col;
                 final double perp = perpAtRow + perpCol[col];
                 final double tang = tangAtRow + tangCol[col];
+                // How far the footprint rectangle must be scaled to swallow the point: 1 exactly at the
+                // rim, so the recurrence ranks primitives by rectangle penetration, not radial distance.
                 final double d = Math.max(Math.abs(tang) * invLen, Math.abs(perp) * invWidth);
                 final double dd = 0.5
                         * (d > floodPlainNormLen ? (d - floodPlainNormLen) * invFlNormLenSlope + 1 : d * invFlNormLen);
                 final double f = perp - baseIdx;
+                // Clamped for safety only: mask already zeroes anything out of band, but the branch-free
+                // body still evaluates h for those lanes.
                 final int i0 = Math.clamp((int) f, 0, n - 2);
 
                 final int a = 3 * i;
