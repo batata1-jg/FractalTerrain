@@ -8,6 +8,7 @@ import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RadialPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
+import me.batata_1.fractal_terrain.hydrology.features.RosgenCarvedPrimitive;
 import org.jetbrains.annotations.TestOnly;
 
 /**
@@ -620,5 +621,25 @@ public final class RiverInfluenceCarve {
     @TestOnly
     public static float[] shellDistanceField() {
         return SHELL_BUFFERS.get().dist;
+    }
+
+    /** Bundle of shell-pass scratch buffers a primitive's carve reads and writes; filled out in
+     *  Task 6 of docs/superpowers/plans/2026-09-05-hydrology-influence-carver.md. */
+    public record ShellGrid(
+            int gridSize,
+            float[] acc,
+            float[] lut,
+            double[] perpRow,
+            double[] perpCol,
+            double[] tangRow,
+            double[] tangCol,
+            float[] elevs) {}
+
+    static void carveRosgenInfluence(RosgenCarvedPrimitive primitive, ShellGrid grid) {
+        throw new UnsupportedOperationException("wired in Task 6");
+    }
+
+    static void carveRadialInfluence(RadialPrimitive primitive, ShellGrid grid) {
+        throw new UnsupportedOperationException("wired in Task 6");
     }
 }

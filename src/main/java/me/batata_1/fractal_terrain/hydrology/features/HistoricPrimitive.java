@@ -2,6 +2,7 @@ package me.batata_1.fractal_terrain.hydrology.features;
 
 import me.batata_1.fractal_terrain.hydrology.profile.DefaultProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
+import me.batata_1.fractal_terrain.hydrology.profile.InfluenceCarver;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
 
 /**
@@ -38,6 +39,11 @@ public interface HistoricPrimitive extends HydrologicalPrimitive, SpatialIndexCi
     @Override
     default HydrologyProfile getProfile() {
         return DefaultProfile.INSTANCE;
+    }
+
+    @Override
+    default InfluenceCarver getInfluenceCarver() {
+        return InfluenceCarver.NONE;
     }
 
     /** This primitive with its deferred quantities filled in. Abstract because only the record knows its

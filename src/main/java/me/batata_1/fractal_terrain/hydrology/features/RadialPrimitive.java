@@ -1,6 +1,7 @@
 package me.batata_1.fractal_terrain.hydrology.features;
 
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
+import me.batata_1.fractal_terrain.hydrology.profile.InfluenceCarver;
 import me.batata_1.fractal_terrain.hydrology.profile.RadialProfile;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
 
@@ -35,5 +36,10 @@ public interface RadialPrimitive extends HydrologicalPrimitive, SpatialIndexCirc
     @Override
     default HydrologyProfile getProfile() {
         return getRadialProfile();
+    }
+
+    @Override
+    default InfluenceCarver getInfluenceCarver() {
+        return InfluenceCarver.NONE;
     }
 }

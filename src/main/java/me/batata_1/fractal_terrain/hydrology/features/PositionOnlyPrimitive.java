@@ -2,6 +2,7 @@ package me.batata_1.fractal_terrain.hydrology.features;
 
 import me.batata_1.fractal_terrain.hydrology.profile.DefaultProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
+import me.batata_1.fractal_terrain.hydrology.profile.InfluenceCarver;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
 
 /**
@@ -28,6 +29,11 @@ interface PositionOnlyPrimitive extends HydrologicalPrimitive, SpatialIndexCircl
     @Override
     default HydrologyProfile getProfile() {
         return DefaultProfile.INSTANCE;
+    }
+
+    @Override
+    default InfluenceCarver getInfluenceCarver() {
+        return InfluenceCarver.NONE;
     }
 
     @Override
