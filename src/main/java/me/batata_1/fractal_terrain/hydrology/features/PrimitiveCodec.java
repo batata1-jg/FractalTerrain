@@ -3,7 +3,6 @@ package me.batata_1.fractal_terrain.hydrology.features;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
-import java.util.Objects;
 
 /**
  * Shared byte-level plumbing for {@link HydrologicalPrimitive} records — the pieces every feature type
@@ -66,46 +65,5 @@ final class PrimitiveCodec {
     /** The {@link #coordsEqual} counterpart: a hash over the coordinate contents. */
     static int coordsHash(double[] coord) {
         return Arrays.hashCode(coord);
-    }
-
-    /** A {@link #writeHistoric} payload read back whole, so a record's deserialize stays one statement. */
-    record HistoricFields(double[] coord, byte time, double width, double influence, double elevation) {}
-
-    /** Byte cost of a shed feature's body: the coordinate, the cut step, then width/influence/elevation. */
-    static long historicByteSize(double[] coord) {
-        return coordByteSize(coord) + Byte.BYTES + 3L * Double.BYTES;
-    }
-
-    // :SCHEMA: the shed families' body carries time/width/influence/elevation where the other
-    // position-only families carry a coordinate alone; only these two are ever written with it, and
-    // none has ever been written to a cached tile, so no existing payload can be misread.
-    /** Serialized form of a shed feature. {@code seed} is derived from these, so it is never written. */
-    static byte[] writeHistoric(double[] coord, byte time, double width, double influence, double elevation) {
-        final ByteBuffer buf =
-                ByteBuffer.allocate((int) historicByteSize(coord)).order(ByteOrder.LITTLE_ENDIAN);
-        putCoord(buf, coord);
-        buf.put(time);
-        buf.putDouble(width);
-        buf.putDouble(influence);
-        buf.putDouble(elevation);
-        return buf.array();
-    }
-
-    /** Reads back a {@link #writeHistoric} payload. */
-    static HistoricFields readHistoric(byte[] rawBytes) {
-        final ByteBuffer buf = ByteBuffer.wrap(rawBytes).order(ByteOrder.LITTLE_ENDIAN);
-        final double[] coord = getCoord(buf);
-        final byte time = buf.get();
-        final double width = buf.getDouble();
-        final double influence = buf.getDouble();
-        final double elevation = buf.getDouble();
-        return new HistoricFields(coord, time, width, influence, elevation);
-    }
-
-    /** A hash over a shed feature's fields, cached in the record's {@code seed} component. */
-    static long historicHash(double[] coord, byte time, double width, double influence, double elevation) {
-        int result = Objects.hash(time, width, influence, elevation);
-        result = 31 * result + Arrays.hashCode(coord);
-        return result;
     }
 }
