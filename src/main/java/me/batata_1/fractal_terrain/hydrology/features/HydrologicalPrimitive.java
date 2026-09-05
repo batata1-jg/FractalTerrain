@@ -210,7 +210,10 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
                         shed.time(),
                         shed.width(),
                         shed.influence(),
-                        shed.elevation()));
+                        shed.elevation(),
+                        shed.normal(),
+                        shed.curvature(),
+                        shed.rosgenType()));
             }
         },
         SOURCE(() -> SourcePrimitive.PROTOTYPE) {

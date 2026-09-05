@@ -725,12 +725,24 @@ public final class RiverNetwork {
         for (int i = 0; i < ch.numPts(); i++) if (!kept[i]) removedCount++;
         if (removedCount < 2) return; // a single stray point is not a loop
 
+        // Cheap to construct here: Centreline holds no per-point cache (see its own javadoc), and
+        // this runs once per cutoff, not per lattice point.
+        final Centreline centreline = new Centreline(this);
         for (int i = 0; i < ch.numPts(); i++) {
             if (kept[i]) continue;
             // Elevation and influence stay 0 here: neither is knowable at the cut, and both are filled
-            // in later through remapHistory.
-            lastStates.addLast(
-                    new OxbowLakePrimitive(ch.spline.points().get(i).clone(), (byte) step, ch.widthAt(i), 0, 0));
+            // in later through remapHistory. rosgenType stays null: the channel's per-point Rosgen
+            // classification is a collectPrimitives-time concept (from a ChannelTyper), not something
+            // a raw Channel carries — an untyped oxbow coalesces to RosgenType.A, same as an untyped river.
+            lastStates.addLast(new OxbowLakePrimitive(
+                    ch.spline.points().get(i).clone(),
+                    (byte) step,
+                    ch.widthAt(i),
+                    0,
+                    0,
+                    centreline.normalAt(ch, i),
+                    ch.spline.curvature(i),
+                    null));
         }
         evictOlderThan(step);
     }
