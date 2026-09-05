@@ -40,8 +40,10 @@ public final class RiverInfluenceCarve {
         for (int i = 0; i < points; i++) {
             buffers.acc[3 * i] = elevation[i];
         }
-        // Preserved only for RiverProvider's debug-only shellDistanceField() capture; no shell
-        // carver reads or writes dist -- see the "Rejected" section of this plan's spec for why.
+        // Preserved only for RiverProvider's debug-only shellDistanceField() capture; no shell carver
+        // reads or writes dist -- the shell merge is an order-independent hard min (Math.min per call
+        // site, applied once against the fully-merged height), so there is no distance recurrence here
+        // to rank a primitive against.
         Arrays.fill(buffers.dist, 0, points, 1f);
 
         final ShellGrid grid = new ShellGrid(
@@ -339,6 +341,10 @@ public final class RiverInfluenceCarve {
 
         final double width = radial.width();
         final double elevation = radial.elevation();
+        // Deferred: elevation is NaN-sentinelled until RiverNetwork.remapHistory resolves it, which no
+        // production caller does -- an AbandonedRiverPrimitive reaches this bed-pass dispatch too, since
+        // it implements RadialPrimitive, so it needs the same guard as the shell pass.
+        if (Double.isNaN(elevation)) return;
         final double invRadius = 1.0 / radius;
         final double depth = FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depth(width);
         final float waterSurface = (float) (elevation + HydrologicalPrimitive.waterLine(width));
@@ -389,6 +395,12 @@ public final class RiverInfluenceCarve {
         final double[] normal = primitive.normal();
         // A null normal has no tangent -- the projection below would NPE.
         if (normal == null) return;
+        // A zero-extent primitive (e.g. an OxbowLakePrimitive minted with influence=0, unresolved) makes
+        // invLen/invWidth below Infinity and the merge below resolves to NaN written into elevs.
+        if (primitive.getLength() <= 0 || primitive.getWidth() <= 0) return;
+        // Deferred: elevation is NaN-sentinelled until RiverNetwork.remapHistory resolves it, which no
+        // production caller does -- carving the sentinel would cut every unresolved primitive to NaN.
+        if (Double.isNaN(primitive.elevation())) return;
         final int gridSize = grid.gridSize();
         final float[] acc = grid.acc();
         final float[] lut = grid.lut();
@@ -615,6 +627,9 @@ public final class RiverInfluenceCarve {
         final double cx = primitive.coord()[0], cz = primitive.coord()[1];
         final double radius = primitive.getRadius();
         if (radius <= 0) return;
+        // Deferred: elevation is NaN-sentinelled until RiverNetwork.remapHistory resolves it, which no
+        // production caller does -- carving the sentinel would cut every unresolved primitive to NaN.
+        if (Double.isNaN(primitive.elevation())) return;
         final int gridSize = grid.gridSize();
         final float[] acc = grid.acc();
         final float[] lut = grid.lut();
@@ -656,16 +671,15 @@ public final class RiverInfluenceCarve {
                 final double rad = Math.sqrt(ddx * ddx + ddz * ddz);
                 if (rad > radius) continue; // outside the disc -- the AABB clip is conservative
                 final double d = rad * invRadius;
-                // Same inner/outer blend shape as carveRosgenInfluence's dd remap, so a shell disc
-                // does not read as structurally different from a shell channel: full profile depth
-                // out to half radius, tapering to ambient by the rim.
-                final double dd = Math.min(d, 1.0);
+                // Same inner/outer taper shape as the rosgen carve's blend -- full profile depth near
+                // the centre, tapering to ambient by the rim. d is already <= 1 here (the loop above
+                // continues past radius), so unlike carveRosgenInfluence's dd this needs no clamp.
                 final double f = rad - baseIdx;
                 final int i0 = Math.clamp((int) f, 0, n - 2);
 
                 final int a = 3 * i;
                 final double h = lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]);
-                final float testeW = dd < 0.5 ? 1 : (float) (1 - Math.clamp(dd * 2 - 1, 0, 1));
+                final float testeW = d < 0.5 ? 1 : (float) (1 - Math.clamp(d * 2 - 1, 0, 1));
                 elevs[i] = (float) Math.min(elevs[i], acc[a] * (1 - testeW) + h * testeW);
             }
         }

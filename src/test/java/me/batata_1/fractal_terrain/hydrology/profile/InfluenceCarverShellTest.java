@@ -74,6 +74,41 @@ class InfluenceCarverShellTest {
     }
 
     @Test
+    void oxbowAtProductionMintSentinelsCarvesNothingAndNoNaN() {
+        // RiverNetwork.recordRemovedComplement mints exactly this shape today: influence=0 (deferred,
+        // never resolved by any production caller of remapHistory) and elevation=NaN (same reason).
+        // getLength()/getWidth() derive from influence, so this is the zero-extent primitive
+        // carveRosgenInfluence's own guard rejects, and elevation is the NaN sentinel its other guard
+        // rejects.
+        final OxbowLakePrimitive mintTimeOxbow = new OxbowLakePrimitive(
+                new double[] {8.0, 8.0}, (byte) 3, 2.0, 0.0, Double.NaN, new double[] {1.0, 0.0}, 0.0, null);
+        final float[] elev = flatElevation(20f);
+        final float[] before = elev.clone();
+
+        RiverInfluenceCarve.carveRiverInfluenceGrid(elev, List.of(mintTimeOxbow), PADDED);
+
+        for (float v : elev) assertTrue(!Float.isNaN(v), "no cell may read back NaN");
+        assertArrayEquals(before, elev, 1e-6f, "a zero-extent, unresolved oxbow must be a no-op on the shell");
+    }
+
+    @Test
+    void abandonedRiverAtProductionMintSentinelCarvesNothing() {
+        // RiverNetwork's eviction path mints exactly this shape today: width is known at the cut (a
+        // deliberate design choice, unlike Oxbow), but elevation is NaN-sentinelled until remapHistory
+        // resolves it — which no production caller does. The NaN-elevation guard must keep this a
+        // no-op, not a crater to 0.
+        final AbandonedRiverPrimitive mintTimeTrace =
+                new AbandonedRiverPrimitive(new double[] {8.0, 8.0}, (byte) 4, 2.0, Double.NaN);
+        final float[] elev = flatElevation(20f);
+        final float[] before = elev.clone();
+
+        RiverInfluenceCarve.carveRiverInfluenceGrid(elev, List.of(mintTimeTrace), PADDED);
+
+        assertArrayEquals(
+                before, elev, 1e-6f, "a deferred-elevation abandoned trace must not crater the shell to NaN's floor");
+    }
+
+    @Test
     void riverShellOutputIsUnchangedByTheRefactor() {
         // Regression pin: same fixture ComputeRiverGridTest already exercises for the bed pass,
         // run through the shell entry point instead, to prove carveRosgenInfluence's math did not

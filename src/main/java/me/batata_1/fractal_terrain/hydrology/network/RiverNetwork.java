@@ -578,7 +578,9 @@ public final class RiverNetwork {
             // so a per-point widthFromFlow would give a uniform hairline instead of the channel's size.
             final double width = HydrologyTuning.widthFromFlow(maxOwn);
             for (double[] p : pts) {
-                lastStates.addLast(new AbandonedRiverPrimitive(p.clone(), (byte) step, width, 0));
+                // Elevation is NaN-sentinelled here: unknowable at eviction, resolved later through
+                // remapHistory (which no production caller invokes today).
+                lastStates.addLast(new AbandonedRiverPrimitive(p.clone(), (byte) step, width, Double.NaN));
             }
         }
         evictOlderThan(step);
@@ -730,16 +732,17 @@ public final class RiverNetwork {
         final Centreline centreline = new Centreline(this);
         for (int i = 0; i < ch.numPts(); i++) {
             if (kept[i]) continue;
-            // Elevation and influence stay 0 here: neither is knowable at the cut, and both are filled
-            // in later through remapHistory. rosgenType stays null: the channel's per-point Rosgen
-            // classification is a collectPrimitives-time concept (from a ChannelTyper), not something
-            // a raw Channel carries — an untyped oxbow coalesces to RosgenType.A, same as an untyped river.
+            // Elevation is NaN-sentinelled and influence stays 0 here: neither is knowable at the cut,
+            // and both are filled in later through remapHistory (which no production caller invokes
+            // today). rosgenType stays null: the channel's per-point Rosgen classification is a
+            // collectPrimitives-time concept (from a ChannelTyper), not something a raw Channel carries
+            // — an untyped oxbow coalesces to RosgenType.A, same as an untyped river.
             lastStates.addLast(new OxbowLakePrimitive(
                     ch.spline.points().get(i).clone(),
                     (byte) step,
                     ch.widthAt(i),
                     0,
-                    0,
+                    Double.NaN,
                     centreline.normalAt(ch, i),
                     ch.spline.curvature(i),
                     null));

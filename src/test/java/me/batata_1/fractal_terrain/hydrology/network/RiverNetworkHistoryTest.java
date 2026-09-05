@@ -97,7 +97,9 @@ class RiverNetworkHistoryTest {
             assertEquals((byte) 3, oxbow.time(), "the cut step is the primitive's age");
             assertTrue(oxbow.width() > 0, "width comes from the channel it was cut out of");
             assertEquals(0.0, oxbow.influence(), 1e-12, "influence is resolved later, not at mint");
-            assertEquals(0.0, oxbow.elevation(), 1e-12, "elevation is resolved later, not at mint");
+            assertTrue(
+                    Double.isNaN(oxbow.elevation()),
+                    "elevation is NaN-sentinelled at mint, resolved later through remapHistory");
         }
     }
 
