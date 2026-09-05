@@ -75,7 +75,7 @@ being cut off square — which is what a segment ending should look like. The al
 the perpendicular axis, would leave the along-flow coordinate unbanded and break the paint side's
 width-independence at every channel end.
 
-`carveRiverPrimitiveInfluence`, the tile-level shell carve, keeps its own two-piece `dd` remap and is not
+`carveRosgenInfluence`, the tile-level shell carve, keeps its own two-piece `dd` remap and is not
 banded. Unifying the two would move shell terrain and bed terrain together, leaving any regression
 unattributable.
 
@@ -93,8 +93,9 @@ drives it — and there is no nearest-wins rule: near-equidistant competitors bl
 winning outright.
 
 **Radial pass.** After the river run, `computeRiverGrid` walks the rest of the sorted list and carves
-every entry implementing `RadialPrimitive` — a `ConfluencePrimitive` or `SourcePrimitive` — into the same
-`acc`, but ranked against its own `radialDist` buffer rather than `dist`. Two reasons: a disc's radius
+every entry implementing `RadialPrimitive` — a `ConfluencePrimitive`, `SourcePrimitive` or
+`AbandonedRiverPrimitive` — into the same `acc`, but ranked against its own `radialDist` buffer rather
+than `dist`. Two reasons: a disc's radius
 scale and a channel's banded rectangle scale are not comparable, so ranking them against one shared
 distance would blend a bowl against a bed by two different measures of "inside"; and `dist` is live
 data — `PopulateNoiseStep` publishes it into `Types.RIVER_DIST` for the surface painter to read after the
@@ -109,6 +110,13 @@ tag a river or an earlier radial primitive already claimed in place rather than 
 lane itself is maxed rather than assigned (`acc[a+2] = max(acc[a+2], …)`), because a cell inside a radial
 primitive's clipped AABB but outside its disc carries radial weight zero, and assigning would erase the
 earlier claim there.
+
+**`AbandonedRiverPrimitive` is carved by both the shell and the bed.** It implements `RadialPrimitive`,
+so this bed-pass radial walk carves it exactly like a `ConfluencePrimitive`/`SourcePrimitive`, and its
+`getInfluenceCarver()` also routes it through the shell's `InfluenceCarver.RADIAL` dispatch
+(`RiverInfluenceCarve.carveRadialInfluence`). This is a deliberate consequence of the family/interface
+rule in `features/README.md` — "a family that carves radially must implement `RadialPrimitive`" — not an
+oversight left over from splitting the shell dispatch off the bed one.
 
 **Cut-only.** `computeRiverGrid`'s output `h` is a pure weighted blend with no ambient clamp folded in.
 Each call site recovers its carved elevation as `(1 - w) * ambient + w * min(h, ambient)`, applying the
@@ -174,10 +182,10 @@ zero — so a newly added feature type stays as invisible to the surface as it a
 
 ## Design decisions / known limitations
 
-**A `CONFLUENCE`/`SOURCE` cell is not painted.** `HydrologicalFeature.profileFor` defaults to
-`DefaultProfile`, whose `riverPaintDepth` returns zero, so a cell the radial pass stamps in `typeMask`
-falls through to the vanilla surface rules rather than the riverbed materials a `RIVER` cell gets — a
-deliberate scope cut, not an oversight: the radial pass carves elevation only.
+**A `CONFLUENCE`/`SOURCE`/`ABANDONED_RIVER` cell is not painted.** `HydrologicalFeature.profileFor`
+defaults to `DefaultProfile`, whose `riverPaintDepth` returns zero, so a cell the radial pass stamps in
+`typeMask` falls through to the vanilla surface rules rather than the riverbed materials a `RIVER` cell
+gets — a deliberate scope cut, not an oversight: the radial pass carves elevation only.
 
 **Bed-trench depth is a hard-coded function of width, not a true cross-section.** `RosgenProfile
 .delta` computes the bed depth as `FractalTerrainConfig.GLOBAL_SCALE_CORRECTION *

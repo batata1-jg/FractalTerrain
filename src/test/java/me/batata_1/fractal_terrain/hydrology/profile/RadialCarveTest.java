@@ -10,6 +10,7 @@ import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
+import me.batata_1.fractal_terrain.hydrology.features.AbandonedRiverPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.ConfluencePrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.DeltaPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
@@ -43,6 +44,12 @@ class RadialCarveTest {
 
     private static SourcePrimitive cone(double width, double elevation) {
         return new SourcePrimitive(new double[] {CENTRE, CENTRE}, width, elevation);
+    }
+
+    /** Resolved (non-sentinel) values: production only ever mints one with {@code elevation = NaN},
+     *  but this dispatch is exercised once it is. */
+    private static AbandonedRiverPrimitive trace(double width, double elevation) {
+        return new AbandonedRiverPrimitive(new double[] {CENTRE, CENTRE}, (byte) 0, width, elevation);
     }
 
     private static RiverInfluenceCarve.GridBuffers buffers() {
@@ -235,6 +242,23 @@ class RadialCarveTest {
                 b.acc[3 * halfRadius],
                 1e-3,
                 "the cone gives up depth linearly: half depth at half radius");
+    }
+
+    /** {@code AbandonedRiverPrimitive} implements {@code RadialPrimitive}, so this bed-pass dispatch
+     *  carves it exactly like a bowl or a cone once its deferred elevation is resolved — a deliberate
+     *  consequence of the interface, not an oversight (see {@code profile/README.md}'s radial-pass
+     *  note). It also carves through the shell's separate {@code InfluenceCarver.RADIAL} dispatch, but
+     *  that path is not this test's concern. */
+    @Test
+    void carvesAnAbandonedRiverPrimitiveThroughTheRadialDispatch() {
+        final RiverInfluenceCarve.GridBuffers b = buffers();
+        carve(b, List.of(trace(4.0, 100.0)));
+
+        final int centre = idx(8, 8);
+        assertTrue(b.acc[3 * centre] < 100.0, "the bed-pass radial dispatch must cut the abandoned trace's centre");
+        assertEquals(
+                HydrologicalPrimitive.HydrologicalFeature.ABANDONED_RIVER,
+                HydrologicalPrimitive.HydrologicalFeature.unpack(b.typeMask[centre]));
     }
 
     /** No radial test above passes a non-null {@code elevs}, so the ambient-clamp branch is dead in
