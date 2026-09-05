@@ -3,7 +3,9 @@
 ## Overview
 
 Seven feature families share one spatial index and one persistence payload; three of them are ever minted
-and the same three are ever carved. `HydrologicalFeature.RIVER.addPrimitives` walks a channel's spline
+in practice (history stays disabled below), but five now carve when they are minted: `RIVER` directly,
+`SOURCE`/`CONFLUENCE`/`ABANDONED_RIVER` through the radial pass, and `OXBOW_LAKE` through the same
+rectangle dispatch as `RIVER`. `HydrologicalFeature.RIVER.addPrimitives` walks a channel's spline
 points and emits a `RiverPrimitive` per point; `SOURCE` emits one `SourcePrimitive` per headwater endpoint
 whose emitting channel has positive width; `CONFLUENCE` emits one `ConfluencePrimitive` per `JUNCTION`
 endpoint of degree three or more where at least two incident channels emitted. `ABANDONED_RIVER` and
@@ -20,11 +22,14 @@ is what makes both cheap.** `HydrologicalPrimitive.comparator` orders by `getTyp
 `RIVER` is ordinal 0, so every `RiverPrimitive` sorts ahead of every other family.
 `RiverInfluenceCarve.computeRiverGrid`'s first pass relies on that: it walks the sorted list only while the
 entry is a `RiverPrimitive` and returns the index where the river run ended. A second pass then walks the
-rest of the sorted list and carves every entry that implements `RadialPrimitive` — `SOURCE` and
-`CONFLUENCE` are not adjacent in comparator order (`DELTA` sorts between them), so this is a filtered walk
-to the end rather than a resume on a contiguous run. A `DeltaPrimitive`, `WaterfallPrimitive`,
-`OxbowLakePrimitive` or `AbandonedRiverPrimitive` is therefore indexed, persisted and queryable, but
-contributes nothing to any elevation.
+rest of the sorted list and carves every entry that implements `RadialPrimitive` — `ABANDONED_RIVER`,
+`SOURCE` and `CONFLUENCE` are not adjacent in comparator order (`OXBOW_LAKE`, `WATERFALL` and `DELTA`
+sort between them), so this is a filtered walk to the end rather than a resume on a contiguous run. A
+`DeltaPrimitive` or `WaterfallPrimitive` is therefore indexed, persisted and queryable, but contributes
+nothing to any elevation. `OxbowLakePrimitive` does not implement `RadialPrimitive` either, so this
+bed-pass dispatch skips it too — but unlike Delta/Waterfall it is not carve-nothing overall: it now
+carves through the shell pass's `InfluenceCarver.ROSGEN` dispatch, the same rectangle cross-section a
+`RiverPrimitive` carves (see `profile/README.md`).
 
 **No primitive carries a per-point carve method, and none should grow one.** The carve never asks a
 primitive for its elevation at a point: `RiverInfluenceCarve` tabulates each primitive's cross-section into

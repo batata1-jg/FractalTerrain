@@ -41,9 +41,12 @@ public final class HydrologyTileGeometry {
                     width, Math.abs(Interpolation.sampleNearest(elev, x, z, PADDED) - bedElev));
             final double edge = Math.min(Math.min(x, z), Math.min(PADDED - 1 - x, PADDED - 1 - z));
             final double axisSpan = Math.abs(normal[0]) + Math.abs(normal[1]);
-            // RiverPrimitive.getLength()/getWidth() both return influence*2, so carveRiverPrimitiveInfluence's
-            // half-extents (influenceLen*|nz| + influenceWidth*|nx| and influenceLen*|nx| + influenceWidth*|nz|)
-            // collapse to influence*(|nx|+|nz|) — containment against the nearest tile edge is one division.
+            // RiverPrimitive.getLength() returns influence*2 and getWidth() returns influence*3 (not
+            // influence*2), so carveRosgenInfluence's half-extents (influenceLen*|nz| + influenceWidth*|nx|
+            // and influenceLen*|nx| + influenceWidth*|nz|) do not collapse to one scalar. axisSpan below
+            // (|nx|+|nz|) approximates the true per-axis coefficient rather than bounding it exactly, so
+            // this clamp runs looser than the primitive's actual rotated footprint whenever both axes of
+            // the normal are nonzero.
             // A degenerate (zero) normal makes that division meaningless, so it falls back to the unclamped raw
             // radius instead.
             final double bounded = axisSpan > 0 ? Math.min(raw, edge / axisSpan) : raw;

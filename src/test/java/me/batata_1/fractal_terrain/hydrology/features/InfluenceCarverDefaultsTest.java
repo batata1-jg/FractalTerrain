@@ -5,8 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import me.batata_1.fractal_terrain.hydrology.profile.InfluenceCarver;
 import org.junit.jupiter.api.Test;
 
-/** Every family's shell-carve dispatch, before the new primitive shapes exist. Locks in that this
- *  refactor starts behavior-preserving: only RiverPrimitive carves the shell today. */
+/** The shell-carve dispatch for the families that never carve: Confluence, Source, Delta, Waterfall
+ *  all resolve to {@code NONE}. Written when RiverPrimitive was the only carving family; OxbowLakePrimitive
+ *  and AbandonedRiverPrimitive have since joined it (see {@code InfluenceCarverShellTest}), so this only
+ *  proves the four families fixtured here still don't. */
 class InfluenceCarverDefaultsTest {
 
     @Test

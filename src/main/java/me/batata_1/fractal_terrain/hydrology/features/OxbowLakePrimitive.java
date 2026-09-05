@@ -99,6 +99,8 @@ public record OxbowLakePrimitive(
                 + Double.BYTES; // curvature
     }
 
+    // :SCHEMA: this record's serialized layout; no OxbowLakePrimitive payload of this format has ever
+    // been written to a cached tile, so a format change here needs no migration.
     @Override
     public byte[] serializePrimitive() {
         final ByteBuffer buf = ByteBuffer.allocate((int) primitiveByteSize()).order(ByteOrder.LITTLE_ENDIAN);
