@@ -1,4 +1,4 @@
-package me.batata_1.fractal_terrain.hydrology.profile;
+package me.batata_1.fractal_terrain.hydrology.carvers;
 
 import java.util.Arrays;
 import java.util.List;
@@ -9,6 +9,8 @@ import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RadialPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RosgenCarvedPrimitive;
+import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
+import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import org.jetbrains.annotations.TestOnly;
 
 /**

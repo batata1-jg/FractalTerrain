@@ -6,7 +6,9 @@ import java.util.Arrays;
 import java.util.Objects;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
+import me.batata_1.fractal_terrain.hydrology.carvers.RiverBedCarver;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
+import me.batata_1.fractal_terrain.math.ds.SpatialIndexRotatedRectangle;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -28,7 +30,7 @@ public record RiverPrimitive(
         double width,
         double elevation,
         long seed)
-        implements RosgenCarvedPrimitive {
+        implements HydrologicalPrimitive , SpatialIndexRotatedRectangle {
 
     public static final RiverPrimitive PROTOTYPE =
             new RiverPrimitive(new double[] {0.0, 0.0}, HydrologyTuning.MAX_INFLUENCE_RADIUS, null, null, 0, 0, 0, 0);
@@ -57,6 +59,10 @@ public record RiverPrimitive(
         return HydrologicalFeature.RIVER;
     }
 
+    public void carveBed(float[] lut, float baseIdx , float[] acc , long ) {
+        RiverBedCarver.carve();
+    }
+
     /** Channel-membership test driving {@code HydrologyProfilePainter.insideChannel}. */
     @Override
     public boolean channelContains(double distSqFromCentre) {
@@ -69,6 +75,7 @@ public record RiverPrimitive(
         return HydrologicalPrimitive.waterLine(width);
     }
 
+    @Deprecated
     public double h(double signedDist) {
         if (normal == null) return elevation;
         final RosgenProfile profile = (RosgenProfile) getProfile();

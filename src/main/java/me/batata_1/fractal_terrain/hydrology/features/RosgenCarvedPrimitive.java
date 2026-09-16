@@ -1,7 +1,7 @@
 package me.batata_1.fractal_terrain.hydrology.features;
 
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
-import me.batata_1.fractal_terrain.hydrology.profile.InfluenceCarver;
+import me.batata_1.fractal_terrain.hydrology.carvers.InfluenceCarver;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexRotatedRectangle;
 

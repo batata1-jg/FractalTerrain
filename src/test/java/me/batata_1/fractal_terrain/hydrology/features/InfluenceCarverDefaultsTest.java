@@ -2,7 +2,7 @@ package me.batata_1.fractal_terrain.hydrology.features;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import me.batata_1.fractal_terrain.hydrology.profile.InfluenceCarver;
+import me.batata_1.fractal_terrain.hydrology.carvers.InfluenceCarver;
 import org.junit.jupiter.api.Test;
 
 /** The shell-carve dispatch for the families that never carve: Confluence, Source, Delta, Waterfall

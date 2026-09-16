@@ -1,4 +1,4 @@
-package me.batata_1.fractal_terrain.hydrology.profile;
+package me.batata_1.fractal_terrain.hydrology.carvers;
 
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RadialPrimitive;
@@ -35,4 +35,7 @@ public enum InfluenceCarver {
     };
 
     public abstract void carveInfluence(HydrologicalPrimitive primitive, RiverInfluenceCarve.ShellGrid grid);
+
+    public void carveBed(HydrologicalPrimitive primitive)
+
 }

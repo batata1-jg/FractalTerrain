@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
+
+import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
 import me.batata_1.fractal_terrain.hydrology.features.AbandonedRiverPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.ConfluencePrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.OxbowLakePrimitive;

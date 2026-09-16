@@ -14,7 +14,6 @@ import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
 import me.batata_1.fractal_terrain.hydrology.profile.DefaultProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
-import me.batata_1.fractal_terrain.hydrology.profile.InfluenceCarver;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import me.batata_1.fractal_terrain.math.VectorOps;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexShape;
@@ -70,6 +69,8 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
 
     /** This primitive's payload, without the type tag {@link #serialize()} prepends. */
     byte[] serializePrimitive();
+    
+
 
     default float waterLine() {
         return -1;
@@ -89,12 +90,6 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
 
     @Override
     int hashCode();
-
-    /** The profile deciding this primitive's carve zones and shell pull. */
-    HydrologyProfile getProfile();
-
-    /** Which shell-carve algorithm this primitive uses; see {@link InfluenceCarver}. */
-    InfluenceCarver getInfluenceCarver();
 
     double[] coord();
 

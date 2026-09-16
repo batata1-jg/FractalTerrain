@@ -1,6 +1,8 @@
 package me.batata_1.fractal_terrain.hydrology.profile;
 
 import java.util.List;
+
+import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 
@@ -17,6 +19,17 @@ public final class HydrologyProfileInprinter {
 
     public HydrologyProfileInprinter(RiverProvider riverProvider) {
         this.riverProvider = riverProvider;
+    }
+
+    public static void carvePrimitives(RiverInfluenceCarve.GridBuffers buffers, List<HydrologicalPrimitive> primitives) {
+
+        for(var primitive : primitives){
+
+
+
+        }
+
+
     }
 
     public List<HydrologicalPrimitive> prefetchChunk(double centerPixelX, double centerPixelZ, double chunkRadiusPx) {

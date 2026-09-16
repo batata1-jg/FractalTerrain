@@ -10,6 +10,7 @@ import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
+import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
 import me.batata_1.fractal_terrain.hydrology.features.AbandonedRiverPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.ConfluencePrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.DeltaPrimitive;

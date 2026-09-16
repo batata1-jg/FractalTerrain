@@ -132,7 +132,7 @@ Task 6, once both new primitive shapes exist to test it against.
 package me.batata_1.fractal_terrain.hydrology.features;
 
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
-import me.batata_1.fractal_terrain.hydrology.profile.InfluenceCarver;
+import me.batata_1.fractal_terrain.hydrology.carvers.InfluenceCarver;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexRotatedRectangle;
 
@@ -232,7 +232,7 @@ In `HydrologicalPrimitive.java`, alongside the existing `HydrologyProfile getPro
     InfluenceCarver getInfluenceCarver();
 ```
 
-Add the import `me.batata_1.fractal_terrain.hydrology.profile.InfluenceCarver` alongside the
+Add the import `me.batata_1.fractal_terrain.hydrology.carvers.InfluenceCarver` alongside the
 existing `hydrology.profile.*` imports.
 
 - [ ] **Step 4: Default it to `NONE` on `PositionOnlyPrimitive` and `RadialPrimitive`**
@@ -284,7 +284,7 @@ package me.batata_1.fractal_terrain.hydrology.features;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import me.batata_1.fractal_terrain.hydrology.profile.InfluenceCarver;
+import me.batata_1.fractal_terrain.hydrology.carvers.InfluenceCarver;
 import org.junit.jupiter.api.Test;
 
 /** Every family's shell-carve dispatch, before the new primitive shapes exist. Locks in that this
@@ -548,7 +548,7 @@ class RosgenCarvedPrimitiveCodecTest {
     @ParameterizedTest
     @MethodSource("primitives")
     void carvesTheShellAsARosgenCrossSection(RosgenCarvedPrimitive primitive) {
-        assertEquals(me.batata_1.fractal_terrain.hydrology.profile.InfluenceCarver.ROSGEN, primitive.getInfluenceCarver());
+        assertEquals(me.batata_1.fractal_terrain.hydrology.carvers.InfluenceCarver.ROSGEN, primitive.getInfluenceCarver());
     }
 }
 ```
@@ -875,7 +875,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.Objects;
-import me.batata_1.fractal_terrain.hydrology.profile.InfluenceCarver;
+import me.batata_1.fractal_terrain.hydrology.carvers.InfluenceCarver;
 import me.batata_1.fractal_terrain.hydrology.profile.RadialProfile;
 import org.jetbrains.annotations.NotNull;
 

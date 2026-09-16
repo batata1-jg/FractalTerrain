@@ -4,7 +4,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.Objects;
-import me.batata_1.fractal_terrain.hydrology.profile.InfluenceCarver;
+import me.batata_1.fractal_terrain.hydrology.carvers.InfluenceCarver;
 import me.batata_1.fractal_terrain.hydrology.profile.RadialProfile;
 import org.jetbrains.annotations.NotNull;
 

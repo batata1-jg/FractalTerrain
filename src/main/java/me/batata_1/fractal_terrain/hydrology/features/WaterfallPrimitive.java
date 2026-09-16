@@ -1,7 +1,6 @@
 package me.batata_1.fractal_terrain.hydrology.features;
 
 import me.batata_1.fractal_terrain.hydrology.profile.DefaultProfile;
-import me.batata_1.fractal_terrain.hydrology.profile.ZoneCategory;
 
 /**
  * A vertical drop in a channel: the lip and the plunge below it.
