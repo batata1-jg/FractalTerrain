@@ -1,8 +1,8 @@
 package me.batata_1.fractal_terrain.hydrology;
 
+import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
-import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 
 /**

@@ -5,9 +5,9 @@ import static me.batata_1.fractal_terrain.debug.Debug.getLogger;
 import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
+import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
-import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
 import net.minecraft.world.level.ChunkPos;
@@ -74,7 +74,7 @@ public class PopulateNoiseStep {
         final RiverInfluenceCarve.GridBuffers buffers = BUFFERS.get();
         final float[] acc = buffers.acc;
 
-        HydrologyProfileInprinter.carvePrimitives(buffers,primitives);
+        HydrologyProfileInprinter.carvePrimitives(buffers, primitives);
 
         RiverInfluenceCarve.computeRiverGrid(
                 chunkPos.getMinBlockX() / scale,

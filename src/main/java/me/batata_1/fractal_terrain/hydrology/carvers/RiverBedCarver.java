@@ -4,7 +4,7 @@ import me.batata_1.fractal_terrain.config.HydrologyTuning;
 
 public interface RiverBedCarver {
 
-    static double band(double raw, double margin, double floodPlain ) {
+    static double band(double raw, double margin, double floodPlain) {
         final double bedSlope = margin > 0.0 ? 0.25 / margin : 0.0;
         if (raw <= margin) return raw * bedSlope;
         final double floodPlainSlope = floodPlain > margin ? 0.25 / (floodPlain - margin) : 0.0;
@@ -13,10 +13,31 @@ public interface RiverBedCarver {
         return 0.5 + (raw - floodPlain) * outerSlope;
     }
 
-    static void carve(float[] lut, int baseIdx, float[] acc, float[] dist, long[] typeMask, float[] elevs, double[] perpRow, double[] tangRow, double[] perpCol, double[] tangCol,
-                      double cx, double cz, double nx, double nz, double floodPlainLen, double marginLen, double waterSurface,
-                      double influenceLen, double influenceWidth, long type,
-                      double startX, double startZ, double resolution, int gridSize) {
+    static void carve(
+            float[] lut,
+            int baseIdx,
+            float[] acc,
+            float[] dist,
+            long[] typeMask,
+            float[] elevs,
+            double[] perpRow,
+            double[] tangRow,
+            double[] perpCol,
+            double[] tangCol,
+            double cx,
+            double cz,
+            double nx,
+            double nz,
+            double floodPlainLen,
+            double marginLen,
+            double waterSurface,
+            double influenceLen,
+            double influenceWidth,
+            long type,
+            double startX,
+            double startZ,
+            double resolution,
+            int gridSize) {
 
         final double halfExtentX = influenceLen * Math.abs(nz) + influenceWidth * Math.abs(nx);
         final double halfExtentZ = influenceLen * Math.abs(nx) + influenceWidth * Math.abs(nz);
