@@ -18,7 +18,6 @@ import me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.RiverNetwork;
-import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
 import me.batata_1.fractal_terrain.hydrology.providers.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import me.batata_1.fractal_terrain.math.ds.ImmutableQuadTree;
@@ -93,7 +92,6 @@ public class SpatialIndexBenchmark {
         final GlobalRiverProvider globalRivers = new GlobalRiverProvider(null);
         final RiverProvider localRivers = new RiverProvider(null);
         localRivers.setGlobalRiverProvider(globalRivers);
-        final HydrologyProfileInprinter carver = new HydrologyProfileInprinter(localRivers);
 
         LOG.info("building primitive tile ({},{})...", TILE_X, TILE_Z);
         final ImmutableRTree<HydrologicalPrimitive> primitiveRTree = localRivers.getPrimitiveTree(TILE_X, TILE_Z);

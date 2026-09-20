@@ -78,8 +78,7 @@ class VectorOpsProjectionTest {
 
     @Test
     void reversingTheSegmentFlipsTheSign() {
-        // The sign is a property of the directed segment, so callers must orient it consistently
-        // (HydrologyProfileInprinter always orients its two-segment polyline downstream).
+        // The sign is a property of the directed segment, so callers must orient it consistently.
         VectorOps.projectPointOntoSegment(
                 new double[] {2.0, 3.0}, new double[] {0.0, 0.0}, new double[] {4.0, 0.0}, projection);
         final double forward = projection[1];

@@ -5,7 +5,6 @@ import java.util.function.Supplier;
 import me.batata_1.fractal_terrain.config.HydrologyConfig;
 import me.batata_1.fractal_terrain.config.StaticHydrologyConfig;
 import me.batata_1.fractal_terrain.debug.Infinite3DVisualizer;
-import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfilePainter;
 import me.batata_1.fractal_terrain.hydrology.providers.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
@@ -43,7 +42,6 @@ public final class GenerationContext {
     private final BiomeProvider biomeProvider;
     private final GlobalRiverProvider globalRiverProvider;
     private final RiverProvider riverProvider;
-    private final HydrologyProfileInprinter hydrologyInprinter;
     private final HydrologyProfilePainter hydrologyPainter;
     private final PopulateNoiseStep populateNoiseStep;
     private final FractalTerrainSurfaceSystem surfaceBuilder;
@@ -60,7 +58,6 @@ public final class GenerationContext {
                 initProvider("GlobalRiverProvider", () -> new GlobalRiverProvider(worldPath + "/fractal_terrain"));
         this.riverProvider = initProvider(
                 "RiverProvider", () -> new RiverProvider(worldPath + "/fractal_terrain", this.globalRiverProvider));
-        this.hydrologyInprinter = new HydrologyProfileInprinter(this.riverProvider);
         this.hydrologyPainter = new HydrologyProfilePainter(this.riverProvider);
         this.reliefProvider = initProvider(
                 "ReliefProvider", () -> new ReliefProvider(worldPath + "/fractal_terrain", this.riverProvider));
@@ -109,10 +106,6 @@ public final class GenerationContext {
 
     public RiverProvider getRiverProvider() {
         return riverProvider;
-    }
-
-    public HydrologyProfileInprinter getHydrologyInprinter() {
-        return hydrologyInprinter;
     }
 
     public HydrologyProfilePainter getHydrologyPainter() {

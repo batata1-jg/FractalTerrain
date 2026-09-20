@@ -9,7 +9,7 @@ import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
 
 /**
  * The block/biome/vegetation side of the hydrology profile — the painting twin of
- * {@link HydrologyProfileInprinter}. Where {@link LatticeCarve} lowers elevation, the painter
+ * {@link LatticeCarve}. Where {@link LatticeCarve} lowers elevation, the painter
  * decides what to place: river water (from the {@link Types#RIVER_DIFFERENCE} that carve wrote), channel membership
  * ({@link #insideChannel}), and (later) river-aware biome parameters and a vegetation PDF. It shares the
  * same {@link HydrologyProfile} core and the same per-tile river query.

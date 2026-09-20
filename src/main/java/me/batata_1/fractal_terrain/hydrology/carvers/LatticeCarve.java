@@ -4,7 +4,6 @@ import java.util.Arrays;
 import java.util.List;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
-import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
 import org.jetbrains.annotations.TestOnly;
 
 /**
@@ -12,9 +11,8 @@ import org.jetbrains.annotations.TestOnly;
  * touching primitive — rivers first, then the radial families — into one (height, water, weight) triple
  * per lattice point, and {@link #carveInfluenceGrid} wraps it for the padded-tile shell pass.
  *
- * <p>Split out of {@link HydrologyProfileInprinter} so this pure lattice math carries no
- * {@code RiverProvider} dependency — an instance field here would force a cycle back onto
- * {@code hydrology.providers}, which only needs this static half.
+ * <p>This pure lattice math carries no {@code RiverProvider} dependency: an instance field here would
+ * force a cycle back onto {@code hydrology.providers}, which only needs this static half.
  */
 public final class LatticeCarve {
 

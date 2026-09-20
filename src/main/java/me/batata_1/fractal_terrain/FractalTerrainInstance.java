@@ -6,7 +6,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import me.batata_1.fractal_terrain.debug.Infinite3DVisualizer;
 import me.batata_1.fractal_terrain.debug.InstanceStageDumper;
-import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfilePainter;
 import me.batata_1.fractal_terrain.hydrology.providers.GlobalRiverProvider;
 import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
@@ -116,10 +115,6 @@ public class FractalTerrainInstance {
 
     public static RiverProvider getRiverProvider() {
         return current().getRiverProvider();
-    }
-
-    public static HydrologyProfileInprinter getHydrologyInprinter() {
-        return current().getHydrologyInprinter();
     }
 
     public static HydrologyProfilePainter getHydrologyPainter() {

@@ -7,7 +7,6 @@ import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.hydrology.carvers.LatticeCarve;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
-import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfileInprinter;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
 import net.minecraft.world.level.ChunkPos;
@@ -60,7 +59,6 @@ public class PopulateNoiseStep {
         final long[] riverType = (long[]) heightmap.get(Types.RIVER_TYPE);
         final float[] riverDist = (float[]) heightmap.get(Types.RIVER_DIST);
         final float[] waterElev = (float[]) heightmap.get(Types.WATER_HEIGHT);
-        final HydrologyProfileInprinter imprinter = FractalTerrainInstance.getHydrologyInprinter();
         // One influence query serves the whole chunk: prefetch every primitive that could reach any of the
         // 256 columns (chunk center + half-diagonal, both in the relief-pixel frame), then run the
         // flat merge per block against the prefetched array — 1 tree query per chunk instead of 256.
@@ -68,8 +66,11 @@ public class PopulateNoiseStep {
         final double chunkCenterPixelX = (chunkPos.getMinBlockX() + 8) / scale;
         final double chunkCenterPixelZ = (chunkPos.getMinBlockZ() + 8) / scale;
         final double chunkRadiusPx = (8.0 * Math.sqrt(2.0)) / scale;
-        final List<HydrologicalPrimitive> primitives =
-                imprinter.prefetchChunk(chunkCenterPixelX, chunkCenterPixelZ, chunkRadiusPx);
+        final List<HydrologicalPrimitive> primitives = FractalTerrainInstance.getRiverProvider()
+                .queryInfluence(new double[] {chunkCenterPixelX, chunkCenterPixelZ}, chunkRadiusPx);
+        // computeBedGrid merges in list order against one shared ranking buffer, so this sort is what
+        // decides which primitive owns each lattice point.
+        primitives.sort(HydrologicalPrimitive.comparator);
 
         final LatticeCarve.GridBuffers buffers = BUFFERS.get();
         final float[] acc = buffers.acc;

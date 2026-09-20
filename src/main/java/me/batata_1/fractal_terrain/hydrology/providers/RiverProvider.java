@@ -320,9 +320,9 @@ public class RiverProvider {
     }
 
     /**
-     * Every primitive influencing {@code pt}, unordered — feeds {@code HydrologyProfileInprinter}'s flat
-     * distance-weighted merge. {@code extraRadius} inflates the circles so the per-chunk prefetch can
-     * serve a whole chunk from one query. Returns indexed instances; callers must not mutate them.
+     * Every primitive influencing {@code pt}, unordered — feeds the bed pass's per-chunk prefetch.
+     * {@code extraRadius} inflates the circles so the per-chunk prefetch can serve a whole chunk from
+     * one query. Returns indexed instances; callers must not mutate them.
      */
     public List<HydrologicalPrimitive> queryInfluence(double[] pt, double extraRadius) {
         final List<HydrologicalPrimitive> influencingPrimitives = new ObjectArrayList<>(64);
