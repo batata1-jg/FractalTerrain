@@ -1,29 +1,49 @@
 package me.batata_1.fractal_terrain.hydrology.features;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import me.batata_1.fractal_terrain.hydrology.carvers.InfluenceCarver;
+import java.util.Arrays;
+import java.util.List;
+import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
 import org.junit.jupiter.api.Test;
 
-/** The shell-carve dispatch for the families that never carve: Confluence, Source, Delta, Waterfall
- *  all resolve to {@code NONE}. Written when RiverPrimitive was the only carving family; OxbowLakePrimitive
- *  and AbandonedRiverPrimitive have since joined it (see {@code InfluenceCarverShellTest}), so this only
- *  proves the four families fixtured here still don't. */
+/** Which families cut a shell cross-section and which contribute none. Asserted on the carved buffer:
+ *  the dispatch is a virtual call, so there is no token to compare. */
 class InfluenceCarverDefaultsTest {
 
-    @Test
-    void onlyRiverCarvesTheShellToday() {
-        final RiverPrimitive river =
-                new RiverPrimitive(new double[] {0, 0}, 5.0, RiverPrimitive.RosgenType.A, null, 0, 2, 0);
-        final ConfluencePrimitive confluence = new ConfluencePrimitive(new double[] {0, 0}, 1.0, 0.0);
-        final SourcePrimitive source = new SourcePrimitive(new double[] {0, 0}, 1.0, 0.0);
-        final DeltaPrimitive delta = new DeltaPrimitive(new double[] {0, 0});
-        final WaterfallPrimitive waterfall = new WaterfallPrimitive(new double[] {0, 0});
+    private static final int PADDED = 16;
 
-        assertEquals(InfluenceCarver.ROSGEN, river.getInfluenceCarver());
-        assertEquals(InfluenceCarver.NONE, confluence.getInfluenceCarver());
-        assertEquals(InfluenceCarver.NONE, source.getInfluenceCarver());
-        assertEquals(InfluenceCarver.NONE, delta.getInfluenceCarver());
-        assertEquals(InfluenceCarver.NONE, waterfall.getInfluenceCarver());
+    private static float[] flat() {
+        final float[] elev = new float[PADDED * PADDED];
+        Arrays.fill(elev, 20f);
+        return elev;
+    }
+
+    @Test
+    void riverCutsARosgenCrossSection() {
+        final float[] elev = flat();
+        final RiverPrimitive river = new RiverPrimitive(
+                new double[] {8.0, 8.0}, 5.0, RiverPrimitive.RosgenType.A, new double[] {1.0, 0.0}, 0.0, 2.0, 5.0);
+
+        RiverInfluenceCarve.carveRiverInfluenceGrid(elev, List.of(river), PADDED);
+
+        assertTrue(elev[8 * PADDED + 8] < 20f, "the channel centre must be cut");
+    }
+
+    @Test
+    void confluenceSourceDeltaAndWaterfallContributeNoShell() {
+        for (final HydrologicalPrimitive primitive : List.<HydrologicalPrimitive>of(
+                new ConfluencePrimitive(new double[] {8.0, 8.0}, 4.0, 5.0),
+                new SourcePrimitive(new double[] {8.0, 8.0}, 4.0, 5.0),
+                new DeltaPrimitive(new double[] {8.0, 8.0}),
+                new WaterfallPrimitive(new double[] {8.0, 8.0}))) {
+            final float[] elev = flat();
+            final float[] before = elev.clone();
+
+            RiverInfluenceCarve.carveRiverInfluenceGrid(elev, List.of(primitive), PADDED);
+
+            assertArrayEquals(before, elev, 1e-6f, primitive.getType() + " must carve no shell");
+        }
     }
 }

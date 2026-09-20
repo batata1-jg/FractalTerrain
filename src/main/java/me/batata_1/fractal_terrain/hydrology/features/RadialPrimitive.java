@@ -1,7 +1,7 @@
 package me.batata_1.fractal_terrain.hydrology.features;
 
+import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
-import me.batata_1.fractal_terrain.hydrology.carvers.InfluenceCarver;
 import me.batata_1.fractal_terrain.hydrology.profile.RadialProfile;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
 
@@ -33,13 +33,12 @@ public interface RadialPrimitive extends HydrologicalPrimitive, SpatialIndexCirc
         return width();
     }
 
-    @Override
     default HydrologyProfile getProfile() {
         return getRadialProfile();
     }
 
+    /** A bowl contributes no shell influence: the shell is the valley a flow tangent cuts, and a disc
+     *  has none. {@link AbandonedRiverPrimitive} is the one radial family that overrides this. */
     @Override
-    default InfluenceCarver getInfluenceCarver() {
-        return InfluenceCarver.NONE;
-    }
+    default void carveInfluence(RiverInfluenceCarve.ShellGrid grid) {}
 }

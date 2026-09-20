@@ -7,6 +7,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.function.Supplier;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
+import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
 import me.batata_1.fractal_terrain.hydrology.network.Centreline;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
@@ -29,8 +30,9 @@ import org.slf4j.LoggerFactory;
  * indexed as an influence circle, and the type tag lets one {@code Storage} payload round-trip them all.
  *
  * <p>Carve behavior is split so the carve never switches on the concrete record type: {@link
- * #getProfile()} answers what cross-section to cut, and the geometry it is cut along comes off the
- * record's own accessors. Implementations must override {@code equals}/{@code hashCode} — see
+ * #carveInfluence} cuts this primitive's own shell contribution, and {@code getProfile()} — declared by
+ * the shape interfaces, not this one — answers what cross-section to cut along the geometry the record's
+ * own accessors expose. Implementations must override {@code equals}/{@code hashCode} — see
  * {@link PrimitiveCodec#coordsEqual}.
  */
 public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<HydrologicalPrimitive> {
@@ -65,12 +67,14 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
     /** Which kind of feature this primitive is; the tag {@link #serialize()} writes. */
     HydrologicalFeature getType();
 
+    /** This primitive's contribution to the shell pass, cut into {@code grid}'s ambient buffer.
+     *  Abstract rather than defaulted, so a new family cannot silently carve no shell. */
+    void carveInfluence(RiverInfluenceCarve.ShellGrid grid);
+
     long primitiveByteSize();
 
     /** This primitive's payload, without the type tag {@link #serialize()} prepends. */
     byte[] serializePrimitive();
-    
-
 
     default float waterLine() {
         return -1;

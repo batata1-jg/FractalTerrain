@@ -4,12 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 
 import java.util.stream.Stream;
-
-import me.batata_1.fractal_terrain.hydrology.carvers.InfluenceCarver;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
-/** Persistence and rectangle geometry shared by every {@link RosgenCarvedPrimitive}. */
+/** Persistence shared by every {@link RosgenCarvedPrimitive}. */
 class RosgenCarvedPrimitiveCodecTest {
 
     private static Stream<RosgenCarvedPrimitive> primitives() {
@@ -41,12 +39,5 @@ class RosgenCarvedPrimitiveCodecTest {
     @MethodSource("primitives")
     void reportsThePayloadSizeItActuallyWrites(RosgenCarvedPrimitive primitive) {
         assertEquals(primitive.byteSize(), primitive.serialize().length);
-    }
-
-    @ParameterizedTest
-    @MethodSource("primitives")
-    void carvesTheShellAsARosgenCrossSection(RosgenCarvedPrimitive primitive) {
-        assertEquals(
-                InfluenceCarver.ROSGEN, primitive.getInfluenceCarver());
     }
 }

@@ -1,14 +1,15 @@
 package me.batata_1.fractal_terrain.hydrology.features;
 
-import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
 import me.batata_1.fractal_terrain.hydrology.carvers.InfluenceCarver;
+import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
+import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexRotatedRectangle;
 
 /**
- * A primitive with a flow tangent and a Rosgen cross-section — what {@link InfluenceCarver#ROSGEN}
- * dispatches on. {@link RiverPrimitive} and {@link OxbowLakePrimitive} both carve this shape: a shed
- * meander reads close enough to a live channel for the same cross-section math to apply to both.
+ * A primitive with a flow tangent and a Rosgen cross-section, cutting the rectangle/tangent shell shape
+ * every implementor shares. {@link RiverPrimitive} and {@link OxbowLakePrimitive} both carve this shape: a
+ * shed meander reads close enough to a live channel for the same cross-section math to apply to both.
  */
 public interface RosgenCarvedPrimitive extends SpatialIndexRotatedRectangle, HydrologicalPrimitive {
 
@@ -30,13 +31,12 @@ public interface RosgenCarvedPrimitive extends SpatialIndexRotatedRectangle, Hyd
     /** Cross-section seed, mixed into {@link RosgenProfile}'s per-point perturbation. */
     long seed();
 
-    @Override
     default HydrologyProfile getProfile() {
         return RosgenProfile.of(RiverPrimitive.RosgenType.orDefault(rosgenType()));
     }
 
     @Override
-    default InfluenceCarver getInfluenceCarver() {
-        return InfluenceCarver.ROSGEN;
+    default void carveInfluence(RiverInfluenceCarve.ShellGrid grid) {
+        InfluenceCarver.carveRosgenInfluence(this, grid);
     }
 }

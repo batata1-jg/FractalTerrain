@@ -1,8 +1,8 @@
 package me.batata_1.fractal_terrain.hydrology.features;
 
+import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
 import me.batata_1.fractal_terrain.hydrology.profile.DefaultProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
-import me.batata_1.fractal_terrain.hydrology.carvers.InfluenceCarver;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
 
 /**
@@ -27,15 +27,12 @@ interface PositionOnlyPrimitive extends HydrologicalPrimitive, SpatialIndexCircl
         return DEFAULT_RADIUS;
     }
 
-    @Override
     default HydrologyProfile getProfile() {
         return DefaultProfile.INSTANCE;
     }
 
     @Override
-    default InfluenceCarver getInfluenceCarver() {
-        return InfluenceCarver.NONE;
-    }
+    default void carveInfluence(RiverInfluenceCarve.ShellGrid grid) {}
 
     @Override
     default long primitiveByteSize() {
