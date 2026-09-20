@@ -3,7 +3,7 @@ package me.batata_1.fractal_terrain.hydrology.profile;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
-import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
+import me.batata_1.fractal_terrain.hydrology.carvers.LatticeCarve;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive.RosgenType;
 import me.batata_1.fractal_terrain.noise.OctaveSimplexNoiseSampler;
@@ -347,9 +347,9 @@ public enum RosgenProfile implements HydrologyProfile {
     @Override
     public int riverPaintDepth(int subType, float dist, SurfaceMaterial[] out) {
         final SurfaceMaterial[] column;
-        if (dist <= RiverInfluenceCarve.BED_EDGE) {
+        if (dist <= LatticeCarve.BED_EDGE) {
             column = bedColumn();
-        } else if (dist <= RiverInfluenceCarve.FLOODPLAIN_EDGE) {
+        } else if (dist <= LatticeCarve.FLOODPLAIN_EDGE) {
             column = floodPlainColumn();
         } else {
             return 0;

@@ -1,7 +1,7 @@
 package me.batata_1.fractal_terrain.hydrology.profile;
 
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
-import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
+import me.batata_1.fractal_terrain.hydrology.carvers.LatticeCarve;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.providers.RiverProvider;
 import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap;
@@ -9,7 +9,7 @@ import me.batata_1.fractal_terrain.storage.FractalTerrainHeightmap.Types;
 
 /**
  * The block/biome/vegetation side of the hydrology profile — the painting twin of
- * {@link HydrologyProfileInprinter}. Where {@link RiverInfluenceCarve} lowers elevation, the painter
+ * {@link HydrologyProfileInprinter}. Where {@link LatticeCarve} lowers elevation, the painter
  * decides what to place: river water (from the {@link Types#RIVER_DIFFERENCE} that carve wrote), channel membership
  * ({@link #insideChannel}), and (later) river-aware biome parameters and a vegetation PDF. It shares the
  * same {@link HydrologyProfile} core and the same per-tile river query.

@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Arrays;
 import java.util.List;
-import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
+import me.batata_1.fractal_terrain.hydrology.carvers.LatticeCarve;
 import org.junit.jupiter.api.Test;
 
 /** Which families cut a shell cross-section and which contribute none. Asserted on the carved buffer:
@@ -26,7 +26,7 @@ class InfluenceCarverDefaultsTest {
         final RiverPrimitive river = new RiverPrimitive(
                 new double[] {8.0, 8.0}, 5.0, RiverPrimitive.RosgenType.A, new double[] {1.0, 0.0}, 0.0, 2.0, 5.0);
 
-        RiverInfluenceCarve.carveRiverInfluenceGrid(elev, List.of(river), PADDED);
+        LatticeCarve.carveInfluenceGrid(elev, List.of(river), PADDED);
 
         assertTrue(elev[8 * PADDED + 8] < 20f, "the channel centre must be cut");
     }
@@ -41,7 +41,7 @@ class InfluenceCarverDefaultsTest {
             final float[] elev = flat();
             final float[] before = elev.clone();
 
-            RiverInfluenceCarve.carveRiverInfluenceGrid(elev, List.of(primitive), PADDED);
+            LatticeCarve.carveInfluenceGrid(elev, List.of(primitive), PADDED);
 
             assertArrayEquals(before, elev, 1e-6f, primitive.getType() + " must carve no shell");
         }

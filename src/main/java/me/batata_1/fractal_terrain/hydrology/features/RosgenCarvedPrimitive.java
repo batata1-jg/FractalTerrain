@@ -1,7 +1,7 @@
 package me.batata_1.fractal_terrain.hydrology.features;
 
 import me.batata_1.fractal_terrain.hydrology.carvers.InfluenceCarver;
-import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
+import me.batata_1.fractal_terrain.hydrology.carvers.LatticeCarve;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexRotatedRectangle;
@@ -36,7 +36,7 @@ public interface RosgenCarvedPrimitive extends SpatialIndexRotatedRectangle, Hyd
     }
 
     @Override
-    default void carveInfluence(RiverInfluenceCarve.ShellGrid grid) {
+    default void carveInfluence(LatticeCarve.ShellGrid grid) {
         InfluenceCarver.carveRosgenInfluence(this, grid);
     }
 }

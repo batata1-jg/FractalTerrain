@@ -12,7 +12,7 @@ import org.jetbrains.annotations.NotNull;
  * or more.
  *
  * <p>Sized by the widest channel meeting at the node, so a trunk's junction reads larger than a
- * headwater's. Carved by the radial pass of {@code RiverInfluenceCarve.computeRiverGrid} after every
+ * headwater's. Carved by the radial pass of {@code LatticeCarve.computeBedGrid} after every
  * river, which is what lets it deepen a bed the converging channels already cut rather than fight them.
  *
  * <p>Unrelated to the junction ray-set of the same name removed before {@code df7ca2e}; see

@@ -2,18 +2,35 @@ package me.batata_1.fractal_terrain.hydrology.carvers;
 
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 
-public interface RiverBedCarver {
+/**
+ * Every cross-section the bed pass knows how to cut, reached from a primitive's own {@code carveBed}.
+ * A footprint shape is a method here rather than a class of its own, so the pass's whole repertoire
+ * reads in one place; {@link InfluenceCarver} is the shell pass's twin.
+ */
+public final class BedCarver {
 
-    static double band(double raw, double margin, double floodPlain) {
-        final double bedSlope = margin > 0.0 ? 0.25 / margin : 0.0;
-        if (raw <= margin) return raw * bedSlope;
-        final double floodPlainSlope = floodPlain > margin ? 0.25 / (floodPlain - margin) : 0.0;
-        if (raw <= floodPlain) return 0.25 + (raw - margin) * floodPlainSlope;
-        final double outerSlope = floodPlain < 1.0 ? 0.5 / (1.0 - floodPlain) : 0.0;
-        return 0.5 + (raw - floodPlain) * outerSlope;
+    private BedCarver() {}
+
+    /**
+     * A raw footprint scale remapped onto the banded coordinate the paint side reads. Bed and floodplain
+     * assert themselves in the merge, and a consumer classifies against {@link LatticeCarve#BED_EDGE}
+     * and {@link LatticeCarve#FLOODPLAIN_EDGE} without access to the primitive.
+     */
+    // :PERF: six primitive parameters instead of a control-point object; this runs per lattice point,
+    // and an object would allocate per primitive and dispatch per point.
+    public static double band(
+            double raw,
+            double marginNorm,
+            double floodPlainNorm,
+            double bedSlope,
+            double floodPlainSlope,
+            double outerSlope) {
+        if (raw <= marginNorm) return raw * bedSlope;
+        if (raw <= floodPlainNorm) return LatticeCarve.BED_EDGE + (raw - marginNorm) * floodPlainSlope;
+        return LatticeCarve.FLOODPLAIN_EDGE + (raw - floodPlainNorm) * outerSlope;
     }
 
-    static void carve(
+    public static void carve(
             float[] lut,
             int baseIdx,
             float[] acc,
@@ -87,6 +104,15 @@ public interface RiverBedCarver {
         final double marginNorm = Math.min(Math.max(marginLen * invLen, marginLen * invWidth), 1.0);
         final double floodPlainNorm =
                 Math.min(Math.max(Math.max(floodPlainLen * invLen, floodPlainLen * invWidth), marginNorm), 1.0);
+        // :PERF: reciprocals hoisted per primitive; the merge loop below runs per lattice point and
+        // carries no division. A zero denominator means the piece it scales is empty, so the slope is
+        // never read and 0 keeps it finite.
+        final double bedSlope = marginNorm > 0.0 ? LatticeCarve.BED_EDGE / marginNorm : 0.0;
+        final double floodPlainSlope = floodPlainNorm > marginNorm
+                ? (LatticeCarve.FLOODPLAIN_EDGE - LatticeCarve.BED_EDGE) / (floodPlainNorm - marginNorm)
+                : 0.0;
+        final double outerSlope =
+                floodPlainNorm < 1.0 ? (1.0 - LatticeCarve.FLOODPLAIN_EDGE) / (1.0 - floodPlainNorm) : 0.0;
 
         for (int row = rowMin; row <= rowMax; row++) {
             final int rowBase = row * gridSize;
@@ -99,7 +125,7 @@ public interface RiverBedCarver {
                 // How far the footprint rectangle must be scaled to swallow the point: 1 exactly at the
                 // rim, so the recurrence ranks primitives by rectangle penetration, not radial distance.
                 final double raw = Math.max(Math.abs(tang) * invLen, Math.abs(perp) * invWidth);
-                final double d = band(raw, marginNorm, floodPlainNorm);
+                final double d = band(raw, marginNorm, floodPlainNorm, bedSlope, floodPlainSlope, outerSlope);
                 // Tested on the raw scale rather than the banded one: where floodPlainNorm clamps to 1
                 // the band saturates at FLOODPLAIN_EDGE and a point past the rim would read as in-band.
                 final double mask = raw <= 1.0 ? 1.0 : 0.0;

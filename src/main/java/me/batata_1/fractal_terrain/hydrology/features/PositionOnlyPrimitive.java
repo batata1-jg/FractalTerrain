@@ -1,6 +1,6 @@
 package me.batata_1.fractal_terrain.hydrology.features;
 
-import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
+import me.batata_1.fractal_terrain.hydrology.carvers.LatticeCarve;
 import me.batata_1.fractal_terrain.hydrology.profile.DefaultProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
 import me.batata_1.fractal_terrain.math.ds.SpatialIndexCircle;
@@ -32,7 +32,7 @@ interface PositionOnlyPrimitive extends HydrologicalPrimitive, SpatialIndexCircl
     }
 
     @Override
-    default void carveInfluence(RiverInfluenceCarve.ShellGrid grid) {}
+    default void carveInfluence(LatticeCarve.ShellGrid grid) {}
 
     @Override
     default long primitiveByteSize() {

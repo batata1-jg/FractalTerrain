@@ -5,7 +5,7 @@ import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.Objects;
 import me.batata_1.fractal_terrain.hydrology.carvers.InfluenceCarver;
-import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
+import me.batata_1.fractal_terrain.hydrology.carvers.LatticeCarve;
 import me.batata_1.fractal_terrain.hydrology.profile.RadialProfile;
 import org.jetbrains.annotations.NotNull;
 
@@ -36,7 +36,7 @@ public record AbandonedRiverPrimitive(double[] coord, byte time, double width, d
     }
 
     @Override
-    public void carveInfluence(RiverInfluenceCarve.ShellGrid grid) {
+    public void carveInfluence(LatticeCarve.ShellGrid grid) {
         InfluenceCarver.carveRadialInfluence(this, grid);
     }
 

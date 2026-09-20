@@ -26,7 +26,7 @@ public interface HydrologyProfile {
      * the hot/cold line and cannot afford a virtual call per block.
      *
      * @param subType the family-specific classification from {@code HydrologicalFeature.unpackSub}
-     * @param dist the banded footprint coordinate from {@code RiverInfluenceCarve.band}
+     * @param dist the banded footprint coordinate from {@code LatticeCarve.band}
      * @param out caller-owned scratch, at least {@code HydrologyTuning.MAX_RIVER_PAINT_DEPTH} long;
      *     implementations must not retain it
      * @return how many entries were filled; zero leaves the column to the vanilla surface rules

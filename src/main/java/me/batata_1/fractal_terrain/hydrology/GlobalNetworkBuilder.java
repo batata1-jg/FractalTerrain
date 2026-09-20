@@ -16,7 +16,7 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.List;
 import java.util.Random;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
-import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
+import me.batata_1.fractal_terrain.hydrology.carvers.LatticeCarve;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.meanders.*;
 import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
@@ -152,8 +152,7 @@ public final class GlobalNetworkBuilder {
 
         ChannelElevationAssigner.assign(network, boundaryElevByNodeIdx, elevCarvedGlobalOnly);
 
-        RiverInfluenceCarve.carveRiverInfluenceGrid(
-                elevCarvedGlobalOnly, collect(network, typer, elevCarvedGlobalOnly), PADDED);
+        LatticeCarve.carveInfluenceGrid(elevCarvedGlobalOnly, collect(network, typer, elevCarvedGlobalOnly), PADDED);
 
         ctx.drainage = Drainage.computeDrainageDirection(
                 Drainage.fillSinks(elevCarvedGlobalOnly, PADDED, HydrologyTuning.FILL_PADDING), PADDED);

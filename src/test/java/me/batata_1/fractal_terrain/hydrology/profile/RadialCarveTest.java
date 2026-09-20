@@ -10,7 +10,7 @@ import java.util.List;
 import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
-import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
+import me.batata_1.fractal_terrain.hydrology.carvers.LatticeCarve;
 import me.batata_1.fractal_terrain.hydrology.features.AbandonedRiverPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.ConfluencePrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.DeltaPrimitive;
@@ -53,9 +53,9 @@ class RadialCarveTest {
         return new AbandonedRiverPrimitive(new double[] {CENTRE, CENTRE}, (byte) 0, width, elevation);
     }
 
-    private static RiverInfluenceCarve.GridBuffers buffers() {
-        final RiverInfluenceCarve.GridBuffers b = new RiverInfluenceCarve.GridBuffers();
-        b.ensure(GRID, RiverInfluenceCarve.maxLutLen(GRID, RES));
+    private static LatticeCarve.GridBuffers buffers() {
+        final LatticeCarve.GridBuffers b = new LatticeCarve.GridBuffers();
+        b.ensure(GRID, LatticeCarve.maxLutLen(GRID, RES));
         return b;
     }
 
@@ -67,8 +67,8 @@ class RadialCarveTest {
         return FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depth(width);
     }
 
-    private static void carve(RiverInfluenceCarve.GridBuffers b, List<HydrologicalPrimitive> primitives) {
-        RiverInfluenceCarve.computeRiverGrid(
+    private static void carve(LatticeCarve.GridBuffers b, List<HydrologicalPrimitive> primitives) {
+        LatticeCarve.computeBedGrid(
                 0,
                 0,
                 RES,
@@ -88,8 +88,8 @@ class RadialCarveTest {
 
     /** Second helper so the elevs-less {@link #carve} stays untouched for the tests that rely on it. */
     private static void carveWithElevs(
-            RiverInfluenceCarve.GridBuffers b, List<HydrologicalPrimitive> primitives, float[] elevs) {
-        RiverInfluenceCarve.computeRiverGrid(
+            LatticeCarve.GridBuffers b, List<HydrologicalPrimitive> primitives, float[] elevs) {
+        LatticeCarve.computeBedGrid(
                 0,
                 0,
                 RES,
@@ -110,7 +110,7 @@ class RadialCarveTest {
     /** D5: a bowl reaching ground no river touched carves to its own law, not toward the zero fill. */
     @Test
     void carvesToItsOwnLawWhereNoRiverReached() {
-        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
         carve(b, List.of(bowl(4.0, 100.0)));
 
         final int centre = idx(8, 8);
@@ -125,8 +125,8 @@ class RadialCarveTest {
     /** D4: a bowl whose rim sits above an already-carved river bed leaves that bed alone. */
     @Test
     void neverLiftsARiverBedItOverlaps() {
-        final RiverInfluenceCarve.GridBuffers b = buffers();
-        final RiverInfluenceCarve.GridBuffers riverOnly = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers riverOnly = buffers();
         carve(riverOnly, List.of(knot(CENTRE, 100.0)));
         final float riverBed = riverOnly.acc[3 * idx(8, 8)];
 
@@ -143,7 +143,7 @@ class RadialCarveTest {
     /** D6: a cell in the bowl's square footprint but outside its disc keeps the river's claim. */
     @Test
     void keepsTheRiverWeightAtCellsOutsideItsDisc() {
-        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
         // The knot at x = 4 reaches (4, 4); the bowl's AABB covers rows/cols 4..12 but its disc,
         // radius 4 about (8, 8), does not reach the corner at distance sqrt(32).
         carve(b, List.of(knot(4.0, 100.0), bowl(4.0, 100.0)));
@@ -156,7 +156,7 @@ class RadialCarveTest {
     /** The bowl publishes a water surface, or the recurrence drains it toward zero. */
     @Test
     void publishesItsOwnWaterSurface() {
-        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
         carve(b, List.of(bowl(4.0, 100.0)));
 
         final int centre = idx(8, 8);
@@ -170,7 +170,7 @@ class RadialCarveTest {
     /** The type mask names the family that won the cell, so the paint side can tell a pool from a bed. */
     @Test
     void stampsTheConfluenceFamilyOnTheCellsItWins() {
-        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
         carve(b, List.of(bowl(4.0, 100.0)));
 
         assertEquals(
@@ -182,11 +182,11 @@ class RadialCarveTest {
      *  must leave the RIVER tag — and the surface painter's riverbed materials — in place. */
     @Test
     void leavesTheRiverTypeTagOnCellsTheRiverClaimed() {
-        final RiverInfluenceCarve.GridBuffers riverOnly = buffers();
+        final LatticeCarve.GridBuffers riverOnly = buffers();
         carve(riverOnly, List.of(knot(CENTRE, 100.0)));
         final long riverTag = riverOnly.typeMask[idx(8, 8)];
 
-        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
         carve(b, List.of(knot(CENTRE, 100.0), bowl(4.0, 100.0)));
 
         assertEquals(
@@ -199,7 +199,7 @@ class RadialCarveTest {
     /** D2's filter: a non-river, non-radial tail entry must leave every lane byte-identical. */
     @Test
     void ignoresANonRadialTailPrimitive() {
-        final RiverInfluenceCarve.GridBuffers riverOnly = buffers();
+        final LatticeCarve.GridBuffers riverOnly = buffers();
         carve(riverOnly, List.of(knot(CENTRE, 100.0)));
         final float[] accBefore = riverOnly.acc.clone();
         final long[] maskBefore = riverOnly.typeMask.clone();
@@ -207,7 +207,7 @@ class RadialCarveTest {
 
         // DELTA sorts between SOURCE and CONFLUENCE and implements no radial interface, so the second
         // pass must walk straight past it rather than treat the list tail as carveable.
-        final RiverInfluenceCarve.GridBuffers withDelta = buffers();
+        final LatticeCarve.GridBuffers withDelta = buffers();
         carve(withDelta, List.of(knot(CENTRE, 100.0), new DeltaPrimitive(new double[] {CENTRE, CENTRE})));
 
         assertArrayEquals(accBefore, withDelta.acc, "a delta in the tail perturbed the merged surface");
@@ -219,11 +219,11 @@ class RadialCarveTest {
      *  pass must rank on its own buffer and leave that one alone. */
     @Test
     void leavesTheRiverDistanceFieldUntouched() {
-        final RiverInfluenceCarve.GridBuffers riverOnly = buffers();
+        final LatticeCarve.GridBuffers riverOnly = buffers();
         carve(riverOnly, List.of(knot(CENTRE, 100.0)));
         final float[] distBefore = riverOnly.dist.clone();
 
-        final RiverInfluenceCarve.GridBuffers withBowl = buffers();
+        final LatticeCarve.GridBuffers withBowl = buffers();
         carve(withBowl, List.of(knot(CENTRE, 100.0), bowl(4.0, 100.0)));
 
         assertArrayEquals(distBefore, withBowl.dist, "the radial pass overwrote the painter's input");
@@ -234,7 +234,7 @@ class RadialCarveTest {
      *  the carve; every other radial test here carves a bowl. */
     @Test
     void carvesToTheSourceConeLawAtHalfRadius() {
-        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
         carve(b, List.of(cone(4.0, 100.0)));
 
         final int halfRadius = idx(8, 10);
@@ -248,11 +248,11 @@ class RadialCarveTest {
     /** {@code AbandonedRiverPrimitive} implements {@code RadialPrimitive}, so this bed-pass dispatch
      *  carves it exactly like a bowl or a cone once its deferred elevation is resolved — a deliberate
      *  consequence of the interface, not an oversight (see {@code profile/README.md}'s radial-pass
-     *  note). It also carves through the shell's separate {@code InfluenceCarver.RADIAL} dispatch, but
-     *  that path is not this test's concern. */
+     *  note). It also overrides the abandoned-river family's shell carve to cut the same radial disc,
+     *  but that path is not this test's concern. */
     @Test
     void carvesAnAbandonedRiverPrimitiveThroughTheRadialDispatch() {
-        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
         carve(b, List.of(trace(4.0, 100.0)));
 
         final int centre = idx(8, 8);
@@ -266,7 +266,7 @@ class RadialCarveTest {
      *  test. An ambient below the bowl's own floor must pull the merged surface down to it. */
     @Test
     void clampsToAmbientElevationBelowTheBowlFloor() {
-        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
         final float lowAmbient = (float) (100.0 - depthOf(4.0) - 10.0);
         final float[] elevs = new float[GRID * GRID];
         Arrays.fill(elevs, lowAmbient);
@@ -281,19 +281,19 @@ class RadialCarveTest {
     }
 
     /** Every test above runs at RES = 1.0, never the production tile resolution, so nothing pins
-     *  {@link RiverInfluenceCarve#maxLutLen}'s radial-span bound. A {@code MAX_WIDTH} disc at
+     *  {@link LatticeCarve#maxLutLen}'s radial-span bound. A {@code MAX_WIDTH} disc at
      *  {@code GRID_RESOLUTION} must stay inside the LUT it is sized against. */
     @Test
     void productionResolutionRadialDiscStaysWithinTheLut() {
         final double prodRes = 1.0 / FractalTerrainConfig.GLOBAL_SCALE_CORRECTION;
-        final RiverInfluenceCarve.GridBuffers b = new RiverInfluenceCarve.GridBuffers();
-        b.ensure(GRID, RiverInfluenceCarve.maxLutLen(GRID, prodRes));
+        final LatticeCarve.GridBuffers b = new LatticeCarve.GridBuffers();
+        b.ensure(GRID, LatticeCarve.maxLutLen(GRID, prodRes));
         final double centre = GRID / 2.0 * prodRes;
         final List<HydrologicalPrimitive> primitives =
                 List.of(new ConfluencePrimitive(new double[] {centre, centre}, HydrologyTuning.MAX_WIDTH, 100.0));
 
         assertDoesNotThrow(
-                () -> RiverInfluenceCarve.computeRiverGrid(
+                () -> LatticeCarve.computeBedGrid(
                         0,
                         0,
                         prodRes,

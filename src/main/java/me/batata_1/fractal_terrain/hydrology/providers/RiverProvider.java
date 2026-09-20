@@ -14,7 +14,7 @@ import me.batata_1.fractal_terrain.FractalTerrainInstance;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.config.StaticHydrologyConfig;
 import me.batata_1.fractal_terrain.hydrology.*;
-import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
+import me.batata_1.fractal_terrain.hydrology.carvers.LatticeCarve;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.meanders.Meanders;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
@@ -230,10 +230,10 @@ public class RiverProvider {
         ChannelElevationAssigner.assign(ctx.network(), ctx.boundaryElevByNodeIdx(), elev);
 
         final List<HydrologicalPrimitive> primitives = collect(ctx.network(), ctx.typer(), elev);
-        RiverInfluenceCarve.carveRiverInfluenceGrid(elev, primitives, PADDED);
+        LatticeCarve.carveInfluenceGrid(elev, primitives, PADDED);
 
         if (stages != null && !primitives.isEmpty()) {
-            stages.distanceField = Arrays.copyOf(RiverInfluenceCarve.shellDistanceField(), PADDED * PADDED);
+            stages.distanceField = Arrays.copyOf(LatticeCarve.shellDistanceField(), PADDED * PADDED);
             stages.floodPlainBlend = null;
         }
 

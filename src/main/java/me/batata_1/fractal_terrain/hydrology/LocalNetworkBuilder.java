@@ -5,7 +5,7 @@ import static me.batata_1.fractal_terrain.hydrology.HydrologyTileGeometry.sample
 
 import java.util.List;
 import me.batata_1.fractal_terrain.config.StaticHydrologyConfig;
-import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
+import me.batata_1.fractal_terrain.hydrology.carvers.LatticeCarve;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
 import me.batata_1.fractal_terrain.hydrology.network.Endpoint;
@@ -40,7 +40,7 @@ public final class LocalNetworkBuilder {
         ChannelElevationAssigner.assign(ctx.network(), ctx.boundaryElevByNodeIdx(), elev);
 
         final List<HydrologicalPrimitive> primitives = collect(ctx.network(), ctx.typer(), elev);
-        RiverInfluenceCarve.carveRiverInfluenceGrid(elev, primitives, PADDED);
+        LatticeCarve.carveInfluenceGrid(elev, primitives, PADDED);
 
         LocalDrainageTracer.traceLocalNetwork(
                 ctx.drainage(), elev, humidity, gradMag, ctx.network(), stages, StaticHydrologyConfig.INSTANCE);

@@ -120,7 +120,7 @@ public final class HydrologyTuning {
     public static final double MAX_INFLUENCE_RADIUS = 64.0f;
 
     /** Floor on influence radius, load-bearing rather than cosmetic: at zero,
-     *  {@code RiverInfluenceCarve} divides by the influence half-width and the R-tree indexes the
+     *  {@code LatticeCarve} divides by the influence half-width and the R-tree indexes the
      *  primitive under a zero-area rectangle. Also exposed via {@code HydrologyConfig}. */
     public static final double MIN_INFLUENCE_RADIUS = 2.0;
 

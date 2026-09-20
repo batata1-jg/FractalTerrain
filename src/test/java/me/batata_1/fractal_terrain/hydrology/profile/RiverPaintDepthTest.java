@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.Arrays;
 import java.util.stream.Stream;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
-import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
+import me.batata_1.fractal_terrain.hydrology.carvers.LatticeCarve;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.HydrologicalFeature;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive.RosgenType;
 import org.junit.jupiter.api.Test;
@@ -24,11 +24,11 @@ class RiverPaintDepthTest {
     /** The bands a profile can be asked about, plus both boundaries and a point past the rim. */
     private static final float[] SWEPT_BANDS = {
         0.0f,
-        (float) RiverInfluenceCarve.BED_EDGE * 0.5f,
-        (float) RiverInfluenceCarve.BED_EDGE,
-        (float) RiverInfluenceCarve.BED_EDGE + 1e-4f,
-        (float) RiverInfluenceCarve.FLOODPLAIN_EDGE,
-        (float) RiverInfluenceCarve.FLOODPLAIN_EDGE + 1e-4f,
+        (float) LatticeCarve.BED_EDGE * 0.5f,
+        (float) LatticeCarve.BED_EDGE,
+        (float) LatticeCarve.BED_EDGE + 1e-4f,
+        (float) LatticeCarve.FLOODPLAIN_EDGE,
+        (float) LatticeCarve.FLOODPLAIN_EDGE + 1e-4f,
         1.0f
     };
 
@@ -36,8 +36,7 @@ class RiverPaintDepthTest {
     private static final float BED_BAND = 0.0f;
 
     /** Squarely inside the floodplain band, away from either boundary swept above. */
-    private static final float FLOOD_PLAIN_BAND =
-            (float) ((RiverInfluenceCarve.BED_EDGE + RiverInfluenceCarve.FLOODPLAIN_EDGE) / 2);
+    private static final float FLOOD_PLAIN_BAND = (float) ((LatticeCarve.BED_EDGE + LatticeCarve.FLOODPLAIN_EDGE) / 2);
 
     private static SurfaceMaterial[] scratch() {
         return new SurfaceMaterial[HydrologyTuning.MAX_RIVER_PAINT_DEPTH];
@@ -138,7 +137,7 @@ class RiverPaintDepthTest {
         // valley looking like the biome it runs through.
         assertEquals(
                 0,
-                profile.riverPaintDepth(0, (float) RiverInfluenceCarve.FLOODPLAIN_EDGE + 1e-4f, scratch()),
+                profile.riverPaintDepth(0, (float) LatticeCarve.FLOODPLAIN_EDGE + 1e-4f, scratch()),
                 profile + " painted past the floodplain");
     }
 

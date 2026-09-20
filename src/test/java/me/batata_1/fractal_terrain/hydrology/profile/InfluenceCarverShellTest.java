@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
-import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
+import me.batata_1.fractal_terrain.hydrology.carvers.LatticeCarve;
 import me.batata_1.fractal_terrain.hydrology.features.AbandonedRiverPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.ConfluencePrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.OxbowLakePrimitive;
@@ -38,10 +38,10 @@ class InfluenceCarverShellTest {
     @Test
     void oxbowCarvesTheShellLikeARiverAtTheSamePosition() {
         final float[] elevOxbow = flatElevation(20f);
-        RiverInfluenceCarve.carveRiverInfluenceGrid(elevOxbow, List.of(oxbow(8.0, 5.0)), PADDED);
+        LatticeCarve.carveInfluenceGrid(elevOxbow, List.of(oxbow(8.0, 5.0)), PADDED);
 
         final float[] elevRiver = flatElevation(20f);
-        RiverInfluenceCarve.carveRiverInfluenceGrid(elevRiver, List.of(river(8.0, 5.0)), PADDED);
+        LatticeCarve.carveInfluenceGrid(elevRiver, List.of(river(8.0, 5.0)), PADDED);
 
         assertArrayEquals(
                 elevRiver,
@@ -55,7 +55,7 @@ class InfluenceCarverShellTest {
         final float[] elev = flatElevation(20f);
         final AbandonedRiverPrimitive trace = new AbandonedRiverPrimitive(new double[] {8.0, 8.0}, (byte) 4, 2.0, 5.0);
 
-        RiverInfluenceCarve.carveRiverInfluenceGrid(elev, List.of(trace), PADDED);
+        LatticeCarve.carveInfluenceGrid(elev, List.of(trace), PADDED);
 
         assertTrue(elev[8 * PADDED + 8] < 20f, "the disc centre must be cut below ambient");
         assertEquals(20f, elev[0], 1e-6f, "a far corner outside the disc's radius must stay untouched");
@@ -64,7 +64,7 @@ class InfluenceCarverShellTest {
     @Test
     void confluenceStillContributesNoShellInfluence() {
         final float[] elev = flatElevation(20f);
-        RiverInfluenceCarve.carveRiverInfluenceGrid(
+        LatticeCarve.carveInfluenceGrid(
                 elev, List.of(new ConfluencePrimitive(new double[] {8.0, 8.0}, 4.0, 5.0)), PADDED);
 
         assertEquals(
@@ -86,7 +86,7 @@ class InfluenceCarverShellTest {
         final float[] elev = flatElevation(20f);
         final float[] before = elev.clone();
 
-        RiverInfluenceCarve.carveRiverInfluenceGrid(elev, List.of(mintTimeOxbow), PADDED);
+        LatticeCarve.carveInfluenceGrid(elev, List.of(mintTimeOxbow), PADDED);
 
         for (float v : elev) assertTrue(!Float.isNaN(v), "no cell may read back NaN");
         assertArrayEquals(before, elev, 1e-6f, "a zero-extent, unresolved oxbow must be a no-op on the shell");
@@ -103,7 +103,7 @@ class InfluenceCarverShellTest {
         final float[] elev = flatElevation(20f);
         final float[] before = elev.clone();
 
-        RiverInfluenceCarve.carveRiverInfluenceGrid(elev, List.of(mintTimeTrace), PADDED);
+        LatticeCarve.carveInfluenceGrid(elev, List.of(mintTimeTrace), PADDED);
 
         assertArrayEquals(
                 before, elev, 1e-6f, "a deferred-elevation abandoned trace must not crater the shell to NaN's floor");
@@ -115,7 +115,7 @@ class InfluenceCarverShellTest {
         // run through the shell entry point instead, to prove carveRosgenInfluence's math did not
         // move when it was retyped off RiverPrimitive onto RosgenCarvedPrimitive.
         final float[] elev = flatElevation(20f);
-        RiverInfluenceCarve.carveRiverInfluenceGrid(elev, List.of(river(8.0, 5.0)), PADDED);
+        LatticeCarve.carveInfluenceGrid(elev, List.of(river(8.0, 5.0)), PADDED);
 
         assertTrue(elev[8 * PADDED + 8] < 20f, "the channel centre must be cut");
     }

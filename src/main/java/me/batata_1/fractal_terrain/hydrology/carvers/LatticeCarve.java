@@ -13,25 +13,24 @@ import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import org.jetbrains.annotations.TestOnly;
 
 /**
- * The stateless lattice carve shared by every carve call site: {@link #computeRiverGrid} merges every
+ * The stateless lattice carve shared by every carve call site: {@link #computeBedGrid} merges every
  * touching primitive — rivers first, then the radial families — into one (height, water, weight) triple
- * per lattice point, and {@link #carveRiverInfluenceGrid} wraps it for the padded-tile shell pass.
+ * per lattice point, and {@link #carveInfluenceGrid} wraps it for the padded-tile shell pass.
  *
  * <p>Split out of {@link HydrologyProfileInprinter} so this pure lattice math carries no
  * {@code RiverProvider} dependency — an instance field here would force a cycle back onto
  * {@code hydrology.providers}, which only needs this static half.
  */
-public final class RiverInfluenceCarve {
+public final class LatticeCarve {
 
-    private RiverInfluenceCarve() {}
+    private LatticeCarve() {}
 
     /**
      * {@code blendSink} records the peak floodplain blend ratio each lattice point saw, for debug
      * renders; production passes {@code null}, which costs the carve one never-taken branch and no
      * allocation. Sized {@code paddedSize²} and zero-filled by the caller — the carve only maxes into it.
      */
-    public static void carveRiverInfluenceGrid(
-            float[] elevation, List<HydrologicalPrimitive> primitives, int paddedSize) {
+    public static void carveInfluenceGrid(float[] elevation, List<HydrologicalPrimitive> primitives, int paddedSize) {
         if (primitives.isEmpty()) return;
         final GridBuffers buffers = SHELL_BUFFERS.get();
         buffers.ensure(paddedSize, maxLutLen(paddedSize, 1.0));
@@ -80,7 +79,7 @@ public final class RiverInfluenceCarve {
      *     surface painter consumes that one after the carve returns
      * @return the index one past the last river primitive, bounding the river run
      */
-    public static int computeRiverGrid(
+    public static int computeBedGrid(
             double startX,
             double startZ,
             double resolution,
@@ -265,7 +264,7 @@ public final class RiverInfluenceCarve {
                 // How far the footprint rectangle must be scaled to swallow the point: 1 exactly at the
                 // rim, so the recurrence ranks primitives by rectangle penetration, not radial distance.
                 final double raw = Math.max(Math.abs(tang) * invLen, Math.abs(perp) * invWidth);
-                final double d = band(raw, marginNorm, floodPlainNorm, bedSlope, floodPlainSlope, outerSlope);
+                final double d = BedCarver.band(raw, marginNorm, floodPlainNorm, bedSlope, floodPlainSlope, outerSlope);
                 // Tested on the raw scale rather than the banded one: where floodPlainNorm clamps to 1
                 // the band saturates at FLOODPLAIN_EDGE and a point past the rim would read as in-band.
                 final double mask = raw <= 1.0 ? 1.0 : 0.0;
@@ -393,26 +392,7 @@ public final class RiverInfluenceCarve {
     }
 
     /**
-     * A raw footprint scale remapped onto the banded coordinate the paint side reads. Bed and floodplain
-     * assert themselves in the merge, and a consumer classifies against {@link #BED_EDGE} and {@link
-     * #FLOODPLAIN_EDGE} without access to the primitive.
-     */
-    // :PERF: six primitive parameters instead of a control-point object; this runs per lattice point,
-    // and an object would allocate per primitive and dispatch per point.
-    public static double band(
-            double raw,
-            double marginNorm,
-            double floodPlainNorm,
-            double bedSlope,
-            double floodPlainSlope,
-            double outerSlope) {
-        if (raw <= marginNorm) return raw * bedSlope;
-        if (raw <= floodPlainNorm) return BED_EDGE + (raw - marginNorm) * floodPlainSlope;
-        return FLOODPLAIN_EDGE + (raw - floodPlainNorm) * outerSlope;
-    }
-
-    /**
-     * The elevation {@link #carveRiverInfluenceGrid}'s closing blend would publish at {@code (px, pz)} given
+     * The elevation {@link #carveInfluenceGrid}'s closing blend would publish at {@code (px, pz)} given
      * only the primitives merged into {@code acc} so far. Lets a primitive cap its own bed against ground
      * its already-merged neighbours cut, so the influence carve cannot fill.
      */
@@ -437,14 +417,14 @@ public final class RiverInfluenceCarve {
     }
 
     /** One lattice point's merged elevation, on the same law the closing blend of {@link
-     *  #carveRiverInfluenceGrid} applies: ambient carried toward the merged river surface by its weight. */
+     *  #carveInfluenceGrid} applies: ambient carried toward the merged river surface by its weight. */
     private static double mergedElevationAtPoint(int i, float[] acc, float[] elevs) {
         final double w = acc[3 * i + 1];
         return elevs[i] * (1 - w) + acc[3 * i] * w;
     }
 
     /**
-     * The buffers {@link #computeRiverGrid} writes, bundled so each call site keeps one sizing rule
+     * The buffers {@link #computeBedGrid} writes, bundled so each call site keeps one sizing rule
      * rather than four. Deliberately not a parameter of the carve itself — see the design spec's
      * "Why no scratch class": a second primitive family needs its own {@code acc} against the same grid.
      *
@@ -487,7 +467,7 @@ public final class RiverInfluenceCarve {
     }
 
     /**
-     * The distance field the last {@link #carveRiverInfluenceGrid} on THIS thread left behind: per lattice
+     * The distance field the last {@link #carveInfluenceGrid} on THIS thread left behind: per lattice
      * point, the footprint scale at which the winning primitive swallows it, {@link #UNSET_MIN_DIST}
      * where none reached. The live scratch buffer, so a reader copies before the next carve overwrites
      * it, and a carve that returned early on an empty primitive list leaves the previous tile's values.

@@ -9,13 +9,13 @@ import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 /**
  * Every cross-section the shell pass knows how to cut, reached from a primitive's own
  * {@code carveInfluence}. A footprint shape is a method here rather than a class of its own, so the
- * pass's whole repertoire reads in one place; {@link RiverBedCarver} is the bed pass's twin.
+ * pass's whole repertoire reads in one place; {@link BedCarver} is the bed pass's twin.
  */
 public final class InfluenceCarver {
 
     private InfluenceCarver() {}
 
-    public static void carveRosgenInfluence(RosgenCarvedPrimitive primitive, RiverInfluenceCarve.ShellGrid grid) {
+    public static void carveRosgenInfluence(RosgenCarvedPrimitive primitive, LatticeCarve.ShellGrid grid) {
         final double[] normal = primitive.normal();
         // A null normal has no tangent -- the projection below would NPE.
         if (normal == null) return;
@@ -128,7 +128,7 @@ public final class InfluenceCarver {
         }
     }
 
-    public static void carveRadialInfluence(RadialPrimitive primitive, RiverInfluenceCarve.ShellGrid grid) {
+    public static void carveRadialInfluence(RadialPrimitive primitive, LatticeCarve.ShellGrid grid) {
         final double cx = primitive.coord()[0], cz = primitive.coord()[1];
         final double radius = primitive.getRadius();
         if (radius <= 0) return;

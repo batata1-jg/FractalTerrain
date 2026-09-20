@@ -7,7 +7,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.function.Supplier;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
-import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
+import me.batata_1.fractal_terrain.hydrology.carvers.LatticeCarve;
 import me.batata_1.fractal_terrain.hydrology.network.Centreline;
 import me.batata_1.fractal_terrain.hydrology.network.Channel;
 import me.batata_1.fractal_terrain.hydrology.network.ChannelTyper;
@@ -69,7 +69,7 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
 
     /** This primitive's contribution to the shell pass, cut into {@code grid}'s ambient buffer.
      *  Abstract rather than defaulted, so a new family cannot silently carve no shell. */
-    void carveInfluence(RiverInfluenceCarve.ShellGrid grid);
+    void carveInfluence(LatticeCarve.ShellGrid grid);
 
     long primitiveByteSize();
 

@@ -107,7 +107,7 @@ class RadialPrimitiveCodecTest {
 
     @Test
     void sortsAfterEveryRiverPrimitive() {
-        // computeRiverGrid's river loop stops at the first non-river entry; a radial family sorting
+        // computeBedGrid's river loop stops at the first non-river entry; a radial family sorting
         // before RIVER would truncate the river run and silently drop carve.
         final List<HydrologicalPrimitive> primitives = new ObjectArrayList<>(List.of(
                 new ConfluencePrimitive(new double[] {0.0, 0.0}, 1.0, 0.0),

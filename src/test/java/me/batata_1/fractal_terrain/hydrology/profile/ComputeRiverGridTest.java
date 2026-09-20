@@ -4,7 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
-import me.batata_1.fractal_terrain.hydrology.carvers.RiverInfluenceCarve;
+import me.batata_1.fractal_terrain.hydrology.carvers.BedCarver;
+import me.batata_1.fractal_terrain.hydrology.carvers.LatticeCarve;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive.HydrologicalFeature;
 import me.batata_1.fractal_terrain.hydrology.features.RiverPrimitive;
@@ -28,9 +29,9 @@ class ComputeRiverGridTest {
         return new RiverPrimitive(new double[] {cx, 8.0}, 5.0, type, new double[] {1.0, 0.0}, 0.0, 2.0, elevation, ids);
     }
 
-    private static RiverInfluenceCarve.GridBuffers buffers() {
-        final RiverInfluenceCarve.GridBuffers b = new RiverInfluenceCarve.GridBuffers();
-        b.ensure(GRID, RiverInfluenceCarve.maxLutLen(GRID, RES));
+    private static LatticeCarve.GridBuffers buffers() {
+        final LatticeCarve.GridBuffers b = new LatticeCarve.GridBuffers();
+        b.ensure(GRID, LatticeCarve.maxLutLen(GRID, RES));
         return b;
     }
 
@@ -41,9 +42,9 @@ class ComputeRiverGridTest {
     @Test
     void carvesTheChannelCentreToTheProfileSurface() {
         final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
-        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
 
-        RiverInfluenceCarve.computeRiverGrid(
+        LatticeCarve.computeBedGrid(
                 0,
                 0,
                 RES,
@@ -72,9 +73,9 @@ class ComputeRiverGridTest {
     @Test
     void leavesLatticePointsOutsideTheInfluenceUntouched() {
         final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
-        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
 
-        RiverInfluenceCarve.computeRiverGrid(
+        LatticeCarve.computeBedGrid(
                 0,
                 0,
                 RES,
@@ -103,9 +104,9 @@ class ComputeRiverGridTest {
         // the higher primitive -- the merge is distance-driven, not elevation-driven.
         final RiverPrimitive a = knot(8.0, 100.0, RosgenType.A, 0L);
         final RiverPrimitive b2 = knot(9.0, 200.0, RosgenType.A, 1L);
-        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
 
-        RiverInfluenceCarve.computeRiverGrid(
+        LatticeCarve.computeBedGrid(
                 0,
                 0,
                 RES,
@@ -133,9 +134,9 @@ class ComputeRiverGridTest {
         // last-wins or higher-wins implementation would report 190 (from farther) instead of 90 (nearer).
         final RiverPrimitive nearer = knot(9.0, 100.0, RosgenType.A, 0L);
         final RiverPrimitive farther = knot(8.0, 200.0, RosgenType.A, 1L);
-        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
 
-        RiverInfluenceCarve.computeRiverGrid(
+        LatticeCarve.computeBedGrid(
                 0,
                 0,
                 RES,
@@ -159,10 +160,10 @@ class ComputeRiverGridTest {
 
     @Test
     void reseedsSoASecondCallDoesNotCompound() {
-        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
         final List<HydrologicalPrimitive> one = List.of(knot(8.0, 100.0, RosgenType.A, 0L));
 
-        RiverInfluenceCarve.computeRiverGrid(
+        LatticeCarve.computeBedGrid(
                 0,
                 0,
                 RES,
@@ -179,7 +180,7 @@ class ComputeRiverGridTest {
                 b.tangCol,
                 null);
         final float first = b.acc[3 * idx(8, 8)];
-        RiverInfluenceCarve.computeRiverGrid(
+        LatticeCarve.computeBedGrid(
                 0,
                 0,
                 RES,
@@ -204,9 +205,9 @@ class ComputeRiverGridTest {
         final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
         final HydrologicalPrimitive source =
                 new me.batata_1.fractal_terrain.hydrology.features.SourcePrimitive(new double[] {8.0, 8.0}, 2.0, 100.0);
-        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
 
-        final int stop = RiverInfluenceCarve.computeRiverGrid(
+        final int stop = LatticeCarve.computeBedGrid(
                 0,
                 0,
                 RES,
@@ -233,9 +234,9 @@ class ComputeRiverGridTest {
         // A null normal has no cross-section; carving it would NPE in the projection.
         final RiverPrimitive noNormal =
                 new RiverPrimitive(new double[] {8.0, 8.0}, 5.0, RosgenType.A, null, 0.0, 2.0, 100.0, 0L);
-        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
 
-        RiverInfluenceCarve.computeRiverGrid(
+        LatticeCarve.computeBedGrid(
                 0,
                 0,
                 RES,
@@ -267,9 +268,9 @@ class ComputeRiverGridTest {
                 2.0,
                 100.0,
                 0L);
-        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
 
-        RiverInfluenceCarve.computeRiverGrid(
+        LatticeCarve.computeBedGrid(
                 0,
                 0,
                 RES,
@@ -294,9 +295,9 @@ class ComputeRiverGridTest {
         // waterLine(2.0) is -2, so the surface sits two below the primitive's own elevation. The water
         // lane blends toward a default of 0, which makes the raw accumulator the answer -- no divide.
         final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
-        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
 
-        RiverInfluenceCarve.computeRiverGrid(
+        LatticeCarve.computeBedGrid(
                 0,
                 0,
                 RES,
@@ -322,9 +323,9 @@ class ComputeRiverGridTest {
         // RosgenType.C so the packed value is non-zero -- RIVER + A packs to 0L and would not
         // distinguish a real stamp from an unwritten cell.
         final RiverPrimitive river = knot(8.0, 100.0, RosgenType.C, 0L);
-        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
 
-        RiverInfluenceCarve.computeRiverGrid(
+        LatticeCarve.computeBedGrid(
                 0,
                 0,
                 RES,
@@ -351,9 +352,9 @@ class ComputeRiverGridTest {
     void anUnclassifiedReachStampsTheProfileItActuallyCarvedWith() {
         // A null rosgenType coalesces to A for the carve, so the mask must say A rather than "unknown".
         final RiverPrimitive river = knot(8.0, 100.0, null, 0L);
-        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
 
-        RiverInfluenceCarve.computeRiverGrid(
+        LatticeCarve.computeBedGrid(
                 0,
                 0,
                 RES,
@@ -377,9 +378,9 @@ class ComputeRiverGridTest {
     void theTypeMaskFollowsTheNearestPrimitiveNotTheFirst() {
         final RiverPrimitive a = knot(8.0, 100.0, RosgenType.A, 0L);
         final RiverPrimitive c = knot(9.0, 100.0, RosgenType.C, 1L);
-        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
 
-        RiverInfluenceCarve.computeRiverGrid(
+        LatticeCarve.computeBedGrid(
                 0,
                 0,
                 RES,
@@ -403,13 +404,13 @@ class ComputeRiverGridTest {
     // ---- Banded footprint coordinate ----
 
     private static double bandOf(double raw, double marginNorm, double floodPlainNorm) {
-        final double bedSlope = marginNorm > 0 ? RiverInfluenceCarve.BED_EDGE / marginNorm : 0.0;
+        final double bedSlope = marginNorm > 0 ? LatticeCarve.BED_EDGE / marginNorm : 0.0;
         final double floodPlainSlope = floodPlainNorm > marginNorm
-                ? (RiverInfluenceCarve.FLOODPLAIN_EDGE - RiverInfluenceCarve.BED_EDGE) / (floodPlainNorm - marginNorm)
+                ? (LatticeCarve.FLOODPLAIN_EDGE - LatticeCarve.BED_EDGE) / (floodPlainNorm - marginNorm)
                 : 0.0;
         final double outerSlope =
-                floodPlainNorm < 1.0 ? (1.0 - RiverInfluenceCarve.FLOODPLAIN_EDGE) / (1.0 - floodPlainNorm) : 0.0;
-        return RiverInfluenceCarve.band(raw, marginNorm, floodPlainNorm, bedSlope, floodPlainSlope, outerSlope);
+                floodPlainNorm < 1.0 ? (1.0 - LatticeCarve.FLOODPLAIN_EDGE) / (1.0 - floodPlainNorm) : 0.0;
+        return BedCarver.band(raw, marginNorm, floodPlainNorm, bedSlope, floodPlainSlope, outerSlope);
     }
 
     @Test
@@ -418,12 +419,9 @@ class ComputeRiverGridTest {
         final double floodPlain = 0.24;
 
         assertEquals(0.0, bandOf(0.0, margin, floodPlain), 1e-12, "the centreline");
-        assertEquals(RiverInfluenceCarve.BED_EDGE, bandOf(margin, margin, floodPlain), 1e-12, "the bank");
+        assertEquals(LatticeCarve.BED_EDGE, bandOf(margin, margin, floodPlain), 1e-12, "the bank");
         assertEquals(
-                RiverInfluenceCarve.FLOODPLAIN_EDGE,
-                bandOf(floodPlain, margin, floodPlain),
-                1e-12,
-                "the floodplain edge");
+                LatticeCarve.FLOODPLAIN_EDGE, bandOf(floodPlain, margin, floodPlain), 1e-12, "the floodplain edge");
         assertEquals(1.0, bandOf(1.0, margin, floodPlain), 1e-12, "the influence rim");
     }
 
@@ -449,7 +447,7 @@ class ComputeRiverGridTest {
             final double raw = i / 50.0;
             assertTrue(Double.isFinite(bandOf(raw, coincident, coincident)), "not finite at raw " + raw);
         }
-        assertEquals(RiverInfluenceCarve.BED_EDGE, bandOf(coincident, coincident, coincident), 1e-12);
+        assertEquals(LatticeCarve.BED_EDGE, bandOf(coincident, coincident, coincident), 1e-12);
     }
 
     @Test
@@ -468,9 +466,9 @@ class ComputeRiverGridTest {
         // dist lands on the banded value exactly, with no blend against a competitor. knot() gives
         // influenceLen 5, influenceWidth 7.5, marginLen 1 and (type A) floodPlainLen 1.2.
         final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
-        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
 
-        RiverInfluenceCarve.computeRiverGrid(
+        LatticeCarve.computeBedGrid(
                 0,
                 0,
                 RES,
@@ -491,7 +489,7 @@ class ComputeRiverGridTest {
         assertEquals(0.0f, b.dist[idx(8, 8)], 1e-6f, "the centreline is the bottom of the bed band");
         // (8, 7) sits one pixel along the flow tangent, so raw == marginNorm exactly.
         assertEquals(
-                (float) RiverInfluenceCarve.BED_EDGE,
+                (float) LatticeCarve.BED_EDGE,
                 b.dist[idx(8, 7)],
                 1e-6f,
                 "one margin length out is the bed/floodplain boundary");
@@ -506,9 +504,9 @@ class ComputeRiverGridTest {
         // lattice cells that were floodplain for the narrow knot above are bed here.
         final RiverPrimitive wide = new RiverPrimitive(
                 new double[] {8.0, 8.0}, 50.0, RosgenType.A, new double[] {1.0, 0.0}, 0.0, 20.0, 100.0, 0L);
-        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
 
-        RiverInfluenceCarve.computeRiverGrid(
+        LatticeCarve.computeBedGrid(
                 0,
                 0,
                 RES,
@@ -526,8 +524,7 @@ class ComputeRiverGridTest {
                 null);
 
         assertEquals(0.0f, b.dist[idx(8, 8)], 1e-6f, "the centreline");
-        assertTrue(
-                b.dist[idx(8, 3)] < RiverInfluenceCarve.BED_EDGE, "five pixels out is still bed for a 20-wide channel");
+        assertTrue(b.dist[idx(8, 3)] < LatticeCarve.BED_EDGE, "five pixels out is still bed for a 20-wide channel");
     }
 
     @Test
@@ -535,9 +532,9 @@ class ComputeRiverGridTest {
         // Task 2 publishes dist into a heightmap channel gated on RIVER_TYPE; an unclaimed cell must
         // stay recognisably unset rather than reading as a valid influence-band coordinate.
         final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
-        final RiverInfluenceCarve.GridBuffers b = buffers();
+        final LatticeCarve.GridBuffers b = buffers();
 
-        RiverInfluenceCarve.computeRiverGrid(
+        LatticeCarve.computeBedGrid(
                 0,
                 0,
                 RES,
@@ -554,7 +551,7 @@ class ComputeRiverGridTest {
                 b.tangCol,
                 null);
 
-        assertEquals((float) RiverInfluenceCarve.UNSET_MIN_DIST, b.dist[idx(0, 0)], "the corner is unclaimed");
+        assertEquals((float) LatticeCarve.UNSET_MIN_DIST, b.dist[idx(0, 0)], "the corner is unclaimed");
         assertEquals(HydrologicalFeature.NONE, b.typeMask[idx(0, 0)], "and its type agrees");
     }
 }
