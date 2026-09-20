@@ -71,6 +71,16 @@ public interface HydrologicalPrimitive extends SpatialIndexShape, Persistable<Hy
      *  Abstract rather than defaulted, so a new family cannot silently carve no shell. */
     void carveInfluence(LatticeCarve.ShellGrid grid);
 
+    /** This primitive's contribution to the bed pass, blended into {@code grid}'s merge buffers.
+     *  Abstract rather than defaulted, so a new family cannot silently carve no bed. */
+    void carveBed(LatticeCarve.BedGrid grid);
+
+    /** Fills {@code lut[0..n)} with this primitive's cross-section, entry {@code i} being the surface at
+     *  {@code (baseIdx + i) * resolution} along the carve's own cross-section axis. Separate from
+     *  {@link #carveBed} because the table is the family's to build and the cut is the footprint
+     *  shape's: one {@code RadialPrimitive} default serves three families through one disc carve. */
+    void tabulateBedLut(float[] lut, int baseIdx, int n, double resolution);
+
     long primitiveByteSize();
 
     /** This primitive's payload, without the type tag {@link #serialize()} prepends. */

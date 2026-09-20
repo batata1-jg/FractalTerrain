@@ -1,5 +1,8 @@
 package me.batata_1.fractal_terrain.hydrology.features;
 
+import me.batata_1.fractal_terrain.FractalTerrainConfig;
+import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
+import me.batata_1.fractal_terrain.hydrology.carvers.BedCarver;
 import me.batata_1.fractal_terrain.hydrology.carvers.LatticeCarve;
 import me.batata_1.fractal_terrain.hydrology.profile.HydrologyProfile;
 import me.batata_1.fractal_terrain.hydrology.profile.RadialProfile;
@@ -41,4 +44,34 @@ public interface RadialPrimitive extends HydrologicalPrimitive, SpatialIndexCirc
      *  has none. {@link AbandonedRiverPrimitive} is the one radial family that overrides this. */
     @Override
     default void carveInfluence(LatticeCarve.ShellGrid grid) {}
+
+    @Override
+    default void carveBed(LatticeCarve.BedGrid grid) {
+        final double radius = getRadius();
+        if (radius <= 0) return;
+        // Deferred: elevation is NaN-sentinelled until RiverNetwork.remapHistory resolves it, which no
+        // production caller does -- carving the sentinel would cut every cell it reaches to NaN.
+        if (Double.isNaN(elevation())) return;
+        BedCarver.carveRadial(
+                this,
+                grid,
+                coord()[0],
+                coord()[1],
+                radius,
+                (float) (elevation() + HydrologicalPrimitive.waterLine(width())),
+                getType().pack(0));
+    }
+
+    @Override
+    default void tabulateBedLut(float[] lut, int baseIdx, int n, double resolution) {
+        getRadialProfile()
+                .sampleRadialSection(
+                        lut,
+                        n,
+                        resolution,
+                        baseIdx,
+                        elevation(),
+                        1.0 / getRadius(),
+                        FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depth(width()));
+    }
 }

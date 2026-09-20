@@ -4,8 +4,11 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.Objects;
+import me.batata_1.fractal_terrain.FractalTerrainConfig;
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.ChannelGeometry;
+import me.batata_1.fractal_terrain.hydrology.carvers.BedCarver;
+import me.batata_1.fractal_terrain.hydrology.carvers.LatticeCarve;
 import me.batata_1.fractal_terrain.hydrology.profile.RosgenProfile;
 import org.jetbrains.annotations.NotNull;
 
@@ -67,6 +70,42 @@ public record RiverPrimitive(
     @Override
     public float waterLine() {
         return HydrologicalPrimitive.waterLine(width);
+    }
+
+    @Override
+    public void carveBed(LatticeCarve.BedGrid grid) {
+        // A null normal has no tangent -- the projection inside the carve would NPE.
+        if (normal == null) return;
+        final RosgenProfile profile = (RosgenProfile) getProfile();
+        BedCarver.carve(
+                this,
+                grid,
+                coord[0],
+                coord[1],
+                normal[0],
+                normal[1],
+                getLength() * 0.5,
+                getWidth() * 0.5,
+                width / 2,
+                profile.floodPlainLength(width),
+                (float) (elevation + HydrologicalPrimitive.waterLine(width)),
+                HydrologicalFeature.RIVER.pack(RosgenType.orDefault(rosgenType).ordinal()));
+    }
+
+    @Override
+    public void tabulateBedLut(float[] lut, int baseIdx, int n, double resolution) {
+        final RosgenProfile profile = (RosgenProfile) getProfile();
+        profile.sampleCrossSection(
+                lut,
+                n,
+                resolution,
+                baseIdx,
+                seed,
+                elevation,
+                profile.floodPlainLength(width),
+                width / 2,
+                FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depth(width),
+                curvature);
     }
 
     @Deprecated

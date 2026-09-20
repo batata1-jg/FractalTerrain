@@ -1,6 +1,7 @@
 package me.batata_1.fractal_terrain.hydrology.carvers;
 
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
+import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
 
 /**
  * Every cross-section the bed pass knows how to cut, reached from a primitive's own {@code carveBed}.
@@ -31,30 +32,31 @@ public final class BedCarver {
     }
 
     public static void carve(
-            float[] lut,
-            int baseIdx,
-            float[] acc,
-            float[] dist,
-            long[] typeMask,
-            float[] elevs,
-            double[] perpRow,
-            double[] tangRow,
-            double[] perpCol,
-            double[] tangCol,
+            HydrologicalPrimitive owner,
+            LatticeCarve.BedGrid grid,
             double cx,
             double cz,
             double nx,
             double nz,
-            double floodPlainLen,
-            double marginLen,
-            double waterSurface,
             double influenceLen,
             double influenceWidth,
-            long type,
-            double startX,
-            double startZ,
-            double resolution,
-            int gridSize) {
+            double marginLen,
+            double floodPlainLen,
+            float waterSurface,
+            long type) {
+        final int gridSize = grid.gridSize();
+        final double startX = grid.startX();
+        final double startZ = grid.startZ();
+        final double resolution = grid.resolution();
+        final float[] acc = grid.acc();
+        final long[] typeMask = grid.typeMask();
+        final float[] dist = grid.dist();
+        final float[] lut = grid.lut();
+        final double[] perpRow = grid.perpRow();
+        final double[] perpCol = grid.perpCol();
+        final double[] tangRow = grid.tangRow();
+        final double[] tangCol = grid.tangCol();
+        final float[] elevs = grid.elevs();
 
         final double halfExtentX = influenceLen * Math.abs(nz) + influenceWidth * Math.abs(nx);
         final double halfExtentZ = influenceLen * Math.abs(nx) + influenceWidth * Math.abs(nz);
@@ -81,6 +83,9 @@ public final class BedCarver {
         if (perpMin > perpMax) return;
 
         final double invStep = 1.0 / resolution;
+        final int baseIdx = (int) Math.floor(perpMin * invStep);
+        final int n = (int) Math.floor(perpMax * invStep) - baseIdx + 2;
+        owner.tabulateBedLut(lut, baseIdx, n, resolution);
 
         // :PERF: both projections are affine, so each splits into a row term and a column term; tabulating
         // the two axes costs 2 * gridSize entries and lets the merge rebuild any point with one add.
@@ -134,7 +139,7 @@ public final class BedCarver {
                 final double f = perp * invStep - baseIdx;
                 // Clamped for safety only: mask already zeroes anything out of band, but the branch-free
                 // body still evaluates h for those lanes.
-                final int i0 = Math.clamp((int) f, 0, lut.length - 2);
+                final int i0 = Math.clamp((int) f, 0, n - 2);
                 final double h = (elevs != null)
                         ? Math.min(elevs[i], lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]))
                         : lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]);
@@ -147,6 +152,99 @@ public final class BedCarver {
                 // the weight is a near-hard selector, so this is the true nearest bar a 0.1-wide band.
                 typeMask[i] = w > 0.5 ? type : typeMask[i];
                 acc[a + 2] = 1 - Math.clamp(dist[i], 0, 1);
+            }
+        }
+    }
+
+    /**
+     * One disc's contribution, clipped to the lattice points it reaches. The circle admits no affine
+     * row/column split, so the distance is computed per cell rather than tabulated per axis.
+     */
+    public static void carveRadial(
+            HydrologicalPrimitive owner,
+            LatticeCarve.BedGrid grid,
+            double cx,
+            double cz,
+            double radius,
+            float waterSurface,
+            long type) {
+        final int gridSize = grid.gridSize();
+        final double startX = grid.startX();
+        final double startZ = grid.startZ();
+        final double resolution = grid.resolution();
+        final float[] acc = grid.acc();
+        final long[] typeMask = grid.typeMask();
+        final float[] radialDist = grid.radialDist();
+        final float[] lut = grid.lut();
+        final float[] elevs = grid.elevs();
+
+        // :PERF: conservative AABB clip; floor/ceil so a too-wide range is harmless while a too-narrow
+        // one would silently drop carve -- the exact disc test still runs per lattice point.
+        final long rowLo = (long) Math.floor((cx - radius - startX) / resolution);
+        final long rowHi = (long) Math.ceil((cx + radius - startX) / resolution);
+        final long colLo = (long) Math.floor((cz - radius - startZ) / resolution);
+        final long colHi = (long) Math.ceil((cz + radius - startZ) / resolution);
+        if (rowHi < 0 || rowLo > gridSize - 1 || colHi < 0 || colLo > gridSize - 1) return;
+        final int rowMin = (int) Math.max(rowLo, 0);
+        final int rowMax = (int) Math.min(rowHi, gridSize - 1);
+        final int colMin = (int) Math.max(colLo, 0);
+        final int colMax = (int) Math.min(colHi, gridSize - 1);
+
+        // The LUT spans only the radii the clipped box actually reaches. This is what caps n at the
+        // grid diagonal: a full-radius table would want radius/resolution entries, which at
+        // GRID_RESOLUTION overruns what maxLutLen sizes the buffer for.
+        final double x0 = startX + rowMin * resolution, x1 = startX + rowMax * resolution;
+        final double z0 = startZ + colMin * resolution, z1 = startZ + colMax * resolution;
+        final double nearX = Math.max(0.0, Math.max(x0 - cx, cx - x1));
+        final double nearZ = Math.max(0.0, Math.max(z0 - cz, cz - z1));
+        final double radMin = Math.sqrt(nearX * nearX + nearZ * nearZ);
+        final double farX = Math.max(Math.abs(x0 - cx), Math.abs(x1 - cx));
+        final double farZ = Math.max(Math.abs(z0 - cz), Math.abs(z1 - cz));
+        final double radMax = Math.min(Math.sqrt(farX * farX + farZ * farZ), radius);
+        if (radMin > radMax) return;
+
+        final double invStep = 1.0 / resolution;
+        final int baseIdx = (int) Math.floor(radMin * invStep);
+        final int n = (int) Math.floor(radMax * invStep) - baseIdx + 2;
+        final double invRadius = 1.0 / radius;
+        owner.tabulateBedLut(lut, baseIdx, n, resolution);
+
+        for (int row = rowMin; row <= rowMax; row++) {
+            final int rowBase = row * gridSize;
+            final double ddx = (startX + row * resolution) - cx;
+            for (int col = colMin; col <= colMax; col++) {
+                final int i = rowBase + col;
+                final int a = 3 * i;
+                final double ddz = (startZ + col * resolution) - cz;
+                // A circle admits no affine row/column split the way a rectangle's two projections do,
+                // so the true distance is computed per cell rather than tabulated per axis.
+                final double rad = Math.sqrt(ddx * ddx + ddz * ddz);
+                final double d = rad * invRadius;
+                final double mask = d <= 1.0 ? 1.0 : 0.0;
+                final double t =
+                        Math.clamp(((radialDist[i] - d) / HydrologyTuning.PRIMITIVE_BLEND_STRENGTH + 1) * 0.5, 0, 1);
+                final double w = t * t * (3.0 - 2.0 * t) * mask;
+
+                final double f = rad * invStep - baseIdx;
+                final int i0 = Math.clamp((int) f, 0, n - 2);
+                final double sampled = lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]);
+                final double bounded = (elevs != null) ? Math.min(elevs[i], sampled) : sampled;
+                // The prior pass's claim on this cell, read before the write below can raise it.
+                final float priorWeight = acc[a + 2];
+                // Gated on the prior weight, not on acc alone: acc is zero-filled, so an
+                // unconditional min would clamp a bowl standing on high ground down to zero.
+                final double h = priorWeight > 0 ? Math.min(acc[a], bounded) : bounded;
+
+                radialDist[i] = (float) ((1 - w) * radialDist[i] + w * d);
+                acc[a] = (float) ((1 - w) * acc[a] + w * h);
+                acc[a + 1] = (float) ((1 - w) * acc[a + 1] + w * waterSurface);
+                // Only ground no earlier primitive claimed: the disc runs to width(), twice a
+                // channel's painted bed, so assigning here would strip the RIVER tag — and with it
+                // the surface painter's riverbed materials — from beds passing through the disc.
+                typeMask[i] = (w > 0.5 && priorWeight <= 0) ? type : typeMask[i];
+                // Maxed rather than assigned: cells inside the square footprint but outside the disc
+                // take w = 0, and assigning would erase the river's own claim on them.
+                acc[a + 2] = Math.max(acc[a + 2], (float) (1 - Math.clamp(radialDist[i], 0, 1)));
             }
         }
     }

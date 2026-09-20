@@ -107,8 +107,8 @@ class RadialPrimitiveCodecTest {
 
     @Test
     void sortsAfterEveryRiverPrimitive() {
-        // computeBedGrid's river loop stops at the first non-river entry; a radial family sorting
-        // before RIVER would truncate the river run and silently drop carve.
+        // The bed pass merges in list order against one shared ranking buffer, so the sort is what puts
+        // every river ahead of every disc; a radial family sorting first would carve over the beds.
         final List<HydrologicalPrimitive> primitives = new ObjectArrayList<>(List.of(
                 new ConfluencePrimitive(new double[] {0.0, 0.0}, 1.0, 0.0),
                 new RiverPrimitive(new double[] {0.0, 0.0}, 5.0, RiverPrimitive.RosgenType.A, null, 0, 2, 0)));

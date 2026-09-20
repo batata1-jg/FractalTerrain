@@ -34,6 +34,13 @@ interface PositionOnlyPrimitive extends HydrologicalPrimitive, SpatialIndexCircl
     @Override
     default void carveInfluence(LatticeCarve.ShellGrid grid) {}
 
+    /** A skeleton feature carries only a position, so it cuts no bed and tabulates no cross-section. */
+    @Override
+    default void carveBed(LatticeCarve.BedGrid grid) {}
+
+    @Override
+    default void tabulateBedLut(float[] lut, int baseIdx, int n, double resolution) {}
+
     @Override
     default long primitiveByteSize() {
         return PrimitiveCodec.coordByteSize(coord());

@@ -35,21 +35,12 @@ class ComputeRiverGridTest {
         return b;
     }
 
-    private static int idx(int row, int col) {
-        return row * GRID + col;
-    }
-
-    @Test
-    void carvesTheChannelCentreToTheProfileSurface() {
-        final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
-        final LatticeCarve.GridBuffers b = buffers();
-
-        LatticeCarve.computeBedGrid(
+    private static LatticeCarve.BedGrid grid(LatticeCarve.GridBuffers b, float[] elevs) {
+        return new LatticeCarve.BedGrid(
+                GRID,
                 0,
                 0,
                 RES,
-                GRID,
-                List.of(river),
                 b.acc,
                 b.typeMask,
                 b.dist,
@@ -59,7 +50,19 @@ class ComputeRiverGridTest {
                 b.perpCol,
                 b.tangRow,
                 b.tangCol,
-                null);
+                elevs);
+    }
+
+    private static int idx(int row, int col) {
+        return row * GRID + col;
+    }
+
+    @Test
+    void carvesTheChannelCentreToTheProfileSurface() {
+        final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
+        final LatticeCarve.GridBuffers b = buffers();
+
+        LatticeCarve.computeBedGrid(grid(b, null), List.of(river));
 
         // perp == 0 and tang == 0 at (8, 8): the primitive owns the cell outright.
         final int centre = idx(8, 8);
@@ -75,22 +78,7 @@ class ComputeRiverGridTest {
         final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
         final LatticeCarve.GridBuffers b = buffers();
 
-        LatticeCarve.computeBedGrid(
-                0,
-                0,
-                RES,
-                GRID,
-                List.of(river),
-                b.acc,
-                b.typeMask,
-                b.dist,
-                b.radialDist,
-                b.lut,
-                b.perpRow,
-                b.perpCol,
-                b.tangRow,
-                b.tangCol,
-                null);
+        LatticeCarve.computeBedGrid(grid(b, null), List.of(river));
 
         // influence is 5, so (0, 0) is out of range on both axes.
         final int corner = idx(0, 0);
@@ -106,22 +94,7 @@ class ComputeRiverGridTest {
         final RiverPrimitive b2 = knot(9.0, 200.0, RosgenType.A, 1L);
         final LatticeCarve.GridBuffers b = buffers();
 
-        LatticeCarve.computeBedGrid(
-                0,
-                0,
-                RES,
-                GRID,
-                List.of(a, b2),
-                b.acc,
-                b.typeMask,
-                b.dist,
-                b.radialDist,
-                b.lut,
-                b.perpRow,
-                b.perpCol,
-                b.tangRow,
-                b.tangCol,
-                null);
+        LatticeCarve.computeBedGrid(grid(b, null), List.of(a, b2));
 
         final double[] point = {9.0, 8.0};
         final double signedPerpDist = VectorOps.dot(b2.normal(), VectorOps.sub(point, b2.coord()));
@@ -136,22 +109,7 @@ class ComputeRiverGridTest {
         final RiverPrimitive farther = knot(8.0, 200.0, RosgenType.A, 1L);
         final LatticeCarve.GridBuffers b = buffers();
 
-        LatticeCarve.computeBedGrid(
-                0,
-                0,
-                RES,
-                GRID,
-                List.of(nearer, farther),
-                b.acc,
-                b.typeMask,
-                b.dist,
-                b.radialDist,
-                b.lut,
-                b.perpRow,
-                b.perpCol,
-                b.tangRow,
-                b.tangCol,
-                null);
+        LatticeCarve.computeBedGrid(grid(b, null), List.of(nearer, farther));
 
         final double[] point = {9.0, 8.0};
         final double signedPerpDist = VectorOps.dot(nearer.normal(), VectorOps.sub(point, nearer.coord()));
@@ -163,70 +121,25 @@ class ComputeRiverGridTest {
         final LatticeCarve.GridBuffers b = buffers();
         final List<HydrologicalPrimitive> one = List.of(knot(8.0, 100.0, RosgenType.A, 0L));
 
-        LatticeCarve.computeBedGrid(
-                0,
-                0,
-                RES,
-                GRID,
-                one,
-                b.acc,
-                b.typeMask,
-                b.dist,
-                b.radialDist,
-                b.lut,
-                b.perpRow,
-                b.perpCol,
-                b.tangRow,
-                b.tangCol,
-                null);
+        LatticeCarve.computeBedGrid(grid(b, null), one);
         final float first = b.acc[3 * idx(8, 8)];
-        LatticeCarve.computeBedGrid(
-                0,
-                0,
-                RES,
-                GRID,
-                one,
-                b.acc,
-                b.typeMask,
-                b.dist,
-                b.radialDist,
-                b.lut,
-                b.perpRow,
-                b.perpCol,
-                b.tangRow,
-                b.tangCol,
-                null);
+        LatticeCarve.computeBedGrid(grid(b, null), one);
 
         assertEquals(first, b.acc[3 * idx(8, 8)], "buffers are reused across calls and must be reseeded");
     }
 
     @Test
-    void stopsAtTheFirstNonRiverPrimitiveAndReportsWhere() {
+    void carvesEveryFamilyInOneSortedWalk() {
+        // The walk has no river-run bound: a source sorted behind every river is still carved, and the
+        // sort is what puts it there.
         final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
         final HydrologicalPrimitive source =
-                new me.batata_1.fractal_terrain.hydrology.features.SourcePrimitive(new double[] {8.0, 8.0}, 2.0, 100.0);
+                new me.batata_1.fractal_terrain.hydrology.features.SourcePrimitive(new double[] {4.0, 4.0}, 2.0, 100.0);
         final LatticeCarve.GridBuffers b = buffers();
 
-        final int stop = LatticeCarve.computeBedGrid(
-                0,
-                0,
-                RES,
-                GRID,
-                List.of(river, source),
-                b.acc,
-                b.typeMask,
-                b.dist,
-                b.radialDist,
-                b.lut,
-                b.perpRow,
-                b.perpCol,
-                b.tangRow,
-                b.tangCol,
-                null);
+        LatticeCarve.computeBedGrid(grid(b, null), List.of(river, source));
 
-        // The return value bounds the RIVER run only; the source is carved by the radial pass that
-        // runs after it, not skipped.
-        assertEquals(1, stop, "the river run ends at index 1");
+        assertTrue(b.acc[3 * idx(4, 4) + 2] > 0, "the source behind the river run must still claim its cells");
     }
 
     @Test
@@ -236,22 +149,7 @@ class ComputeRiverGridTest {
                 new RiverPrimitive(new double[] {8.0, 8.0}, 5.0, RosgenType.A, null, 0.0, 2.0, 100.0, 0L);
         final LatticeCarve.GridBuffers b = buffers();
 
-        LatticeCarve.computeBedGrid(
-                0,
-                0,
-                RES,
-                GRID,
-                List.of(noNormal),
-                b.acc,
-                b.typeMask,
-                b.dist,
-                b.radialDist,
-                b.lut,
-                b.perpRow,
-                b.perpCol,
-                b.tangRow,
-                b.tangCol,
-                null);
+        LatticeCarve.computeBedGrid(grid(b, null), List.of(noNormal));
 
         assertEquals(0.0f, b.acc[3 * idx(8, 8) + 2]);
     }
@@ -270,22 +168,7 @@ class ComputeRiverGridTest {
                 0L);
         final LatticeCarve.GridBuffers b = buffers();
 
-        LatticeCarve.computeBedGrid(
-                0,
-                0,
-                RES,
-                GRID,
-                List.of(diagonal),
-                b.acc,
-                b.typeMask,
-                b.dist,
-                b.radialDist,
-                b.lut,
-                b.perpRow,
-                b.perpCol,
-                b.tangRow,
-                b.tangCol,
-                null);
+        LatticeCarve.computeBedGrid(grid(b, null), List.of(diagonal));
 
         assertTrue(b.acc[3 * idx(8, 8) + 2] > 0.0f, "the diagonal primitive should still carve");
     }
@@ -297,22 +180,7 @@ class ComputeRiverGridTest {
         final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
         final LatticeCarve.GridBuffers b = buffers();
 
-        LatticeCarve.computeBedGrid(
-                0,
-                0,
-                RES,
-                GRID,
-                List.of(river),
-                b.acc,
-                b.typeMask,
-                b.dist,
-                b.radialDist,
-                b.lut,
-                b.perpRow,
-                b.perpCol,
-                b.tangRow,
-                b.tangCol,
-                null);
+        LatticeCarve.computeBedGrid(grid(b, null), List.of(river));
 
         assertEquals(98.0f, b.acc[3 * idx(8, 8) + 1], 1e-4f, "water surface at the centre");
         assertEquals(0.0f, b.acc[3 * idx(0, 0) + 1], "water surface out of range");
@@ -325,22 +193,7 @@ class ComputeRiverGridTest {
         final RiverPrimitive river = knot(8.0, 100.0, RosgenType.C, 0L);
         final LatticeCarve.GridBuffers b = buffers();
 
-        LatticeCarve.computeBedGrid(
-                0,
-                0,
-                RES,
-                GRID,
-                List.of(river),
-                b.acc,
-                b.typeMask,
-                b.dist,
-                b.radialDist,
-                b.lut,
-                b.perpRow,
-                b.perpCol,
-                b.tangRow,
-                b.tangCol,
-                null);
+        LatticeCarve.computeBedGrid(grid(b, null), List.of(river));
 
         final long packed = b.typeMask[idx(8, 8)];
         assertEquals(HydrologicalFeature.RIVER, HydrologicalFeature.unpack(packed));
@@ -354,22 +207,7 @@ class ComputeRiverGridTest {
         final RiverPrimitive river = knot(8.0, 100.0, null, 0L);
         final LatticeCarve.GridBuffers b = buffers();
 
-        LatticeCarve.computeBedGrid(
-                0,
-                0,
-                RES,
-                GRID,
-                List.of(river),
-                b.acc,
-                b.typeMask,
-                b.dist,
-                b.radialDist,
-                b.lut,
-                b.perpRow,
-                b.perpCol,
-                b.tangRow,
-                b.tangCol,
-                null);
+        LatticeCarve.computeBedGrid(grid(b, null), List.of(river));
 
         assertEquals(RosgenType.A.ordinal(), HydrologicalFeature.unpackSub(b.typeMask[idx(8, 8)]));
     }
@@ -380,22 +218,7 @@ class ComputeRiverGridTest {
         final RiverPrimitive c = knot(9.0, 100.0, RosgenType.C, 1L);
         final LatticeCarve.GridBuffers b = buffers();
 
-        LatticeCarve.computeBedGrid(
-                0,
-                0,
-                RES,
-                GRID,
-                List.of(a, c),
-                b.acc,
-                b.typeMask,
-                b.dist,
-                b.radialDist,
-                b.lut,
-                b.perpRow,
-                b.perpCol,
-                b.tangRow,
-                b.tangCol,
-                null);
+        LatticeCarve.computeBedGrid(grid(b, null), List.of(a, c));
 
         assertEquals(RosgenType.C.ordinal(), HydrologicalFeature.unpackSub(b.typeMask[idx(9, 8)]));
         assertEquals(RosgenType.A.ordinal(), HydrologicalFeature.unpackSub(b.typeMask[idx(7, 8)]));
@@ -468,22 +291,7 @@ class ComputeRiverGridTest {
         final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
         final LatticeCarve.GridBuffers b = buffers();
 
-        LatticeCarve.computeBedGrid(
-                0,
-                0,
-                RES,
-                GRID,
-                List.of(river),
-                b.acc,
-                b.typeMask,
-                b.dist,
-                b.radialDist,
-                b.lut,
-                b.perpRow,
-                b.perpCol,
-                b.tangRow,
-                b.tangCol,
-                null);
+        LatticeCarve.computeBedGrid(grid(b, null), List.of(river));
 
         // (8, 8) is the centreline: raw 0.
         assertEquals(0.0f, b.dist[idx(8, 8)], 1e-6f, "the centreline is the bottom of the bed band");
@@ -506,22 +314,7 @@ class ComputeRiverGridTest {
                 new double[] {8.0, 8.0}, 50.0, RosgenType.A, new double[] {1.0, 0.0}, 0.0, 20.0, 100.0, 0L);
         final LatticeCarve.GridBuffers b = buffers();
 
-        LatticeCarve.computeBedGrid(
-                0,
-                0,
-                RES,
-                GRID,
-                List.of(wide),
-                b.acc,
-                b.typeMask,
-                b.dist,
-                b.radialDist,
-                b.lut,
-                b.perpRow,
-                b.perpCol,
-                b.tangRow,
-                b.tangCol,
-                null);
+        LatticeCarve.computeBedGrid(grid(b, null), List.of(wide));
 
         assertEquals(0.0f, b.dist[idx(8, 8)], 1e-6f, "the centreline");
         assertTrue(b.dist[idx(8, 3)] < LatticeCarve.BED_EDGE, "five pixels out is still bed for a 20-wide channel");
@@ -534,22 +327,7 @@ class ComputeRiverGridTest {
         final RiverPrimitive river = knot(8.0, 100.0, RosgenType.A, 0L);
         final LatticeCarve.GridBuffers b = buffers();
 
-        LatticeCarve.computeBedGrid(
-                0,
-                0,
-                RES,
-                GRID,
-                List.of(river),
-                b.acc,
-                b.typeMask,
-                b.dist,
-                b.radialDist,
-                b.lut,
-                b.perpRow,
-                b.perpCol,
-                b.tangRow,
-                b.tangCol,
-                null);
+        LatticeCarve.computeBedGrid(grid(b, null), List.of(river));
 
         assertEquals((float) LatticeCarve.UNSET_MIN_DIST, b.dist[idx(0, 0)], "the corner is unclaimed");
         assertEquals(HydrologicalFeature.NONE, b.typeMask[idx(0, 0)], "and its type agrees");

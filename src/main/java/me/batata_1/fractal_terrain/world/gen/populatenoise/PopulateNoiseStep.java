@@ -74,15 +74,12 @@ public class PopulateNoiseStep {
         final LatticeCarve.GridBuffers buffers = BUFFERS.get();
         final float[] acc = buffers.acc;
 
-        HydrologyProfileInprinter.carvePrimitives(buffers, primitives);
-
-        LatticeCarve.computeBedGrid(
+        final LatticeCarve.BedGrid grid = new LatticeCarve.BedGrid(
+                GRID_SIZE,
                 chunkPos.getMinBlockX() / scale,
                 chunkPos.getMinBlockZ() / scale,
                 GRID_RESOLUTION,
-                GRID_SIZE,
-                primitives,
-                acc,
+                buffers.acc,
                 buffers.typeMask,
                 buffers.dist,
                 buffers.radialDist,
@@ -92,6 +89,7 @@ public class PopulateNoiseStep {
                 buffers.tangRow,
                 buffers.tangCol,
                 interpolatedElevs);
+        LatticeCarve.computeBedGrid(grid, primitives);
 
         for (int pos = 0; pos < COLUMNS; pos++) {
             final float ambient = interpolatedElevs[pos];

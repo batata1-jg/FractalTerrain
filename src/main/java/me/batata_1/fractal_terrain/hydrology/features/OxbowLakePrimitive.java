@@ -4,6 +4,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.Objects;
+import me.batata_1.fractal_terrain.hydrology.carvers.LatticeCarve;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -86,6 +87,16 @@ public record OxbowLakePrimitive(
     @Override
     public double getWidth() {
         return influence * 3;
+    }
+
+    @Override
+    public void carveBed(LatticeCarve.BedGrid grid) {
+        throw new UnsupportedOperationException("OxbowLakePrimitive has no bed carve");
+    }
+
+    @Override
+    public void tabulateBedLut(float[] lut, int baseIdx, int n, double resolution) {
+        throw new UnsupportedOperationException("OxbowLakePrimitive has no bed cross-section");
     }
 
     @Override

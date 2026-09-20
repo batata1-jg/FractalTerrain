@@ -59,42 +59,12 @@ class RadialCarveTest {
         return b;
     }
 
-    private static int idx(int row, int col) {
-        return row * GRID + col;
-    }
-
-    private static double depthOf(double width) {
-        return FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depth(width);
-    }
-
-    private static void carve(LatticeCarve.GridBuffers b, List<HydrologicalPrimitive> primitives) {
-        LatticeCarve.computeBedGrid(
+    private static LatticeCarve.BedGrid grid(LatticeCarve.GridBuffers b, float[] elevs) {
+        return new LatticeCarve.BedGrid(
+                GRID,
                 0,
                 0,
                 RES,
-                GRID,
-                primitives,
-                b.acc,
-                b.typeMask,
-                b.dist,
-                b.radialDist,
-                b.lut,
-                b.perpRow,
-                b.perpCol,
-                b.tangRow,
-                b.tangCol,
-                null);
-    }
-
-    /** Second helper so the elevs-less {@link #carve} stays untouched for the tests that rely on it. */
-    private static void carveWithElevs(
-            LatticeCarve.GridBuffers b, List<HydrologicalPrimitive> primitives, float[] elevs) {
-        LatticeCarve.computeBedGrid(
-                0,
-                0,
-                RES,
-                GRID,
-                primitives,
                 b.acc,
                 b.typeMask,
                 b.dist,
@@ -105,6 +75,24 @@ class RadialCarveTest {
                 b.tangRow,
                 b.tangCol,
                 elevs);
+    }
+
+    private static int idx(int row, int col) {
+        return row * GRID + col;
+    }
+
+    private static double depthOf(double width) {
+        return FractalTerrainConfig.GLOBAL_SCALE_CORRECTION * ChannelGeometry.depth(width);
+    }
+
+    private static void carve(LatticeCarve.GridBuffers b, List<HydrologicalPrimitive> primitives) {
+        LatticeCarve.computeBedGrid(grid(b, null), primitives);
+    }
+
+    /** Second helper so the elevs-less {@link #carve} stays untouched for the tests that rely on it. */
+    private static void carveWithElevs(
+            LatticeCarve.GridBuffers b, List<HydrologicalPrimitive> primitives, float[] elevs) {
+        LatticeCarve.computeBedGrid(grid(b, elevs), primitives);
     }
 
     /** D5: a bowl reaching ground no river touched carves to its own law, not toward the zero fill. */
@@ -291,24 +279,24 @@ class RadialCarveTest {
         final double centre = GRID / 2.0 * prodRes;
         final List<HydrologicalPrimitive> primitives =
                 List.of(new ConfluencePrimitive(new double[] {centre, centre}, HydrologyTuning.MAX_WIDTH, 100.0));
+        final LatticeCarve.BedGrid prodGrid = new LatticeCarve.BedGrid(
+                GRID,
+                0,
+                0,
+                prodRes,
+                b.acc,
+                b.typeMask,
+                b.dist,
+                b.radialDist,
+                b.lut,
+                b.perpRow,
+                b.perpCol,
+                b.tangRow,
+                b.tangCol,
+                null);
 
         assertDoesNotThrow(
-                () -> LatticeCarve.computeBedGrid(
-                        0,
-                        0,
-                        prodRes,
-                        GRID,
-                        primitives,
-                        b.acc,
-                        b.typeMask,
-                        b.dist,
-                        b.radialDist,
-                        b.lut,
-                        b.perpRow,
-                        b.perpCol,
-                        b.tangRow,
-                        b.tangCol,
-                        null),
+                () -> LatticeCarve.computeBedGrid(prodGrid, primitives),
                 "a MAX_WIDTH disc at production resolution must not overrun maxLutLen's table");
 
         assertTrue(b.acc[3 * idx(GRID / 2, GRID / 2) + 2] > 0, "the disc must claim the grid centre");
