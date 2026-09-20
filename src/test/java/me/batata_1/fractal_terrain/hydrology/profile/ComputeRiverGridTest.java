@@ -37,20 +37,7 @@ class ComputeRiverGridTest {
 
     private static LatticeCarve.BedGrid grid(LatticeCarve.GridBuffers b, float[] elevs) {
         return new LatticeCarve.BedGrid(
-                GRID,
-                0,
-                0,
-                RES,
-                b.acc,
-                b.typeMask,
-                b.dist,
-                b.radialDist,
-                b.lut,
-                b.perpRow,
-                b.perpCol,
-                b.tangRow,
-                b.tangCol,
-                elevs);
+                GRID, 0, 0, RES, b.acc, b.typeMask, b.dist, b.lut, b.perpRow, b.perpCol, b.tangRow, b.tangCol, elevs);
     }
 
     private static int idx(int row, int col) {

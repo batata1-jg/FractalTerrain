@@ -52,8 +52,9 @@ public record FractalTerrainHeightmap(Object[] data) {
                 throw new UnsupportedOperationException("RIVER_TYPE is a long[]; read the raw payload");
             }
         },
-        // The winning primitive's banded footprint coordinate, from LatticeCarve.band. Only
-        // meaningful where RIVER_TYPE is not NONE; elsewhere it holds the carve's unset seed.
+        // The winning primitive's banded footprint coordinate, from BedCarver.band — whichever family
+        // won the cell, including the radial ones that stamp no type. Holds the carve's unset seed
+        // where no primitive reached.
         RIVER_DIST(pos -> new float[1 << 8]),
 
         WATER_HEIGHT(pos -> new float[1 << 8]),

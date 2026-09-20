@@ -34,6 +34,15 @@ public enum RadialProfile implements HydrologyProfile {
         }
     };
 
+    /** Where a disc's bed gives way to its floodplain, as a fraction of the radius. The bed is the
+     *  inner half, matching a disc running to {@code width()} — twice a channel's painted bed. An
+     *  authored gate, not a measurement. */
+    public static final double MARGIN_NORM = 0.5;
+
+    /** Where a disc's floodplain gives way to its influence band, as a fraction of the radius. An
+     *  authored gate, not a measurement. */
+    public static final double FLOOD_PLAIN_NORM = 0.75;
+
     /**
      * Tabulates this profile into {@code lut}, where entry {@code i} is the surface at radius
      * {@code (baseIdx + i) * step}. Runs once per primitive per grid, so the carve's per-cell loop

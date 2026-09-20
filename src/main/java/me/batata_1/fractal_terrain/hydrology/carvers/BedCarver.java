@@ -2,6 +2,7 @@ package me.batata_1.fractal_terrain.hydrology.carvers;
 
 import me.batata_1.fractal_terrain.config.HydrologyTuning;
 import me.batata_1.fractal_terrain.hydrology.features.HydrologicalPrimitive;
+import me.batata_1.fractal_terrain.hydrology.profile.RadialProfile;
 
 /**
  * Every cross-section the bed pass knows how to cut, reached from a primitive's own {@code carveBed}.
@@ -166,15 +167,13 @@ public final class BedCarver {
             double cx,
             double cz,
             double radius,
-            float waterSurface,
-            long type) {
+            float waterSurface) {
         final int gridSize = grid.gridSize();
         final double startX = grid.startX();
         final double startZ = grid.startZ();
         final double resolution = grid.resolution();
         final float[] acc = grid.acc();
-        final long[] typeMask = grid.typeMask();
-        final float[] radialDist = grid.radialDist();
+        final float[] dist = grid.dist();
         final float[] lut = grid.lut();
         final float[] elevs = grid.elevs();
 
@@ -209,6 +208,13 @@ public final class BedCarver {
         final double invRadius = 1.0 / radius;
         owner.tabulateBedLut(lut, baseIdx, n, resolution);
 
+        // :PERF: slopes hoisted per primitive; the merge loop below runs per lattice point and carries
+        // no division. Both control points are constants, so no denominator here can be zero.
+        final double bedSlope = LatticeCarve.BED_EDGE / RadialProfile.MARGIN_NORM;
+        final double floodPlainSlope = (LatticeCarve.FLOODPLAIN_EDGE - LatticeCarve.BED_EDGE)
+                / (RadialProfile.FLOOD_PLAIN_NORM - RadialProfile.MARGIN_NORM);
+        final double outerSlope = (1.0 - LatticeCarve.FLOODPLAIN_EDGE) / (1.0 - RadialProfile.FLOOD_PLAIN_NORM);
+
         for (int row = rowMin; row <= rowMax; row++) {
             final int rowBase = row * gridSize;
             final double ddx = (startX + row * resolution) - cx;
@@ -219,32 +225,31 @@ public final class BedCarver {
                 // A circle admits no affine row/column split the way a rectangle's two projections do,
                 // so the true distance is computed per cell rather than tabulated per axis.
                 final double rad = Math.sqrt(ddx * ddx + ddz * ddz);
-                final double d = rad * invRadius;
-                final double mask = d <= 1.0 ? 1.0 : 0.0;
-                final double t =
-                        Math.clamp(((radialDist[i] - d) / HydrologyTuning.PRIMITIVE_BLEND_STRENGTH + 1) * 0.5, 0, 1);
+                final double raw = rad * invRadius;
+                final double d = band(
+                        raw,
+                        RadialProfile.MARGIN_NORM,
+                        RadialProfile.FLOOD_PLAIN_NORM,
+                        bedSlope,
+                        floodPlainSlope,
+                        outerSlope);
+                // Tested on the raw scale rather than the banded one, as the rectangle carve is: the
+                // band saturates at the rim and a point past it would otherwise read as in-band.
+                final double mask = raw <= 1.0 ? 1.0 : 0.0;
+                final double t = Math.clamp(((dist[i] - d) / HydrologyTuning.PRIMITIVE_BLEND_STRENGTH + 1) * 0.5, 0, 1);
                 final double w = t * t * (3.0 - 2.0 * t) * mask;
 
                 final double f = rad * invStep - baseIdx;
                 final int i0 = Math.clamp((int) f, 0, n - 2);
                 final double sampled = lut[i0] + (f - i0) * (lut[i0 + 1] - lut[i0]);
-                final double bounded = (elevs != null) ? Math.min(elevs[i], sampled) : sampled;
-                // The prior pass's claim on this cell, read before the write below can raise it.
-                final float priorWeight = acc[a + 2];
-                // Gated on the prior weight, not on acc alone: acc is zero-filled, so an
-                // unconditional min would clamp a bowl standing on high ground down to zero.
-                final double h = priorWeight > 0 ? Math.min(acc[a], bounded) : bounded;
+                // Capped against real ambient elevation, so the bowl blends against the ground it stands
+                // on rather than against a merged surface an earlier primitive already cut.
+                final double h = (elevs != null) ? Math.min(elevs[i], sampled) : sampled;
 
-                radialDist[i] = (float) ((1 - w) * radialDist[i] + w * d);
+                dist[i] = (float) ((1 - w) * dist[i] + w * d);
                 acc[a] = (float) ((1 - w) * acc[a] + w * h);
                 acc[a + 1] = (float) ((1 - w) * acc[a + 1] + w * waterSurface);
-                // Only ground no earlier primitive claimed: the disc runs to width(), twice a
-                // channel's painted bed, so assigning here would strip the RIVER tag — and with it
-                // the surface painter's riverbed materials — from beds passing through the disc.
-                typeMask[i] = (w > 0.5 && priorWeight <= 0) ? type : typeMask[i];
-                // Maxed rather than assigned: cells inside the square footprint but outside the disc
-                // take w = 0, and assigning would erase the river's own claim on them.
-                acc[a + 2] = Math.max(acc[a + 2], (float) (1 - Math.clamp(radialDist[i], 0, 1)));
+                acc[a + 2] = 1 - Math.clamp(dist[i], 0, 1);
             }
         }
     }

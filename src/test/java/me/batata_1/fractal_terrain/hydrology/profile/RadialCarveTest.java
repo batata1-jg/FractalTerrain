@@ -61,20 +61,7 @@ class RadialCarveTest {
 
     private static LatticeCarve.BedGrid grid(LatticeCarve.GridBuffers b, float[] elevs) {
         return new LatticeCarve.BedGrid(
-                GRID,
-                0,
-                0,
-                RES,
-                b.acc,
-                b.typeMask,
-                b.dist,
-                b.radialDist,
-                b.lut,
-                b.perpRow,
-                b.perpCol,
-                b.tangRow,
-                b.tangCol,
-                elevs);
+                GRID, 0, 0, RES, b.acc, b.typeMask, b.dist, b.lut, b.perpRow, b.perpCol, b.tangRow, b.tangCol, elevs);
     }
 
     private static int idx(int row, int col) {
@@ -95,7 +82,24 @@ class RadialCarveTest {
         LatticeCarve.computeBedGrid(grid(b, elevs), primitives);
     }
 
-    /** D5: a bowl reaching ground no river touched carves to its own law, not toward the zero fill. */
+    /** One buffer holding two scales would leave BED_EDGE and FLOODPLAIN_EDGE meaning whichever family
+     *  wrote last, so a disc is banded on the same breakpoints a channel is. */
+    @Test
+    void bandsTheDiscOnTheSameBreakpointsAsAChannel() {
+        final LatticeCarve.GridBuffers b = buffers();
+        carve(b, List.of(bowl(4.0, 100.0)));
+
+        assertEquals(0f, b.dist[idx(8, 8)], 1e-6f, "the disc centre is the floor of its bed");
+        assertEquals((float) LatticeCarve.BED_EDGE, b.dist[idx(8, 10)], 1e-6f, "half the radius is the bank");
+        assertEquals(
+                (float) LatticeCarve.FLOODPLAIN_EDGE,
+                b.dist[idx(8, 11)],
+                1e-6f,
+                "three quarters of the radius is the floodplain edge");
+    }
+
+    /** A bowl reaching ground no river touched carves to its own law: a null ambient field leaves
+     *  nothing to cap against. */
     @Test
     void carvesToItsOwnLawWhereNoRiverReached() {
         final LatticeCarve.GridBuffers b = buffers();
@@ -110,25 +114,25 @@ class RadialCarveTest {
         assertTrue(b.acc[3 * centre + 2] > 0, "the bowl must claim the cell it carved");
     }
 
-    /** D4: a bowl whose rim sits above an already-carved river bed leaves that bed alone. */
+    /** A bowl blends against ambient like every other family, so a rim above a river's bed pulls the
+     *  merged surface up toward the bowl's own floor in proportion to its weight. */
     @Test
-    void neverLiftsARiverBedItOverlaps() {
-        final LatticeCarve.GridBuffers b = buffers();
+    void blendsAgainstAmbientRatherThanTheMergedRiverSurface() {
         final LatticeCarve.GridBuffers riverOnly = buffers();
         carve(riverOnly, List.of(knot(CENTRE, 100.0)));
         final float riverBed = riverOnly.acc[3 * idx(8, 8)];
 
-        // Rim 20 above the river's, so the bowl floor still sits above the river bed it overlaps.
+        final LatticeCarve.GridBuffers b = buffers();
         carve(b, List.of(knot(CENTRE, 100.0), bowl(4.0, 120.0)));
 
-        assertEquals(
-                riverBed,
-                b.acc[3 * idx(8, 8)],
-                1e-3,
-                "the first radial primitive takes weight 1, so without the clamp it overwrites the bed");
+        assertTrue(
+                b.acc[3 * idx(8, 8)] > riverBed,
+                "the bowl's own floor sits above the river bed, and order alone decides the outcome");
     }
 
-    /** D6: a cell in the bowl's square footprint but outside its disc keeps the river's claim. */
+    /** A cell in the bowl's square footprint but outside its disc keeps the river's claim: the weight
+     *  is assigned, not maxed, and the cell survives because w = 0 leaves dist[i] untouched, so the
+     *  assignment reproduces the river's own claim. */
     @Test
     void keepsTheRiverWeightAtCellsOutsideItsDisc() {
         final LatticeCarve.GridBuffers b = buffers();
@@ -155,15 +159,17 @@ class RadialCarveTest {
                 "water sits below the rim by the stepped waterLine offset");
     }
 
-    /** The type mask names the family that won the cell, so the paint side can tell a pool from a bed. */
+    /** A disc claims no type: it paints nothing either way, and not writing the tag is what keeps a
+     *  river bed crossing the disc in its own surface materials. */
     @Test
-    void stampsTheConfluenceFamilyOnTheCellsItWins() {
+    void claimsNoTypeOnTheCellsItCarves() {
         final LatticeCarve.GridBuffers b = buffers();
         carve(b, List.of(bowl(4.0, 100.0)));
 
         assertEquals(
-                HydrologicalPrimitive.HydrologicalFeature.CONFLUENCE,
-                HydrologicalPrimitive.HydrologicalFeature.unpack(b.typeMask[idx(8, 8)]));
+                HydrologicalPrimitive.HydrologicalFeature.NONE,
+                b.typeMask[idx(8, 8)],
+                "a cell only a disc reached must stay untagged");
     }
 
     /** The disc runs to width(), well past a channel's painted bed, so a bowl overlapping a river
@@ -203,18 +209,15 @@ class RadialCarveTest {
         assertArrayEquals(distBefore, withDelta.dist, "a delta in the tail perturbed the distance field");
     }
 
-    /** The surface painter reads the river pass's banded dist after the carve returns, so the radial
-     *  pass must rank on its own buffer and leave that one alone. */
+    /** One shared ranking buffer: the published distance is the winning primitive's, whichever family
+     *  that is, which is what lets a rectangle and a disc rank against each other at all. */
     @Test
-    void leavesTheRiverDistanceFieldUntouched() {
-        final LatticeCarve.GridBuffers riverOnly = buffers();
-        carve(riverOnly, List.of(knot(CENTRE, 100.0)));
-        final float[] distBefore = riverOnly.dist.clone();
+    void publishesTheWinningPrimitivesDistanceWhicheverFamilyWon() {
+        final LatticeCarve.GridBuffers b = buffers();
+        carve(b, List.of(knot(4.0, 100.0), bowl(4.0, 100.0)));
 
-        final LatticeCarve.GridBuffers withBowl = buffers();
-        carve(withBowl, List.of(knot(CENTRE, 100.0), bowl(4.0, 100.0)));
-
-        assertArrayEquals(distBefore, withBowl.dist, "the radial pass overwrote the painter's input");
+        assertEquals(0f, b.dist[idx(8, 8)], 1e-6f, "the bowl centre is the nearest thing to that cell");
+        assertTrue(b.dist[idx(4, 4)] < (float) LatticeCarve.UNSET_MIN_DIST, "the river still holds its own cells");
     }
 
     /** The source's cone gives up depth linearly, so half radius has given up half depth — where the
@@ -245,9 +248,6 @@ class RadialCarveTest {
 
         final int centre = idx(8, 8);
         assertTrue(b.acc[3 * centre] < 100.0, "the bed-pass radial dispatch must cut the abandoned trace's centre");
-        assertEquals(
-                HydrologicalPrimitive.HydrologicalFeature.ABANDONED_RIVER,
-                HydrologicalPrimitive.HydrologicalFeature.unpack(b.typeMask[centre]));
     }
 
     /** No radial test above passes a non-null {@code elevs}, so the ambient-clamp branch is dead in
@@ -287,7 +287,6 @@ class RadialCarveTest {
                 b.acc,
                 b.typeMask,
                 b.dist,
-                b.radialDist,
                 b.lut,
                 b.perpRow,
                 b.perpCol,

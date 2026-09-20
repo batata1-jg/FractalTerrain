@@ -52,14 +52,8 @@ public interface RadialPrimitive extends HydrologicalPrimitive, SpatialIndexCirc
         // Deferred: elevation is NaN-sentinelled until RiverNetwork.remapHistory resolves it, which no
         // production caller does -- carving the sentinel would cut every cell it reaches to NaN.
         if (Double.isNaN(elevation())) return;
-        BedCarver.carveRadial(
-                this,
-                grid,
-                coord()[0],
-                coord()[1],
-                radius,
-                (float) (elevation() + HydrologicalPrimitive.waterLine(width())),
-                getType().pack(0));
+        BedCarver.carveRadial(this, grid, coord()[0], coord()[1], radius, (float)
+                (elevation() + HydrologicalPrimitive.waterLine(width())));
     }
 
     @Override

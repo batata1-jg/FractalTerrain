@@ -25,20 +25,7 @@ class BedDispatchTest {
 
     private static LatticeCarve.BedGrid grid(LatticeCarve.GridBuffers b) {
         return new LatticeCarve.BedGrid(
-                GRID,
-                0,
-                0,
-                RES,
-                b.acc,
-                b.typeMask,
-                b.dist,
-                b.radialDist,
-                b.lut,
-                b.perpRow,
-                b.perpCol,
-                b.tangRow,
-                b.tangCol,
-                null);
+                GRID, 0, 0, RES, b.acc, b.typeMask, b.dist, b.lut, b.perpRow, b.perpCol, b.tangRow, b.tangCol, null);
     }
 
     @Test

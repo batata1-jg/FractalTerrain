@@ -68,6 +68,8 @@ public final class LatticeCarve {
     /**
      * Merges every primitive touching the lattice into one (height, water, weight) triple per point in
      * {@code grid.acc()}, plus the winning primitive's packed type in {@code grid.typeMask()}.
+     * {@code grid.dist()} is published into {@code Types.RIVER_DIST}, so it now reflects whichever
+     * primitive won each cell rather than the river pass alone.
      *
      * <p>{@code primitives} MUST be sorted by {@link HydrologicalPrimitive#comparator}. The merge is a
      * sequential recurrence over one shared ranking buffer, so the caller's sort is what decides which
@@ -78,7 +80,6 @@ public final class LatticeCarve {
         Arrays.fill(grid.acc(), 0, 3 * points, 0f);
         Arrays.fill(grid.typeMask(), 0, points, HydrologicalPrimitive.HydrologicalFeature.NONE);
         Arrays.fill(grid.dist(), 0, points, (float) UNSET_MIN_DIST);
-        Arrays.fill(grid.radialDist(), 0, points, (float) UNSET_MIN_DIST);
 
         for (final HydrologicalPrimitive primitive : primitives) {
             primitive.carveBed(grid);
@@ -145,8 +146,6 @@ public final class LatticeCarve {
         public float[] acc = new float[0];
         public long[] typeMask = new long[0];
         public float[] dist = new float[0];
-        /** The radial pass's own ranking, so {@code dist} survives the carve for the surface painter. */
-        public float[] radialDist = new float[0];
 
         public float[] lut = new float[0];
         /** Scratch: the row half of each lattice point's across-flow projection. */
@@ -164,7 +163,6 @@ public final class LatticeCarve {
             if (acc.length < 3 * points) acc = new float[3 * points];
             if (typeMask.length < points) typeMask = new long[points];
             if (dist.length < points) dist = new float[points];
-            if (radialDist.length < points) radialDist = new float[points];
             if (lut.length < lutLen) lut = new float[lutLen];
             if (perpRow.length < gridSize) perpRow = new double[gridSize];
             if (perpCol.length < gridSize) perpCol = new double[gridSize];
@@ -210,7 +208,6 @@ public final class LatticeCarve {
             float[] acc,
             long[] typeMask,
             float[] dist,
-            float[] radialDist,
             float[] lut,
             double[] perpRow,
             double[] perpCol,
