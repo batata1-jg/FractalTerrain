@@ -20,5 +20,6 @@ pass/fail baseline — several goldens and Rosgen cases fail independently of an
 | `network/`  | `Centreline.normalAt` cross-section normal gates | Changing the cross-section stencil or junction hop rules |
 | `rosgen/`   | Rosgen key, sampler and classifier-order tests  | Changing thresholds, transects, or graph order  |
 | `features/` | Feature-family/sub-type bit packing | Changing the packed `RIVER_TYPE` word or adding a feature family |
-| `profile/`  | The lattice carve: `computeRiverGrid` merge law and the cross-section LUT | Changing the carve merge, footprint scale, or `sampleCrossSection` |
+| `carvers/`  | The lattice carve: `computeBedGrid`/`carveInfluenceGrid`'s merge law and per-primitive dispatch | Changing the carve merge, footprint scale, or the dispatch seam |
+| `profile/`  | The cross-section LUT (`sampleCrossSection`) and per-type paint depth | Changing `sampleCrossSection`, its scratch-buffer contract, or `riverPaintDepth` |
 | `providers/`| `RiverProvider`'s per-tile memo eviction policy | Changing `recentTiles`, its capacity, or its access ordering |

@@ -60,23 +60,28 @@ Two layers. A JUnit 5 suite (`useJUnitPlatform()`, 22 `*Test.java` classes under
 gradle test                   # JUnit 5 golden suite
 ```
 
-**Baseline, measured 2026-09-02 at `df7ca2e`:** the suite compiles and runs —
-**102 tests, 9 failed, 1 skipped**. The nine are:
+**Baseline, measured at `d4b0274`:** the suite compiles and runs —
+**246 tests, 16 failed, 1 skipped**. The sixteen are:
 
-> `RosgenKeyTest` (4), `RiverGoldenTest` (2), `MeandersGoldenTest` (1), `CentrelineTest` (1),
-> `ReachMetricsSamplerTest` (1).
+> `GlobalRiverGoldenTest` (1), `OrderIndependentInvariantsTest` (3), `RiverGoldenTest` (4),
+> `MeandersGoldenTest` (2), `CentrelineTest` (1), `ReachMetricsSamplerTest` (1), `RosgenKeyTest` (4).
 
-The full failure messages are archived in `.superpowers/conventions-alignment/post-migration-failures.txt`;
-comparing against that file rather than against this list is what proves a change left output untouched.
+Comparing the *actual failure messages* in `build/test-results/test/*.xml` against this baseline — not
+just which test names fail — is what proves a change left generation output untouched. Two of the
+sixteen are legible from their own messages as stale expectations rather than defects: the four
+`RiverGoldenTest` failures all report `Cannot invoke "[F.clone()" because "humdity" is null` — a `null`
+field reached before it is assigned, not a generation-output divergence — and
+`MeandersGoldenTest.independentCrossingsAreNotMerged` expects two channels where the code produces
+three, which `ARCHITECTURE.md`'s Testing stance section traces to planarization forcing a confluence at
+a geometric crossing. Which side is wrong in the remaining fourteen (`GlobalRiverGoldenTest`,
+`OrderIndependentInvariantsTest`, the other `MeandersGoldenTest` failure, `CentrelineTest`,
+`ReachMetricsSamplerTest`, `RosgenKeyTest`) is undecided; do not re-baseline any of them by copying the
+observed value.
 
-Three of the nine are known-wrong expectations rather than defects. `RiverGoldenTest`'s two report
-`synthetic field produced no local channels — fixture is degenerate`: the fixture yields zero local
-channels, so those assertions never reach the traced network. `MeandersGoldenTest.independentCrossingsAreNotMerged`
-expects two channels where the code produces three — `AtomicView.resolveCrossingEdges` inserts one shared
-node at a geometric crossing and invariant K1 allows it a single outgoing edge, so a confluence is forced
-by planarization and the no-merge outcome is unreachable.
-
-`ConfluencePrimitiveTest`, which earlier baselines record as blocking `:compileTestJava`, no longer exists.
+None of the sixteen are carve tests: the carve dispatch refactor (`docs/superpowers/plans/2026-09-20-carve-dispatch.md`)
+landed without moving this set, and closed at **250 tests, 16 failed, 1 skipped** — the same sixteen,
+plus the four tests its own tasks added (three in the new `BedDispatchTest`, one more method on
+`RadialCarveTest`), all passing.
 
 The suite has broken and been repaired several times; treat any quoted baseline, including this one, as
 a claim to re-verify rather than a fact. Re-measure before blaming your own change: build a worktree at

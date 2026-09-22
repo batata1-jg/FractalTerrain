@@ -24,5 +24,6 @@ cache design and coordinate frames.
 | `network/`  | The graph itself: `RiverNetwork`, `Channel`, `Endpoint`, `AtomicView`, `ChannelTyper` | Graph topology, the canonical↔atomic seam, stream capture, per-point flow |
 | `meanders/` | Point-migration models driven over the injected network (`ChannelMigrator`, `Meanders`, `GradientNetworkRelaxation`) | Meander geometry, gradient relaxation, step ordering |
 | `providers/`| `RiverProvider` + `GlobalRiverProvider`: the package's two `Storage`-backed tile caches | Riverprimitive/carved-elevation output, the global coarse network, tile caching, test overrides |
-| `profile/`  | Turns the hydrological-primitive index into carve/paint ops   | Per-pixel carve/paint consumed by `world/gen/` |
+| `carvers/`  | The lattice carve: dispatch onto a primitive's `carveInfluence`/`carveBed`, the one shared merge law | Per-pixel carve consumed by `world/gen/`, changing the merge law or dispatch |
+| `profile/`  | The paint half: per-family cross-section/material laws and the painter                | Per-pixel paint consumed by `world/gen/`, adding a feature type's materials |
 | `rosgen/`   | Rosgen Level-I classification of each reach from the raw elevation | Stream types, reach slope/entrenchment measurement, the decision key |

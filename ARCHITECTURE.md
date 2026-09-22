@@ -6,7 +6,7 @@ System overview for `FractalTerrain` post the 2026-07 code-hygiene refactor. Pac
 > **The `feature/hydrology` branch is mid-rework and several stages are switched off.** The hydrology
 > carve stack is active: `PopulateNoiseStep.fineGrainedPrimitivePass`, called from
 > `FractalTerrainHeightmapCache` as each chunk heightmap is built, refines every column through the
-> lattice carve (`RiverInfluenceCarve.computeRiverGrid`) before writing `ELEVATION`, so
+> lattice carve (`LatticeCarve.computeBedGrid`) before writing `ELEVATION`, so
 > `Types.RIVER_DIFFERENCE` is not uniformly `0`. But chunk fill currently takes the **3D-visualizer**
 > path rather than production `doFill`, and both the surface step and biome decoration are skipped. See
 > "Current debug state" below for the exact per-flag state before assuming any generation behaviour
@@ -79,7 +79,7 @@ per-tile `RiverNetwork` graph and returns both artifacts from that single run; a
 (`recentTiles`) means a tile whose primitives and carved elevation are both requested does not run the
 trace/carve pipeline twice. `buildTile` splits across two collaborators: `GlobalNetworkBuilder.java` traces
 the global subgraph, relaxes it with `GradientNetworkRelaxation`, runs `ChannelElevationAssigner.assign`
-and one `carveRiverInfluence` pass over the global-only graph to shape the drainage field, and returns the
+and one `carveInfluenceGrid` pass over the global-only graph to shape the drainage field, and returns the
 `RiverNetwork` together with that drainage field and the boundary-elevation map it accumulated;
 `LocalNetworkBuilder.java` then traces the drainage-derived local network with `LocalDrainageTracer.java`
 and attaches every surviving segment directly onto that SAME graph in place, returning nothing from the
@@ -87,7 +87,7 @@ tracer itself. It works through the atomic seam: `RiverNetwork.viewAtomic()` yie
 which every interior spline point is a first-class node, the tracer appends `SOURCE`/interior/`DRAIN`
 nodes and directed edges to it, and `RiverNetwork.manageCollisions(step, view)` orients, captures and
 prunes that view before folding it back into the canonical graph. `LocalNetworkBuilder` then runs TWO
-`ChannelElevationAssigner.assign` passes over the now-unified graph, with one `carveRiverInfluence` pass
+`ChannelElevationAssigner.assign` passes over the now-unified graph, with one `carveInfluenceGrid` pass
 between them (into a fresh clone of the raw elevation, not `GlobalNetworkBuilder`'s carved clone), and
 returns the carved padded elevation `RiverProvider` crops and publishes. `RiverProvider.collectPrimitives`
 then runs ONE pass emitting every hydrological primitive — global and local, one shared feature-id counter
@@ -99,29 +99,35 @@ reach-seed adjacency, read from a point index built fresh over the graph's chann
 `HydrologyTileGeometry.java` centralizes the shared tile-frame geometry (`GRID=512`, `PAD=1`, `PADDED=514`,
 `COARSE_PX=256`) every stage depends on. `Drainage.java` (sink-fill, D8/D4 drainage direction, flow
 accumulation, and the `Drainage.FlowGraph` routing topology both the flow accumulator and the local trace
-walk) and `ChannelGeometry.java` are lower-level shared helpers. The `hydrology/profile/` subpackage
-(`RiverInfluenceCarve`, `HydrologyProfileInprinter`, `HydrologyProfilePainter`, `HydrologyProfile`,
-`RosgenProfile`) turns the
-hydrological-primitive index into carve/paint operations consumed by `world/gen/`. `GlobalRiverProvider.java`
+walk) and `ChannelGeometry.java` are lower-level shared helpers. The carve/paint split sits in two
+subpackages: `hydrology/carvers/` (`LatticeCarve`, `BedCarver`, `InfluenceCarver`) dispatches per
+primitive to cut elevation, and `hydrology/profile/` (`HydrologyProfilePainter`, `HydrologyProfile`,
+`RosgenProfile`, `RadialProfile`) supplies each family's cross-section/material laws and turns the
+carve's output into placed water. `GlobalRiverProvider.java`
 is independent of `RiverProvider` and caches its own 64×64-coarse-px tiles directly (coarse-px addressed,
 not the 512-native-px tile grid — see Coordinate frames).
 
-**Hydrology carve pipeline.** The valley shell and the river bed run the *same* function —
-`RiverInfluenceCarve.computeRiverGrid` — over their own lattice. There is one merge law, not two.
-`hydrology/profile/README.md` is the authority on its mechanics; the summary here is only enough to
-place it in the pipeline.
+**Hydrology carve pipeline.** The valley shell and the river bed are two `LatticeCarve` entry points —
+`carveInfluenceGrid` (shell) and `computeBedGrid` (bed) — each walking a list of primitives and calling
+one virtual method per primitive (`carveInfluence`, `carveBed`), whose bodies live in
+`InfluenceCarver`/`BedCarver`. The two passes do not share a merge law: the shell cuts each primitive
+into the buffer with a plain `Math.min`, while the bed runs one smoothed-min distance recurrence over a
+shared ranking buffer (see below). `hydrology/carvers/README.md` is the authority on the mechanics; the
+summary here is only enough to place it in the pipeline.
 
-`computeRiverGrid` merges every river primitive touching a lattice into one `(height, water, weight)`
-triple per lattice point plus the nearest primitive's packed family/Rosgen type in a parallel
-`long[]` mask. It is **ambient-free** — it never reads the caller's current elevation, only writes its
-own merged surface — so each call site recovers its result with one blend,
-`(1 - w) * ambient + w * min(h, ambient)`. That makes every carve **cut-only**: none can raise terrain. Per primitive it tabulates a cross-section LUT once (`RosgenProfile.sampleCrossSection`,
-anchored on a shared integer perp-lattice index) and walks only the cells its footprint reaches, instead
-of re-evaluating `RosgenProfile.delta`'s branchy per-region logic per point.
+**The bed pass** (`computeBedGrid`) merges every primitive touching a lattice into one `(height, water,
+weight)` triple per lattice point plus the nearest primitive's packed family/Rosgen type in a parallel
+`long[]` mask, over one shared `dist[]` ranking buffer. It is **ambient-free** — it never reads the
+caller's current elevation, only writes its own merged surface — so the caller recovers its result with
+one blend, `(1 - w) * ambient + w * min(h, ambient)`. That makes it **cut-only**: it cannot raise
+terrain. Per primitive it tabulates a cross-section LUT once (the primitive's own `tabulateBedLut`,
+reading `RosgenProfile.sampleCrossSection` or `RadialProfile.sampleRadialSection`, anchored on a shared
+integer perp-lattice or radial index) and walks only the cells its footprint reaches, instead of
+re-evaluating a profile's branchy per-region logic per point.
 
 The two call sites:
 
-1. **Tile-level shell carve** (`RiverInfluenceCarve.carveRiverInfluence`), over the 514×514 padded tile,
+1. **Tile-level shell carve** (`LatticeCarve.carveInfluenceGrid`), over the 514×514 padded tile,
    called **three** times per tile build — once from `GlobalNetworkBuilder.build` (global-only graph, to
    shape the drainage field the local trace reads), once from `LocalNetworkBuilder.build` (unified graph,
    to shape the surface the local trace samples), and once from `RiverProvider.carveRivers` (after
@@ -129,18 +135,14 @@ The two call sites:
    clone of the raw decoded elevation and skips pixels with negative ambient elevation (ocean); only the
    third clone survives. See "`buildTile` order" below.
 2. **Per-chunk bed carve** (`PopulateNoiseStep.fineGrainedPrimitivePass`), over the chunk's 16×16
-   lattice, written into `Types.RIVER_DIFFERENCE` plus `Types.WATER_HEIGHT` and `Types.RIVER_TYPE`.
-   It is fed by `HydrologyProfileInprinter.prefetchChunk`, which stabs the R-tree **once per chunk**
-   (chunk centre plus half-diagonal radius, relief-pixel frame) and sorts by
-   `HydrologicalPrimitive.comparator` — the ordering `computeRiverGrid` requires, and what lets it stop
-   at the first non-`RiverPrimitive` entry. `HydrologyProfilePainter` reads `RIVER_DIFFERENCE` back to
-   place river water. After that river run, `computeRiverGrid` runs a second pass over the rest of the
-   prefetched list, carving every `RadialPrimitive` (`ConfluencePrimitive`/`SourcePrimitive`) into the
-   same lattice, ranked against its own `radialDist` buffer and gated on the river pass's weight so a
-   bowl or cone deepens a bed rather than overwriting it. `dist` — and the `Types.RIVER_DIST` it
-   publishes for the surface painter — is untouched by that second pass; see
-   `hydrology/profile/README.md`. The tile-level shell carve (`carveRiverInfluence` below) has no radial
-   pass; only the per-chunk bed carve does.
+   lattice, written into `Types.RIVER_DIFFERENCE` plus `Types.WATER_HEIGHT`, `Types.RIVER_TYPE` and
+   `Types.RIVER_DIST`. It queries `RiverProvider.queryInfluence` **once per chunk** (chunk centre plus
+   half-diagonal radius, relief-pixel frame), inlined at that call site, and sorts by
+   `HydrologicalPrimitive.comparator` — the ordering `computeBedGrid` requires, since the merge is a
+   sequential recurrence over one shared `dist[]` with no separate pass per family. `HydrologyProfilePainter`
+   reads `RIVER_DIFFERENCE` back to place river water. `Types.RIVER_DIST` is published from that same
+   shared `dist[]`, so it reflects whichever primitive won each cell, not a river-only pass; see
+   `hydrology/carvers/README.md`.
 
 There is no tile-level bed carve: `hydrology_relief` carries the valley shell only, and the trench is cut
 per chunk against it. `RIVER_DIFFERENCE` is therefore the full shell-to-bed depth, not a residual.
@@ -160,18 +162,18 @@ survives only as a reservation for feature types that have yet to grow real prof
 `FractalTerrainConfig` facade re-export.
 
 `RiverProvider.buildTile` order, split across `GlobalNetworkBuilder`, `LocalNetworkBuilder` and
-`RiverProvider` itself — note that `assign` runs **four** times and `carveRiverInfluence` **three**.
+`RiverProvider` itself — note that `assign` runs **four** times and `carveInfluenceGrid` **three**.
 Every carve writes its own fresh clone of the raw decoded elevation, so no tile-level buffer accumulates
 across stages; the graph, mutated in place throughout, is the thing that carries state forward:
 
 1. `GlobalNetworkBuilder.build` traces/relaxes the global network, builds the `ReachRosgenClassifier`
    typer, runs `ChannelElevationAssigner.assign` (1st) over the global-only graph, then
-   `carveRiverInfluence` into its own clone — so the `fillSinks` + `computeDrainageDirection` drainage
+   `carveInfluenceGrid` into its own clone — so the `fillSinks` + `computeDrainageDirection` drainage
    field it computes next over that clone already sees valleys. It returns the network, that drainage
    field, the boundary-elevation map, the typer, and the carved clone (used downstream only for the
    `Stages.elevationFirstPass` debug snapshot).
 2. `LocalNetworkBuilder.build` takes a second clone, seeds boundary elevations for its `SOURCE`/`DRAIN`
-   nodes, runs `assign` (2nd), and `carveRiverInfluence` into that clone — then traces the local network
+   nodes, runs `assign` (2nd), and `carveInfluenceGrid` into that clone — then traces the local network
    off step 1's drainage field against that carved surface. `LocalDrainageTracer.traceLocalNetwork` walks
    the field upstream-to-downstream over a `Drainage.FlowGraph`, appends `SOURCE`/interior/`DRAIN` nodes
    to the graph's `AtomicView`, wires each new node to any nearby global-channel node
@@ -182,7 +184,7 @@ across stages; the graph, mutated in place throughout, is the thing that carries
    the lateral-erosion pass. It moves spline points, which invalidates every elevation and primitive
    derived before it. That is why step 4 re-derives rather than reusing step 2's work.
 4. `RiverProvider.carveRivers` takes a third clone and produces the published surface: seed any missing
-   boundary elevations → `assign` (3rd) → collect primitives → `carveRiverInfluence`. It then re-seeds
+   boundary elevations → `assign` (3rd) → collect primitives → `carveInfluenceGrid`. It then re-seeds
    **every** `SOURCE`/`DRAIN` boundary elevation by sampling the surface it just carved — overwriting,
    not `putIfAbsent` — and runs `assign` a 4th time, so the bed elevations left on the graph agree with
    the terrain that was published. `RiverProvider.cropToTile` crops this clone into the `hydrology_relief`
@@ -226,7 +228,7 @@ compute, so this order is load-bearing:
 | ----- | -------- | ------- | ---------- |
 | 1 | `GlobalRiverProvider` | `hydrology/providers/` | `WorldPipeline` coarse tensor (via the static `pipeline` field) |
 | 2 | `RiverProvider` | `hydrology/providers/` | `GlobalRiverProvider` (fallback via adapter when no test override), decoder tensor |
-| 2a | `HydrologyProfileInprinter` / `HydrologyProfilePainter` | `hydrology/profile/` | the just-built `RiverProvider` |
+| 2a | `HydrologyProfilePainter` | `hydrology/profile/` | the just-built `RiverProvider` |
 | 3 | `ReliefProvider` | `relief/` | decoder tensor, plus `RiverProvider`'s `hydrology_relief` tile for elevation channel 0 (via the adapter) |
 | 4 | `BiomeProvider` | `world/biome/` | `ReliefProvider`, `RiverProvider` (both via the adapter), climate from `WorldPipeline` |
 
@@ -240,7 +242,7 @@ of the `global → local → relief → biome` ordering constraint.
 ## The `GenerationContext` seam
 
 `GenerationContext.java` holds the whole per-world graph (server, `ReliefProvider`, `BiomeProvider`,
-`GlobalRiverProvider`, `RiverProvider`, `HydrologyProfileInprinter`/`Painter`, `PopulateNoiseStep`,
+`GlobalRiverProvider`, `RiverProvider`, `HydrologyProfilePainter`, `PopulateNoiseStep`,
 `FractalTerrainSurfaceSystem`, `FractalTerrainHeightmapCache`, `RandomState`, `Infinite3DVisualizer`) as
 `final` fields, constructed once per world load.
 
@@ -275,8 +277,8 @@ or publish it):
 
 Mixins and Fabric-instantiated types have no constructor the mod controls, so they are expected to keep
 resolving through the adapter permanently; full removal of the static getters is scoped to the remaining
-mod-constructed providers and has no owner milestone. `hydrology/profile/HydrologyProfileInprinter.java` has
-already been migrated — it takes its `RiverProvider` by constructor. Treat
+mod-constructed providers and has no owner milestone. `hydrology/profile/HydrologyProfilePainter.java` is
+already migrated — it takes its `RiverProvider` by constructor rather than reaching through the adapter. Treat
 `FractalTerrainInstance.getX()` reach-throughs as expected, not as debt to silently clean up.
 
 ## Config & logging conventions
@@ -403,13 +405,14 @@ bands, in order of increasing cost:
 **Hot sites in this repo:**
 
 - `world/gen/populatenoise/PopulateNoiseStep.java` `fineGrainedPrimitivePass`, the per-column blend loop
-  at lines 85–96 — runs 256 times per chunk, for every chunk generated.
-- `hydrology/profile/RiverInfluenceCarve.java` `computeRiverGrid` and the per-primitive helpers it
-  drives (`carveRiverPrimitive`, `carveRadialPrimitive`, `carvePrimitiveInfluence`) — once per chunk over
-  every prefetched primitive, plus once per tile over the whole 514×514 lattice. Its scratch arrays live
-  in a `ThreadLocal<GridBuffers>` resized in place rather than being allocated per call, and each
-  primitive's cross-section is tabulated into a LUT once instead of being re-evaluated per lattice cell.
-  `RosgenProfile.sampleCrossSection` and `HydrologyProfile` sit under it.
+  at lines 94–106 — runs 256 times per chunk, for every chunk generated.
+- `hydrology/carvers/LatticeCarve.java` `computeBedGrid`/`carveInfluenceGrid` and the per-primitive
+  helpers they drive (`BedCarver.carve`/`carveRadial`, `InfluenceCarver.carveRosgenInfluence`/
+  `carveRadialInfluence`) — once per chunk over every queried primitive, plus once per tile over the
+  whole 514×514 lattice. Its scratch arrays live in a `ThreadLocal<GridBuffers>` resized in place rather
+  than being allocated per call, and each primitive's cross-section is tabulated into a LUT once
+  (`tabulateBedLut`) instead of being re-evaluated per lattice cell. `RosgenProfile.sampleCrossSection`,
+  `RadialProfile.sampleRadialSection` and `HydrologyProfile` sit under it.
 - `hydrology/features/HydrologicalPrimitive.java` `HydrologicalFeature.addPrimitives` and `comparator` —
   warm rather than hot (once per tile build), but the primitives they produce are what the hot carve
   iterates. The `Object... args` varargs on `addPrimitives` is an allocation-per-call hazard, an example
@@ -460,16 +463,16 @@ that an allocation-avoiding or abstraction-skipping pattern is deliberate, not a
   freeze does **not** guard the `public final data` array — this invariant is a convention the compiler
   will not enforce for you.
 - **The hydrology carve is order-dependent at two levels, but no tile-level buffer accumulates.**
-  *Across stages:* `carveRiverInfluence` runs three times per tile build — inside `GlobalNetworkBuilder`,
+  *Across stages:* `carveInfluenceGrid` runs three times per tile build — inside `GlobalNetworkBuilder`,
   inside `LocalNetworkBuilder`, and inside `RiverProvider.carveRivers` — each into its own fresh clone of
   the raw decoded elevation, and only the third is published. Order still decides the output, but through
   the graph rather than through a shared buffer: the first carve decides which cells the drainage
   direction crosses and therefore where the local trace runs, the second decides what surface that trace
-  samples, and `Meanders` then moves the channels both produced. *Within a pass:* `computeRiverGrid` is a
-  sequential smoothed-min-distance recurrence over the primitive list, so its input MUST already be sorted
-  by `HydrologicalPrimitive.comparator` — that sort is what puts every `RiverPrimitive` first and lets the
-  loop stop at the first non-river entry, and it also fixes how near-equidistant competitors blend.
-  Neither level is a refactor-safe region.
+  samples, and `Meanders` then moves the channels both produced. *Within a pass:* `computeBedGrid` is a
+  sequential smoothed-min-distance recurrence over one shared `dist[]`, so its input MUST already be
+  sorted by `HydrologicalPrimitive.comparator`. Every family merges through that one buffer in one walk,
+  so list order is the only thing deciding which primitive owns a lattice point and which
+  near-equidistant competitors blend into it. Neither level is a refactor-safe region.
 - **`RiverNetwork`/`QuadTree` reuse is per-tile and single-threaded.** `GlobalNetworkBuilder` builds and
   returns a fresh `RiverNetwork` purely from its parameters; `LocalDrainageTracer` then mutates
   that same network in place to attach the local subgraph (`traceLocalNetwork` returns nothing) — both are

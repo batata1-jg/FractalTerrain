@@ -1,7 +1,8 @@
 # Carve dispatch: polymorphic `carveBed`, extracted carvers, and one merge law
 
 Date: 2026-09-20
-Status: proposed — nothing here implemented.
+Status: implemented, across `d4b0274`..`ffa198f` (dispatch, extraction, the merge-law rewrite) plus the
+documentation move landing this record.
 Branch: `feature/hydrology`
 Measured at: `8bf6885`
 
@@ -379,4 +380,14 @@ site, with no class to delete.
 
 ## Implementation
 
-Not yet written. Follows once this spec is reviewed, via the `writing-plans` skill.
+`docs/superpowers/plans/2026-09-20-carve-dispatch.md`. Two places the plan's execution decided against
+this spec's text, recorded here so the two documents do not silently drift:
+
+- `RiverPaintDepthTest` needed no rewrite — the "Test surface needing rewriting" list above names it,
+  but its assertions already read through `LatticeCarve`'s constants and needed only the mechanical
+  rename every file in the package got.
+- `8bf6885`'s extraction of the bed carve had two fidelity bugs relative to the pre-refactor
+  `RiverInfluenceCarve.carveRiverPrimitive`: an off-by-one in the LUT clamp (`lut.length - 2` where the
+  original read `n - 2`) and slope terms (`bedSlope`/`floodPlainSlope`/`outerSlope`) recomputed inside
+  the per-lattice-point loop rather than hoisted once per primitive. The plan corrects both rather than
+  preserving them, since D4 is a pure extraction and neither bug is a decision this document made.
